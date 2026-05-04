@@ -74,6 +74,45 @@
       word-break: break-word;
     }
 
+    .thinking-section {
+      margin-bottom: 10px;
+    }
+
+    .thinking-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--md-sys-color-on-neutral-container);
+      opacity: 0.7;
+      user-select: none;
+    }
+
+    .thinking-header:hover {
+      opacity: 1;
+    }
+
+    .thinking-icon {
+      display: inline-block;
+      transition: transform 0.2s;
+    }
+
+    .thinking-icon.expanded {
+      transform: rotate(90deg);
+    }
+
+    .thinking-content {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--md-sys-color-surface);
+      border-radius: 6px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-left: 3px solid var(--md-sys-color-primary);
+    }
+
     .input-area {
       display: flex;
       gap: 10px;
@@ -163,6 +202,17 @@
       </o-if>
       <o-fill :value="messages">
         <div class="message {{$data.role}}">
+          <o-if :value="$data.reasoningContent">
+            <div class="thinking-section">
+              <div class="thinking-header" on:click="$data.thinkingExpanded = !$data.thinkingExpanded">
+                <span class="thinking-icon {{$data.thinkingExpanded ? 'expanded' : ''}}">▶</span>
+                <span>思考过程</span>
+              </div>
+              <o-if :value="$data.thinkingExpanded">
+                <div class="thinking-content">{{$data.reasoningContent}}</div>
+              </o-if>
+            </div>
+          </o-if>
           <div class="message-content">{{$data.content}}</div>
         </div>
       </o-fill>
@@ -230,6 +280,8 @@
             this.messages.push({
               role: "assistant",
               content: "",
+              reasoningContent: "",
+              thinkingExpanded: false,
             });
 
             try {
@@ -239,10 +291,14 @@
                 stream: true,
                 onStream: (data) => {
                   this.messages[assistantMessageIndex].content = data.content;
+                  if (data.reasoningContent) {
+                    this.messages[assistantMessageIndex].reasoningContent = data.reasoningContent;
+                  }
                 },
               });
             } catch (error) {
               this.messages[assistantMessageIndex].content = `错误: ${error.message}`;
+              this.messages[assistantMessageIndex].reasoningContent = "";
             } finally {
               this.isLoading = false;
             }
