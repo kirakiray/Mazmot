@@ -40,6 +40,65 @@
       color: var(--md-sys-color-on-surface);
     }
 
+    .option-group {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--md-sys-color-neutral-container);
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--md-sys-color-on-neutral-container);
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--md-sys-color-primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+      background-color: var(--md-sys-color-on-primary);
+    }
+
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -192,6 +251,15 @@
           </o-fill>
         </select>
       </div>
+      <div class="option-group">
+        <div class="option-item">
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="streamEnabled" on:change="streamEnabled = $event.target.checked">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>流式输出</span>
+        </div>
+      </div>
     </div>
 
     <div class="messages">
@@ -253,6 +321,7 @@
           messages: [],
           isLoading: false,
           apiKeys: [],
+          streamEnabled: true,
         },
         proto: {
           async sendMessage() {
@@ -286,16 +355,28 @@
 
             try {
               const assistant = await getAssistant(this.selectedModel);
-              await assistant.chat({
-                message,
-                stream: true,
-                onStream: (data) => {
-                  this.messages[assistantMessageIndex].content = data.content;
-                  if (data.reasoningContent) {
-                    this.messages[assistantMessageIndex].reasoningContent = data.reasoningContent;
-                  }
-                },
-              });
+              
+              if (this.streamEnabled) {
+                await assistant.chat({
+                  message,
+                  stream: true,
+                  onStream: (data) => {
+                    this.messages[assistantMessageIndex].content = data.content;
+                    if (data.reasoningContent) {
+                      this.messages[assistantMessageIndex].reasoningContent = data.reasoningContent;
+                    }
+                  },
+                });
+              } else {
+                const response = await assistant.chat({
+                  message,
+                  stream: false,
+                });
+                this.messages[assistantMessageIndex].content = response.content;
+                if (response.reasoningContent) {
+                  this.messages[assistantMessageIndex].reasoningContent = response.reasoningContent;
+                }
+              }
             } catch (error) {
               this.messages[assistantMessageIndex].content = `错误: ${error.message}`;
               this.messages[assistantMessageIndex].reasoningContent = "";
