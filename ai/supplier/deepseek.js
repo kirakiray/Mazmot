@@ -25,10 +25,10 @@ export class DeepseekAssistant extends Assistant {
         { role: "system", content: systemPrompt },
         { role: "user", content: message },
       ],
+      thinking: { type: thinking ? "enabled" : "disabled" },
     };
 
     if (thinking) {
-      requestBody.thinking = { type: "enabled" };
       requestBody.reasoning_effort = reasoningEffort;
     }
 
@@ -44,7 +44,7 @@ export class DeepseekAssistant extends Assistant {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(
-        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
       );
     }
 
@@ -145,7 +145,7 @@ export class DeepseekAssistant extends Assistant {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(
-        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
       );
     }
 
@@ -165,7 +165,7 @@ export class DeepseekAssistant extends Assistant {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(
-        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
       );
     }
 
