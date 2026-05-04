@@ -43,7 +43,7 @@
     </div>
 
     <script type="module">
-      const { getAssistant, models, saveKey } = await import("./main.js");
+      const { getAssistant, apiKeys, saveKey } = await import("./main.js");
 
       const form = document.getElementById("add-model-form");
       const providerSelect = document.getElementById("provider-select");
@@ -51,12 +51,12 @@
       const modelList = document.getElementById("model-list");
 
       function renderModelList() {
-        if (models.length === 0) {
+        if (apiKeys.length === 0) {
           modelList.innerHTML = '<p style="color: var(--md-sys-color-on-surface); opacity: 0.6;">暂无模型</p>';
           return;
         }
 
-        modelList.innerHTML = models
+        modelList.innerHTML = apiKeys
           .map(
             (item) => `
           <div style="border: 1px solid var(--md-sys-color-neutral-container); padding: 15px; border-radius: 8px; background: var(--md-sys-color-surface);">
@@ -65,7 +65,7 @@
                 <strong>供应商:</strong> ${item.provider}<br/>
                 <strong>API Key:</strong> ${item.maskedKey}<br/>
                 <strong>并发数:</strong> ${item.concurrent}<br/>
-                <strong>创建时间:</strong> ${item.formattedDate}
+                <strong>创建时间:</strong> ${item.createdAt}
               </div>
               <button 
                 onclick="window.deleteModel('${item.id}')" 
@@ -81,9 +81,9 @@
       }
 
       window.deleteModel = (id) => {
-        const index = models.findIndex((item) => item.id === id);
+        const index = apiKeys.findIndex((item) => item.id === id);
         if (index > -1) {
-          models.splice(index, 1);
+          apiKeys.splice(index, 1);
           renderModelList();
         }
       };
@@ -108,7 +108,7 @@
         }
       });
 
-      models.watchTick(() => {
+      apiKeys.watchTick(() => {
         renderModelList();
       });
 

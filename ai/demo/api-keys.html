@@ -95,10 +95,10 @@
   <section>
     <h2>已有模型列表</h2>
     <div class="model-list">
-      <o-if :value="models.length === 0">
+      <o-if :value="apiKeys.length === 0">
         <p class="empty-text">暂无模型</p>
       </o-if>
-      <o-fill :value="models">
+      <o-fill :value="apiKeys">
         <div class="model-item">
           <div class="model-item-content">
             <div>
@@ -109,7 +109,7 @@
             </div>
             <button
               class="delete-btn"
-              on:click="$host.models.splice($index, 1)"
+              on:click="$host.apiKeys.splice($index, 1)"
             >
               删除
             </button>
@@ -123,13 +123,13 @@
     export const parent = "./layout.html";
     
     export default async ({ load }) => {
-      const { getAssistant, models, saveKey } = await load("../main.js");
+      const { getAssistant, apiKeys, saveKey } = await load("../main.js");
 
       return {
         data: {
           provider: "deepseek",
           apiKey: "",
-          models: [],
+          apiKeys: [],
         },
 
         proto: {
@@ -151,10 +151,10 @@
           },
         },
         attached() {
-          this.models = models;
+          this.apiKeys = apiKeys;
         },
         detached() {
-          this.models = [];
+          this.apiKeys = [];
         },
       };
     };

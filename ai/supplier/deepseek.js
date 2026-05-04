@@ -1,13 +1,6 @@
-// // 调用deepseek api 聊天
-// export const chat = ({ message, apiKey }) => {};
-
-// // 获取可用的模型
-// export const getModels = (apiKey) => {};
-
-// // 查询剩余调用次数和过期时间
-// export const getRemaining = (apiKey) => {};
-
 import { Assistant } from "./assistant.js";
+
+const BASE_URL = "https://api.deepseek.com";
 
 export class DeepseekAssistant extends Assistant {
   id;
@@ -15,30 +8,153 @@ export class DeepseekAssistant extends Assistant {
     super(id, apiKey);
   }
 
-  /**
-   * 调用deepseek api 聊天
-   * @param {*} message 消息
-   * @param {*} thinking 是否思考思考过程
-   * @returns {Promise} 返回聊天结果
-   */
-  async chat({ message, thinking = false }) {
-    return await this.api.chat({ message, apiKey: this.apiKey });
+  async chat({
+    message,
+    thinking = false,
+    model = "deepseek-v4-pro",
+    reasoningEffort = "high",
+    stream = false,
+    messages = null,
+    systemPrompt = "You are a helpful assistant.",
+  }) {
+    const requestBody = {
+      model,
+      stream,
+      messages: messages || [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message },
+      ],
+    };
+
+    if (thinking) {
+      requestBody.thinking = { type: "enabled" };
+      requestBody.reasoning_effort = reasoningEffort;
+    }
+
+    const response = await fetch(`${BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+      );
+    }
+
+    if (stream) {
+      return this.handleStreamResponse(response);
+    }
+
+    const data = await response.json();
+    return {
+      content: data.choices[0].message.content,
+      reasoningContent: data.choices[0].message.reasoning_content,
+      model: data.model,
+      usage: data.usage,
+      raw: data,
+    };
   }
 
-  /**
-   * 获取可用的模型
-   * @returns {Promise} 返回模型列表
-   */
+  async handleStreamResponse(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let result = {
+      content: "",
+      reasoningContent: "",
+      model: "",
+      usage: null,
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices[0]?.delta;
+
+            if (delta?.content) {
+              result.content += delta.content;
+            }
+            if (delta?.reasoning_content) {
+              result.reasoningContent += delta.reasoning_content;
+            }
+            if (parsed.model) {
+              result.model = parsed.model;
+            }
+            if (parsed.usage) {
+              result.usage = parsed.usage;
+            }
+          } catch (e) {
+            console.warn("Failed to parse streaming chunk:", e);
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
   async getModels() {
-    return await this.api.getModels({ apiKey: this.apiKey });
+    const response = await fetch(`${BASE_URL}/models`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+      );
+    }
+
+    const data = await response.json();
+    return data.data || data;
   }
 
-  /**
-   * 查询剩余调用次数和过期时间
-   * @returns {Promise} 返回剩余调用次数和过期时间
-   */
   async getRemaining() {
-    return await this.api.getRemaining({ apiKey: this.apiKey });
+    const response = await fetch(`${BASE_URL}/user/balance`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        `DeepSeek API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`
+      );
+    }
+
+    const data = await response.json();
+    return {
+      isAvailable: data.is_available,
+      balanceInfos: data.balance_infos?.map((info) => ({
+        currency: info.currency,
+        totalBalance: info.total_balance,
+        grantedBalance: info.granted_balance,
+        toppedUpBalance: info.topped_up_balance,
+      })),
+      raw: data,
+    };
   }
 }
 

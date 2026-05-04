@@ -2,25 +2,25 @@ import { storage } from "/gh/kirakiray/ever-cache/src/main.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
-export const models = $.stanz([]);
+export const apiKeys = $.stanz([]);
 
 await (async () => {
-  const savedData = await storage.models;
+  const savedData = await storage.apiKeys;
   if (savedData && Array.isArray(savedData)) {
-    models.push(...savedData);
+    apiKeys.push(...savedData);
   }
 })();
 
-models.watchTick(() => {
-  const data = models.toJSON();
-  storage.models = data;
+apiKeys.watchTick(() => {
+  const data = apiKeys.toJSON();
+  storage.apiKeys = data;
 });
 
 export const saveKey = async (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
-  models.push({
+  apiKeys.push({
     id,
     concurrent: 4,
     provider,
@@ -37,9 +37,9 @@ export const getAssistant = async (id) => {
   let item;
 
   if (!id) {
-    item = models[Math.floor(Math.random() * models.length)];
+    item = apiKeys[Math.floor(Math.random() * apiKeys.length)];
   } else {
-    item = models.find((item) => item.id === id);
+    item = apiKeys.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");
     }

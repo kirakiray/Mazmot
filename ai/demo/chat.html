@@ -146,7 +146,7 @@
       <div class="model-selector">
         <label>选择模型：</label>
         <select sync:value="selectedModel">
-          <o-fill :value="models">
+          <o-fill :value="apiKeys">
             <option attr:value="$data.id">
               {{$data.provider}} - {{$data.maskedKey}}
             </option>
@@ -194,7 +194,7 @@
     export const parent = "./layout.html";
 
     export default async ({ load }) => {
-      const { getAssistant, models } = await load("../main.js");
+      const { getAssistant, apiKeys } = await load("../main.js");
 
       return {
         data: {
@@ -202,15 +202,15 @@
           inputMessage: "",
           messages: [],
           isLoading: false,
-          models: [],
+          apiKeys: [],
         },
         proto: {
           async sendMessage() {
             const message = this.inputMessage.trim();
             if (!message || this.isLoading) return;
 
-            if (!this.selectedModel && this.models.length > 0) {
-              this.selectedModel = this.models[0].id;
+            if (!this.selectedModel && this.apiKeys.length > 0) {
+              this.selectedModel = this.apiKeys[0].id;
             }
 
             if (!this.selectedModel) {
@@ -246,14 +246,14 @@
         },
 
         attached() {
-          this.models = models;
-          if (models.length > 0) {
-            this.selectedModel = models[0].id;
+          this.apiKeys = apiKeys;
+          if (apiKeys.length > 0) {
+            this.selectedModel = apiKeys[0].id;
           }
         },
 
         detached() {
-          this.models = [];
+          this.apiKeys = [];
         },
       };
     };
