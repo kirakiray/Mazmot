@@ -16,6 +16,7 @@ export class DeepseekAssistant extends Assistant {
     stream = false,
     messages = null,
     systemPrompt = "You are a helpful assistant.",
+    onStream = null,
   }) {
     const requestBody = {
       model,
@@ -48,7 +49,7 @@ export class DeepseekAssistant extends Assistant {
     }
 
     if (stream) {
-      return this.handleStreamResponse(response);
+      return this.handleStreamResponse(response, onStream);
     }
 
     const data = await response.json();
@@ -61,7 +62,7 @@ export class DeepseekAssistant extends Assistant {
     };
   }
 
-  async handleStreamResponse(response) {
+  async handleStreamResponse(response, onStream = null) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let result = {
@@ -99,11 +100,35 @@ export class DeepseekAssistant extends Assistant {
             if (parsed.usage) {
               result.usage = parsed.usage;
             }
+
+            if (onStream && typeof onStream === "function") {
+              onStream({
+                content: result.content,
+                reasoningContent: result.reasoningContent,
+                delta: delta?.content || "",
+                deltaReasoning: delta?.reasoning_content || "",
+                model: result.model,
+                usage: result.usage,
+                done: false,
+              });
+            }
           } catch (e) {
             console.warn("Failed to parse streaming chunk:", e);
           }
         }
       }
+    }
+
+    if (onStream && typeof onStream === "function") {
+      onStream({
+        content: result.content,
+        reasoningContent: result.reasoningContent,
+        delta: "",
+        deltaReasoning: "",
+        model: result.model,
+        usage: result.usage,
+        done: true,
+      });
     }
 
     return result;

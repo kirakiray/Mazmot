@@ -226,19 +226,23 @@
             this.inputMessage = "";
             this.isLoading = true;
 
+            const assistantMessageIndex = this.messages.length;
+            this.messages.push({
+              role: "assistant",
+              content: "",
+            });
+
             try {
               const assistant = await getAssistant(this.selectedModel);
-              const response = await assistant.chat({ message });
-
-              this.messages.push({
-                role: "assistant",
-                content: response,
+              await assistant.chat({
+                message,
+                stream: true,
+                onStream: (data) => {
+                  this.messages[assistantMessageIndex].content = data.content;
+                },
               });
             } catch (error) {
-              this.messages.push({
-                role: "assistant",
-                content: `错误: ${error.message}`,
-              });
+              this.messages[assistantMessageIndex].content = `错误: ${error.message}`;
             } finally {
               this.isLoading = false;
             }
