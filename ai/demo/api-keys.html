@@ -95,21 +95,21 @@
   <section>
     <h2>已有模型列表</h2>
     <div class="model-list">
-      <o-if :value="apiKeys.length === 0">
+      <o-if :value="models.length === 0">
         <p class="empty-text">暂无模型</p>
       </o-if>
-      <o-fill :value="apiKeys">
+      <o-fill :value="models">
         <div class="model-item">
           <div class="model-item-content">
             <div>
               <strong>供应商:</strong> {{$data.provider}}<br />
-              <strong>API Key:</strong> {{$data.apiKey}}<br />
+              <strong>API Key:</strong> {{$data.maskedKey}}<br />
               <strong>并发数:</strong> {{$data.concurrent}}<br />
-              <strong>创建时间:</strong> {{$data.createdAt}}
+              <strong>创建时间:</strong> {{$data.formattedDate}}
             </div>
             <button
               class="delete-btn"
-              on:click="$host.apiKeys.splice($index, 1)"
+              on:click="$host.models.splice($index, 1)"
             >
               删除
             </button>
@@ -123,15 +123,13 @@
     export const parent = "./layout.html";
     
     export default async ({ load }) => {
-      const { getAssistant, apiKeys, saveKey } = await load("../main.js");
-
-      console.log(apiKeys.toJSON());
+      const { getAssistant, models, saveKey } = await load("../main.js");
 
       return {
         data: {
           provider: "deepseek",
           apiKey: "",
-          apiKeys: [],
+          models: [],
         },
 
         proto: {
@@ -151,19 +149,12 @@
               alert("添加失败：" + error.message);
             }
           },
-
-          deleteModel(id) {
-            const index = apiKeys.findIndex((item) => item.id === id);
-            if (index > -1) {
-              apiKeys.splice(index, 1);
-            }
-          },
         },
         attached() {
-          this.apiKeys = apiKeys;
+          this.models = models;
         },
         detached() {
-          this.apiKeys = [];
+          this.models = [];
         },
       };
     };

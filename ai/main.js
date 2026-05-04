@@ -2,57 +2,44 @@ import { storage } from "/gh/kirakiray/ever-cache/src/main.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
-// 保存所有api key的数据
-export const apiKeys = $.stanz([]);
+export const models = $.stanz([]);
 
-// 初始化读取storage中的数据
 await (async () => {
-  const savedData = await storage.apiKeys;
+  const savedData = await storage.models;
   if (savedData && Array.isArray(savedData)) {
-    apiKeys.push(...savedData);
+    models.push(...savedData);
   }
 })();
 
-// 数据发生改动后，更新storage
-apiKeys.watchTick(() => {
-  const data = apiKeys.toJSON();
-  storage.apiKeys = data;
+models.watchTick(() => {
+  const data = models.toJSON();
+  storage.models = data;
 });
 
-/**
- * 保存key
- * @param {*} apiKey api key
- * @param {*} provider 供应商
- */
 export const saveKey = async (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
-  apiKeys.push({
+  models.push({
     id,
     concurrent: 4,
     provider,
     apiKey,
+    maskedKey: `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`,
     createdAt: createdAt.toISOString(),
+    formattedDate: createdAt.toLocaleString(),
   });
 
   return getAssistant(id);
 };
 
-/**
- * 获取 assistant
- * 如果不提供id，则随机获取助手
- * @param {*} id key id
- * @returns {Promise} 返回 assistant
- */
 export const getAssistant = async (id) => {
   let item;
 
   if (!id) {
-    // 从apiKeys中随机获取一个key
-    item = apiKeys[Math.floor(Math.random() * apiKeys.length)];
+    item = models[Math.floor(Math.random() * models.length)];
   } else {
-    item = apiKeys.find((item) => item.id === id);
+    item = models.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");
     }

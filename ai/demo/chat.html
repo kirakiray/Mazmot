@@ -145,13 +145,10 @@
       <h1>AI 聊天</h1>
       <div class="model-selector">
         <label>选择模型：</label>
-        <select
-          :value="selectedModel"
-          on:change="selectedModel = $event.target.value"
-        >
-          <o-fill :value="apiKeys">
+        <select sync:value="selectedModel">
+          <o-fill :value="models">
             <option value="$data.id">
-              {{$data.provider}} - {{$data.apiKey}}
+              {{$data.provider}} - {{$data.maskedKey}}
             </option>
           </o-fill>
         </select>
@@ -197,7 +194,7 @@
     export const parent = "./layout.html";
 
     export default async ({ load }) => {
-      const { getAssistant, apiKeys } = await load("../main.js");
+      const { getAssistant, models } = await load("../main.js");
 
       return {
         data: {
@@ -205,15 +202,15 @@
           inputMessage: "",
           messages: [],
           isLoading: false,
-          apiKeys: [],
+          models: [],
         },
         proto: {
           async sendMessage() {
             const message = this.inputMessage.trim();
             if (!message || this.isLoading) return;
 
-            if (!this.selectedModel && this.apiKeys.length > 0) {
-              this.selectedModel = this.apiKeys[0].id;
+            if (!this.selectedModel && this.models.length > 0) {
+              this.selectedModel = this.models[0].id;
             }
 
             if (!this.selectedModel) {
@@ -249,14 +246,14 @@
         },
 
         attached() {
-          this.apiKeys = apiKeys;
-          if (apiKeys.length > 0) {
-            this.selectedModel = apiKeys[0].id;
+          this.models = models;
+          if (models.length > 0) {
+            this.selectedModel = models[0].id;
           }
         },
 
         detached() {
-          this.apiKeys = [];
+          this.models = [];
         },
       };
     };
