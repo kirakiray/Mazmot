@@ -259,6 +259,13 @@
           </label>
           <span>流式输出</span>
         </div>
+        <div class="option-item">
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="thinkingEnabled" on:change="thinkingEnabled = $event.target.checked">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>思考模式</span>
+        </div>
       </div>
     </div>
 
@@ -322,6 +329,7 @@
           isLoading: false,
           apiKeys: [],
           streamEnabled: true,
+          thinkingEnabled: false,
         },
         proto: {
           async sendMessage() {
@@ -359,6 +367,7 @@
               if (this.streamEnabled) {
                 await assistant.chat({
                   message,
+                  thinking: this.thinkingEnabled,
                   stream: true,
                   onStream: (data) => {
                     this.messages[assistantMessageIndex].content = data.content;
@@ -370,6 +379,7 @@
               } else {
                 const response = await assistant.chat({
                   message,
+                  thinking: this.thinkingEnabled,
                   stream: false,
                 });
                 this.messages[assistantMessageIndex].content = response.content;
