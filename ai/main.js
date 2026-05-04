@@ -1,8 +1,17 @@
 import { storage } from "/gh/kirakiray/ever-cache/src/main.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
+import KimiAssistant from "./supplier/kimi.js";
 
 // 保存所有api key的数据
 export const apiKeys = $.stanz([]);
+
+// 初始化读取storage中的数据
+(async () => {
+  const savedData = await storage.apiKeys;
+  if (savedData && Array.isArray(savedData)) {
+    apiKeys.push(...savedData);
+  }
+})();
 
 // 数据发生改动后，更新storage
 apiKeys.watchTick(() => {
@@ -51,6 +60,8 @@ export const getAssistant = async (id) => {
   switch (item.provider) {
     case "deepseek":
       return new DeepseekAssistant(item.id, item.apiKey);
+    case "kimi":
+      return new KimiAssistant(item.id, item.apiKey);
     default:
       throw new Error("provider not supported");
   }
