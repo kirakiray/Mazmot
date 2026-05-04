@@ -1,0 +1,169 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    section {
+      margin-bottom: 30px;
+    }
+
+    form {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    select,
+    input {
+      padding: 8px;
+    }
+
+    select {
+      min-width: 150px;
+    }
+
+    input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    button[type="submit"] {
+      padding: 8px 20px;
+    }
+
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .model-item {
+      border: 1px solid var(--md-sys-color-neutral-container);
+      padding: 15px;
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+    }
+
+    .model-item-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .delete-btn {
+      padding: 5px 15px;
+      background: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .empty-text {
+      color: var(--md-sys-color-on-surface);
+      opacity: 0.6;
+    }
+  </style>
+
+  <h1>模型管理演示</h1>
+
+  <section>
+    <h2>添加新模型</h2>
+    <form id="add-model-form">
+      <select
+        id="provider-select"
+        :value="provider"
+        on:change="provider = $event.target.value"
+      >
+        <option value="deepseek">Deepseek</option>
+        <option value="kimi">Kimi</option>
+      </select>
+      <input
+        type="text"
+        :value="apiKey"
+        on:input="apiKey = $event.target.value"
+        placeholder="请输入 API Key"
+      />
+      <button type="button" on:click="handleAdd">添加</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>已有模型列表</h2>
+    <div class="model-list">
+      <o-if :value="apiKeys.length === 0">
+        <p class="empty-text">暂无模型</p>
+      </o-if>
+      <o-fill :value="apiKeys">
+        <div class="model-item">
+          <div class="model-item-content">
+            <div>
+              <strong>供应商:</strong> {{$data.provider}}<br />
+              <strong>API Key:</strong> {{$data.apiKey}}<br />
+              <strong>并发数:</strong> {{$data.concurrent}}<br />
+              <strong>创建时间:</strong> {{$data.createdAt}}
+            </div>
+            <button
+              class="delete-btn"
+              on:click="$host.apiKeys.splice($index, 1)"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </o-fill>
+    </div>
+  </section>
+
+  <script>
+    export default async ({ load }) => {
+      const { getAssistant, apiKeys, saveKey } = await load("../main.js");
+
+      console.log(apiKeys.toJSON());
+
+      return {
+        data: {
+          provider: "deepseek",
+          apiKey: "",
+          apiKeys: [],
+        },
+
+        proto: {
+          async handleAdd() {
+            const apiKey = this.apiKey.trim();
+
+            if (!apiKey) {
+              alert("请输入 API Key");
+              return;
+            }
+
+            try {
+              await saveKey(apiKey, this.provider);
+              this.apiKey = "";
+              alert("添加成功！");
+            } catch (error) {
+              alert("添加失败：" + error.message);
+            }
+          },
+
+          deleteModel(id) {
+            const index = apiKeys.findIndex((item) => item.id === id);
+            if (index > -1) {
+              apiKeys.splice(index, 1);
+            }
+          },
+        },
+        attached() {
+          this.apiKeys = apiKeys;
+        },
+        detached() {
+          this.apiKeys = [];
+        },
+      };
+    };
+  </script>
+</template>

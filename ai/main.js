@@ -6,7 +6,7 @@ import KimiAssistant from "./supplier/kimi.js";
 export const apiKeys = $.stanz([]);
 
 // 初始化读取storage中的数据
-(async () => {
+await (async () => {
   const savedData = await storage.apiKeys;
   if (savedData && Array.isArray(savedData)) {
     apiKeys.push(...savedData);
@@ -26,13 +26,14 @@ apiKeys.watchTick(() => {
  */
 export const saveKey = async (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
+  const createdAt = new Date();
 
   apiKeys.push({
     id,
     concurrent: 4,
     provider,
     apiKey,
-    createdAt: new Date().toISOString(),
+    createdAt: createdAt.toISOString(),
   });
 
   return getAssistant(id);
