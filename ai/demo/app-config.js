@@ -1,4 +1,4 @@
-export const home = "./page.html";
+export const home = "./api-keys.html";
 
 export const pageAnime = {
   current: {
