@@ -18,10 +18,10 @@ export class DeepseekAssistant extends Assistant {
   /**
    * 调用deepseek api 聊天
    * @param {*} message 消息
-   * @param {*} think 是否思考思考过程
+   * @param {*} thinking 是否思考思考过程
    * @returns {Promise} 返回聊天结果
    */
-  async chat({ message, think = false }) {
+  async chat({ message, thinking = false }) {
     return await this.api.chat({ message, apiKey: this.apiKey });
   }
 
