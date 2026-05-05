@@ -58,4 +58,5 @@ const jsonStr = chatbox.getChatJson();
 console.log(jsonStr);
 ```
 
-现在你在 comps/chatbox/demo.html 中演示组件的使用方法。
+现在你在 comps/chatbox/demo.html 中演示 getChatJson 方法的使用。就点击按钮展示获取的内容即可。
+
