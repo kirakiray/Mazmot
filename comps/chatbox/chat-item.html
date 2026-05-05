@@ -63,6 +63,44 @@
       font-style: italic;
     }
 
+    .system .content.collapsed {
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+
+    .system-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-style: normal;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .system-header-text {
+      color: var(--md-sys-color-primary);
+    }
+
+    .collapse-icon {
+      font-size: 12px;
+      transition: transform 0.2s ease;
+      color: var(--md-sys-color-primary);
+    }
+
+    .collapsed .collapse-icon {
+      transform: rotate(90deg);
+    }
+
+    .system-content {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+    }
+
+    .collapsed .system-content {
+      display: none;
+    }
+
     .user .content {
       background-color: var(--md-sys-color-primary-container);
     }
@@ -74,8 +112,19 @@
 
   <div class="chat-item" class:system="role === 'system'" class:user="role === 'user'" class:assistant="role === 'assistant'">
     <div class="avatar">{{avatarText}}</div>
-    <div class="content">
-      <slot></slot>
+    <div class="content" class:collapsed="role === 'system' && collapsed" on:click="role === 'system' && toggleCollapse()">
+      <o-if :value="role === 'system'">
+        <div class="system-header">
+          <span class="system-header-text">系统提示</span>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="system-content">
+          <slot></slot>
+        </div>
+      </o-if>
+      <o-if :value="role !== 'system'">
+        <slot></slot>
+      </o-if>
     </div>
   </div>
 
@@ -86,7 +135,8 @@
         role: "user"
       },
       data: {
-        avatarText: "U"
+        avatarText: "U",
+        collapsed: true
       },
       watch: {
         role(val) {
@@ -98,7 +148,11 @@
           this.avatarText = avatarMap[val] || val.charAt(0).toUpperCase();
         }
       },
-      proto: {},
+      proto: {
+        toggleCollapse() {
+          this.collapsed = !this.collapsed;
+        }
+      },
       ready() {
         const avatarMap = {
           system: "S",
