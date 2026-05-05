@@ -69,7 +69,29 @@
 
 ### m-chatbox
 
-无属性配置。
+#### 方法
+
+| 方法名      | 说明                                       |
+| ----------- | ------------------------------------------ |
+| getChatJson | 获取聊天记录的数组对象，返回标准对话格式 |
+
+**getChatJson 返回格式示例：**
+
+```javascript
+[
+  { role: "system", content: "你是一个助手，你的任务是回答用户的问题。" },
+  { role: "user", content: "你好，你是谁啊？" },
+  { role: "assistant", content: "我是一个助手，你可以回答用户的问题。你好！" }
+]
+```
+
+**使用示例：**
+
+```javascript
+const chatbox = $('m-chatbox');
+const chatData = chatbox.getChatJson();
+console.log(JSON.stringify(chatData, null, 2));
+```
 
 ### m-chat-item
 
