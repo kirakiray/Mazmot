@@ -63,6 +63,41 @@
       cursor: pointer;
     }
 
+    .action-btns {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .action-btn {
+      padding: 5px 12px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .action-btn:hover {
+      opacity: 0.9;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .info-box {
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 4px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     .empty-text {
       color: var(--md-sys-color-on-surface);
       opacity: 0.6;
@@ -114,6 +149,17 @@
               删除
             </button>
           </div>
+          <div class="action-btns">
+            <button class="action-btn" on:click="$host.getModels($data.id)" :disabled="$host.isLoading[$data.id]">
+              获取模型
+            </button>
+            <button class="action-btn" on:click="$host.getRemaining($data.id)" :disabled="$host.isLoading[$data.id]">
+              查询余额
+            </button>
+          </div>
+          <o-if :value="$host.modelInfo[$data.id]">
+            <div class="info-box">{{$host.modelInfo[$data.id]}}</div>
+          </o-if>
         </div>
       </o-fill>
     </div>
@@ -130,6 +176,8 @@
           provider: "deepseek",
           apiKey: "",
           apiKeys: [],
+          isLoading: {},
+          modelInfo: {},
         },
 
         proto: {
@@ -147,6 +195,40 @@
               alert("添加成功！");
             } catch (error) {
               alert("添加失败：" + error.message);
+            }
+          },
+
+          async getModels(id) {
+            this.isLoading[id] = true;
+            try {
+              const assistant = await getAssistant(id);
+              const models = await assistant.getModels();
+              this.modelInfo[id] = `可用模型:\n${models.map(m => `  - ${m.id || m.name}`).join('\n')}`;
+            } catch (error) {
+              this.modelInfo[id] = `获取模型失败: ${error.message}`;
+            } finally {
+              this.isLoading[id] = false;
+            }
+          },
+
+          async getRemaining(id) {
+            this.isLoading[id] = true;
+            try {
+              const assistant = await getAssistant(id);
+              const remaining = await assistant.getRemaining();
+              if (remaining.balanceInfos) {
+                this.modelInfo[id] = `余额信息:\n${remaining.balanceInfos.map(info => 
+                  `  ${info.currency}: ${info.totalBalance}`
+                ).join('\n')}`;
+              } else if (remaining.balance !== undefined) {
+                this.modelInfo[id] = `余额: ${remaining.balance}`;
+              } else {
+                this.modelInfo[id] = `余额信息:\n${JSON.stringify(remaining, null, 2)}`;
+              }
+            } catch (error) {
+              this.modelInfo[id] = `查询余额失败: ${error.message}`;
+            } finally {
+              this.isLoading[id] = false;
             }
           },
         },
