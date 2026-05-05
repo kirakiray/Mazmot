@@ -29,3 +29,33 @@
 
 ---
 
+给 chatbox 组件添加可以获取到聊天格式json数据的方法，方法名为 getChatJson。
+方法返回值为一个字符串，字符串内容为聊天记录的json数据。
+json数据的格式为：
+```json
+[
+  {
+    "role": "system",
+    "content": "你是一个助手，你的任务是回答用户的问题。"
+  },
+  {
+    "role": "user",
+    "content": "你好，你是谁啊？"
+  },
+  {
+    "role": "assistant",
+    "content": "我是一个助手，你可以回答用户的问题。你好！"
+  }
+]
+```
+
+---
+
+使用方法错了，应该是
+```javascript
+const chatbox = $('m-chatbox');
+const jsonStr = chatbox.getChatJson();
+console.log(jsonStr);
+```
+
+现在你在 comps/chatbox/demo.html 中演示组件的使用方法。

@@ -12,19 +12,6 @@
       margin: 0 auto;
     }
 
-    .chatbox-header {
-      padding-bottom: 16px;
-      margin-bottom: 16px;
-      border-bottom: 1px solid var(--md-sys-color-outline-variant);
-    }
-
-    .chatbox-title {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--md-sys-color-on-surface);
-      margin: 0;
-    }
-
     .chatbox-content {
       display: flex;
       flex-direction: column;
@@ -37,9 +24,6 @@
   </style>
 
   <div class="chatbox-container">
-    <div class="chatbox-header">
-      <h2 class="chatbox-title">聊天记录</h2>
-    </div>
     <div class="chatbox-content">
       <slot></slot>
     </div>
@@ -50,7 +34,19 @@
       tag: "m-chatbox",
       attrs: {},
       data: {},
-      proto: {},
+      proto: {
+        getChatJson() {
+          const slot = this.shadowRoot.querySelector('slot');
+          const items = slot.assignedElements();
+          const chatData = items.map(item => {
+            return {
+              role: item.role || 'user',
+              content: item.textContent.trim()
+            };
+          });
+          return JSON.stringify(chatData, null, 2);
+        }
+      },
       ready() {}
     };
   </script>
