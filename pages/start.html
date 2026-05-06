@@ -15,15 +15,27 @@
   </style>
   <div class="container">
     <m-chatbox>
-        <o-fill :value="msgs">
-          <m-chat-item attr:role="$data.role">{{$data.content}}</m-chat-item>
-        </o-fill>
-        <o-if :value="isLoading">
-          <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
-        </o-if>
-      </m-chatbox>
+      <o-fill :value="msgs">
+        <m-chat-item attr:role="$data.role">
+          <div>{{$data.content}}</div>
+          <o-if :value="$data.usage">
+            <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
+              模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}} tokens
+              | 输出: {{$data.usage.completion_tokens}} tokens
+            </div>
+          </o-if>
+        </m-chat-item>
+      </o-fill>
+      <o-if :value="isLoading">
+        <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
+      </o-if>
+    </m-chatbox>
     <div style="display: flex; gap: 10px; align-items: flex-end">
-      <p-input sync:value="inputMessage" style="flex: 1" on:keydown="handleKeyDown">
+      <p-input
+        sync:value="inputMessage"
+        style="flex: 1"
+        on:keydown="handleKeyDown"
+      >
         <span slot="label">输入消息</span>
       </p-input>
       <p-button on:click="sendMsg">发送</p-button>
@@ -41,7 +53,7 @@
         },
         proto: {
           handleKeyDown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               this.sendMsg();
             }
@@ -73,7 +85,13 @@
                 messages: chatMessages,
                 model: "deepseek-v4-flash",
               });
-              this.msgs.push({ role: "assistant", content: response.content });
+
+              this.msgs.push({
+                role: "assistant",
+                content: response.content,
+                usage: response.usage,
+                model: response.model,
+              });
             } catch (e) {
               this.msgs.push({
                 role: "assistant",
