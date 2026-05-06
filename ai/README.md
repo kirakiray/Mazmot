@@ -53,11 +53,13 @@ console.log(apiKeys.length);
 
 ```javascript
 const response = await assistant.chat({
-  message: "你好",
+  messages: [
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "你好" },
+  ],
   thinking: false,
   stream: false,
   model: "deepseek-v4-flash",
-  systemPrompt: "You are a helpful assistant.",
   onStream: (data) => {
     console.log(data.content);
     console.log(data.reasoningContent);
@@ -65,16 +67,27 @@ const response = await assistant.chat({
 });
 ```
 
+#### 多轮对话示例
+
+```javascript
+const response = await assistant.chat({
+  messages: [
+    { role: "system", content: "你是一个专业的程序员。" },
+    { role: "user", content: "什么是闭包？" },
+    { role: "assistant", content: "闭包是..." },
+    { role: "user", content: "再详细说说" },
+  ],
+});
+```
+
 #### 参数说明
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| message | string | - | 用户消息 |
+| messages | array | - | 消息数组，包含 role 和 content |
 | thinking | boolean | false | 是否启用思考模式 |
 | stream | boolean | false | 是否启用流式输出 |
 | model | string | - | 模型名称 |
-| messages | array | null | 自定义消息数组 |
-| systemPrompt | string | "You are a helpful assistant." | 系统提示词 |
 | onStream | function | null | 流式输出回调 |
 | thinkingKeep | string | null | Kimi 专用，保留历史思考 |
 
@@ -156,7 +169,9 @@ DeepSeek 和 Kimi 都支持思考模式，会返回 `reasoningContent` 字段包
 
 ```javascript
 await assistant.chat({
-  message: "解释相对论",
+  messages: [
+    { role: "user", content: "解释相对论" },
+  ],
   thinking: true,
   reasoningEffort: "high", // low, medium, high
 });
@@ -166,7 +181,9 @@ await assistant.chat({
 
 ```javascript
 await assistant.chat({
-  message: "解释相对论",
+  messages: [
+    { role: "user", content: "解释相对论" },
+  ],
   thinking: true,
   thinkingKeep: "all", // 保留历史思考（多轮对话）
 });
@@ -178,7 +195,9 @@ await assistant.chat({
 
 ```javascript
 await assistant.chat({
-  message: "写一首诗",
+  messages: [
+    { role: "user", content: "写一首诗" },
+  ],
   stream: true,
   onStream: (data) => {
     console.log("当前累计内容:", data.content);

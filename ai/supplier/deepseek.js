@@ -9,22 +9,17 @@ export class DeepseekAssistant extends Assistant {
   }
 
   async chat({
-    message,
     thinking = false,
     model = "deepseek-v4-flash",
     reasoningEffort = "high",
     stream = false,
-    messages = null,
-    systemPrompt = "You are a helpful assistant.",
+    messages,
     onStream = null,
   }) {
     const requestBody = {
       model,
       stream,
-      messages: messages || [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message },
-      ],
+      messages,
       thinking: { type: thinking ? "enabled" : "disabled" },
     };
 

@@ -9,22 +9,17 @@ export class KimiAssistant extends Assistant {
   }
 
   async chat({
-    message,
     thinking = false,
     model = "kimi-k2.6",
     stream = false,
-    messages = null,
-    systemPrompt = "You are a helpful assistant.",
+    messages,
     onStream = null,
     thinkingKeep = null,
   }) {
     const requestBody = {
       model,
       stream,
-      messages: messages || [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message },
-      ],
+      messages,
       thinking: {
         type: thinking ? "enabled" : "disabled",
         ...(thinkingKeep && { keep: thinkingKeep }),
