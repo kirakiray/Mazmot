@@ -16,7 +16,7 @@
   <div class="container">
     <m-chatbox>
       <o-fill :value="msgs">
-        <m-chat-item attr:role="$data.role">{{$data.text}}</m-chat-item>
+        <m-chat-item attr:role="$data.role">{{$data.content}}</m-chat-item>
       </o-fill>
     </m-chatbox>
     <div style="display: flex; gap: 10px; align-items: flex-end">
@@ -40,7 +40,7 @@
             const message = this.inputMessage.trim();
             if (!message) return;
 
-            this.msgs.push({ role: "user", text: message });
+            this.msgs.push({ role: "user", content: message });
             this.inputMessage = "";
 
             try {
@@ -48,19 +48,25 @@
               if (!assistant) {
                 this.msgs.push({
                   role: "assistant",
-                  text: "请先在设置中配置 DeepSeek API Key",
+                  content: "请先在设置中配置 DeepSeek API Key",
                 });
                 return;
               }
+
+              const chatMessages = this.msgs.map((m) => ({
+                role: m.role,
+                content: m.content,
+              }));
+
               const response = await assistant.chat({
-                message,
+                messages: chatMessages,
                 model: "deepseek-v4-flash",
               });
-              this.msgs.push({ role: "assistant", text: response.content });
+              this.msgs.push({ role: "assistant", content: response.content });
             } catch (e) {
               this.msgs.push({
                 role: "assistant",
-                text: "请求失败：" + e.message,
+                content: "请求失败：" + e.message,
               });
             }
           },
