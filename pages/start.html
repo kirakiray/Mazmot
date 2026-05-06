@@ -1,4 +1,5 @@
 <template page>
+  <l-m src="../comps/chatbox/chatbox.html"></l-m>
   <style>
     :host {
       display: block;
@@ -6,8 +7,36 @@
       margin: 20px auto;
       padding: 20px;
     }
+    m-chat-item[role="system"] {
+      display: none;
+    }
   </style>
   <div class="container">
-    <h1>开始</h1>
+    <m-chatbox>
+      <o-fill :value="msgs">
+        <m-chat-item attr:role="$data.role">{{$data.text}}</m-chat-item>
+      </o-fill>
+    </m-chatbox>
   </div>
+  <script>
+    export default async () => {
+      return {
+        data: {
+          msgs: [
+            {
+              role: "system",
+              text: "系统消息通常用于设置对话的上下文或规则。",
+            },
+            { role: "user", text: "用户消息是从用户端发送的内容。" },
+            { role: "assistant", text: "助手消息是 AI 或系统回复的内容。" },
+            { role: "user", text: "这三种角色各有不同的视觉样式。" },
+            {
+              role: "assistant",
+              text: "是的,通过不同的颜色和布局来区分不同的角色。",
+            },
+          ],
+        },
+      };
+    };
+  </script>
 </template>
