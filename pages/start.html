@@ -20,7 +20,7 @@
       </o-fill>
     </m-chatbox>
     <div style="display: flex; gap: 10px; align-items: flex-end">
-      <p-input sync:value="inputMessage" style="flex: 1">
+      <p-input sync:value="inputMessage" style="flex: 1" on:keydown="handleKeyDown">
         <span slot="label">输入消息</span>
       </p-input>
       <p-button on:click="sendMsg">发送</p-button>
@@ -36,6 +36,12 @@
           inputMessage: "",
         },
         proto: {
+          handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              this.sendMsg();
+            }
+          },
           async sendMsg() {
             const message = this.inputMessage.trim();
             if (!message) return;
