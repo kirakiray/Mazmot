@@ -364,9 +364,14 @@
             try {
               const assistant = await getAssistant(this.selectedModel);
               
+              const chatMessages = this.messages.slice(0, -1).map(m => ({
+                role: m.role,
+                content: m.content
+              }));
+              
               if (this.streamEnabled) {
                 await assistant.chat({
-                  message,
+                  messages: chatMessages,
                   thinking: this.thinkingEnabled,
                   stream: true,
                   onStream: (data) => {
@@ -378,7 +383,7 @@
                 });
               } else {
                 const response = await assistant.chat({
-                  message,
+                  messages: chatMessages,
                   thinking: this.thinkingEnabled,
                   stream: false,
                 });
