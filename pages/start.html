@@ -15,10 +15,13 @@
   </style>
   <div class="container">
     <m-chatbox>
-      <o-fill :value="msgs">
-        <m-chat-item attr:role="$data.role">{{$data.content}}</m-chat-item>
-      </o-fill>
-    </m-chatbox>
+        <o-fill :value="msgs">
+          <m-chat-item attr:role="$data.role">{{$data.content}}</m-chat-item>
+        </o-fill>
+        <o-if :value="isLoading">
+          <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
+        </o-if>
+      </m-chatbox>
     <div style="display: flex; gap: 10px; align-items: flex-end">
       <p-input sync:value="inputMessage" style="flex: 1" on:keydown="handleKeyDown">
         <span slot="label">输入消息</span>
@@ -34,6 +37,7 @@
         data: {
           msgs: [],
           inputMessage: "",
+          isLoading: false,
         },
         proto: {
           handleKeyDown(e) {
@@ -44,10 +48,11 @@
           },
           async sendMsg() {
             const message = this.inputMessage.trim();
-            if (!message) return;
+            if (!message || this.isLoading) return;
 
             this.msgs.push({ role: "user", content: message });
             this.inputMessage = "";
+            this.isLoading = true;
 
             try {
               const assistant = await getAssistant();
@@ -74,6 +79,8 @@
                 role: "assistant",
                 content: "请求失败：" + e.message,
               });
+            } finally {
+              this.isLoading = false;
             }
           },
         },
