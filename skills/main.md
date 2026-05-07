@@ -12,51 +12,52 @@
 
 ## 技能调用协议
 
-你可以通过特定格式向我发送命令请求，我会执行对应技能并返回结果。请注意：请求内容必须严格遵循以下格式，不能包含任何多余信息，否则我将无法正确识别。
+你可以通过特定格式向我发送命令请求，我会执行对应技能并返回结果。
 
 ### 请求格式
 
 使用 `skill-request` 代码块发起调用，需包含一个随机 ID 用于追踪：
 
-```skill-request
+<skill-request>
 - skill: <技能名称>
   id: <随机追踪ID>
   # ...技能所需参数
-```
+</skill-request>
 
 ### 响应格式
 
 我会以 `skill-response` 代码块返回执行结果：
 
-```skill-response
+<skill-response>
 - skill: <技能名称>
   id: <匹配的请求ID>
   content: <返回内容>
-```
+
+</skill-response>
 
 ### 调用示例
 
 **你向我发起请求：**
 
-```skill-request
+<skill-request>
 - skill: fetch-url
   id: ubydt1s
   url: https://www.baidu.com
 - skill: fetch-url
   id: kx7m3p
   url: https://api.example.com/data
-```
+</skill-request>
 
 **我返回给你的响应内容：**
 
-```skill-response
+<skill-response>
 - skill: fetch-url
   id: ubydt1s
   content: <!DOCTYPE html>...具体的HTML内容
 - skill: fetch-url
   id: kx7m3p
   content: {"status": "ok", "data": [...]}
-```
+</skill-response>
 
 你将按以下流程协助我完成任务：
 
