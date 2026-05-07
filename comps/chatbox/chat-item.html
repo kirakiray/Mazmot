@@ -110,9 +110,18 @@
     }
   </style>
 
-  <div class="chat-item" class:system="role === 'system'" class:user="role === 'user'" class:assistant="role === 'assistant'">
+  <div
+    class="chat-item"
+    class:system="role === 'system'"
+    class:user="role === 'user'"
+    class:assistant="role === 'assistant'"
+  >
     <div class="avatar">{{avatarText}}</div>
-    <div class="content" class:collapsed="role === 'system' && collapsed" on:click="role === 'system' && toggleCollapse()">
+    <div
+      class="content"
+      class:collapsed="role === 'system' && collapsed"
+      on:click="role === 'system' && toggleCollapse()"
+    >
       <o-if :value="role === 'system'">
         <div class="system-header">
           <span class="system-header-text">系统提示</span>
@@ -132,35 +141,36 @@
     export default {
       tag: "m-chat-item",
       attrs: {
-        role: "user"
+        role: "user",
       },
       data: {
         avatarText: "U",
-        collapsed: true
+        collapsed: true,
       },
       watch: {
         role(val) {
           const avatarMap = {
             system: "S",
             user: "U",
-            assistant: "A"
+            assistant: "A",
           };
           this.avatarText = avatarMap[val] || val.charAt(0).toUpperCase();
-        }
+        },
       },
       proto: {
         toggleCollapse() {
           this.collapsed = !this.collapsed;
-        }
+        },
       },
       ready() {
         const avatarMap = {
           system: "S",
           user: "U",
-          assistant: "A"
+          assistant: "A",
         };
-        this.avatarText = avatarMap[this.role] || this.role.charAt(0).toUpperCase();
-      }
+        this.avatarText =
+          avatarMap[this.role] || this.role.charAt(0).toUpperCase();
+      },
     };
   </script>
 </template>
