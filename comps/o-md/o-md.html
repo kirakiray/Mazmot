@@ -51,10 +51,20 @@
         },
         proto: {
           _getMarkdownContent() {
-            // const pre = this.$("pre");
-            // if (pre) {
-            //   return pre.text;
-            // }
+            const pre = this.$("pre");
+            if (pre) {
+              return pre.text;
+            }
+
+            const slot = this.$("slot");
+            if (slot) {
+              const nodes = slot.ele.assignedNodes();
+              return nodes
+                .map((n) => n.textContent || "")
+                .join("")
+                .trim();
+            }
+
             return this.text.trim();
           },
           _renderMarkdown() {
