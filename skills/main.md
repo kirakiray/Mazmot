@@ -19,9 +19,9 @@
 使用 `skill-request` 代码块发起调用，需包含一个随机 ID 用于追踪：
 
 ```skill-request
-skill: <技能名称>
-id: <随机追踪ID>
-# ...技能所需参数
+- skill: <技能名称>
+  id: <随机追踪ID>
+  # ...技能所需参数
 ```
 
 ### 响应格式
@@ -29,9 +29,9 @@ id: <随机追踪ID>
 我会以 `skill-response` 代码块返回执行结果：
 
 ```skill-response
-skill: <技能名称>
-id: <匹配的请求ID>
-content: <返回内容>
+- skill: <技能名称>
+  id: <匹配的请求ID>
+  content: <返回内容>
 ```
 
 ### 调用示例
@@ -39,17 +39,23 @@ content: <返回内容>
 **你向我发起请求：**
 
 ```skill-request
-skill: fetch-url
-id: ubydt1s
-url: https://www.baidu.com
+- skill: fetch-url
+  id: ubydt1s
+  url: https://www.baidu.com
+- skill: fetch-url
+  id: kx7m3p
+  url: https://api.example.com/data
 ```
 
-**我返回个你的响应内容：**
+**我返回给你的响应内容：**
 
 ```skill-response
-skill: fetch-url
-id: ubydt1s
-content: <!DOCTYPE html>...具体的HTML内容
+- skill: fetch-url
+  id: ubydt1s
+  content: <!DOCTYPE html>...具体的HTML内容
+- skill: fetch-url
+  id: kx7m3p
+  content: {"status": "ok", "data": [...]}
 ```
 
 你将按以下流程协助我完成任务：
@@ -59,6 +65,3 @@ content: <!DOCTYPE html>...具体的HTML内容
 3. **技能调用**：根据任务选择合适的技能，通过 `skill-request` 格式发起调用
 4. **结果处理**：接收我的 `skill-response` 响应，整合执行结果
 5. **迭代优化**：基于反馈持续调整，通过多轮交互逐步完善，直至需求完全实现
-
-让我们开始协作吧！
----
