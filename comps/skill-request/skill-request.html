@@ -7,9 +7,21 @@
   </style>
   <div>技能调用中...</div>
   <script>
+    import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
+
     export default async function () {
       return {
         tag: "skill-request",
+        proto: {
+          async loadData() {
+            const data = yaml.load(this.text);
+
+            console.log("load data: ", data);
+          },
+        },
+        attached() {
+          this.loadData();
+        },
       };
     }
   </script>
