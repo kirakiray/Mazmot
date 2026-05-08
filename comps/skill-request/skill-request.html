@@ -89,16 +89,13 @@
         },
         proto: {
           async runSkill(skillData) {
-            // 构建技能模块URL
             const skillName = skillData.skill || skillData.name;
             const url = `/skills/${skillName}/main.js`;
 
-            // 动态加载技能模块并执行
             const module = await load(url);
             const skillRunner = module.default;
             const result = await skillRunner(skillData.opts);
 
-            // 获取宿主，发送返回的报告给ai
             const paths = this.composedPath();
             let dialogueHost = paths.find(
               (ele) =>
@@ -110,22 +107,7 @@
             }
 
             dialogueHost = $(dialogueHost);
-
-            const resultArr = [];
-
-            resultArr.push({
-              skill: skillName,
-              id: skillData.id,
-              result: result,
-            });
-
-            // 将结果返回给ai
-            dialogueHost.inputMessage = `<skill-response>
-${yaml.dump(resultArr)}</skill-response>`;
-
-            debugger;
-
-            dialogueHost.sendMsg();
+            await dialogueHost.responseAssistant(skillData, result);
           },
           async loadData() {
             try {

@@ -78,6 +78,7 @@
   </div>
   <script type="module">
     import { saveKey, getAssistant } from "../ai/main.js";
+    import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
 
     export default async () => {
       return {
@@ -102,7 +103,21 @@
         },
         proto: {
           // 响应ai的技能请求
-          async responseAssistant() {},
+          async responseAssistant(skillData, result) {
+            const skillName = skillData.skill || skillData.name;
+            
+            const resultArr = [];
+            resultArr.push({
+              skill: skillName,
+              id: skillData.id,
+              result: result,
+            });
+
+            this.inputMessage = `<skill-response>
+${yaml.dump(resultArr)}</skill-response>`;
+
+            this.sendMsg();
+          },
           handleKeyDown(e) {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
