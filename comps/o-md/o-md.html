@@ -14,6 +14,10 @@
     }
   </style>
 
+  <div style="display: none">
+    <slot></slot>
+  </div>
+
   <div class="markdown-body"></div>
 
   <script>
@@ -58,8 +62,10 @@
           src: null,
         },
         data: {},
-        attached() {
-          this._renderMarkdown();
+        ready() {
+          this.shadow.$("slot").on("slotchange", () => {
+            this._renderMarkdown();
+          });
         },
         proto: {
           _getMarkdownContent() {
@@ -86,28 +92,6 @@
             const markdownText = this._getMarkdownContent();
             if (markdownText) {
               container.html = marked.parse(markdownText);
-            }
-          },
-          _handleLinkClick(e) {
-            let target = e.target;
-            while (target && target.tagName !== "A") {
-              target = target.parentElement;
-            }
-
-            if (!target || target.tagName !== "A") {
-              return;
-            }
-
-            const href = target.getAttribute("href");
-
-            if (href && href.toLowerCase().endsWith(".md")) {
-              e.preventDefault();
-              this.emit("click-md-link", {
-                data: {
-                  href: href,
-                  originalEvent: e,
-                },
-              });
             }
           },
         },
