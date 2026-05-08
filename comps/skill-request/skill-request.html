@@ -2,10 +2,21 @@
   <style>
     :host {
       display: block;
-      border: 1px solid #ccc;
+    }
+    .item {
+      border: 1px solid var(--md-sys-color-neutral);
+      border-radius: 4px;
+      padding: 8px 4px;
     }
   </style>
-  <div>技能调用中...</div>
+  <o-fill :value="requests">
+    <div class="item">
+      <div>技能名：{{$data.skill}}</div>
+      <div>技能描述：{{$data.description}}</div>
+      <button on:click="$host.runSkill($data)">运行</button>
+      <div>{{$data}}</div>
+    </div>
+  </o-fill>
   <script>
     import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
 
@@ -13,18 +24,28 @@
       return {
         tag: "skill-request",
         data: {
-          skillData: {},
+          // 所有请求
+          requests: [
+            {
+              name: "",
+              description: "",
+            },
+          ],
         },
         proto: {
-          async runSkill() {
+          async runSkill(skillData) {
             // 调用技能的代码
-            console.log("run skill: ", this.skillData);
+            console.log("run skill: ", skillData);
 
             debugger;
           },
           async loadData() {
-            // 获取到任务的数据
-            this.skillData = yaml.load(this.text);
+            try {
+              // 获取到任务的数据
+              this.requests = yaml.load(this.text);
+            } catch (e) {
+              console.error("Failed to load requests:", e);
+            }
           },
         },
         attached() {

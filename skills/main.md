@@ -21,7 +21,8 @@
 <skill-request>
 - skill: <技能名称>
   id: <随机追踪ID>
-  # ...技能所需参数
+  description: <当前任务描述>
+  args: <技能所需参数>
 </skill-request>
 
 ### 响应格式
@@ -31,8 +32,7 @@
 <skill-response>
 - skill: <技能名称>
   id: <匹配的请求ID>
-  content: <返回内容>
-
+  result: <返回内容>
 </skill-response>
 
 ### 调用示例
@@ -42,10 +42,14 @@
 <skill-request>
 - skill: fetch-url
   id: ubydt1s
-  url: https://www.baidu.com
+  description: 从百度获取首页内容
+  args:
+    url: https://www.baidu.com
 - skill: fetch-url
   id: kx7m3p
-  url: https://api.example.com/data
+  description: 从 API 获取数据
+  args:
+    url: https://api.example.com/data
 </skill-request>
 
 **我返回给你的响应内容：**
@@ -53,10 +57,10 @@
 <skill-response>
 - skill: fetch-url
   id: ubydt1s
-  content: <!DOCTYPE html>...具体的HTML内容
+  result: <!DOCTYPE html>...具体的HTML内容
 - skill: fetch-url
   id: kx7m3p
-  content: {"status": "ok", "data": [...]}
+  result: {"status": "ok", "data": [...]}
 </skill-response>
 
 你将按以下流程协助我完成任务：
