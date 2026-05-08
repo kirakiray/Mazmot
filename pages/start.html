@@ -8,7 +8,6 @@
     :host {
       display: block;
       box-sizing: border-box;
-      max-width: 800px;
       margin: 0 auto;
       padding: 20px;
       height: 100%;
@@ -21,42 +20,52 @@
     }
     m-chatbox {
       display: block;
-      overflow: auto;
-      flex: 1;
     }
     m-chat-item[role="system"] {
       display: none;
     }
   </style>
   <div class="container">
-    <m-chatbox>
-      <o-fill :value="msgs">
-        <m-chat-item attr:role="$data.role">
-          <o-if :value="$data.role !== 'system'">
-            <o-md>{{$data.content}}</o-md>
-          </o-if>
+    <div style="flex: 1; overflow: auto">
+      <m-chatbox>
+        <o-fill :value="msgs">
+          <m-chat-item attr:role="$data.role">
+            <o-if :value="$data.role !== 'system'">
+              <o-md>{{$data.content}}</o-md>
+            </o-if>
 
-          <o-if :value="$data.usage">
-            <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
-              模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}} tokens
-              <span o-if="$data.usage.prompt_cache_hit_tokens"
-                >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
-                tokens</span
-              >
-              <span o-if="$data.usage.prompt_cache_miss_tokens"
-                >| 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
-                tokens</span
-              >
-              | 输出: {{$data.usage.completion_tokens}} tokens
-            </div>
-          </o-if>
-        </m-chat-item>
-      </o-fill>
-      <o-if :value="isLoading">
-        <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
-      </o-if>
-    </m-chatbox>
-    <div style="display: flex; gap: 10px; align-items: flex-end">
+            <o-if :value="$data.usage">
+              <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
+                模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}}
+                tokens
+                <span o-if="$data.usage.prompt_cache_hit_tokens"
+                  >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
+                  tokens</span
+                >
+                <span o-if="$data.usage.prompt_cache_miss_tokens"
+                  >| 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
+                  tokens</span
+                >
+                | 输出: {{$data.usage.completion_tokens}} tokens
+              </div>
+            </o-if>
+          </m-chat-item>
+        </o-fill>
+        <o-if :value="isLoading">
+          <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
+        </o-if>
+      </m-chatbox>
+    </div>
+    <div
+      style="
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        max-width: 800px;
+        width: 100%;
+        margin: 0 auto;
+      "
+    >
       <p-input
         sync:value="inputMessage"
         style="flex: 1"
