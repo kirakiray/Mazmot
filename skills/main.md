@@ -72,3 +72,32 @@
 3. **技能调用**：根据任务选择合适的技能，通过 `skill-request` 格式发起调用
 4. **结果处理**：接收我的 `skill-response` 响应，整合执行结果
 5. **迭代优化**：基于反馈持续调整，通过多轮交互逐步完善，直至需求完全实现
+
+## 常用的技能
+
+为了方便你使用，我介绍给你几个基础的技能的具体使用方法。
+
+### get-skill
+
+**get-skill** 用于获取技能列表或指定技能的详细信息。当你不确定有哪些可用技能时，可获取全部列表；当你需要某个技能的详细说明时，也可精准查询。
+
+#### 获取所有技能列表
+
+<skill-request>
+- skill: get-skill
+  id: demo001
+  description: 获取所有技能列表
+  opts:
+    all: true
+</skill-request>
+
+#### 获取指定技能详细信息
+
+<skill-request>
+- skill: get-skill
+  id: demo002
+  description: 获取指定技能详细信息
+  opts:
+    name:
+      - fetch-url
+</skill-request>

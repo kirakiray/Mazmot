@@ -1,3 +1,5 @@
 export default async function getSkill(options) {
-  const { all } = options;
+  const { all, name } = options;
+
+  debugger;
 }
