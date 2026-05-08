@@ -30,7 +30,7 @@
       <m-chatbox>
         <o-fill :value="msgs">
           <m-chat-item attr:role="$data.role">
-            <o-if :value="$data.role !== 'system'">
+            <o-if :value="$data.role !== 'system' && !$data.isResponse">
               <o-md>{{$data.content}}</o-md>
             </o-if>
 
@@ -105,7 +105,7 @@
           // 响应ai的技能请求
           async responseAssistant(skillData, result) {
             const skillName = skillData.skill || skillData.name;
-            
+
             const resultArr = [];
             resultArr.push({
               skill: skillName,
@@ -113,10 +113,14 @@
               result: result,
             });
 
-            this.inputMessage = `<skill-response>
-${yaml.dump(resultArr)}</skill-response>`;
+            this.msgs.push({
+              role: "user",
+              content: `<skill-response>
+${yaml.dump(resultArr)}</skill-response>`,
+              isResponse: true,
+            });
 
-            this.sendMsg();
+            await this.callAssistant();
           },
           handleKeyDown(e) {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -124,7 +128,7 @@ ${yaml.dump(resultArr)}</skill-response>`;
               this.sendMsg();
             }
           },
-          async sendMsg() {
+          async callAssistant() {
             if (!this.systemContent) return;
             if (!this.msgs.some((m) => m.role === "system")) {
               this.msgs.unshift({
@@ -133,11 +137,6 @@ ${yaml.dump(resultArr)}</skill-response>`;
               });
             }
 
-            const message = this.inputMessage.trim();
-            if (!message || this.isLoading) return;
-
-            this.msgs.push({ role: "user", content: message });
-            this.inputMessage = "";
             this.isLoading = true;
 
             try {
@@ -174,6 +173,15 @@ ${yaml.dump(resultArr)}</skill-response>`;
             } finally {
               this.isLoading = false;
             }
+          },
+          async sendMsg() {
+            const message = this.inputMessage.trim();
+            if (!message || this.isLoading) return;
+
+            this.msgs.push({ role: "user", content: message });
+            this.inputMessage = "";
+
+            await this.callAssistant();
           },
         },
       };
