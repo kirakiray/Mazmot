@@ -75,7 +75,7 @@
   <script>
     import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
 
-    export default async function () {
+    export default async function ({ load }) {
       return {
         tag: "skill-request",
         data: {
@@ -90,7 +90,13 @@
         proto: {
           async runSkill(skillData) {
             // 调用技能的代码
-            console.log("run skill: ", skillData);
+            const url = `/skills/${skillData.skill || skillData.name}/main.js`;
+
+            const m = await load(url);
+
+            const run = m.default;
+
+            const result = await run(skillData.opts);
 
             debugger;
           },

@@ -22,7 +22,7 @@
 - skill: <技能名称>
   id: <随机追踪ID>
   description: <当前任务描述>
-  args: <技能所需参数>
+  opts: <技能所需参数>
 </skill-request>
 
 ### 响应格式
@@ -43,12 +43,12 @@
 - skill: fetch-url
   id: ubydt1s
   description: 从百度获取首页内容
-  args:
+  opts:
     url: https://www.baidu.com
 - skill: fetch-url
   id: kx7m3p
   description: 从 API 获取数据
-  args:
+  opts:
     url: https://api.example.com/data
 </skill-request>
 
