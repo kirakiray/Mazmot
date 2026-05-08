@@ -16,12 +16,12 @@
 
 ### 请求格式
 
-使用 `skill-request` 代码块发起调用，需包含一个随机 ID 用于追踪：
+使用 `skill-request` 代码块发起调用，需包含一个随机 ID 用于追踪，格式为 YAML：
 
 <skill-request>
 - skill: <技能名称>
   id: <随机追踪ID>
-  description: <当前任务描述>
+  description: <当前任务描述，会显示到用户界面>
   opts: <技能所需参数>
 </skill-request>
 
@@ -62,6 +62,42 @@
   id: kx7m3p
   result: {"status": "ok", "data": [...]}
 </skill-response>
+
+我现在介绍给你几个基础的技能，你可以根据需要选择使用：
+
+### get-skill
+
+可以获取所有的技能大概列表，或指定技能的具体使用方法。
+
+**示例：**
+
+<skill-request>
+- skill: get-skill
+  id: nez1t2d
+  description: 获取所有技能列表
+  opts: 
+    all: true
+</skill-request>
+
+这时候我就会告诉你有所有技能的大致类型，包括技能名和技能描述。
+
+<skill-response>
+- skill: get-skill
+  id: nez1t2d
+  result: [
+    {
+      name: "fetch-url",
+      description: "从指定 URL 获取内容"
+    },
+    {
+      name: "get-skill",
+      description: "获取所有技能列表"
+    },
+    ...
+  ]
+</skill-response>
+
+### 任务流程
 
 你将按以下流程协助我完成任务：
 

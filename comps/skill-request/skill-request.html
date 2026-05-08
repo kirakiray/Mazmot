@@ -89,14 +89,14 @@
         },
         proto: {
           async runSkill(skillData) {
-            // 调用技能的代码
-            const url = `/skills/${skillData.skill || skillData.name}/main.js`;
+            // 构建技能模块URL
+            const skillName = skillData.skill || skillData.name;
+            const url = `/skills/${skillName}/main.js`;
 
-            const m = await load(url);
-
-            const run = m.default;
-
-            const result = await run(skillData.opts);
+            // 动态加载技能模块并执行
+            const module = await load(url);
+            const skillRunner = module.default;
+            const result = await skillRunner(skillData.opts);
 
             debugger;
           },
