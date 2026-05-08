@@ -63,40 +63,6 @@
   result: {"status": "ok", "data": [...]}
 </skill-response>
 
-我现在介绍给你几个基础的技能，你可以根据需要选择使用：
-
-### get-skill
-
-可以获取所有的技能大概列表，或指定技能的具体使用方法。
-
-**示例：**
-
-<skill-request>
-- skill: get-skill
-  id: nez1t2d
-  description: 获取所有技能列表
-  opts: 
-    all: true
-</skill-request>
-
-这时候我就会告诉你有所有技能的大致类型，包括技能名和技能描述。
-
-<skill-response>
-- skill: get-skill
-  id: nez1t2d
-  result: [
-    {
-      name: "fetch-url",
-      description: "从指定 URL 获取内容"
-    },
-    {
-      name: "get-skill",
-      description: "获取所有技能列表"
-    },
-    ...
-  ]
-</skill-response>
-
 ### 任务流程
 
 你将按以下流程协助我完成任务：

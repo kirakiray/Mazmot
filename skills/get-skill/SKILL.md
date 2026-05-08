@@ -1,3 +1,8 @@
+---
+name: get-skill
+description: 获取所有技能或指定技能的详细信息
+---
+
 # 获取技能
 
 **get-skill** 用于获取技能列表或指定技能的详细信息。当你不确定有哪些可用技能时，可获取全部列表；当你需要某个技能的详细说明时，也可精准查询。
@@ -48,5 +53,5 @@
   id: nez1333
   result:
     - name: fetch-url
-      description: 从指定 URL 获取内容...该技能的详细描述
+      description: 从指定 URL 获取内容...（该技能的详细描述）
 </skill-response>
