@@ -2,6 +2,7 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <style>
     :host {
+      position: relative;
       display: block;
       font-family:
         -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -14,17 +15,14 @@
       background-color: var(--md-sys-color-surface);
       transition: all 0.2s ease;
       box-shadow: 0 0 0 1px var(--md-sys-color-neutral-container);
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     .item:hover {
       border-color: var(--md-sys-color-primary);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       transform: translateY(-1px);
-    }
-    .skill-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
     }
     .skill-icon {
       width: 32px;
@@ -36,6 +34,13 @@
       align-items: center;
       justify-content: center;
       font-size: 16px;
+      flex-shrink: 0;
+    }
+    .skill-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
     .skill-name {
       font-size: 16px;
@@ -45,8 +50,11 @@
     .skill-description {
       font-size: 14px;
       color: var(--md-sys-color-on-surface-variant);
-      margin-bottom: 12px;
       line-height: 1.5;
+    }
+    .skill-action {
+      display: flex;
+      align-items: center;
     }
     .debug-info {
       margin-top: 12px;
@@ -59,18 +67,32 @@
       overflow-x: auto;
     }
   </style>
+
+  <p-button
+    size="small"
+    icon
+    on:click="debugMode = !debugMode"
+    variant="text"
+    style="position: absolute; right: -24px; top: -24px"
+  >
+    ⚙
+  </p-button>
   <o-fill :value="requests">
     <div class="item">
-      <div class="skill-header">
-        <div class="skill-icon">⚡</div>
+      <div class="skill-icon">⚡</div>
+      <div class="skill-content">
         <div class="skill-name">{{$data.skill || $data.name}}</div>
+        <div class="skill-description">{{$data.description}}</div>
       </div>
-      <div class="skill-description">{{$data.description}}</div>
-      <p-button color="primary" size="small" on:click="$host.runSkill($data)">
-        运行
-      </p-button>
-      <div class="debug-info">{{$data}}</div>
+      <div class="skill-action">
+        <p-button color="primary" size="small" on:click="$host.runSkill($data)">
+          运行
+        </p-button>
+      </div>
     </div>
+    <o-if :value="$host.debugMode">
+      <div class="debug-info">{{$data}}</div>
+    </o-if>
   </o-fill>
   <script>
     import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
@@ -79,13 +101,13 @@
       return {
         tag: "skill-request",
         data: {
-          // 所有请求
           requests: [
             {
               name: "",
               description: "",
             },
           ],
+          debugMode: false,
         },
         proto: {
           async runSkill(skillData) {
@@ -111,7 +133,6 @@
           },
           async loadData() {
             try {
-              // 获取到任务的数据
               this.requests = yaml.load(this.text);
             } catch (e) {
               console.error("Failed to load requests:", e);
