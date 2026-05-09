@@ -174,13 +174,15 @@
 
             try {
               const results = await Promise.all(
-                items.map((item) => this._executeSkill(item)),
-              );
+                items.map(async (item) => {
+                  const result = await this._executeSkill(item);
 
-              items.forEach((item, i) => {
-                item.running = false;
-                item.done = true;
-              });
+                  item.running = false;
+                  item.done = true;
+
+                  return result;
+                }),
+              );
 
               const paths = this.composedPath();
               let dialogueHost = paths.find(
@@ -194,8 +196,6 @@
               }
 
               dialogueHost = $(dialogueHost);
-
-              debugger;
 
               const resultArr = items.map((item, i) => ({
                 skill: item.skill || item.name,
