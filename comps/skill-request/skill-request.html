@@ -9,6 +9,9 @@
         -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       border: 1px solid var(--md-sys-color-neutral);
       border-radius: 12px;
       padding: 8px 16px;
@@ -16,9 +19,6 @@
       background-color: var(--md-sys-color-surface);
       transition: all 0.2s ease;
       box-shadow: 0 0 0 1px var(--md-sys-color-neutral-container);
-      display: flex;
-      align-items: center;
-      gap: 12px;
     }
     .item:hover {
       border-color: var(--md-sys-color-primary);
@@ -79,35 +79,37 @@
     <n-icon icon="carbon:debug"></n-icon>
   </p-button>
   <o-fill :value="requests">
-    <div class="item">
-      <div class="skill-icon">⚡</div>
-      <div class="skill-content">
-        <div class="skill-name">{{$data.skill || $data.name}}</div>
-        <div class="skill-description">{{$data.description}}</div>
+    <div>
+      <div class="item">
+        <div class="skill-icon">⚡</div>
+        <div class="skill-content">
+          <div class="skill-name">{{$data.skill || $data.name}}</div>
+          <div class="skill-description">{{$data.description}}</div>
+        </div>
+        <div class="skill-action">
+          <p-button
+            icon
+            attr:color="$data.done ? 'success' : 'primary'"
+            size="small"
+            attr:disabled="$data.running"
+            on:click="$host.runSkill($data)"
+          >
+            <o-if :value="$data.running">
+              <n-icon icon="line-md:loading-twotone-loop"></n-icon>
+            </o-if>
+            <o-if :value="!$data.running && $data.done">
+              <n-icon icon="material-symbols:done-rounded"></n-icon>
+            </o-if>
+            <o-if :value="!$data.running && !$data.done">
+              <n-icon icon="line-md:play"></n-icon>
+            </o-if>
+          </p-button>
+        </div>
       </div>
-      <div class="skill-action">
-        <p-button
-          icon
-          attr:color="$data.done ? 'success' : 'primary'"
-          size="small"
-          attr:disabled="$data.running"
-          on:click="$host.runSkill($data)"
-        >
-          <o-if :value="$data.running">
-            <n-icon icon="line-md:loading-twotone-loop"></n-icon>
-          </o-if>
-          <o-if :value="!$data.running && $data.done">
-            <n-icon icon="material-symbols:done-rounded"></n-icon>
-          </o-if>
-          <o-if :value="!$data.running && !$data.done">
-            <n-icon icon="line-md:play"></n-icon>
-          </o-if>
-        </p-button>
-      </div>
+      <o-if :value="$host.debugMode">
+        <div class="debug-info">{{$data}}</div>
+      </o-if>
     </div>
-    <o-if :value="$host.debugMode">
-      <div class="debug-info">{{$data}}</div>
-    </o-if>
   </o-fill>
   <script>
     import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
