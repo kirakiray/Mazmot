@@ -20,7 +20,7 @@
       transition: all 0.2s ease;
       box-shadow: 0 0 0 1px var(--md-sys-color-neutral-container);
     }
-    .skill-icon {
+    .cap-icon {
       width: 32px;
       height: 32px;
       border-radius: 8px;
@@ -32,21 +32,21 @@
       font-size: 16px;
       flex-shrink: 0;
     }
-    .skill-content {
+    .cap-content {
       flex: 1;
       display: flex;
       flex-direction: column;
     }
-    .skill-name {
+    .cap-name {
       font-size: 14px;
       font-weight: 600;
       color: var(--md-sys-color-on-surface);
     }
-    .skill-description {
+    .cap-description {
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
-    .skill-action {
+    .cap-action {
       display: flex;
       align-items: center;
     }
@@ -101,15 +101,15 @@
       <n-icon icon="carbon:debug"></n-icon>
     </p-button>
   </p-button-group>
-  <o-fill :value="skillRequests">
+  <o-fill :value="capRequests">
     <div>
       <div class="item">
-        <div class="skill-icon">⚡</div>
-        <div class="skill-content">
-          <div class="skill-name">{{$data.skill || $data.name}}</div>
-          <div class="skill-description">{{$data.description}}</div>
+        <div class="cap-icon">⚡</div>
+        <div class="cap-content">
+          <div class="cap-name">{{$data.capability || $data.name}}</div>
+          <div class="cap-description">{{$data.description}}</div>
         </div>
-        <div class="skill-action">
+        <div class="cap-action">
           <o-if :value="$data.running">
             <n-icon
               icon="line-md:loading-twotone-loop"
@@ -143,9 +143,9 @@
 
     export default async function ({ load }) {
       return {
-        tag: "skill-request",
+        tag: "cap-request",
         data: {
-          skillRequests: [
+          capRequests: [
             {
               name: "",
               description: "",
@@ -158,18 +158,18 @@
           allCompleted: false,
         },
         proto: {
-          async _executeSkill(item) {
-            const skillName = item.skill || item.name;
-            const url = `/skills/${skillName}/main.js`;
+          async _executeCapability(item) {
+            const capabilityName = item.capability || item.name;
+            const url = `/caps/${capabilityName}/main.js`;
             const module = await load(url);
-            const skillRunner = module.default;
-            return await skillRunner(item.opts);
+            const capabilityRunner = module.default;
+            return await capabilityRunner(item.opts);
           },
           async runAll() {
             if (this.isRunningAll) return;
             this.isRunningAll = true;
 
-            const items = this.skillRequests.filter(
+            const items = this.capRequests.filter(
               (item) => !item.done && !item.running,
             );
             if (items.length === 0) {
@@ -185,7 +185,7 @@
             try {
               const results = await Promise.all(
                 items.map(async (item) => {
-                  const result = await this._executeSkill(item);
+                  const result = await this._executeCapability(item);
 
                   item.running = false;
                   item.done = true;
@@ -207,15 +207,15 @@
 
               dialogHost = $(dialogHost);
 
-              const skillResults = items.map((item, i) => ({
-                skill: item.skill || item.name,
+              const capabilityResults = items.map((item, i) => ({
+                capability: item.capability || item.name,
                 id: item.id,
                 result: results[i],
               }));
 
-              await dialogHost.handleSkillResults(skillResults);
+              await dialogHost.handleCapabilityResults(capabilityResults);
 
-              this.allCompleted = this.skillRequests.every((r) => r.done);
+              this.allCompleted = this.capRequests.every((r) => r.done);
             } catch (e) {
               items.forEach((item) => {
                 item.running = false;
@@ -228,7 +228,7 @@
           async loadData() {
             try {
               const data = yaml.load(this.text);
-              this.skillRequests = data.map((item) => ({
+              this.capRequests = data.map((item) => ({
                 ...item,
                 running: false,
                 done: false,

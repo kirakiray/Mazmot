@@ -9,59 +9,59 @@ description: 从指定 URL 获取内容
 
 ## 基本用法
 
-<skill-request>
-- skill: fetch-url
+<cap-request>
+- capability: fetch-url
   id: abc123
   description: 获取指定URL的内容
   opts:
     url: https://example.com/api/data
-</skill-request>
+</cap-request>
 
 工具将返回该 URL 的原始内容。
 
-<skill-response>
-- skill: fetch-url
+<cap-response>
+- capability: fetch-url
   id: abc123
   result: "返回的内容文本..."
-</skill-response>
+</cap-response>
 
 ## 限制返回大小
 
-<skill-request>
-- skill: fetch-url
+<cap-request>
+- capability: fetch-url
   id: abc456
   description: 获取URL内容并限制大小
   opts:
     url: https://example.com/large-file
     maxSize: 10240
-</skill-request>
+</cap-request>
 
 工具将返回限制大小内的内容。
 
-<skill-response>
-- skill: fetch-url
+<cap-response>
+- capability: fetch-url
   id: abc456
   result: "限制大小内的内容..."
-</skill-response>
+</cap-response>
 
 ## 清理 HTML 内容
 
-<skill-request>
-- skill: fetch-url
+<cap-request>
+- capability: fetch-url
   id: abc789
   description: 获取HTML页面并清理标签
   opts:
     url: https://example.com/page.html
     cleanHTML: true
-</skill-request>
+</cap-request>
 
 工具将返回清理后的纯文本内容。
 
-<skill-response>
-- skill: fetch-url
+<cap-response>
+- capability: fetch-url
   id: abc789
   result: "清理后的纯文本内容..."
-</skill-response>
+</cap-response>
 
 ## 参数说明
 

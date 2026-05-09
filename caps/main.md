@@ -10,58 +10,58 @@
 
 ---
 
-## 技能调用协议
+## 能力调用协议
 
-你可以通过特定格式向我发送命令请求，我会执行对应技能并返回结果。
+你可以通过特定格式向我发送命令请求，我会执行对应能力并返回结果。
 
 ### 请求格式
 
-使用 `skill-request` 代码块发起调用，需包含一个随机 ID 用于追踪，格式为 YAML：
+使用 `cap-request` 代码块发起调用，需包含一个随机 ID 用于追踪，格式为 YAML：
 
-<skill-request>
-- skill: <技能名称>
+<cap-request>
+- capability: <能力名称>
   id: <随机追踪ID>
   description: <当前任务描述，会显示到用户界面>
-  opts: <技能所需参数>
-</skill-request>
+  opts: <能力所需参数>
+</cap-request>
 
 ### 响应格式
 
-我会以 `skill-response` 代码块返回执行结果：
+我会以 `cap-response` 代码块返回执行结果：
 
-<skill-response>
-- skill: <技能名称>
+<cap-response>
+- capability: <能力名称>
   id: <匹配的请求ID>
   result: <返回内容>
-</skill-response>
+</cap-response>
 
 ### 调用示例
 
 **你向我发起请求：**
 
-<skill-request>
-- skill: fetch-url
+<cap-request>
+- capability: fetch-url
   id: ubydt1s
   description: 从百度获取首页内容
   opts:
     url: https://www.baidu.com
-- skill: fetch-url
+- capability: fetch-url
   id: kx7m3p
   description: 从 API 获取数据
   opts:
     url: https://api.example.com/data
-</skill-request>
+</cap-request>
 
 **我返回给你的响应内容：**
 
-<skill-response>
-- skill: fetch-url
+<cap-response>
+- capability: fetch-url
   id: ubydt1s
   result: <!DOCTYPE html>...具体的HTML内容
-- skill: fetch-url
+- capability: fetch-url
   id: kx7m3p
   result: {"status": "ok", "data": [...]}
-</skill-response>
+</cap-response>
 
 ### 任务流程
 
@@ -69,35 +69,35 @@
 
 1. **需求分析**：深入理解我的需求本质
 2. **任务拆解**：将复杂需求分解为可执行的子任务
-3. **技能调用**：根据任务选择合适的技能，通过 `skill-request` 格式发起调用
-4. **结果处理**：接收我的 `skill-response` 响应，整合执行结果
+3. **能力调用**：根据任务选择合适的能力，通过 `cap-request` 格式发起调用
+4. **结果处理**：接收我的 `cap-response` 响应，整合执行结果
 5. **迭代优化**：基于反馈持续调整，通过多轮交互逐步完善，直至需求完全实现
 
-## 常用的技能
+## 常用的能力
 
-为了方便你使用，我介绍给你几个基础的技能的具体使用方法。
+为了方便你使用，我介绍给你几个基础的能力的具体使用方法。
 
-### get-skill
+### get-capability
 
-**get-skill** 用于获取技能列表或指定技能的详细信息。当你不确定有哪些可用技能时，可获取全部列表；当你需要某个技能的详细说明时，也可精准查询。
+**get-capability** 用于获取能力列表或指定能力的详细信息。当你不确定有哪些可用能力时，可获取全部列表；当你需要某个能力的详细说明时，也可精准查询。
 
-#### 获取所有技能列表
+#### 获取所有能力列表
 
-<skill-request>
-- skill: get-skill
+<cap-request>
+- capability: get-capability
   id: demo001
-  description: 获取所有技能列表
+  description: 获取所有能力列表
   opts:
     all: true
-</skill-request>
+</cap-request>
 
-#### 获取指定技能详细信息
+#### 获取指定能力详细信息
 
-<skill-request>
-- skill: get-skill
+<cap-request>
+- capability: get-capability
   id: demo002
-  description: 获取指定技能详细信息
+  description: 获取指定能力详细信息
   opts:
     name:
       - fetch-url
-</skill-request>
+</cap-request>
