@@ -22,17 +22,12 @@ description: 获取所有技能或指定技能的详细信息
 <skill-response>
 - skill: get-skill
   id: nez1t2d
-  result: [
-    {
-      name: "fetch-url",
-      description: "从指定 URL 获取内容"
-    },
-    {
-      name: "get-skill",
+  result:
+    - name: fetch-url
+      description: 从指定 URL 获取内容
+    - name: get-skill
       description: "...."
-    },
-    ...
-  ]
+    - ...
 </skill-response>
 
 ## 获取指定技能的详细信息
