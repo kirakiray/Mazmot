@@ -32,7 +32,7 @@
   <div class="container">
     <div style="flex: 1; overflow: auto">
       <m-chatbox>
-        <o-fill :value="msgs">
+        <o-fill :value="messages">
           <m-chat-item
             attr:role="$data.role"
             attr:is-response="$data.isResponse"
@@ -80,7 +80,7 @@
       >
         <span slot="label">输入消息</span>
       </p-input>
-      <p-button on:click="sendMsg">发送</p-button>
+      <p-button on:click="sendMessage">发送</p-button>
     </div>
   </div>
   <script type="module">
@@ -90,7 +90,7 @@
     export default async () => {
       return {
         data: {
-          msgs: [],
+          messages: [],
           inputMessage: "",
           isLoading: false,
           systemContent: "",
@@ -109,11 +109,10 @@
             });
         },
         proto: {
-          // 响应ai的技能请求
-          async responseAssistant(resultArr) {
-            this.msgs.push({
+          async handleSkillResults(results) {
+            this.messages.push({
               role: "user",
-              content: `<skill-response>\n${yaml.dump(resultArr)}</skill-response>`,
+              content: `<skill-response>\n${yaml.dump(results)}</skill-response>`,
               isResponse: true,
             });
 
@@ -122,13 +121,13 @@
           handleKeyDown(e) {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              this.sendMsg();
+              this.sendMessage();
             }
           },
           async callAssistant() {
             if (!this.systemContent) return;
-            if (!this.msgs.some((m) => m.role === "system")) {
-              this.msgs.unshift({
+            if (!this.messages.some((m) => m.role === "system")) {
+              this.messages.unshift({
                 role: "system",
                 content: this.systemContent,
               });
@@ -139,14 +138,14 @@
             try {
               const assistant = await getAssistant();
               if (!assistant) {
-                this.msgs.push({
+                this.messages.push({
                   role: "assistant",
                   content: "请先在设置中配置 DeepSeek API Key",
                 });
                 return;
               }
 
-              const chatMessages = this.msgs.map((m) => ({
+              const chatMessages = this.messages.map((m) => ({
                 role: m.role,
                 content: m.content,
               }));
@@ -156,14 +155,14 @@
                 model: "deepseek-v4-flash",
               });
 
-              this.msgs.push({
+              this.messages.push({
                 role: "assistant",
                 content: response.content,
                 usage: response.usage,
                 model: response.model,
               });
             } catch (e) {
-              this.msgs.push({
+              this.messages.push({
                 role: "assistant",
                 content: "请求失败：" + e.message,
               });
@@ -171,11 +170,11 @@
               this.isLoading = false;
             }
           },
-          async sendMsg() {
+          async sendMessage() {
             const message = this.inputMessage.trim();
             if (!message || this.isLoading) return;
 
-            this.msgs.push({ role: "user", content: message });
+            this.messages.push({ role: "user", content: message });
             this.inputMessage = "";
 
             await this.callAssistant();

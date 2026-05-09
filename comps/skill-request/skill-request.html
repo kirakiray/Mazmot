@@ -68,17 +68,17 @@
     <p-button
       size="small"
       icon
-      attr:color="allDone ? 'success' : 'primary'"
-      attr:disabled="runningAll"
+      attr:color="allCompleted ? 'success' : 'primary'"
+      attr:disabled="isRunningAll"
       on:click="runAll()"
     >
-      <o-if :value="runningAll">
+      <o-if :value="isRunningAll">
         <n-icon icon="line-md:loading-twotone-loop"></n-icon>
       </o-if>
-      <o-if :value="!runningAll && allDone">
+      <o-if :value="!isRunningAll && allCompleted">
         <n-icon icon="material-symbols:done-rounded"></n-icon>
       </o-if>
-      <o-if :value="!runningAll && !allDone">
+      <o-if :value="!isRunningAll && !allCompleted">
         <n-icon icon="line-md:play"></n-icon>
       </o-if>
     </p-button>
@@ -91,7 +91,7 @@
       <n-icon icon="carbon:debug"></n-icon>
     </p-button>
   </p-button-group>
-  <o-fill :value="requests">
+  <o-fill :value="skillRequests">
     <div>
       <div class="item">
         <div class="skill-icon">⚡</div>
@@ -135,7 +135,7 @@
       return {
         tag: "skill-request",
         data: {
-          requests: [
+          skillRequests: [
             {
               name: "",
               description: "",
@@ -144,8 +144,8 @@
             },
           ],
           debugMode: false,
-          runningAll: false,
-          allDone: false,
+          isRunningAll: false,
+          allCompleted: false,
         },
         proto: {
           async _executeSkill(item) {
@@ -156,14 +156,14 @@
             return await skillRunner(item.opts);
           },
           async runAll() {
-            if (this.runningAll) return;
-            this.runningAll = true;
+            if (this.isRunningAll) return;
+            this.isRunningAll = true;
 
-            const items = this.requests.filter(
+            const items = this.skillRequests.filter(
               (item) => !item.done && !item.running,
             );
             if (items.length === 0) {
-              this.runningAll = false;
+              this.isRunningAll = false;
               return;
             }
 
@@ -185,40 +185,40 @@
               );
 
               const paths = this.composedPath();
-              let dialogueHost = paths.find(
+              let dialogHost = paths.find(
                 (ele) =>
                   ele.getAttribute &&
                   ele.getAttribute("dialogue-host") !== null,
               );
 
-              if (!dialogueHost) {
+              if (!dialogHost) {
                 throw new Error("No dialogue host found");
               }
 
-              dialogueHost = $(dialogueHost);
+              dialogHost = $(dialogHost);
 
-              const resultArr = items.map((item, i) => ({
+              const skillResults = items.map((item, i) => ({
                 skill: item.skill || item.name,
                 id: item.id,
                 result: results[i],
               }));
 
-              await dialogueHost.responseAssistant(resultArr);
+              await dialogHost.handleSkillResults(skillResults);
 
-              this.allDone = this.requests.every((r) => r.done);
+              this.allCompleted = this.skillRequests.every((r) => r.done);
             } catch (e) {
               items.forEach((item) => {
                 item.running = false;
               });
               throw e;
             } finally {
-              this.runningAll = false;
+              this.isRunningAll = false;
             }
           },
           async loadData() {
             try {
               const data = yaml.load(this.text);
-              this.requests = data.map((item) => ({
+              this.skillRequests = data.map((item) => ({
                 ...item,
                 running: false,
                 done: false,
@@ -226,7 +226,7 @@
             } catch (e) {
               console.error("Failed to load requests:", e);
             } finally {
-              this.allDone = false;
+              this.allCompleted = false;
             }
           },
         },
