@@ -1,7 +1,7 @@
 export default async function getSkill(options) {
   const { all, name } = options;
 
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (all) {
     const skills = await fetch(import.meta.resolve("../used.json")).then((e) =>
