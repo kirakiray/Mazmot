@@ -197,7 +197,13 @@
 
               debugger;
 
-              await dialogueHost.responseAssistant({ items, results }, results);
+              const resultArr = items.map((item, i) => ({
+                skill: item.skill || item.name,
+                id: item.id,
+                result: results[i],
+              }));
+
+              await dialogueHost.responseAssistant(resultArr);
 
               this.allDone = this.requests.every((r) => r.done);
             } catch (e) {
