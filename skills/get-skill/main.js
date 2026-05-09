@@ -4,6 +4,7 @@ export default async function getSkill(options) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (all) {
+    // 返回所有技能的描述
     const skills = await fetch(import.meta.resolve("../used.json")).then((e) =>
       e.json(),
     );

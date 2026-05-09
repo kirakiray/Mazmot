@@ -1,13 +1,30 @@
 export default async function fetchUrl(options) {
   const {
-    url, // 要请求的URL
-    maxSize, // 限制最大返回大小
-    cleanHTML = false, // 如果遇到是html内容，是否清理多余标签，只返回包含文本的内容
+    url,
+    maxSize,
+    cleanHTML = false,
   } = options;
 
   const response = await fetch(url);
 
-  const data = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  let data = await response.text();
+
+  if (maxSize && data.length > maxSize) {
+    data = data.substring(0, maxSize);
+  }
+
+  if (cleanHTML) {
+    const bodyMatch = data.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const bodyContent = bodyMatch ? bodyMatch[1] : data;
+    
+    const template = document.createElement('template');
+    template.innerHTML = bodyContent;
+    data = template.content.textContent.trim();
+  }
 
   return data;
 }
