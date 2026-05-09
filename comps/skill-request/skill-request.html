@@ -86,8 +86,22 @@
         <div class="skill-description">{{$data.description}}</div>
       </div>
       <div class="skill-action">
-        <p-button color="primary" size="small" on:click="$host.runSkill($data)">
-          运行
+        <p-button
+          icon
+          attr:color="$data.done ? 'success' : 'primary'"
+          size="small"
+          attr:disabled="$data.running"
+          on:click="$host.runSkill($data)"
+        >
+          <o-if :value="$data.running">
+            <n-icon icon="line-md:loading-twotone-loop"></n-icon>
+          </o-if>
+          <o-if :value="!$data.running && $data.done">
+            <n-icon icon="material-symbols:done-rounded"></n-icon>
+          </o-if>
+          <o-if :value="!$data.running && !$data.done">
+            <n-icon icon="line-md:play"></n-icon>
+          </o-if>
         </p-button>
       </div>
     </div>
@@ -106,35 +120,56 @@
             {
               name: "",
               description: "",
+              running: false,
+              done: false,
             },
           ],
           debugMode: false,
         },
         proto: {
           async runSkill(skillData) {
-            const skillName = skillData.skill || skillData.name;
-            const url = `/skills/${skillName}/main.js`;
+            if (skillData.running || skillData.done) return;
 
-            const module = await load(url);
-            const skillRunner = module.default;
-            const result = await skillRunner(skillData.opts);
+            skillData.running = true;
+            skillData.done = false;
 
-            const paths = this.composedPath();
-            let dialogueHost = paths.find(
-              (ele) =>
-                ele.getAttribute && ele.getAttribute("dialogue-host") !== null,
-            );
+            try {
+              const skillName = skillData.skill || skillData.name;
+              const url = `/skills/${skillName}/main.js`;
 
-            if (!dialogueHost) {
-              throw new Error("No dialogue host found");
+              const module = await load(url);
+              const skillRunner = module.default;
+              const result = await skillRunner(skillData.opts);
+
+              const paths = this.composedPath();
+              let dialogueHost = paths.find(
+                (ele) =>
+                  ele.getAttribute &&
+                  ele.getAttribute("dialogue-host") !== null,
+              );
+
+              if (!dialogueHost) {
+                throw new Error("No dialogue host found");
+              }
+
+              dialogueHost = $(dialogueHost);
+              await dialogueHost.responseAssistant(skillData, result);
+
+              skillData.running = false;
+              skillData.done = true;
+            } catch (e) {
+              skillData.running = false;
+              throw e;
             }
-
-            dialogueHost = $(dialogueHost);
-            await dialogueHost.responseAssistant(skillData, result);
           },
           async loadData() {
             try {
-              this.requests = yaml.load(this.text);
+              const data = yaml.load(this.text);
+              this.requests = data.map((item) => ({
+                ...item,
+                running: false,
+                done: false,
+              }));
             } catch (e) {
               console.error("Failed to load requests:", e);
             }
