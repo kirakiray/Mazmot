@@ -48,5 +48,5 @@ description: 获取所有能力或指定能力的详细信息
   id: nez1333
   result:
     - name: fetch-url
-      description: 从指定 URL 获取内容...（该能力的详细描述）
+      content: 从指定 URL 获取内容...（该能力的详细描述）
 </cap-response>

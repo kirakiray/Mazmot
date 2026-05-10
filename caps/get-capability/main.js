@@ -53,7 +53,7 @@ export default async function getCapability(options) {
 
       capabilityDesc.push({
         name: capabilityName,
-        description: capabilityMd,
+        content: capabilityMd,
       });
     }
 
