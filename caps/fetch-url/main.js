@@ -23,6 +23,8 @@ export default async function fetchUrl(options) {
       /<noscript[^>]*>[\s\S]*?<\/noscript>/gi,
       "",
     );
+    bodyContent = bodyContent.replace(/<!--[\s\S]*?-->/g, "");
+    bodyContent = bodyContent.replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "");
 
     const template = document.createElement("template");
     template.innerHTML = bodyContent;
@@ -67,6 +69,61 @@ export default async function fetchUrl(options) {
         }
       });
     });
+    const removeEmpty = (el) => {
+      const children = [...el.childNodes];
+      children.forEach((child) => {
+        if (child.nodeType === 1) {
+          removeEmpty(child);
+        }
+      });
+      if (
+        el.textContent.trim() === "" &&
+        !el.hasAttribute("src") &&
+        !el.hasAttribute("href")
+      ) {
+        el.remove();
+      }
+    };
+    removeEmpty(template.content);
+    const simplifyWrappers = (el) => {
+      const children = [...el.childNodes];
+      children.forEach((child) => {
+        if (child.nodeType === 1) {
+          simplifyWrappers(child);
+          const tagName = child.tagName.toLowerCase();
+          if (
+            [
+              "span",
+              "b",
+              "i",
+              "u",
+              "strong",
+              "em",
+              "small",
+              "mark",
+              "sub",
+              "sup",
+            ].includes(tagName)
+          ) {
+            const textContent = child.textContent;
+            const importantAttrs = ["href", "src", "alt", "title", "role"];
+            const hasImportantAttr = [...child.attributes].some(
+              (attr) =>
+                importantAttrs.includes(attr.name) ||
+                attr.name.startsWith("aria-"),
+            );
+            if (
+              child.childNodes.length === 1 &&
+              child.childNodes[0].nodeType === 3 &&
+              !hasImportantAttr
+            ) {
+              el.replaceChild(document.createTextNode(textContent), child);
+            }
+          }
+        }
+      });
+    };
+    simplifyWrappers(template.content);
     data = template.innerHTML;
     debugger;
   }
