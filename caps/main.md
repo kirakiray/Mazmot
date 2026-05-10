@@ -35,6 +35,16 @@
   result: <返回内容>
 </cap-response>
 
+### 错误格式
+
+如果能力执行过程中发生错误，我会返回错误信息：
+
+<cap-response>
+- capability: <能力名称>
+  id: <匹配的请求ID>
+  error: <错误信息>
+</cap-response>
+
 ### 调用示例
 
 **你向我发起请求：**
