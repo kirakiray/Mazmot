@@ -40,6 +40,23 @@ export default async function getCapability(options) {
   }
 
   if (name) {
-    debugger;
+    const capabilityDesc = [];
+
+    for (const capabilityName of name) {
+      const capabilityMd = await fetch(`/caps/${capabilityName}/SKILL.md`).then(
+        (e) => e.text(),
+      );
+
+      if (!capabilityMd.trim()) {
+        continue;
+      }
+
+      capabilityDesc.push({
+        name: capabilityName,
+        description: capabilityMd,
+      });
+    }
+
+    return capabilityDesc;
   }
 }
