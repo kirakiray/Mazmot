@@ -13,12 +13,13 @@ export default async function fetchUrl(options) {
 
   let data = await response.text();
 
-  if (cleanHTML) {
+  // 确定是html内容，才清理多余标签
+  if (cleanHTML && data.toLocaleLowerCase().includes("<!doctype html")) {
     data = clearHTML(data);
   }
 
   if (maxSize && data.length > maxSize) {
-    data = data.substring(0, maxSize);
+    data = data.slice(0, maxSize);
   }
 
   return data;

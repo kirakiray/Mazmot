@@ -66,5 +66,5 @@ description: 从指定 URL 获取内容
 ## 参数说明
 
 - `url` (必需): 要请求的 URL 地址
-- `maxSize` (可选): 限制最大返回大小（字节数）
-- `cleanHTML` (可选): 是否清理 HTML 标签，只返回包含文本的内容，默认为 false
+- `maxSize` (可选): 限制最大返回大小（字节数），默认为 32KB (32768 字节)
+- `cleanHTML` (可选): 是否清理 HTML 标签，只返回包含文本的内容，默认为 true。仅当内容包含 `<!doctype html>` 时才会清理
