@@ -110,19 +110,25 @@
           <div class="cap-description">{{$data.description}}</div>
         </div>
         <div class="cap-action">
-          <o-if :value="$data.running">
+          <o-if :value="$data.error">
+            <n-icon
+              icon="material-symbols:error-rounded"
+              style="color: var(--md-sys-color-error)"
+            ></n-icon>
+          </o-if>
+          <o-else-if :value="$data.running">
             <n-icon
               icon="line-md:loading-twotone-loop"
               style="color: var(--md-sys-color-primary)"
             ></n-icon>
-          </o-if>
-          <o-if :value="!$data.running && $data.done">
+          </o-else-if>
+          <o-else-if :value="!$data.running && $data.done">
             <n-icon
               icon="material-symbols:done-rounded"
               style="color: var(--md-sys-color-success)"
             ></n-icon>
-          </o-if>
-          <o-if :value="!$data.running && !$data.done">
+          </o-else-if>
+          <o-else-if :value="!$data.running && !$data.done && !$data.error">
             <span
               style="
                 font-size: 12px;
@@ -130,7 +136,7 @@
               "
               >等待运行</span
             >
-          </o-if>
+          </o-else-if>
         </div>
       </div>
       <o-if :value="$host.debugMode">
@@ -178,6 +184,7 @@
             }
 
             items.forEach((item) => {
+              item.error = null;
               item.running = true;
               item.done = false;
             });
@@ -185,7 +192,12 @@
             try {
               const results = await Promise.all(
                 items.map(async (item) => {
-                  const result = await this._executeCapability(item);
+                  let result = null;
+                  try {
+                    result = await this._executeCapability(item);
+                  } catch (e) {
+                    item.error = e.message;
+                  }
 
                   item.running = false;
                   item.done = true;
@@ -211,6 +223,7 @@
                 capability: item.capability || item.name,
                 id: item.id,
                 result: results[i],
+                error: item.error,
               }));
 
               await dialogHost.handleCapabilityResults(capabilityResults);

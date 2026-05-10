@@ -1,5 +1,5 @@
 export default async function fetchUrl(options) {
-  const { url, maxSize, cleanHTML = false } = options;
+  const { url, maxSize, cleanHTML = true } = options;
 
   const response = await fetch(url);
 
@@ -16,6 +16,8 @@ export default async function fetchUrl(options) {
   if (cleanHTML) {
     const bodyMatch = data.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     const bodyContent = bodyMatch ? bodyMatch[1] : data;
+
+    debugger;
 
     const template = document.createElement("template");
     template.innerHTML = bodyContent;
