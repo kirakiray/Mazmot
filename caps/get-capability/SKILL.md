@@ -30,12 +30,12 @@ description: 获取所有能力或指定能力的详细信息
     - ...
 </cap-response>
 
-## 获取指定能力的详细信息
+## 获取指定能力的详细使用信息
 
 <cap-request>
 - capability: get-capability
   id: nez1333
-  description: 获取fetch-url能力的详细信息
+  description: 获取fetch-url能力的详细使用信息
   opts:
     name:
       - fetch-url
