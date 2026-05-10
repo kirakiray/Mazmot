@@ -19,9 +19,14 @@ export default async function fetchUrl(options) {
     bodyContent = bodyContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
     bodyContent = bodyContent.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "");
     bodyContent = bodyContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+    bodyContent = bodyContent.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "");
 
     const template = document.createElement("template");
     template.innerHTML = bodyContent;
+    template.content.querySelectorAll("*").forEach((el) => {
+      el.removeAttribute("style");
+      el.removeAttribute("class");
+    });
     data = template.innerHTML;
     debugger;
   }
