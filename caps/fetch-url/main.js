@@ -19,13 +19,53 @@ export default async function fetchUrl(options) {
     bodyContent = bodyContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
     bodyContent = bodyContent.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "");
     bodyContent = bodyContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
-    bodyContent = bodyContent.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "");
+    bodyContent = bodyContent.replace(
+      /<noscript[^>]*>[\s\S]*?<\/noscript>/gi,
+      "",
+    );
 
     const template = document.createElement("template");
     template.innerHTML = bodyContent;
+    const allowedAttrs = [
+      "href",
+      "src",
+      "alt",
+      "title",
+      "role",
+      "aria-label",
+      "aria-labelledby",
+      "aria-describedby",
+      "aria-hidden",
+      "aria-expanded",
+      "aria-disabled",
+      "aria-pressed",
+      "aria-checked",
+      "aria-selected",
+      "for",
+      "type",
+      "name",
+      "value",
+      "placeholder",
+      "disabled",
+      "checked",
+      "selected",
+      "multiple",
+      "maxlength",
+      "minlength",
+      "pattern",
+      "required",
+      "readonly",
+    ];
     template.content.querySelectorAll("*").forEach((el) => {
-      el.removeAttribute("style");
-      el.removeAttribute("class");
+      const attrs = [...el.attributes];
+      attrs.forEach((attr) => {
+        if (
+          !allowedAttrs.includes(attr.name) &&
+          !attr.name.startsWith("aria-")
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      });
     });
     data = template.innerHTML;
     debugger;
