@@ -5,16 +5,12 @@ export default async function runJS(options) {
     throw new Error("code is required");
   }
 
-  try {
-    const fn = new Function(code);
-    const result = fn();
+  const fn = new Function(code);
+  const result = fn();
 
-    if (result instanceof Promise) {
-      return await result;
-    }
-
-    return result;
-  } catch (error) {
-    throw new Error(`JS execution error: ${error.message}`);
+  if (result instanceof Promise) {
+    return await result;
   }
+
+  return result;
 }
