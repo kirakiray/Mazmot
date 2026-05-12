@@ -83,11 +83,15 @@
       <p-button on:click="sendMessage">发送</p-button>
     </div>
   </div>
-  <script type="module">
-    import { saveKey, getAssistant } from "../ai/main.js";
-    import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
+  <script>
+    export default async ({ load }) => {
+      const advances = ["get-capability"];
 
-    export default async () => {
+      const { saveKey, getAssistant } = await load("../ai/main.js");
+      const { default: yaml } = await load(
+        "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs",
+      );
+
       return {
         data: {
           messages: [],
@@ -127,9 +131,27 @@
           async callAssistant() {
             if (!this.systemContent) return;
             if (!this.messages.some((m) => m.role === "system")) {
+              let systemContent = this.systemContent;
+
+              systemContent += `\n我接下来将告诉你几种优先级比较高的能的详细使用方法`;
+
+              // 加入优先能力的详细说明
+              for (let name of advances) {
+                let content = await fetch(`/caps/${name}/SKILL.md`).then((e) =>
+                  e.text(),
+                );
+
+                // 去掉 content 顶部的skill描述，并且给内部的每个 # 前添加多一个#
+                content;
+                debugger;
+
+                // 将 content 加入 systemContent
+                systemContent += "---\n" + content + `\n---`;
+              }
+
               this.messages.unshift({
                 role: "system",
-                content: this.systemContent,
+                content: systemContent,
               });
             }
 
