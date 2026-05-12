@@ -102,6 +102,35 @@
       <n-icon icon="carbon:debug"></n-icon>
     </p-button>
   </p-button-group>
+  <o-if :value="parseError">
+    <div
+      style="
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        background-color: var(--md-sys-color-error-container);
+        border-radius: 12px;
+        border: 1px solid var(--md-sys-color-error);
+      "
+    >
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--md-sys-color-on-error-container);
+        "
+      >
+        <n-icon
+          icon="material-symbols:error-rounded"
+          style="font-size: 20px"
+        ></n-icon>
+        <div>
+          <div style="font-weight: 600; font-size: 14px">JSON 解析错误</div>
+          <div style="font-size: 12px; margin-top: 4px">{{parseError}}</div>
+        </div>
+      </div>
+    </div>
+  </o-if>
   <o-fill :value="capRequests">
     <div>
       <div class="item">
@@ -182,6 +211,7 @@
           debugMode: false,
           isRunningAll: false,
           allCompleted: false,
+          parseError: null,
         },
         proto: {
           getOutputData(data) {
@@ -273,6 +303,7 @@
           },
           async loadData() {
             try {
+              this.parseError = null;
               const data = JSON.parse(this.text);
               this.capRequests = data.map((item) => ({
                 ...item,
@@ -281,6 +312,7 @@
               }));
             } catch (e) {
               console.error("Failed to load requests:", e);
+              this.parseError = e.message;
             } finally {
               this.allCompleted = false;
             }
