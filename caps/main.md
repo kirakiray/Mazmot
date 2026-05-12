@@ -22,15 +22,20 @@
 
 ### 请求格式
 
-使用 `cap-request` 代码块发起调用。格式为 **YAML 列表**，列表中每一项代表一个能力调用：
+使用 `cap-request` 代码块发起调用。格式为 **JSON 数组**，列表中每一项代表一个能力调用：
 
 ```
 <cap-request>
-- capability: <能力名称>
-  id: <唯一追踪ID>
-  description: <任务描述，会显示给用户>
-  opts:
-    <参数键>: <参数值>
+[
+  {
+    "capability": "<能力名称>",
+    "id": "<唯一追踪ID>",
+    "description": "<任务描述，会显示给用户>",
+    "opts": {
+      "<参数键>": "<参数值>"
+    }
+  }
+]
 </cap-request>
 ```
 
@@ -85,16 +90,24 @@
 
 ```
 <cap-request>
-- capability: fetch-url
-  id: ubydt1s
-  description: 从百度获取首页内容
-  opts:
-    url: https://www.baidu.com
-- capability: fetch-url
-  id: kx7m3p
-  description: 从 API 获取数据
-  opts:
-    url: https://api.example.com/data
+[
+  {
+    "capability": "fetch-url",
+    "id": "ubydt1s",
+    "description": "从百度获取首页内容",
+    "opts": {
+      "url": "https://www.baidu.com"
+    }
+  },
+  {
+    "capability": "fetch-url",
+    "id": "kx7m3p",
+    "description": "从 API 获取数据",
+    "opts": {
+      "url": "https://api.example.com/data"
+    }
+  }
+]
 </cap-request>
 ```
 
@@ -174,10 +187,15 @@
 
 ```
 <cap-request>
-- capability: get-capability
-  id: nez1t2d2
-  description: 获取fetch-url能力的详细使用信息
-  opts:
-    name:
-      - fetch-url
+[
+  {
+    "capability": "get-capability",
+    "id": "nez1t2d2",
+    "description": "获取fetch-url能力的详细使用信息",
+    "opts": {
+      "name": ["fetch-url"]
+    }
+  }
+]
+</cap-request>
 ```
