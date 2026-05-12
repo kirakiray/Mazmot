@@ -12,7 +12,7 @@ description: 获取所有能力或指定能力的详细信息
 <cap-request>
 - capability: get-capability
   id: nez1t2d
-  description: 获取所有能力或指定能力的详细信息
+  description: 获取所有能力列表
   opts:
     all: true
 </cap-request>
