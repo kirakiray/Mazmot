@@ -38,13 +38,17 @@
 
 ### 响应格式
 
-执行成功时返回 `cap-response`：
+执行成功时返回 `cap-response`（JSON 数组格式）：
 
 ```
 <cap-response>
-- capability: <能力名称>
-  id: <匹配的请求ID>
-  result: <执行结果>
+[
+  {
+    "capability": "<能力名称>",
+    "id": "<匹配的请求ID>",
+    "result": <执行结果>
+  }
+]
 </cap-response>
 ```
 
@@ -52,9 +56,13 @@
 
 ```
 <cap-response>
-- capability: <能力名称>
-  id: <匹配的请求ID>
-  error: <错误描述>
+[
+  {
+    "capability": "<能力名称>",
+    "id": "<匹配的请求ID>",
+    "error": "<错误描述>"
+  }
+]
 </cap-response>
 ```
 
@@ -94,12 +102,18 @@
 
 ```
 <cap-response>
-- capability: fetch-url
-  id: ubydt1s
-  result: <!DOCTYPE html>...HTML 内容
-- capability: fetch-url
-  id: kx7m3p
-  result: {"status": "ok", "data": [...]}
+[
+  {
+    "capability": "fetch-url",
+    "id": "ubydt1s",
+    "result": "<!DOCTYPE html>...HTML 内容"
+  },
+  {
+    "capability": "fetch-url",
+    "id": "kx7m3p",
+    "result": {"status": "ok", "data": [...]}
+  }
+]
 </cap-response>
 ```
 
