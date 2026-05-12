@@ -149,9 +149,7 @@
           <o-if :value="$data.done">
             <div style="margin-bottom: 8px">
               <strong>输出信息:</strong>
-              <div style="margin-top: 4px">
-                {{JSON.stringify($data.result, null, 2)}}
-              </div>
+              <div style="margin-top: 4px">{{$host.getOutputData($data)}}</div>
             </div>
           </o-if>
           <o-if :value="$data.error">
@@ -188,6 +186,12 @@
           allCompleted: false,
         },
         proto: {
+          getOutputData(data) {
+            if (data.result === null || data.result === undefined) {
+              return "null";
+            }
+            return JSON.stringify(data.result);
+          },
           getInputJSON(data) {
             return JSON.stringify({
               capability: data.capability || data.name,
