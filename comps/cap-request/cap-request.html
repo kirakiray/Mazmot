@@ -141,7 +141,30 @@
         </div>
       </div>
       <o-if :value="$host.debugMode">
-        <div class="debug-info">{{$data}}</div>
+        <div class="debug-info">
+          <div style="margin-bottom: 8px">
+            <strong>输入信息:</strong>
+            <div style="margin-top: 4px">
+              {{JSON.stringify({ capability: $data.capability || $data.name, opts: $data.opts }, null, 2)}}
+            </div>
+          </div>
+          <o-if :value="$data.result !== undefined">
+            <div style="margin-bottom: 8px">
+              <strong>输出信息:</strong>
+              <div style="margin-top: 4px">
+                {{JSON.stringify($data.result, null, 2)}}
+              </div>
+            </div>
+          </o-if>
+          <o-if :value="$data.error">
+            <div>
+              <strong style="color: var(--md-sys-color-error)">错误信息:</strong>
+              <div style="margin-top: 4px; color: var(--md-sys-color-error)">
+                {{$data.error}}
+              </div>
+            </div>
+          </o-if>
+        </div>
       </o-if>
     </div>
   </o-fill>
@@ -196,6 +219,7 @@
                   let result = null;
                   try {
                     result = await this._executeCapability(item);
+                    item.result = result;
                   } catch (e) {
                     item.error = e.message;
                   }
