@@ -144,10 +144,7 @@
         <div class="debug-info">
           <div style="margin-bottom: 8px">
             <strong>输入信息:</strong>
-            <div style="margin-top: 4px">
-              {{JSON.stringify({ capability: $data.capability || $data.name,
-              opts: $data.opts }, null, 2)}}
-            </div>
+            <div style="margin-top: 4px">{{$host.getInputJSON($data)}}</div>
           </div>
           <o-if :value="$data.done">
             <div style="margin-bottom: 8px">
@@ -191,6 +188,12 @@
           allCompleted: false,
         },
         proto: {
+          getInputJSON(data) {
+            return JSON.stringify({
+              capability: data.capability || data.name,
+              opts: data.opts,
+            });
+          },
           async _executeCapability(item) {
             const capabilityName = item.capability || item.name;
             const url = `/caps/${capabilityName}/main.js`;
