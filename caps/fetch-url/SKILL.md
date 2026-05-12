@@ -20,9 +20,13 @@ description: 从指定 URL 获取内容
 工具将返回该 URL 的原始内容。
 
 <cap-response>
-- capability: fetch-url
-  id: abc123
-  result: "返回的内容文本..."
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc123",
+    "result": "返回的内容文本..."
+  }
+]
 </cap-response>
 
 ## 限制返回大小
@@ -39,9 +43,13 @@ description: 从指定 URL 获取内容
 工具将返回限制大小内的内容。
 
 <cap-response>
-- capability: fetch-url
-  id: abc456
-  result: "限制大小内的内容..."
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc456",
+    "result": "限制大小内的内容..."
+  }
+]
 </cap-response>
 
 ## 清理 HTML 内容
@@ -58,9 +66,13 @@ description: 从指定 URL 获取内容
 工具将返回清理后的纯文本内容。
 
 <cap-response>
-- capability: fetch-url
-  id: abc789
-  result: "清理后的纯文本内容..."
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc789",
+    "result": "清理后的纯文本内容..."
+  }
+]
 </cap-response>
 
 ## 参数说明

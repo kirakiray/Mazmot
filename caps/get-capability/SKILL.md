@@ -20,14 +20,22 @@ description: 获取所有能力或指定能力的详细信息
 工具将返回所有能力的名称和简要描述。
 
 <cap-response>
-- capability: get-capability
-  id: nez1t2d
-  result:
-    - name: fetch-url
-      description: 从指定 URL 获取内容
-    - name: get-capability
-      description: "...."
-    - ...
+[
+  {
+    "capability": "get-capability",
+    "id": "nez1t2d",
+    "result": [
+      {
+        "name": "fetch-url",
+        "description": "从指定 URL 获取内容"
+      },
+      {
+        "name": "get-capability",
+        "description": "...."
+      }
+    ]
+  }
+]
 </cap-response>
 
 ## 获取指定能力的详细使用信息
@@ -44,9 +52,16 @@ description: 获取所有能力或指定能力的详细信息
 工具将返回 fetch-url 能力的完整描述。
 
 <cap-response>
-- capability: get-capability
-  id: nez1333
-  result:
-    - name: fetch-url
-      content: 从指定 URL 获取内容...（该能力的详细描述）
+[
+  {
+    "capability": "get-capability",
+    "id": "nez1333",
+    "result": [
+      {
+        "name": "fetch-url",
+        "content": "从指定 URL 获取内容...（该能力的详细描述）"
+      }
+    ]
+  }
+]
 </cap-response>
