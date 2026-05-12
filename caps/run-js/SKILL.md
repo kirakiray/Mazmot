@@ -1,6 +1,6 @@
 ---
 name: run-js
-description: 执行 JavaScript 代码片段，用于数学计算、获取时间等。如果需要得到返回值，记得带上 return 语句。
+description: 执行 JavaScript 代码片段，用于数学计算、获取时间等。
 ---
 
 # 执行 JavaScript 代码

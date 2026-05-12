@@ -156,9 +156,8 @@
 <cap-request>
 - capability: get-capability
   id: nez1t2d2
-  description: 获取fetch-url和run-js能力的详细使用信息
+  description: 获取fetch-url能力的详细使用信息
   opts:
     name:
       - fetch-url
-      - run-js
 ```
