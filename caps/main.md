@@ -145,3 +145,20 @@
 - 基于响应结果判断任务是否完成
 - 若未完成，分析差距并继续调用能力，直到需求被满足
 - **当你判断已满足用户需求时，停止迭代，不要过度优化**
+
+---
+
+- `get-capability` 是你最基础的能力，用于发现其他可用能力
+- 每次对话开始时，若你不确定有哪些可用能力，应首先调用 `get-capability`（参数 `all: true`）
+- 获取能力列表后，如需能力的详细参数说明，再次调用 `get-capability` 并指定 `name` 参数。**`name` 是数组（复数），一次可查询多个能力的详细使用方式**
+
+```
+<cap-request>
+- capability: get-capability
+  id: nez1t2d2
+  description: 获取fetch-url和run-js能力的详细使用信息
+  opts:
+    name:
+      - fetch-url
+      - run-js
+```
