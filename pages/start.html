@@ -85,7 +85,7 @@
   </div>
   <script>
     export default async ({ load }) => {
-      const advances = ["get-capability"];
+      // const advances = ["get-capability"];
 
       const { saveKey, getAssistant } = await load("../ai/main.js");
       const { getInitMsg } = await load("../util/get-init-msg.js");
@@ -95,20 +95,14 @@
           messages: [],
           inputMessage: "",
           isLoading: false,
-          systemContent: "",
         },
         ready() {
           this.attr("dialogue-host", ""); // 标记为对话主机
         },
         attached() {
-          fetch("caps/main.md")
-            .then((res) => res.text())
-            .then((content) => {
-              this.systemContent = content;
-            })
-            .catch((e) => {
-              console.error("Failed to fetch caps/main.md:", e);
-            });
+          getInitMsg().then((initMessages) => {
+            this.messages = initMessages;
+          });
         },
         proto: {
           async handleCapabilityResults(results) {
@@ -127,15 +121,7 @@
             }
           },
           async callAssistant() {
-            if (!this.systemContent) return;
-            if (!this.messages.some((m) => m.role === "system")) {
-              let systemContent = this.systemContent;
-
-              this.messages.unshift({
-                role: "system",
-                content: systemContent,
-              });
-            }
+            if (!this.messages.some((m) => m.role === "system")) return;
 
             this.isLoading = true;
 
