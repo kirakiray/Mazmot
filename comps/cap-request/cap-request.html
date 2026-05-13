@@ -269,25 +269,14 @@
                 }),
               );
 
-              const paths = this.composedPath();
-              let dialogHost = paths.find(
-                (ele) =>
-                  ele.getAttribute &&
-                  ele.getAttribute("dialogue-host") !== null,
-              );
-
-              if (!dialogHost) {
-                throw new Error("No dialogue host found");
-              }
-
-              dialogHost = $(dialogHost);
-
               const capabilityResults = items.map((item, i) => ({
                 capability: item.capability || item.name,
                 id: item.id,
                 result: results[i],
                 error: item.error,
               }));
+
+              const { dialogHost } = this;
 
               await dialogHost.handleCapabilityResults(capabilityResults);
 
@@ -313,14 +302,35 @@
             } catch (e) {
               console.error("Failed to load requests:", e);
               this.parseError = e.message;
-              debugger;
             } finally {
               this.allCompleted = false;
             }
           },
+          get dialogHost() {
+            const paths = this.composedPath();
+            const dialogHost = paths.find(
+              (ele) =>
+                ele.getAttribute && ele.getAttribute("dialogue-host") !== null,
+            );
+
+            if (!dialogHost) {
+              throw new Error("No dialogue host found");
+            }
+
+            return $(dialogHost);
+          },
         },
         async attached() {
           await this.loadData();
+
+          if (this.parseError) {
+            // 返回错误给AI
+            const { dialogHost } = this;
+            await dialogHost.handleCapabilityResults({
+              error: this.parseError,
+            });
+            return;
+          }
 
           this.runAll();
         },
