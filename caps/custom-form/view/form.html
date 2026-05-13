@@ -2,6 +2,7 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/radio/group.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/radio/radio.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <style>
     :host {
       display: block;
@@ -27,7 +28,7 @@
     }
   </style>
   <h2>自定义表单</h2>
-  <o-fill :value="formArr">
+  <o-fill :value="formItems">
     <div class="form-item">
       <label class="form-label">
         {{ $data.desc }}<span class:required-mark="$data.required">*</span>
@@ -48,18 +49,45 @@
       </o-if>
     </div>
   </o-fill>
+
+  <div style="margin-top: 24px; display: flex; gap: 12px">
+    <o-if :value="submitName">
+      <p-button color="primary" size="s" type="submit"
+        >{{ submitName }}</p-button
+      >
+    </o-if>
+    <o-if :value="cancelName">
+      <p-button size="s" type="button" color="error" variant="outlined">
+        {{ cancelName }}
+      </p-button>
+    </o-if>
+  </div>
   <script>
     export default () => {
       return {
         data: {
-          formArr: [],
+          formItems: [],
+          submitName: "Submit",
+          cancelName: "Cancel",
         },
         proto: {
           async init(arr) {
-            this.formArr = arr.map((item) => ({
-              ...item,
-              value: item.defaultValue || "",
-            }));
+            const formItems = [];
+            arr.forEach((item) => {
+              if (item.type === "submit") {
+                this.submitName = item.name || "Submit";
+              } else if (item.type === "reset") {
+                this.resetName = item.name || "Reset";
+              } else if (item.type === "cancel") {
+                this.cancelName = item.name || "Cancel";
+              } else {
+                formItems.push({
+                  ...item,
+                  value: item.defaultValue || "",
+                });
+              }
+            });
+            this.formItems = formItems;
           },
         },
       };
