@@ -21,10 +21,8 @@
     m-chatbox {
       display: block;
     }
-    m-chat-item[role="system"] {
-      display: none;
-    }
-
+    m-chat-item[role="system"],
+    m-chat-item[hidden],
     m-chat-item[is-response] {
       display: none;
     }
@@ -36,6 +34,7 @@
           <m-chat-item
             attr:role="$data.role"
             attr:is-response="$data.isResponse"
+            attr:hidden="$data.hidden"
           >
             <o-if :value="$data.role !== 'system' && !$data.isResponse">
               <o-md>{{$data.content}}</o-md>
@@ -88,7 +87,7 @@
       // const advances = ["get-capability"];
 
       const { saveKey, getAssistant } = await load("../ai/main.js");
-      const { getInitMsg } = await load("../util/get-init-msg.js");
+      const { getSystemPrompt } = await load("../util/system-prompt.js");
 
       return {
         data: {
@@ -99,10 +98,9 @@
         ready() {
           this.attr("dialogue-host", ""); // 标记为对话主机
         },
-        attached() {
-          getInitMsg().then((initMessages) => {
-            this.messages = initMessages;
-          });
+        async attached() {
+          const initMessages = await getSystemPrompt();
+          this.messages = initMessages;
         },
         proto: {
           async handleCapabilityResults(results) {
