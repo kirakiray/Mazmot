@@ -10,11 +10,16 @@ description: 从指定 URL 获取内容
 ## 基本用法
 
 <cap-request>
-- capability: fetch-url
-  id: abc123
-  description: 获取指定URL的内容
-  opts:
-    url: https://example.com/api/data
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc123",
+    "description": "获取指定URL的内容",
+    "opts": {
+      "url": "https://example.com/api/data"
+    }
+  }
+]
 </cap-request>
 
 工具将返回该 URL 的原始内容。
@@ -32,12 +37,17 @@ description: 从指定 URL 获取内容
 ## 限制返回大小
 
 <cap-request>
-- capability: fetch-url
-  id: abc456
-  description: 获取URL内容并限制大小
-  opts:
-    url: https://example.com/large-file
-    maxSize: 10240
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc456",
+    "description": "获取URL内容并限制大小",
+    "opts": {
+      "url": "https://example.com/large-file",
+      "maxSize": 10240
+    }
+  }
+]
 </cap-request>
 
 工具将返回限制大小内的内容。
@@ -55,12 +65,17 @@ description: 从指定 URL 获取内容
 ## 清理 HTML 内容
 
 <cap-request>
-- capability: fetch-url
-  id: abc789
-  description: 获取HTML页面并清理标签
-  opts:
-    url: https://example.com/page.html
-    cleanHTML: true
+[
+  {
+    "capability": "fetch-url",
+    "id": "abc789",
+    "description": "获取HTML页面并清理标签",
+    "opts": {
+      "url": "https://example.com/page.html",
+      "cleanHTML": true
+    }
+  }
+]
 </cap-request>
 
 工具将返回清理后的纯文本内容。
