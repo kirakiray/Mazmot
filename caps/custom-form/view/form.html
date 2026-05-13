@@ -1,5 +1,6 @@
 <template page>
   <l-m src="https://punch-ui-v2.pages.dev/packages/radio/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/radio/radio.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <style>
     :host {
@@ -21,6 +22,9 @@
       color: var(--md-sys-color-error);
       margin-left: 4px;
     }
+    p-radio {
+      margin-right: 16px;
+    }
   </style>
   <h2>自定义表单</h2>
   <o-fill :value="formArr">
@@ -29,11 +33,17 @@
         {{ $data.desc }}<span class:required-mark="$data.required">*</span>
       </label>
       <o-if :value="$data.type === 'radio'">
-        <p-radio-group sync:value="$data.value" :options="$data.options" />
+        <p-radio-group sync:value="$data.value">
+          <o-fill :value="$data.options">
+            <p-radio attr:value="$data.value">{{ $data.label }}</p-radio>
+          </o-fill>
+        </p-radio-group>
       </o-if>
       <o-if :value="$data.type === 'text'">
-        <p-input sync:value="$data.value">
-          <span slot="label">{{ $data.desc }}</span>
+        <p-input sync:value="$data.value" attr:placeholder="$data.placeholder">
+          <o-if :value="$data.label" slot="label">
+            <span>{{ $data.label }}</span>
+          </o-if>
         </p-input>
       </o-if>
     </div>
