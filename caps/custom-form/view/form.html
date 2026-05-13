@@ -1,4 +1,6 @@
 <template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/radio/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <style>
     :host {
       display: block;
@@ -6,17 +8,34 @@
       margin: 0 auto;
       padding: 16px;
     }
+    .form-item {
+      margin-bottom: 24px;
+    }
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+    .required-mark {
+      color: var(--md-sys-color-error);
+      margin-left: 4px;
+    }
   </style>
   <h2>自定义表单</h2>
   <o-fill :value="formArr">
-    <div>
+    <div class="form-item">
+      <label class="form-label">
+        {{ $data.desc }}<span class:required-mark="$data.required">*</span>
+      </label>
       <o-if :value="$data.type === 'radio'">
-        <p-radio-group
-          sync:value="$data.defaultValue"
-          :options="$data.options"
-        />
-      </p-radio-group>
-    </o-if>
+        <p-radio-group sync:value="$data.value" :options="$data.options" />
+      </o-if>
+      <o-if :value="$data.type === 'text'">
+        <p-input sync:value="$data.value">
+          <span slot="label">{{ $data.desc }}</span>
+        </p-input>
+      </o-if>
     </div>
   </o-fill>
   <script>
@@ -27,7 +46,10 @@
         },
         proto: {
           async init(arr) {
-            this.formArr = arr;
+            this.formArr = arr.map((item) => ({
+              ...item,
+              value: item.defaultValue || "",
+            }));
           },
         },
       };
