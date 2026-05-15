@@ -36,7 +36,9 @@
       <o-if :value="$data.type === 'radio'">
         <p-radio-group sync:value="$data.value">
           <o-fill :value="$data.options">
-            <p-radio attr:value="$data.value">{{ $data.label }}</p-radio>
+            <p-radio attr:value="$data.value || $data.label">
+              {{ $data.label || $data.value }}
+            </p-radio>
           </o-fill>
         </p-radio-group>
       </o-if>
@@ -52,9 +54,15 @@
 
   <div style="margin-top: 24px; display: flex; gap: 12px">
     <o-if :value="submitName">
-      <p-button color="primary" size="s" type="submit"
-        >{{ submitName }}</p-button
+      <p-button
+        color="primary"
+        size="s"
+        type="submit"
+        attr:disabled="!canSubmit"
+        on:click="submit"
       >
+        {{ submitName }}
+      </p-button>
     </o-if>
     <o-if :value="cancelName">
       <p-button size="s" type="button" color="error" variant="outlined">
@@ -71,6 +79,28 @@
           cancelName: "Cancel",
         },
         proto: {
+          get canSubmit() {
+            return this.formItems.every((item) => {
+              return item.required ? item.value !== "" : true;
+            });
+          },
+          submit() {
+            const data = {};
+
+            this.formItems.forEach((item) => {
+              data[item.name] = item.value;
+            });
+
+            this.emit("submit", {
+              composed: true,
+              data: data,
+            });
+          },
+          cancel() {
+            this.emit("cancel", {
+              composed: true,
+            });
+          },
           async init(arr) {
             const formItems = [];
             arr.forEach((item) => {
