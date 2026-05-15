@@ -17,23 +17,52 @@
       display: block;
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 16px;
+      padding: 24px;
+      max-width: 600px;
     }
     .form-item {
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
     .form-label {
       display: block;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       font-weight: 500;
+      font-size: 14px;
       color: var(--md-sys-color-on-surface);
+      line-height: 1.4;
     }
     .required-mark {
       color: var(--md-sys-color-error);
       margin-left: 4px;
     }
-    p-radio {
-      margin-right: 16px;
+    p-radio,
+    p-checkbox {
+      margin-right: 20px;
+      margin-bottom: 8px;
+      display: inline-flex;
+    }
+    p-textarea {
+      width: 100%;
+    }
+    p-select {
+      width: 100%;
+      max-width: 100%;
+    }
+    p-switch {
+      margin-top: 4px;
+    }
+    .options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .form-actions {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      display: flex;
+      gap: 16px;
     }
   </style>
   <h2>自定义表单</h2>
@@ -44,11 +73,13 @@
       </label>
       <o-if :value="$data.type === 'radio'">
         <p-radio-group sync:value="$data.value">
-          <o-fill :value="$data.options">
-            <p-radio attr:value="$data.value || $data.label">
-              {{ $data.label || $data.value }}
-            </p-radio>
-          </o-fill>
+          <div class="options-row">
+            <o-fill :value="$data.options">
+              <p-radio attr:value="$data.value || $data.label">
+                {{ $data.label || $data.value }}
+              </p-radio>
+            </o-fill>
+          </div>
         </p-radio-group>
       </o-if>
       <o-if :value="$data.type === 'text'">
@@ -76,11 +107,13 @@
       </o-if>
       <o-if :value="$data.type === 'checkbox'">
         <p-checkbox-group :value="$data.value">
-          <o-fill :value="$data.options">
-            <p-checkbox attr:value="$data.value || $data.label">
-              {{ $data.label || $data.value }}
-            </p-checkbox>
-          </o-fill>
+          <div class="options-row">
+            <o-fill :value="$data.options">
+              <p-checkbox attr:value="$data.value || $data.label">
+                {{ $data.label || $data.value }}
+              </p-checkbox>
+            </o-fill>
+          </div>
         </p-checkbox-group>
       </o-if>
       <o-if :value="$data.type === 'select'">
@@ -98,7 +131,7 @@
     </div>
   </o-fill>
 
-  <div style="margin-top: 24px; display: flex; gap: 12px">
+  <div class="form-actions">
     <o-if :value="submitName">
       <p-button
         color="primary"
