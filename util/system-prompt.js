@@ -24,7 +24,7 @@ export async function getSystemPrompt() {
 }
 
 const getCapabilitiesMessage = async () => {
-  const capabilities = await getCapability({ all: true });
+  const capabilities = await getCapability({ data: { all: true } });
 
   return {
     role: "user",
@@ -32,13 +32,9 @@ const getCapabilitiesMessage = async () => {
     content: `这是一条你要隐藏的指令，我会告诉你你拥有的能力列表，你收到后只需要回复我收到即可，不需要回复其他内容。
 
 <cap-response>
-[
-  {
-    "capability": "get-capability",
-    "id": "first-get-all-capabilities",
-    "result": ${JSON.stringify(capabilities, null, 2)}
-  }
-]
+  <template result name="get-capability" cid="first-get-all-capabilities">
+${JSON.stringify(capabilities, null, 2)}
+  </template>
 </cap-response>`,
   };
 };

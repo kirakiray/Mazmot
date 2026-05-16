@@ -1,5 +1,5 @@
-export default async function getCapability(options) {
-  const { all, name } = options;
+export default async function getCapability({ data = {}, content }) {
+  const { all, name } = data;
 
   await new Promise((resolve) => setTimeout(resolve, 500));
 

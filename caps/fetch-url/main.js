@@ -1,9 +1,9 @@
-export default async function fetchUrl(options) {
+export default async function fetchUrl({ data = {}, content }) {
   const {
     url,
     maxSize = 32 * 1024, // 32KB
     cleanHTML = true, // 如果遇到是html内容，是否清理多余标签，只返回包含文本的内容
-  } = options;
+  } = data;
 
   const response = await fetch(url);
 
