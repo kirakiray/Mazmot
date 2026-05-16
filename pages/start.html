@@ -104,9 +104,20 @@
         },
         proto: {
           async handleCapabilityResults(results) {
+            const templates = results.map((r) => {
+              if (r.error) {
+                return `<template error name="${r.name}" cid="${r.cid}">${r.error}</template>`;
+              }
+              const resultStr =
+                typeof r.result === "string"
+                  ? r.result
+                  : JSON.stringify(r.result);
+              return `<template result name="${r.name}" cid="${r.cid}">${resultStr}</template>`;
+            });
+
             this.messages.push({
               role: "user",
-              content: `<cap-response>\n${JSON.stringify(results, null, 2)}</cap-response>`,
+              content: `<cap-response>${templates.join("\n")}</cap-response>`,
               isResponse: true,
             });
 

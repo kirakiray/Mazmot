@@ -102,26 +102,6 @@
       <n-icon icon="carbon:debug"></n-icon>
     </p-button>
   </p-button-group>
-  <o-if :value="parseError">
-    <div class="item">
-      <div
-        class="cap-icon"
-        style="
-          background-color: var(--md-sys-color-error-container);
-          color: var(--md-sys-color-error);
-        "
-      >
-        <n-icon
-          icon="material-symbols:error-rounded"
-          style="font-size: 20px"
-        ></n-icon>
-      </div>
-      <div class="cap-content">
-        <div class="cap-description">协议解析错误</div>
-        <div class="cap-name">{{parseError}}</div>
-      </div>
-    </div>
-  </o-if>
   <o-fill :value="capRequests">
     <div>
       <div class="item">
@@ -205,7 +185,6 @@
           debugMode: false,
           isRunningAll: false,
           allCompleted: false,
-          parseError: null,
         },
         proto: {
           getOutputData(data) {
@@ -292,7 +271,6 @@
           },
           async loadData() {
             try {
-              this.parseError = null;
               const items = [];
 
               this.all("template").forEach((temp) => {
@@ -318,7 +296,6 @@
               this.capRequests = items;
             } catch (e) {
               console.error("Failed to load requests:", e);
-              this.parseError = e.message;
             } finally {
               this.allCompleted = false;
             }
@@ -339,16 +316,6 @@
         },
         async attached() {
           await this.loadData();
-
-          if (this.parseError) {
-            // 返回错误给AI
-            const { dialogHost } = this;
-            await dialogHost.handleCapabilityResults({
-              error: this.parseError,
-            });
-            return;
-          }
-
           this.runAll();
         },
       };
