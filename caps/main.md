@@ -142,10 +142,12 @@
 </cap-request>
 
 - 从能力列表中筛选出与任务匹配的能力
-- **必须先获取详细文档**：筛选出有用能力后，立即调用 `get-capability` 并指定 `name` 参数获取其详细使用方法（`name` 为数组，一次可查询多个能力）
+- **必须先获取详细文档**：筛选出有用能力后，立即调用 `get-capability` 并指定 `name` 参数获取其详细使用方法
 
 <cap-request>
-  <template name="get-capability" cid="nez1t2d2" desc="获取 fetch-url 能力的详细使用信息" data-name="fetch-url,custom-form">
+  <template name="get-capability" cid="nez1t2d2" desc="获取 fetch-url 能力的详细使用信息" data-name="fetch-url">
+  </template>
+  <template name="get-capability" cid="nez1t2d2" desc="获取 custom-form 能力的详细使用信息" data-name="custom-form">
   </template>
 </cap-request>
 
