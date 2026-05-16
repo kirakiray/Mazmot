@@ -40,34 +40,27 @@ export default async function getCapability({ data = {}, content }) {
   }
 
   if (name) {
-    const capabilityDesc = [];
+    try {
+      const capabilityMd = await fetch(`/caps/${name}/SKILL.md`).then((e) =>
+        e.text(),
+      );
 
-    for (const capabilityName of name) {
-      try {
-        const capabilityMd = await fetch(
-          `/caps/${capabilityName}/SKILL.md`,
-        ).then((e) => e.text());
-
-        if (!capabilityMd.trim()) {
-          capabilityDesc.push({
-            name: capabilityName,
-            error: "Capability not found",
-          });
-          continue;
-        }
-
-        capabilityDesc.push({
-          name: capabilityName,
-          content: capabilityMd,
-        });
-      } catch (error) {
-        capabilityDesc.push({
-          name: capabilityName,
-          error: error.message || "Failed to fetch capability",
-        });
+      if (!capabilityMd.trim()) {
+        return {
+          name: name,
+          error: "Capability not found",
+        };
       }
-    }
 
-    return capabilityDesc;
+      return {
+        name: name,
+        content: capabilityMd,
+      };
+    } catch (error) {
+      return {
+        name: name,
+        error: error.message || "Failed to fetch capability",
+      };
+    }
   }
 }

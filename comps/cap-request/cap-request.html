@@ -104,8 +104,17 @@
   </p-button-group>
   <o-if :value="parseError">
     <div class="item">
-      <div class="cap-icon" style="background-color: var(--md-sys-color-error-container); color: var(--md-sys-color-error);">
-        <n-icon icon="material-symbols:error-rounded" style="font-size: 20px"></n-icon>
+      <div
+        class="cap-icon"
+        style="
+          background-color: var(--md-sys-color-error-container);
+          color: var(--md-sys-color-error);
+        "
+      >
+        <n-icon
+          icon="material-symbols:error-rounded"
+          style="font-size: 20px"
+        ></n-icon>
       </div>
       <div class="cap-content">
         <div class="cap-description">协议解析错误</div>
@@ -286,48 +295,21 @@
               this.parseError = null;
               const items = [];
 
-              const templateRegex = /<template\s+([^>]+?)(?:\/>|>([\s\S]*?)<\/template>)/g;
-              let match;
-
-              while ((match = templateRegex.exec(this.text)) !== null) {
-                const attrsStr = match[1];
-                const content = (match[2] || "").trim();
-
-                const data = {};
-                let name = "";
-                let cid = "";
-                let description = "";
-
-                const attrRegex = /([\w-]+)\s*=\s*"([^"]*)"/g;
-                let attrMatch;
-
-                while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
-                  const key = attrMatch[1];
-                  const value = attrMatch[2];
-
-                  if (key === "name") {
-                    name = value;
-                  } else if (key === "cid") {
-                    cid = value;
-                  } else if (key === "desc") {
-                    description = value;
-                  } else if (key.startsWith("data-")) {
-                    data[key.slice(5)] = value;
-                  }
-                }
-
-                if (!name || !cid) continue;
+              this.all("template").forEach((temp) => {
+                const content = temp.html.trim();
 
                 items.push({
-                  name,
-                  cid,
-                  description,
-                  data,
+                  name: temp.attr("name"),
+                  cid: temp.attr("cid"),
+                  description: temp.attr("desc"),
+                  data: {
+                    ...temp.data,
+                  },
                   content,
                   running: false,
                   done: false,
                 });
-              }
+              });
 
               if (items.length === 0 && this.text.trim()) {
                 throw new Error("未找到有效的 <template> 标签");
