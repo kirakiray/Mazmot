@@ -12,11 +12,57 @@
       return {
         tag: "test-cap",
         attrs: {
+          dialogueHost: 1,
           name: null,
           id: null,
         },
         data: {
           label: "测试能力",
+        },
+        proto: {
+          // 伪装处理
+          async handleCapabilityResults(results) {
+            for (let item of results) {
+              const { cid } = item;
+
+              const targetTemp = this.$(`template[result][cid=${cid}]`);
+
+              // 获取到 script 内的  export default async function (result) { 内容并运行
+              const result = item.result;
+
+              const scriptEle = targetTemp.$("script[type='module']");
+              if (scriptEle) {
+                const scriptText = scriptEle.text;
+                const blob = new Blob([scriptText], {
+                  type: "application/javascript",
+                });
+                const url = URL.createObjectURL(blob);
+
+                try {
+                  const module = await import(url);
+                  if (module.default) {
+                    const testResult = await module.default(result);
+                    console.log(`测试结果 [${cid}]:`, testResult);
+
+                    if (testResult && testResult.assert) {
+                      console.log(
+                        `✓ 测试通过: ${testResult.content || "断言成功"}`,
+                      );
+                    } else {
+                      console.error(
+                        `✗ 测试失败: ${testResult?.content || "断言失败"}`,
+                      );
+                    }
+                  }
+                } catch (error) {
+                  console.error(`运行测试脚本失败 [${cid}]:`, error);
+                } finally {
+                  URL.revokeObjectURL(url);
+                }
+              }
+            }
+            console.log(results);
+          },
         },
       };
     };

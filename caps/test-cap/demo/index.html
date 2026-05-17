@@ -9,12 +9,34 @@
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
     />
+    <l-m src="../src/test-cap.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
   <body>
     <test-cap>
-      <cap-request name="fetch-url" cid="fetch-01" desc="请求百度的内容">
-        {url:"https://www.baidu.com"}
+      <cap-request>
+        <template
+          name="fetch-url"
+          cid="fetch-01"
+          desc="请求package.json文件内容"
+          data-url="/package.json"
+        >
+        </template>
       </cap-request>
+      <template result cid="fetch-01">
+        <script type="module">
+          export default async function (result) {
+            // 直接获取内容
+            const data = await fetch("/package.json");
+            const jsonText = await data.text();
+
+            return {
+              assert: jsonText === result,
+              content: "获取成功",
+            };
+          }
+        </script>
+      </template>
     </test-cap>
   </body>
 </html>
