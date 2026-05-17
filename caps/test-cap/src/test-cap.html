@@ -2,42 +2,76 @@
   <style>
     :host {
       display: block;
-      padding: 16px;
-      border: 1px solid var(--md-sys-color-surface-variant, #ddd);
-      border-radius: 8px;
+      padding: 12px;
       margin: 8px 0;
-      background-color: var(--md-sys-color-surface);
+      border-radius: 4px;
+      font-family: system-ui, -apple-system, sans-serif;
     }
 
     h3 {
       margin: 0 0 12px 0;
-      color: var(--md-sys-color-on-surface);
+      font-size: 1.1em;
+      font-weight: bold;
     }
 
     .test-result {
       padding: 12px;
       margin: 8px 0;
-      border-radius: var(--pui-default-rounded, 4px);
-      background-color: var(--md-sys-color-surface-variant);
-      color: var(--md-sys-color-on-surface);
+      border-radius: 4px;
+      font-family: system-ui, -apple-system, sans-serif;
     }
 
     .test-result[status="pass"] {
-      background-color: var(--md-sys-color-success-container);
-      color: var(--md-sys-color-on-success-container);
-      border-left: 4px solid var(--md-sys-color-success);
+      background: #d4edda;
+      border-left: 4px solid #28a745;
     }
 
     .test-result[status="fail"] {
-      background-color: var(--md-sys-color-error-container);
-      color: var(--md-sys-color-on-error-container);
-      border-left: 4px solid var(--md-sys-color-error);
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
     }
 
     .test-result[status="error"] {
-      background-color: var(--md-sys-color-neutral-container);
-      color: var(--md-sys-color-on-neutral-container);
-      border-left: 4px solid var(--md-sys-color-neutral);
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+    }
+
+    .test-result[status="pass"] .test-name {
+      color: #155724;
+    }
+
+    .test-result[status="fail"] .test-name {
+      color: #721c24;
+    }
+
+    .test-result[status="error"] .test-name {
+      color: #856404;
+    }
+
+    .test-result[status="pass"] .status-icon {
+      color: #28a745;
+    }
+
+    .test-result[status="fail"] .status-icon {
+      color: #dc3545;
+    }
+
+    .test-result[status="error"] .status-icon {
+      color: #ffc107;
+    }
+
+    .test-result[status="pass"] .message,
+    .test-result[status="fail"] .message {
+      color: #155724;
+    }
+
+    .test-result[status="error"] .message {
+      color: #856404;
+    }
+
+    .test-name {
+      font-weight: bold;
+      margin-bottom: 4px;
     }
 
     .status-icon {
@@ -46,16 +80,25 @@
       font-size: 1.1em;
     }
 
-    b {
-      color: var(--md-sys-color-primary);
+    .message {
+      margin-top: 8px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 3px;
+      font-size: 0.9em;
+      font-family: monospace;
+      white-space: pre-wrap;
     }
   </style>
   <div>
     <h3>{{ label }}</h3>
     <o-fill :value="testResults">
       <div class="test-result" attr:status="$data.status">
-        <span class="status-icon">{{ $data.icon }}</span>
-        <b>{{ $data.cid }}</b>: {{ $data.message }}
+        <div class="test-name">
+          <span class="status-icon">{{ $data.icon }}</span>
+          <span>{{ $data.cid }}</span>
+        </div>
+        <div class="message">{{ $data.message }}</div>
       </div>
     </o-fill>
   </div>
