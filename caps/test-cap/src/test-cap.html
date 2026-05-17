@@ -2,10 +2,41 @@
   <style>
     :host {
       display: block;
+      padding: 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin: 8px 0;
+    }
+    .test-result {
+      padding: 8px;
+      margin: 4px 0;
+      border-radius: 4px;
+    }
+    .test-result[status="error"] {
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+    }
+    .test-result[status="pass"] {
+      background-color: #d4edda;
+      border-left: 4px solid #28a745;
+    }
+    .test-result[status="fail"] {
+      background-color: #f8d7da;
+      border-left: 4px solid #dc3545;
+    }
+    .status-icon {
+      font-weight: bold;
+      margin-right: 8px;
     }
   </style>
   <div>
-    <label>{{ label }}</label>
+    <h3>{{ label }}</h3>
+    <o-fill :value="testResults">
+      <div class="test-result" attr:status="$data.status">
+        <span class="status-icon">{{ $data.icon }}</span>
+        <b>{{ $data.cid }}</b>: {{ $data.message }}
+      </div>
+    </o-fill>
   </div>
   <script>
     export default async () => {
@@ -18,16 +49,17 @@
         },
         data: {
           label: "测试能力",
+          testResults: [],
         },
         proto: {
-          // 伪装处理
           async handleCapabilityResults(results) {
+            this.testResults = [];
+
             for (let item of results) {
               const { cid } = item;
 
               const targetTemp = this.$(`template[result][cid=${cid}]`);
 
-              // 获取到 script 内的  export default async function (result) { 内容并运行
               const result = item.result;
 
               const scriptEle = targetTemp.$("script[type='module']");
@@ -45,17 +77,29 @@
                     console.log(`测试结果 [${cid}]:`, testResult);
 
                     if (testResult && testResult.assert) {
-                      console.log(
-                        `✓ 测试通过: ${testResult.content || "断言成功"}`,
-                      );
+                      this.testResults.push({
+                        cid,
+                        status: "pass",
+                        icon: "✓",
+                        message: testResult.content || "测试通过",
+                      });
                     } else {
-                      console.error(
-                        `✗ 测试失败: ${testResult?.content || "断言失败"}`,
-                      );
+                      this.testResults.push({
+                        cid,
+                        status: "fail",
+                        icon: "✗",
+                        message: testResult?.content || "断言失败",
+                      });
                     }
                   }
                 } catch (error) {
                   console.error(`运行测试脚本失败 [${cid}]:`, error);
+                  this.testResults.push({
+                    cid,
+                    status: "error",
+                    icon: "⚠",
+                    message: `运行错误: ${error.message}`,
+                  });
                 } finally {
                   URL.revokeObjectURL(url);
                 }
