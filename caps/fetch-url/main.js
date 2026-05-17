@@ -11,7 +11,7 @@ export default async function fetchUrl({ data = {}, content }) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
-  let data = await response.text();
+  data = await response.text();
 
   // 确定是html内容，才清理多余标签
   if (cleanHTML && data.toLocaleLowerCase().includes("<!doctype html")) {
