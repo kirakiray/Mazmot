@@ -35,7 +35,9 @@ const getCapabilitiesMessage = async () => {
   <template result name="get-capability" cid="first-get-all-capabilities">
 ${JSON.stringify(capabilities, null, 2)}
   </template>
-</cap-response>`,
+</cap-response>
+
+⚠️ **重要提醒**：以上仅为能力概览（名称和简短描述），**不包含详细用法**。在调用任何能力之前，你必须先使用 \`get-capability\` 并指定 \`data-name\` 参数获取该能力的完整文档，了解正确的调用方式、参数格式、返回值结构等。禁止根据能力名称猜测用法。`,
   };
 };
 window.getCapabilitiesMessage = getCapabilitiesMessage;

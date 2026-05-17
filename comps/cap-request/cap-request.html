@@ -144,12 +144,14 @@
         <div class="debug-info">
           <div style="margin-bottom: 8px">
             <strong>输入信息:</strong>
-            <div style="margin-top: 4px">{{$host.getInputJSON($data)}}</div>
+            <div style="margin-top: 4px">{{$host.stringify($data)}}</div>
           </div>
           <o-if :value="$data.done">
             <div style="margin-bottom: 8px">
               <strong>输出信息:</strong>
-              <div style="margin-top: 4px">{{$host.getOutputData($data)}}</div>
+              <div style="margin-top: 4px">
+                {{$host.stringify($data.result)}}
+              </div>
             </div>
           </o-if>
           <o-if :value="$data.error">
@@ -187,21 +189,11 @@
           allCompleted: false,
         },
         proto: {
-          getOutputData(data) {
-            if (data.result === null || data.result === undefined) {
+          stringify(data) {
+            if (data === null || data === undefined) {
               return "null";
             }
-            return JSON.stringify(data.result);
-          },
-          getInputJSON(data) {
-            debugger;
-            return JSON.stringify({
-              name: data.name,
-              cid: data.cid,
-              desc: data.desc,
-              data: data.data,
-              content: data.content,
-            });
+            return JSON.stringify(data);
           },
           async _executeCapability(item) {
             const capabilityName = item.name;
