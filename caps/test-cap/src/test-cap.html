@@ -8,12 +8,12 @@
       margin: 8px 0;
       background-color: var(--md-sys-color-surface);
     }
-    
+
     h3 {
       margin: 0 0 12px 0;
       color: var(--md-sys-color-on-surface);
     }
-    
+
     .test-result {
       padding: 12px;
       margin: 8px 0;
@@ -21,31 +21,31 @@
       background-color: var(--md-sys-color-surface-variant);
       color: var(--md-sys-color-on-surface);
     }
-    
+
     .test-result[status="pass"] {
       background-color: var(--md-sys-color-success-container);
       color: var(--md-sys-color-on-success-container);
       border-left: 4px solid var(--md-sys-color-success);
     }
-    
+
     .test-result[status="fail"] {
       background-color: var(--md-sys-color-error-container);
       color: var(--md-sys-color-on-error-container);
       border-left: 4px solid var(--md-sys-color-error);
     }
-    
+
     .test-result[status="error"] {
       background-color: var(--md-sys-color-neutral-container);
       color: var(--md-sys-color-on-neutral-container);
       border-left: 4px solid var(--md-sys-color-neutral);
     }
-    
+
     .status-icon {
       font-weight: bold;
       margin-right: 8px;
       font-size: 1.1em;
     }
-    
+
     b {
       color: var(--md-sys-color-primary);
     }
@@ -84,9 +84,65 @@
               const result = item.result;
 
               const scriptEle = targetTemp.$("script[type='module']");
+
+              let sourceFile = "";
+
+              if (this.host) {
+                sourceFile = this.host.PATH;
+              } else {
+                sourceFile = location.origin + location.pathname;
+              }
+              const sourceContnt = await fetch(sourceFile).then((res) =>
+                res.text(),
+              );
+
               if (scriptEle) {
                 const scriptText = scriptEle.text;
-                const base64Script = btoa(unescape(encodeURIComponent(scriptText)));
+
+                const startIndex = sourceContnt.indexOf(
+                  scriptEle.ele.outerHTML,
+                );
+                const prevContent = sourceContnt.slice(0, startIndex);
+                const targetLine = prevContent.split("\n").length - 1; // 脚本所在行号（0-indexed）
+
+                const toVLQ = (n) => {
+                  const charMap =
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                  let v = n < 0 ? (-n << 1) | 1 : n << 1;
+                  let result = "";
+                  do {
+                    let digit = v & 31;
+                    v >>= 5;
+                    if (v > 0) digit |= 32;
+                    result += charMap[digit];
+                  } while (v > 0);
+                  return result;
+                };
+
+                const lineCount = scriptText.split("\n").length;
+                let mappings = toVLQ(0) + toVLQ(0) + toVLQ(targetLine) + toVLQ(0);
+                for (let i = 1; i < lineCount; i++) {
+                  mappings += ";AACA";
+                }
+
+                const sourceMap = {
+                  version: 3,
+                  sources: [sourceFile],
+                  names: [],
+                  mappings: mappings,
+                };
+
+                const sourceMapBase64 = btoa(
+                  unescape(encodeURIComponent(JSON.stringify(sourceMap))),
+                );
+                const scriptWithMap =
+                  scriptText +
+                  `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${sourceMapBase64}`;
+
+                const base64Script = btoa(
+                  unescape(encodeURIComponent(scriptWithMap)),
+                );
+
                 const url = `data:application/javascript;base64,${base64Script}`;
 
                 try {
