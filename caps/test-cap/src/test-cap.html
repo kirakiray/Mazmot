@@ -60,7 +60,9 @@
     </o-fill>
   </div>
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { createScriptWithSourceMap } = await load("./util.js");
+      
       return {
         tag: "test-cap",
         attrs: {
@@ -103,55 +105,9 @@
                   scriptEle.ele.outerHTML,
                 );
                 const prevContent = sourceContnt.slice(0, startIndex);
-                const targetLine = prevContent.split("\n").length - 1; // 脚本所在行号（0-indexed）
+                const targetLine = prevContent.split("\n").length - 1;
 
-                const toVLQ = (n) => {
-                  const charMap =
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                  let v = n < 0 ? (-n << 1) | 1 : n << 1;
-                  let result = "";
-                  do {
-                    let digit = v & 31;
-                    v >>= 5;
-                    if (v > 0) digit |= 32;
-                    result += charMap[digit];
-                  } while (v > 0);
-                  return result;
-                };
-
-                const lineCount = scriptText.split("\n").length;
-                let mappings = toVLQ(0) + toVLQ(0) + toVLQ(targetLine) + toVLQ(0);
-                for (let i = 1; i < lineCount; i++) {
-                  mappings += ";AACA";
-                }
-
-                let displaySourceFile = sourceFile;
-                if (!displaySourceFile.split("/").pop().includes(".")) {
-                  displaySourceFile += displaySourceFile.endsWith("/")
-                    ? "index.html"
-                    : "/index.html";
-                }
-
-                const sourceMap = {
-                  version: 3,
-                  sources: [displaySourceFile],
-                  sourcesContent: [sourceContnt],
-                  names: [],
-                  mappings: mappings,
-                };
-
-                const sourceMapBase64 = btoa(
-                  unescape(encodeURIComponent(JSON.stringify(sourceMap))),
-                );
-                const scriptWithMap =
-                  scriptText +
-                  `\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,${sourceMapBase64}`;
-
-                const base64Script = btoa(
-                  unescape(encodeURIComponent(scriptWithMap)),
-                );
-
-                const url = `data:application/javascript;base64,${base64Script}`;
+                const url = createScriptWithSourceMap(scriptText, targetLine, sourceFile, sourceContnt);
 
                 try {
                   const module = await import(url);

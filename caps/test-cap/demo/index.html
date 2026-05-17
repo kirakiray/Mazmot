@@ -1,39 +1,43 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自定义表单演示组件</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m src="../src/test-cap.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>自定义表单演示组件</title>
-  <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
-  <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
-  <l-m src="../src/test-cap.html"></l-m>
-  <l-m src="/comps/cap-request/cap-request.html"></l-m>
-</head>
+  <body>
+    <test-cap>
+      <cap-request>
+        <template
+          name="fetch-url"
+          cid="fetch-01"
+          desc="请求package.json文件内容"
+          data-url="/package.json"
+        >
+        </template>
+      </cap-request>
+      <template result cid="fetch-01">
+        <script type="module">
+          export default async function (result) {
+            // 直接获取内容
+            const data = await fetch("/package.json");
+            const jsonText = await data.text();
 
-<body>
-  <test-cap>
-    <cap-request>
-      <template name="fetch-url" cid="fetch-01" desc="请求package.json文件内容" data-url="/package.json">
+            return {
+              assert: jsonText === result,
+              content: "获取成功",
+            };
+          }
+        </script>
       </template>
-    </cap-request>
-    <template result cid="fetch-01">
-      <script type="module">
-        export default async function (result) {
-          // 直接获取内容
-          const data = await fetch("/package.json");
-          const jsonText = await data.text();
-
-          console.log(jsonText);
-
-          return {
-            assert: jsonText === result,
-            content: "获取成功",
-          };
-        }
-      </script>
-    </template>
-  </test-cap>
-</body>
-
+    </test-cap>
+  </body>
 </html>
