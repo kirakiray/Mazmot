@@ -86,10 +86,8 @@
               const scriptEle = targetTemp.$("script[type='module']");
               if (scriptEle) {
                 const scriptText = scriptEle.text;
-                const blob = new Blob([scriptText], {
-                  type: "application/javascript",
-                });
-                const url = URL.createObjectURL(blob);
+                const base64Script = btoa(unescape(encodeURIComponent(scriptText)));
+                const url = `data:application/javascript;base64,${base64Script}`;
 
                 try {
                   const module = await import(url);
@@ -121,8 +119,6 @@
                     icon: "⚠",
                     message: `运行错误: ${error.message}`,
                   });
-                } finally {
-                  URL.revokeObjectURL(url);
                 }
               }
             }
