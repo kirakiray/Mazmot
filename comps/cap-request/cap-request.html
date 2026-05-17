@@ -144,7 +144,9 @@
         <div class="debug-info">
           <div style="margin-bottom: 8px">
             <strong>输入信息:</strong>
-            <div style="margin-top: 4px">{{$host.stringify($data)}}</div>
+            <div style="margin-top: 4px">
+              {{$host.stringify($data, ['name', 'desc', 'cid', 'content'])}}
+            </div>
           </div>
           <o-if :value="$data.done">
             <div style="margin-bottom: 8px">
@@ -189,9 +191,16 @@
           allCompleted: false,
         },
         proto: {
-          stringify(data) {
+          stringify(data, keyArr) {
             if (data === null || data === undefined) {
               return "null";
+            }
+            if (keyArr) {
+              const reData = {};
+              keyArr.forEach((key) => {
+                reData[key] = data[key];
+              });
+              return JSON.stringify(reData);
             }
             return JSON.stringify(data);
           },
