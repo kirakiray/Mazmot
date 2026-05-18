@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>自定义表单演示组件</title>
+    <title>测试能力组件</title>
     <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
     <link
       rel="stylesheet"
@@ -14,13 +14,20 @@
   </head>
 
   <body>
-    <test-cap>
+    <test-cap label="测试 fetch-url 能力">
       <cap-request>
         <template
           name="fetch-url"
           cid="fetch-01"
           desc="请求package.json文件内容"
           data-url="/package.json"
+        >
+        </template>
+        <template
+          name="fetch-url"
+          cid="fetch-02"
+          desc="请求README.md文件内容"
+          data-url="/README.md"
         >
         </template>
       </cap-request>
@@ -33,6 +40,20 @@
 
             return {
               assert: jsonText === result,
+              content: "获取成功",
+            };
+          }
+        </script>
+      </template>
+      <template result cid="fetch-02">
+        <script type="module">
+          export default async function (result) {
+            // 直接获取内容
+            const data = await fetch("/README.md");
+            const mdText = await data.text();
+
+            return {
+              assert: mdText === result,
               content: "获取成功",
             };
           }
