@@ -104,7 +104,7 @@
     </p-button>
   </p-button-group>
   <o-fill :value="capRequests">
-    <div>
+    <div attr:data-item-cid="$data.cid">
       <div class="item">
         <div class="cap-icon">⚡</div>
         <div class="cap-content">
@@ -141,6 +141,14 @@
           </o-else-if>
         </div>
       </div>
+      <o-if :value="$data.page">
+        <div class="page-container">
+          <o-page
+            attr:src="$data.page"
+            on:page-loaded="$host.runPageInit($data,$ele)"
+          ></o-page>
+        </div>
+      </o-if>
       <o-if :value="$host.debugMode">
         <div class="debug-info">
           <div style="margin-bottom: 8px">
@@ -159,9 +167,9 @@
           </o-if>
           <o-if :value="$data.error">
             <div>
-              <strong style="color: var(--md-sys-color-error)"
-                >错误信息:</strong
-              >
+              <strong style="color: var(--md-sys-color-error)">
+                错误信息:
+              </strong>
               <div style="margin-top: 4px; color: var(--md-sys-color-error)">
                 {{$data.error}}
               </div>
@@ -173,7 +181,8 @@
   </o-fill>
   <script>
     export default async function ({ load }) {
-      const { loadCapabilityConfig } = await load("./util.js");
+      const { loadCapabilityConfig, normalizeCapPath } =
+        await load("./util.js");
 
       return {
         tag: "cap-request",
@@ -194,6 +203,10 @@
           allCompleted: false,
         },
         proto: {
+          runPageInit(item, fillItemEl) {
+            const page = fillItemEl.$("o-page");
+            page.init(item.content);
+          },
           stringify(data, keyArr) {
             if (data === null || data === undefined) {
               return "null";
@@ -214,8 +227,20 @@
 
             if (yamlConfig.page) {
               // 使用页面能力
+              const pageUrl = normalizeCapPath(
+                `/caps/${capabilityName}/${yamlConfig.page}`,
+              );
+
+              item.page = pageUrl;
+
+              const result = await new Promise((resolve, reject) => {
+                // 挂载 resolve 和 reject 到 item 上，方便在页面中调用
+                item._resove = resolve;
+                item._reject = reject;
+              });
+
               debugger;
-              return;
+              return result;
             }
 
             // 使用 main.js 能力
