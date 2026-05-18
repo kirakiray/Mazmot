@@ -4,6 +4,7 @@
   <l-m src="../comps/cap-request/cap-request.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <style>
     :host {
       display: block;
@@ -39,54 +40,6 @@
     .history-list {
       flex: 1;
       overflow: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .history-item {
-      padding: 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      position: relative;
-    }
-    .history-item:hover {
-      background-color: rgba(0, 0, 0, 0.05);
-    }
-    .history-item.active {
-      background-color: rgba(0, 123, 255, 0.1);
-      border-color: rgba(0, 123, 255, 0.3);
-    }
-    .history-item-title {
-      font-size: 14px;
-      margin-bottom: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .history-item-meta {
-      font-size: 12px;
-      opacity: 0.6;
-    }
-    .history-item-delete {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      transition: opacity 0.2s;
-      background: rgba(255, 0, 0, 0.1);
-      color: #dc3545;
-      font-size: 12px;
-    }
-    .history-item:hover .history-item-delete {
-      opacity: 1;
     }
     .chat-container {
       flex: 1;
@@ -103,37 +56,40 @@
     m-chat-item[is-response] {
       display: none;
     }
+
+    p-list-item.active {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
   </style>
   <div class="main-layout">
     <div class="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">对话历史</span>
-        <p-button
-          on:click="createNewSession"
-          style="font-size: 12px; padding: 4px 8px"
-          >新建对话</p-button
-        >
+        <p-button on:click="createNewSession" size="small">新建对话</p-button>
       </div>
       <div class="history-list">
-        <o-fill :value="histories">
-          <div
-            class="history-item"
-            attr:active="$data.sessionId === $host.sessionId"
-            on:click="$host.switchSession($data.sessionId)"
-          >
-            <div class="history-item-title">{{$data.title || '新对话'}}</div>
-            <div class="history-item-meta">
-              {{$data.messageCount || 0}} 条消息 ·
-              {{$host.formatDate($data.updatedAt)}}
-            </div>
-            <div
-              class="history-item-delete"
-              on:click="deleteSession($data.sessionId, $event)"
+        <p-list>
+          <o-fill :value="histories">
+            <p-list-item
+              button
+              class:active="$data.sessionId === $host.sessionId"
+              on:click="$host.switchSession($data.sessionId)"
             >
-              ✕
-            </div>
-          </div>
-        </o-fill>
+              {{$data.title || '新对话'}}
+              <div secondary>
+                {{$data.messageCount || 0}} 条消息 ·
+                {{$host.formatDate($data.updatedAt)}}
+              </div>
+              <span
+                slot="suffix"
+                on:click="$host.deleteSession($data.sessionId, $event)"
+                style="cursor: pointer; opacity: 0.6; font-size: 14px"
+                >✕</span
+              >
+            </p-list-item>
+          </o-fill>
+        </p-list>
       </div>
     </div>
 
