@@ -85,6 +85,7 @@
                 slot="suffix"
                 size="small"
                 variant="text"
+                icon
                 on:click="$host.deleteSession($data.sessionId, $event)"
                 style="z-index: 3"
               >
@@ -165,6 +166,9 @@
         deleteHistory,
         listHistories,
       } = await load("../util/history.js");
+      const { confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
 
       return {
         data: {
@@ -214,7 +218,14 @@
           async deleteSession(targetSessionId, event) {
             event.stopPropagation();
 
-            if (!confirm("确定要删除这个对话吗？")) return;
+            const result = await confirm({
+              title: "删除确认",
+              message: "确定要删除这个对话吗？",
+              yes: "删除",
+              cancel: "取消",
+            });
+
+            if (!result) return;
 
             await deleteHistory(targetSessionId);
             await this.loadHistories();
