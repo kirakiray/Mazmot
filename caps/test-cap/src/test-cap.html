@@ -3,7 +3,12 @@
     :host {
       display: block;
       margin: 16px 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
     }
 
     h3 {
@@ -23,13 +28,15 @@
       margin: 12px 0;
       border-radius: 8px;
       background: var(--md-sys-color-surface);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+      box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.08),
+        0 1px 2px rgba(0, 0, 0, 0.06);
       transition: all 0.2s ease;
       overflow: hidden;
     }
 
     .test-result::before {
-      content: '';
+      content: "";
       position: absolute;
       left: 0;
       top: 0;
@@ -39,7 +46,9 @@
     }
 
     .test-result:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+      box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.12),
+        0 2px 4px rgba(0, 0, 0, 0.08);
       transform: translateY(-1px);
     }
 
@@ -124,7 +133,8 @@
       backdrop-filter: blur(8px);
       border-radius: 6px;
       font-size: 0.95em;
-      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+      font-family:
+        "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, monospace;
       line-height: 1.5;
       white-space: pre-wrap;
       word-wrap: break-word;
@@ -158,7 +168,7 @@
   <script>
     export default async ({ load }) => {
       const { createScriptWithSourceMap } = await load("./util.js");
-      
+
       return {
         tag: "test-cap",
         attrs: {
@@ -183,14 +193,14 @@
 
               const scriptEle = targetTemp.$("script[type='module']");
 
-              let sourceFile = "";
+              let sourceFilePath = "";
 
               if (this.host) {
-                sourceFile = this.host.PATH;
+                sourceFilePath = this.host.PATH;
               } else {
-                sourceFile = location.origin + location.pathname;
+                sourceFilePath = location.origin + location.pathname;
               }
-              const sourceContnt = await fetch(sourceFile).then((res) =>
+              const sourceContnt = await fetch(sourceFilePath).then((res) =>
                 res.text(),
               );
 
@@ -203,7 +213,12 @@
                 const prevContent = sourceContnt.slice(0, startIndex);
                 const targetLine = prevContent.split("\n").length - 1;
 
-                const url = createScriptWithSourceMap(scriptText, targetLine, sourceFile, sourceContnt);
+                const url = createScriptWithSourceMap(
+                  scriptText,
+                  targetLine,
+                  sourceFilePath,
+                  sourceContnt,
+                );
 
                 try {
                   const module = await import(url);
