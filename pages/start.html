@@ -80,6 +80,7 @@
         <span slot="label">输入消息</span>
       </p-input>
       <p-button on:click="sendMessage">发送</p-button>
+      <p-button on:click="clearHistory" style="opacity: 0.7">清除历史</p-button>
     </div>
   </div>
   <script>
@@ -88,17 +89,39 @@
 
       const { saveKey, getAssistant } = await load("../ai/main.js");
       const { getSystemPrompt } = await load("../util/system-prompt.js");
+      const { 
+        saveHistory, 
+        loadHistory, 
+        generateSessionId,
+        deleteHistory,
+        listHistories
+      } = await load("../util/history.js");
 
       return {
         data: {
           messages: [],
           inputMessage: "",
           isLoading: false,
+          sessionId: null,
         },
         ready() {
           this.attr("dialogue-host", ""); // 标记为对话主机
         },
         async attached() {
+          const histories = await listHistories();
+          
+          if (histories && histories.length > 0) {
+            const latestSession = histories[0];
+            this.sessionId = latestSession.sessionId;
+            
+            const savedHistory = await loadHistory(this.sessionId);
+            if (savedHistory && savedHistory.messages && savedHistory.messages.length > 0) {
+              this.messages = savedHistory.messages;
+              return;
+            }
+          }
+          
+          this.sessionId = generateSessionId();
           const initMessages = await getSystemPrompt();
           this.messages = initMessages;
         },
@@ -160,6 +183,8 @@
                 usage: response.usage,
                 model: response.model,
               });
+              
+              await saveHistory(this.sessionId, this.messages);
             } catch (e) {
               this.messages.push({
                 role: "assistant",
@@ -175,8 +200,19 @@
 
             this.messages.push({ role: "user", content: message });
             this.inputMessage = "";
+            
+            await saveHistory(this.sessionId, this.messages);
 
             await this.callAssistant();
+          },
+          async clearHistory() {
+            if (this.sessionId) {
+              await deleteHistory(this.sessionId);
+            }
+            
+            this.sessionId = generateSessionId();
+            const initMessages = await getSystemPrompt();
+            this.messages = initMessages;
           },
         },
       };
