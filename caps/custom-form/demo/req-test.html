@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+  </head>
+  <body>
+    <l-m src="/caps/test-cap/src/test-cap.html"></l-m>
+
+    <test-cap label="测试 fetch-url 能力">
+      <cap-request>
+        <template
+          name="fetch-url"
+          cid="fetch-01"
+          desc="请求package.json文件内容"
+          data-url="/package.json"
+        >
+        </template>
+      </cap-request>
+      <template result cid="fetch-01">
+        <script type="module">
+          export default async function (result) {
+            // 直接获取内容
+            const data = await fetch("/package.json");
+            const jsonText = await data.text();
+
+            return {
+              assert: jsonText === result,
+              content: "获取成功",
+            };
+          }
+        </script>
+      </template>
+    </test-cap>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 <template component>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <style>
     :host {
@@ -64,7 +65,7 @@
 
     .tool-btns {
       position: absolute;
-      right: -24px;
+      right: 0px;
       top: -24px;
       opacity: 0;
       transition: all 0.2s ease;
@@ -172,6 +173,8 @@
   </o-fill>
   <script>
     export default async function ({ load }) {
+      const { loadCapabilityConfig } = await load("./util.js");
+
       return {
         tag: "cap-request",
         data: {
@@ -206,6 +209,16 @@
           },
           async _executeCapability(item) {
             const capabilityName = item.name;
+
+            const yamlConfig = await loadCapabilityConfig(capabilityName);
+
+            if (yamlConfig.page) {
+              // 使用页面能力
+              debugger;
+              return;
+            }
+
+            // 使用 main.js 能力
             const url = `/caps/${capabilityName}/main.js`;
             const module = await load(url);
             const capabilityRunner = module.default;
