@@ -101,6 +101,15 @@
       color: var(--md-sys-color-on-neutral-container);
     }
 
+    .desc {
+      font-size: 0.9em;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 12px;
+      padding-left: 34px;
+      line-height: 1.4;
+      opacity: 0.8;
+    }
+
     .status-icon {
       font-size: 1.3em;
       margin-right: 10px;
@@ -161,6 +170,7 @@
           <span class="status-icon">{{ $data.icon }}</span>
           <span>{{ $data.cid }}</span>
         </div>
+        <div class="desc">{{ $data.desc }}</div>
         <div class="message">{{ $data.message }}</div>
       </div>
     </o-fill>
@@ -186,6 +196,7 @@
 
             for (let item of results) {
               const { cid } = item;
+              const desc = this.$(`template[desc][cid=${cid}]`).attr("desc");
 
               const targetTemp = this.$(`template[result][cid=${cid}]`);
 
@@ -229,6 +240,7 @@
                     if (testResult && testResult.assert) {
                       this.testResults.push({
                         cid,
+                        desc,
                         status: "pass",
                         icon: "✓",
                         message: testResult.content || "测试通过",
@@ -236,6 +248,7 @@
                     } else {
                       this.testResults.push({
                         cid,
+                        desc,
                         status: "fail",
                         icon: "✗",
                         message: testResult?.content || "断言失败",
@@ -246,6 +259,7 @@
                   console.error(`运行测试脚本失败 [${cid}]:`, error);
                   this.testResults.push({
                     cid,
+                    desc,
                     status: "error",
                     icon: "⚠",
                     message: `运行错误: ${error.message}`,
