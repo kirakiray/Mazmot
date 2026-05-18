@@ -1,3 +1,5 @@
+import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
+
 export default async function getCapability({ data = {}, content }) {
   const { all, name } = data;
 
@@ -20,19 +22,15 @@ export default async function getCapability({ data = {}, content }) {
       }
 
       const frontMatterMatch = capabilityMd.match(/^---\n([\s\S]*?)\n---/);
-      let description = "";
+      const yamlConfig = yaml.load(frontMatterMatch[1]);
 
-      if (frontMatterMatch) {
-        const frontMatter = frontMatterMatch[1];
-        const descMatch = frontMatter.match(/^description:\s*(.+)$/m);
-        if (descMatch) {
-          description = descMatch[1].trim();
-        }
-      }
+      const desc = yamlConfig.description;
+      delete yamlConfig.description;
 
       capabilityDesc.push({
+        ...yamlConfig,
         name: capabilityName,
-        desc: description,
+        desc,
       });
     }
 
