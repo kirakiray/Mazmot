@@ -74,6 +74,11 @@
     :host(:hover) .tool-btns {
       opacity: 1;
     }
+
+    .cap-page {
+      border-radius: 8px;
+      border: 1px solid var(--md-sys-color-primary);
+    }
   </style>
 
   <p-button-group class="tool-btns">
@@ -144,8 +149,11 @@
       <o-if :value="$data.page">
         <div class="page-container">
           <o-page
+            class="cap-page"
             attr:src="$data.page"
             on:page-loaded="$host.runPageInit($data,$ele)"
+            on:submit="$host.pageDone($event,'submit',$data)"
+            on:cancel="$host.pageDone($event,'cancel',$data)"
           ></o-page>
         </div>
       </o-if>
@@ -203,6 +211,11 @@
           allCompleted: false,
         },
         proto: {
+          pageDone(event, type, item) {
+            const { data } = event;
+
+            item._resolve(data);
+          },
           runPageInit(item, fillItemEl) {
             const page = fillItemEl.$("o-page");
             page.init(item.content);
@@ -235,11 +248,10 @@
 
               const result = await new Promise((resolve, reject) => {
                 // 挂载 resolve 和 reject 到 item 上，方便在页面中调用
-                item._resove = resolve;
+                item._resolve = resolve;
                 item._reject = reject;
               });
 
-              debugger;
               return result;
             }
 

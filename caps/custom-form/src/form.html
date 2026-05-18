@@ -144,7 +144,13 @@
       </p-button>
     </o-if>
     <o-if :value="cancelName">
-      <p-button size="s" type="button" color="error" variant="outlined">
+      <p-button
+        size="s"
+        type="button"
+        color="error"
+        variant="outlined"
+        on:click="cancel"
+      >
         {{ cancelName }}
       </p-button>
     </o-if>
@@ -180,18 +186,20 @@
             const data = {};
 
             this.formItems.forEach((item) => {
+              if (item.value?.toJSON) {
+                item.value = item.value.toJSON();
+                return;
+              }
+
               data[item.name] = item.value;
             });
 
             this.emit("submit", {
-              composed: true,
-              data: data,
+              data,
             });
           },
           cancel() {
-            this.emit("cancel", {
-              composed: true,
-            });
+            this.emit("cancel");
           },
           async init(data) {
             let arr = data;
