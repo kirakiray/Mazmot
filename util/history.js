@@ -13,13 +13,26 @@ async function ensureHistoryDir() {
   return historyDir;
 }
 
+function extractTitle(messages) {
+  const userMessage = messages.find(m => m.role === 'user' && !m.hidden && !m.isResponse);
+  if (userMessage && userMessage.content) {
+    const content = userMessage.content;
+    const title = content.length > 30 ? content.substring(0, 30) + '...' : content;
+    return title;
+  }
+  return '新对话';
+}
+
 export async function saveHistory(sessionId, messages) {
   const dir = await ensureHistoryDir();
   const fileName = `${sessionId}.json`;
   const file = await dir.get(fileName, { create: "file" });
   
+  const title = extractTitle(messages);
+  
   const historyData = {
     sessionId,
+    title,
     messages,
     updatedAt: new Date().toISOString(),
     messageCount: messages.length
@@ -66,6 +79,7 @@ export async function listHistories() {
         const data = JSON.parse(content);
         histories.push({
           sessionId: data.sessionId,
+          title: data.title || '新对话',
           updatedAt: data.updatedAt,
           messageCount: data.messageCount
         });

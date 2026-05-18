@@ -12,7 +12,84 @@
       padding: 20px;
       height: 100%;
     }
-    .container {
+    .main-layout {
+      display: flex;
+      height: 100%;
+      gap: 20px;
+    }
+    .sidebar {
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-right: 1px solid rgba(0, 0, 0, 0.1);
+      padding-right: 20px;
+    }
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .sidebar-title {
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .history-list {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .history-item {
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      position: relative;
+    }
+    .history-item:hover {
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+    .history-item.active {
+      background-color: rgba(0, 123, 255, 0.1);
+      border-color: rgba(0, 123, 255, 0.3);
+    }
+    .history-item-title {
+      font-size: 14px;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .history-item-meta {
+      font-size: 12px;
+      opacity: 0.6;
+    }
+    .history-item-delete {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+      background: rgba(255, 0, 0, 0.1);
+      color: #dc3545;
+      font-size: 12px;
+    }
+    .history-item:hover .history-item-delete {
+      opacity: 1;
+    }
+    .chat-container {
+      flex: 1;
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -27,60 +104,93 @@
       display: none;
     }
   </style>
-  <div class="container">
-    <div style="flex: 1; overflow: auto">
-      <m-chatbox>
-        <o-fill :value="messages">
-          <m-chat-item
-            attr:role="$data.role"
-            attr:is-response="$data.isResponse"
-            attr:hidden="$data.hidden"
+  <div class="main-layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">对话历史</span>
+        <p-button
+          on:click="createNewSession"
+          style="font-size: 12px; padding: 4px 8px"
+          >新建对话</p-button
+        >
+      </div>
+      <div class="history-list">
+        <o-fill :value="histories">
+          <div
+            class="history-item"
+            attr:active="$data.sessionId === $host.sessionId"
+            on:click="$host.switchSession($data.sessionId)"
           >
-            <o-if :value="$data.role !== 'system' && !$data.isResponse">
-              <o-md>{{$data.content}}</o-md>
-            </o-if>
-
-            <o-if :value="$data.usage">
-              <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
-                模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}}
-                tokens
-                <span o-if="$data.usage.prompt_cache_hit_tokens"
-                  >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
-                  tokens</span
-                >
-                <span o-if="$data.usage.prompt_cache_miss_tokens"
-                  >| 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
-                  tokens</span
-                >
-                | 输出: {{$data.usage.completion_tokens}} tokens
-              </div>
-            </o-if>
-          </m-chat-item>
+            <div class="history-item-title">{{$data.title || '新对话'}}</div>
+            <div class="history-item-meta">
+              {{$data.messageCount || 0}} 条消息 ·
+              {{$host.formatDate($data.updatedAt)}}
+            </div>
+            <div
+              class="history-item-delete"
+              on:click="deleteSession($data.sessionId, $event)"
+            >
+              ✕
+            </div>
+          </div>
         </o-fill>
-        <o-if :value="isLoading">
-          <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
-        </o-if>
-      </m-chatbox>
+      </div>
     </div>
-    <div
-      style="
-        display: flex;
-        gap: 10px;
-        align-items: flex-end;
-        max-width: 800px;
-        width: 100%;
-        margin: 0 auto;
-      "
-    >
-      <p-input
-        sync:value="inputMessage"
-        style="flex: 1"
-        on:keydown="handleKeyDown"
+
+    <div class="chat-container">
+      <div style="flex: 1; overflow: auto">
+        <m-chatbox>
+          <o-fill :value="messages">
+            <m-chat-item
+              attr:role="$data.role"
+              attr:is-response="$data.isResponse"
+              attr:hidden="$data.hidden"
+            >
+              <o-if :value="$data.role !== 'system' && !$data.isResponse">
+                <o-md>{{$data.content}}</o-md>
+              </o-if>
+
+              <o-if :value="$data.usage">
+                <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
+                  模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}}
+                  tokens
+                  <span o-if="$data.usage.prompt_cache_hit_tokens"
+                    >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
+                    tokens</span
+                  >
+                  <span o-if="$data.usage.prompt_cache_miss_tokens"
+                    >| 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
+                    tokens</span
+                  >
+                  | 输出: {{$data.usage.completion_tokens}} tokens
+                </div>
+              </o-if>
+            </m-chat-item>
+          </o-fill>
+          <o-if :value="isLoading">
+            <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
+          </o-if>
+        </m-chatbox>
+      </div>
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          align-items: flex-end;
+          max-width: 800px;
+          width: 100%;
+          margin: 0 auto;
+        "
       >
-        <span slot="label">输入消息</span>
-      </p-input>
-      <p-button on:click="sendMessage">发送</p-button>
-      <p-button on:click="clearHistory" style="opacity: 0.7">清除历史</p-button>
+        <p-input
+          sync:value="inputMessage"
+          style="flex: 1"
+          on:keydown="handleKeyDown"
+        >
+          <span slot="label">输入消息</span>
+        </p-input>
+        <p-button on:click="sendMessage">发送</p-button>
+      </div>
     </div>
   </div>
   <script>
@@ -89,12 +199,12 @@
 
       const { saveKey, getAssistant } = await load("../ai/main.js");
       const { getSystemPrompt } = await load("../util/system-prompt.js");
-      const { 
-        saveHistory, 
-        loadHistory, 
+      const {
+        saveHistory,
+        loadHistory,
         generateSessionId,
         deleteHistory,
-        listHistories
+        listHistories,
       } = await load("../util/history.js");
 
       return {
@@ -103,29 +213,74 @@
           inputMessage: "",
           isLoading: false,
           sessionId: null,
+          histories: [],
         },
         ready() {
           this.attr("dialogue-host", ""); // 标记为对话主机
         },
         async attached() {
-          const histories = await listHistories();
-          
-          if (histories && histories.length > 0) {
-            const latestSession = histories[0];
-            this.sessionId = latestSession.sessionId;
-            
-            const savedHistory = await loadHistory(this.sessionId);
-            if (savedHistory && savedHistory.messages && savedHistory.messages.length > 0) {
-              this.messages = savedHistory.messages;
-              return;
-            }
+          await this.loadHistories();
+
+          if (this.histories && this.histories.length > 0) {
+            const latestSession = this.histories[0];
+            await this.switchSession(latestSession.sessionId);
+          } else {
+            await this.createNewSession();
           }
-          
-          this.sessionId = generateSessionId();
-          const initMessages = await getSystemPrompt();
-          this.messages = initMessages;
         },
         proto: {
+          async loadHistories() {
+            this.histories = await listHistories();
+          },
+          async createNewSession() {
+            this.sessionId = generateSessionId();
+            const initMessages = await getSystemPrompt();
+            this.messages = initMessages;
+            await saveHistory(this.sessionId, this.messages);
+            await this.loadHistories();
+          },
+          async switchSession(targetSessionId) {
+            if (targetSessionId === this.sessionId) return;
+
+            this.sessionId = targetSessionId;
+            const savedHistory = await loadHistory(targetSessionId);
+
+            if (savedHistory && savedHistory.messages) {
+              this.messages = savedHistory.messages;
+            } else {
+              const initMessages = await getSystemPrompt();
+              this.messages = initMessages;
+            }
+          },
+          async deleteSession(targetSessionId, event) {
+            event.stopPropagation();
+
+            if (!confirm("确定要删除这个对话吗？")) return;
+
+            await deleteHistory(targetSessionId);
+            await this.loadHistories();
+
+            if (targetSessionId === this.sessionId) {
+              if (this.histories && this.histories.length > 0) {
+                await this.switchSession(this.histories[0].sessionId);
+              } else {
+                await this.createNewSession();
+              }
+            }
+          },
+          formatDate(dateString) {
+            if (!dateString) return "";
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 60000) return "刚刚";
+            if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
+
+            return date.toLocaleDateString();
+          },
           async handleCapabilityResults(results) {
             const templates = results.map((r) => {
               if (r.error) {
@@ -183,8 +338,9 @@
                 usage: response.usage,
                 model: response.model,
               });
-              
+
               await saveHistory(this.sessionId, this.messages);
+              await this.loadHistories();
             } catch (e) {
               this.messages.push({
                 role: "assistant",
@@ -200,19 +356,11 @@
 
             this.messages.push({ role: "user", content: message });
             this.inputMessage = "";
-            
+
             await saveHistory(this.sessionId, this.messages);
+            await this.loadHistories();
 
             await this.callAssistant();
-          },
-          async clearHistory() {
-            if (this.sessionId) {
-              await deleteHistory(this.sessionId);
-            }
-            
-            this.sessionId = generateSessionId();
-            const initMessages = await getSystemPrompt();
-            this.messages = initMessages;
           },
         },
       };
