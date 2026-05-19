@@ -83,7 +83,15 @@
         async attached() {
           await this.loadHistories();
 
-          if (this.histories && this.histories.length > 0) {
+          const lastSessionId = sessionStorage.getItem("lastSessionId");
+          const validLastSession = this.histories.some(
+            (h) => h.sessionId === lastSessionId
+          );
+
+          if (validLastSession) {
+            const provider = this.getProvider("chat-data");
+            provider.sessionId = lastSessionId;
+          } else if (this.histories && this.histories.length > 0) {
             const provider = this.getProvider("chat-data");
             provider.sessionId = this.histories[0].sessionId;
           } else {
@@ -96,6 +104,7 @@
           },
           async createNewSession() {
             const newSessionId = generateSessionId();
+            sessionStorage.setItem("lastSessionId", newSessionId);
             const initMessages = await getSystemPrompt();
             await saveHistory(newSessionId, initMessages);
             const provider = this.getProvider("chat-data");
@@ -104,6 +113,7 @@
           },
           async switchSession(targetSessionId) {
             if (targetSessionId === this.currentSessionId) return;
+            sessionStorage.setItem("lastSessionId", targetSessionId);
             const provider = this.getProvider("chat-data");
             provider.sessionId = targetSessionId;
           },
@@ -125,7 +135,9 @@
             if (targetSessionId === this.currentSessionId) {
               if (this.histories && this.histories.length > 0) {
                 const provider = this.getProvider("chat-data");
-                provider.sessionId = this.histories[0].sessionId;
+                const nextSession = this.histories[0].sessionId;
+                sessionStorage.setItem("lastSessionId", nextSession);
+                provider.sessionId = nextSession;
               } else {
                 await this.createNewSession();
               }
