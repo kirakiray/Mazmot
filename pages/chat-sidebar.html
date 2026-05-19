@@ -1,0 +1,151 @@
+<template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      width: 280px;
+      gap: 12px;
+      border-right: 1px solid rgba(0, 0, 0, 0.1);
+      padding-right: 20px;
+    }
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .sidebar-title {
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .history-list {
+      flex: 1;
+      overflow: auto;
+    }
+    p-list-item.active {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+  </style>
+  <div class="sidebar-header">
+    <span class="sidebar-title">对话历史</span>
+    <p-button on:click="createNewSession" size="small">新建对话</p-button>
+  </div>
+  <div class="history-list">
+    <p-list>
+      <o-fill :value="histories">
+        <p-list-item
+          button
+          class:active="$data.sessionId === $host.currentSessionId"
+          on:click="$host.switchSession($data.sessionId)"
+        >
+          {{$data.title || '新对话'}}
+          <p-button
+            slot="suffix"
+            size="s"
+            variant="text"
+            icon
+            on:click="$host.deleteSession($data.sessionId, $event)"
+            style="z-index: 3"
+          >
+            ✕
+          </p-button>
+        </p-list-item>
+      </o-fill>
+    </p-list>
+  </div>
+  <o-consumer
+    name="chat-data"
+    watch:session-id="currentSessionId"
+    on:refresh-histories="loadHistories"
+  ></o-consumer>
+  <script>
+    export default async ({ load }) => {
+      const {
+        saveHistory,
+        generateSessionId,
+        deleteHistory,
+        listHistories,
+      } = await load("../util/history.js");
+      const { getSystemPrompt } = await load("../util/system-prompt.js");
+      const { confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      return {
+        data: {
+          currentSessionId: null,
+          histories: [],
+        },
+        async attached() {
+          await this.loadHistories();
+
+          if (this.histories && this.histories.length > 0) {
+            const provider = this.getProvider("chat-data");
+            provider.sessionId = this.histories[0].sessionId;
+          } else {
+            await this.createNewSession();
+          }
+        },
+        proto: {
+          async loadHistories() {
+            this.histories = await listHistories();
+          },
+          async createNewSession() {
+            const newSessionId = generateSessionId();
+            const initMessages = await getSystemPrompt();
+            await saveHistory(newSessionId, initMessages);
+            const provider = this.getProvider("chat-data");
+            provider.sessionId = newSessionId;
+            await this.loadHistories();
+          },
+          async switchSession(targetSessionId) {
+            if (targetSessionId === this.currentSessionId) return;
+            const provider = this.getProvider("chat-data");
+            provider.sessionId = targetSessionId;
+          },
+          async deleteSession(targetSessionId, event) {
+            event.stopPropagation();
+
+            const result = await confirm({
+              title: "删除确认",
+              message: "确定要删除这个对话吗？",
+              yes: "删除",
+              cancel: "取消",
+            });
+
+            if (!result) return;
+
+            await deleteHistory(targetSessionId);
+            await this.loadHistories();
+
+            if (targetSessionId === this.currentSessionId) {
+              if (this.histories && this.histories.length > 0) {
+                const provider = this.getProvider("chat-data");
+                provider.sessionId = this.histories[0].sessionId;
+              } else {
+                await this.createNewSession();
+              }
+            }
+          },
+          formatDate(dateString) {
+            if (!dateString) return "";
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 60000) return "刚刚";
+            if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
+
+            return date.toLocaleDateString();
+          },
+        },
+      };
+    };
+  </script>
+</template>
