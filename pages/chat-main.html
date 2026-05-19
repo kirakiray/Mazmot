@@ -35,8 +35,7 @@
 
           <o-if :value="$data.usage">
             <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
-              模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}}
-              tokens
+              模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}} tokens
               <span o-if="$data.usage.prompt_cache_hit_tokens"
                 >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
                 tokens</span
@@ -52,6 +51,11 @@
       </o-fill>
       <o-if :value="isLoading">
         <m-chat-item role="assistant">AI 正在思考中...</m-chat-item>
+      </o-if>
+      <o-if :value="!hasVisibleMessages && !isLoading">
+        <m-chat-item role="assistant" style="text-align: center; opacity: 0.6">
+          请输入消息
+        </m-chat-item>
       </o-if>
     </m-chatbox>
   </div>
@@ -106,6 +110,10 @@
           },
         },
         proto: {
+          get hasVisibleMessages() {
+            if (!this.messages) return false;
+            return this.messages.some((m) => m.role !== "system" && !m.hidden);
+          },
           async handleCapabilityResults(results) {
             const templates = results.map((r) => {
               if (r.error) {
