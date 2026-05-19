@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>本地Whisper语音转文字 - 完全离线版</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 20px;
+        background: #f5f7fb;
+        color: #1e293b;
+      }
+      .container {
+        background: white;
+        border-radius: 1.5rem;
+        padding: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .sub {
+        color: #475569;
+        margin-bottom: 1.5rem;
+        border-left: 3px solid #818cf8;
+        padding-left: 1rem;
+      }
+      button {
+        background: #4f46e5;
+        border: none;
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 0.75rem 1.5rem;
+        border-radius: 2rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+      button:hover {
+        background: #4338ca;
+        transform: scale(1.02);
+      }
+      button:disabled {
+        background: #94a3b8;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .status {
+        background: #f1f5f9;
+        border-radius: 1rem;
+        padding: 1rem;
+        margin: 1.5rem 0;
+        font-family: monospace;
+        font-size: 0.9rem;
+        color: #0f172a;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .result-box {
+        background: #f8fafc;
+        border-radius: 1rem;
+        padding: 1.2rem;
+        margin: 1.5rem 0;
+        border: 1px solid #e2e8f0;
+      }
+      .result-label {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #334155;
+        font-size: 0.9rem;
+      }
+      #resultText {
+        font-size: 1.1rem;
+        line-height: 1.5;
+        min-height: 80px;
+      }
+      .progress-bar {
+        width: 100%;
+        background: #e2e8f0;
+        border-radius: 999px;
+        height: 8px;
+        margin: 0.5rem 0;
+        overflow: hidden;
+      }
+      .progress-fill {
+        width: 0%;
+        height: 100%;
+        background: #4f46e5;
+        border-radius: 999px;
+        transition: width 0.2s;
+      }
+      .info {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-top: 1rem;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 1rem;
+      }
+      .warning {
+        background: #fef9c3;
+        border-left: 4px solid #eab308;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        margin: 1rem 0;
+        font-size: 0.85rem;
+      }
+      .flex-row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+    </style>
+    <!-- 引入 whisper-web-transcriber (ESM 版本) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "whisper-web-transcriber": "https://unpkg.com/whisper-web-transcriber@1.4.0/dist/index.bundled.min.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎙️ 本地 Whisper 语音转文字</h1>
+      <div class="sub">完全在您的浏览器中运行 · 无需上传音频 · 保护隐私</div>
+
+      <div class="warning" id="compatWarning">
+        ⚠️ 本页面需要特殊 HTTP
+        头才能启用本地模型。请确保通过本地服务器访问，并配置了跨域隔离。下方会提供启动方法。
+      </div>
+
+      <div class="flex-row">
+        <button id="loadModelBtn">📥 加载模型</button>
+        <button id="recordBtn">🎤 开始录音 (需先加载模型)</button>
+      </div>
+
+      <div class="status" id="statusArea">
+        状态: 准备就绪，请先点击「加载模型」<br />
+        推荐模型: base (~142MB) 或 tiny (~75MB)
+      </div>
+
+      <div class="progress-bar" id="progressBar" style="display: none">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+
+      <div class="result-box">
+        <div class="result-label">📝 转写结果</div>
+        <div id="resultText">（点击录音后说出内容，停止后自动转写）</div>
+      </div>
+      <div class="info">
+        💡 提示：<br />
+        - 首次加载模型需要下载文件，请耐心等待（后续会缓存）。<br />
+        - 推荐使用 “base” 模型，速度和准确率均衡。<br />
+        - 如果录音时没有权限，请允许麦克风访问。<br />
+        - <strong>必须通过 HTTP 服务器运行</strong>，不能直接双击打开 HTML
+        文件。<br />
+        - 下方提供了 Python/Node.js 一键启动脚本。
+      </div>
+    </div>
+
+    <script type="module">
+      // 动态导入 whisper-web-transcriber
+      import WhisperTranscriber from "whisper-web-transcriber";
+
+      // DOM 元素
+      const loadBtn = document.getElementById("loadModelBtn");
+      const recordBtn = document.getElementById("recordBtn");
+      const statusDiv = document.getElementById("statusArea");
+      const resultDiv = document.getElementById("resultText");
+      const progressBar = document.getElementById("progressBar");
+      const progressFill = document.getElementById("progressFill");
+      const compatWarning = document.getElementById("compatWarning");
+
+      let transcriber = null;
+      let isModelLoaded = false;
+      let isRecording = false;
+
+      // 更新状态文本
+      function setStatus(msg, isError = false) {
+        statusDiv.innerHTML = msg;
+        if (isError) {
+          statusDiv.style.background = "#fee2e2";
+        } else {
+          statusDiv.style.background = "#f1f5f9";
+        }
+      }
+
+      // 更新进度条
+      function updateProgress(percent) {
+        if (percent === undefined || percent === null) {
+          progressBar.style.display = "none";
+          return;
+        }
+        progressBar.style.display = "block";
+        const p = Math.min(100, Math.max(0, percent));
+        progressFill.style.width = `${p}%`;
+        if (p >= 100) {
+          setTimeout(() => {
+            progressBar.style.display = "none";
+          }, 500);
+        }
+      }
+
+      // 检查 SharedArrayBuffer 支持（跨域隔离）
+      function checkSharedArrayBufferSupport() {
+        try {
+          // 如果 SharedArrayBuffer 不可用，会抛出错误
+          const sab = new SharedArrayBuffer(1);
+          if (sab instanceof SharedArrayBuffer) {
+            compatWarning.style.display = "none";
+            return true;
+          }
+        } catch (e) {}
+        compatWarning.innerHTML =
+          "❌ 您的浏览器未启用跨域隔离 (SharedArrayBuffer 不可用)。请按照下方说明启动本地服务器。";
+        compatWarning.style.background = "#fee2e2";
+        compatWarning.style.borderLeftColor = "#dc2626";
+        return false;
+      }
+
+      // 加载模型
+      async function loadModel() {
+        if (!checkSharedArrayBufferSupport()) {
+          setStatus(
+            "❌ 环境错误：缺少 SharedArrayBuffer，无法运行本地 Whisper。请通过正确配置的服务器访问。",
+            true,
+          );
+          return;
+        }
+
+        if (isModelLoaded) {
+          setStatus("✅ 模型已加载，可以直接录音。");
+          recordBtn.disabled = false;
+          return;
+        }
+
+        setStatus("⏳ 正在初始化转写器并下载模型 (首次较慢)...");
+        loadBtn.disabled = true;
+        updateProgress(0);
+
+        try {
+          // 创建 WhisperTranscriber 实例
+          // modelSize 可选: 'tiny', 'tiny-en', 'base', 'base-en', 'small', 'medium'
+          // 推荐 base 或 tiny (使用量化版本 q5_1 可减小体积)
+          transcriber = new WhisperTranscriber({
+            // 使用 base 英文+多语言模型（实际支持中文，准确率尚可）
+            modelSize: "base", // 也可用 'tiny' 更快但稍差
+            // 如果需要纯英文且更小，可以用 'base-en'
+            // 回调函数
+            onProgress: (progress) => {
+              // progress 是 0-1 之间的小数
+              const percent = Math.floor(progress * 100);
+              updateProgress(percent);
+              setStatus(`📦 模型加载中... ${percent}%`);
+            },
+            onReady: () => {
+              setStatus("✅ 模型已就绪！点击「开始录音」说出你的内容。");
+              updateProgress(100);
+              isModelLoaded = true;
+              recordBtn.disabled = false;
+              loadBtn.innerText = "✅ 模型已加载";
+            },
+            onError: (err) => {
+              console.error(err);
+              setStatus(`❌ 模型加载失败: ${err.message || err}`, true);
+              loadBtn.disabled = false;
+              updateProgress(null);
+            },
+            // 转写结果回调 (每次识别出文本时调用)
+            onTranscription: (text, isFinal) => {
+              if (text && text.trim()) {
+                if (isFinal) {
+                  resultDiv.innerText = text;
+                } else {
+                  // 非最终结果可以显示临时文本
+                  resultDiv.innerText = text + " (识别中...)";
+                }
+              }
+            },
+            // 状态变化回调
+            onStatus: (statusMsg) => {
+              console.log("状态:", statusMsg);
+              if (statusMsg.includes("recording")) {
+                setStatus(`🎙️ ${statusMsg}  ... 停止后自动转写`);
+              } else {
+                setStatus(`ℹ️ ${statusMsg}`);
+              }
+            },
+          });
+
+          // 开始下载并加载模型
+          await transcriber.loadModel();
+        } catch (err) {
+          console.error(err);
+          setStatus(`加载失败: ${err.message}`, true);
+          loadBtn.disabled = false;
+          updateProgress(null);
+        }
+      }
+
+      // 录音控制
+      async function toggleRecording() {
+        if (!isModelLoaded || !transcriber) {
+          alert("请先加载模型");
+          return;
+        }
+
+        if (!isRecording) {
+          // 开始录音
+          try {
+            await transcriber.startRecording();
+            isRecording = true;
+            recordBtn.innerText = "⏹️ 停止录音";
+            recordBtn.style.background = "#dc2626";
+            resultDiv.innerText = "（正在听你说话，停止后自动转写）";
+            setStatus("🎤 录音中... 点击停止按钮后开始转写");
+          } catch (err) {
+            console.error(err);
+            setStatus(`录音失败: ${err.message}`, true);
+          }
+        } else {
+          // 停止录音并转写
+          try {
+            await transcriber.stopRecording();
+            isRecording = false;
+            recordBtn.innerText = "🎤 开始录音";
+            recordBtn.style.background = "#4f46e5";
+            setStatus("🔄 正在转写，请稍候...");
+          } catch (err) {
+            console.error(err);
+            setStatus(`停止录音失败: ${err.message}`, true);
+            isRecording = false;
+            recordBtn.innerText = "🎤 开始录音";
+            recordBtn.style.background = "#4f46e5";
+          }
+        }
+      }
+
+      // 绑定事件
+      loadBtn.addEventListener("click", loadModel);
+      recordBtn.addEventListener("click", toggleRecording);
+
+      // 页面启动时检查环境
+      checkSharedArrayBufferSupport();
+      setStatus("✅ 页面就绪。请点击「加载模型」开始（需要下载模型文件）。");
+      loadBtn.disabled = false;
+    </script>
+  </body>
+</html>
