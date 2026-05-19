@@ -158,15 +158,52 @@
   <script>
     export default () => {
       return {
-        attrs: {
-          cid: null,
-        },
         data: {
+          cid: null,
           formItems: [],
           submitName: "Submit",
           cancelName: "Cancel",
         },
         proto: {
+          get storageKey() {
+            return this.cid ? `form-data-${this.cid}` : null;
+          },
+          saveToStorage() {
+            if (!this.storageKey) return;
+
+            const data = {};
+            this.formItems.forEach((item) => {
+              data[item.name] = item.value;
+            });
+
+            try {
+              sessionStorage.setItem(this.storageKey, JSON.stringify(data));
+            } catch (e) {
+              console.warn("Failed to save form data to sessionStorage:", e);
+            }
+          },
+          loadFromStorage() {
+            if (!this.storageKey) return null;
+
+            debugger;
+
+            try {
+              const stored = sessionStorage.getItem(this.storageKey);
+              return stored ? JSON.parse(stored) : null;
+            } catch (e) {
+              console.warn("Failed to load form data from sessionStorage:", e);
+              return null;
+            }
+          },
+          clearStorage() {
+            if (!this.storageKey) return;
+
+            try {
+              sessionStorage.removeItem(this.storageKey);
+            } catch (e) {
+              console.warn("Failed to clear form data from sessionStorage:", e);
+            }
+          },
           get canSubmit() {
             return this.formItems.every((item) => {
               if (item.required) {
@@ -197,22 +234,24 @@
               data[item.name] = item.value;
             });
 
+            this.clearStorage();
+
             this.emit("submit", {
               data,
             });
           },
           cancel() {
+            this.clearStorage();
             this.emit("cancel");
           },
-          done() {
-            // 上层告知能力完成
-            debugger;
-          },
+          done() {},
           async init(data) {
-            let arr = data;
-            if (typeof data === "string") {
-              arr = JSON.parse(data);
+            let arr = data.content;
+            if (typeof data.content === "string") {
+              arr = JSON.parse(data.content);
             }
+
+            this.cid = data.cid;
 
             const formItems = [];
             arr.forEach((item) => {
@@ -236,6 +275,19 @@
               }
             });
             this.formItems = formItems;
+
+            const storedData = this.loadFromStorage();
+            if (storedData) {
+              this.formItems.forEach((item) => {
+                if (storedData.hasOwnProperty(item.name)) {
+                  item.value = storedData[item.name];
+                }
+              });
+            }
+
+            this.watchTick(() => {
+              this.saveToStorage();
+            }, 100);
           },
         },
       };
