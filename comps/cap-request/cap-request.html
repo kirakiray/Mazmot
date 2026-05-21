@@ -235,7 +235,7 @@
             const page = fillItemEl.$("o-page");
             page.init({
               content: item.content,
-              cid: item.cid
+              cid: item.cid,
             });
           },
           stringify(data, keyArr) {
@@ -273,8 +273,10 @@
               return result;
             }
 
-            // 使用 main.js 能力
-            const url = `/caps/${capabilityName}/main.js`;
+            // 使用 method 能力
+            const url = normalizeCapPath(
+              `/caps/${capabilityName}/${yamlConfig.method}`,
+            );
             const module = await load(url);
             const capabilityRunner = module.default;
             return await capabilityRunner({
@@ -374,16 +376,24 @@
           checkExistingResults() {
             const dialogHost = this.dialogHost;
             const messages = dialogHost.messages || [];
-            
+
             for (let i = messages.length - 1; i >= 0; i--) {
               const msg = messages[i];
-              if (msg.role === "user" && msg.isResponse && msg.content.includes("<cap-response>")) {
-                const responseMatch = msg.content.match(/<cap-response>([\s\S]*?)<\/cap-response>/);
+              if (
+                msg.role === "user" &&
+                msg.isResponse &&
+                msg.content.includes("<cap-response>")
+              ) {
+                const responseMatch = msg.content.match(
+                  /<cap-response>([\s\S]*?)<\/cap-response>/,
+                );
                 if (responseMatch) {
                   const responseContent = responseMatch[1];
-                  
-                  this.capRequests.forEach(item => {
-                    const cidPattern = new RegExp(`<template[^>]*cid="${item.cid}"[^>]*>`);
+
+                  this.capRequests.forEach((item) => {
+                    const cidPattern = new RegExp(
+                      `<template[^>]*cid="${item.cid}"[^>]*>`,
+                    );
                     if (cidPattern.test(responseContent)) {
                       item.done = true;
                       item.running = false;
@@ -392,8 +402,8 @@
                 }
               }
             }
-            
-            this.allCompleted = this.capRequests.every(r => r.done);
+
+            this.allCompleted = this.capRequests.every((r) => r.done);
           },
           get dialogHost() {
             const paths = this.composedPath();
@@ -412,7 +422,7 @@
         async attached() {
           await this.loadData();
           this.checkExistingResults();
-          
+
           if (!this.allCompleted) {
             this.runAll();
           }
