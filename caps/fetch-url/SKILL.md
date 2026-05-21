@@ -2,6 +2,7 @@
 name: fetch-url
 description: 从指定 URL 获取内容
 method: main.js
+test: test/test-fetch-url.html
 ---
 
 # 获取 URL 内容
