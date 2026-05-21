@@ -8,6 +8,10 @@
       --mascot-eye-color: #3b82f6;
     }
 
+    .happy-eye {
+      display: none;
+    }
+
     .camera-container {
       width: 100%;
       height: 100%;
@@ -464,6 +468,66 @@
         transform: translateY(-0.05em) translateX(0.008em) scale(1.06);
       }
     }
+
+    :host([state="happy"]) .aperture-container {
+      display: none;
+    }
+
+    :host([state="happy"]) .happy-eye {
+      display: block !important;
+      position: absolute;
+      width: 70%;
+      height: auto;
+      left: 15%;
+      top: 20%;
+      animation: happy-bounce-eye 2s ease-in-out infinite, happy-glow-svg 1.5s ease-in-out infinite;
+    }
+
+    :host([state="happy"]) .eyelid-mask {
+      display: none;
+    }
+
+    :host([state="happy"]) .lens-center,
+    :host([state="happy"]) .lens-reflection {
+      opacity: 0.3;
+    }
+
+    :host([state="happy"]) .camera-body {
+      animation: float-camera 2s ease-in-out infinite, happy-bounce-body 2s ease-in-out infinite;
+    }
+
+    @keyframes happy-bounce-eye {
+      0%,
+      100% {
+        transform: translateY(0) scaleY(1);
+      }
+      50% {
+        transform: translateY(-0.05em) scaleY(1.08);
+      }
+    }
+
+    @keyframes happy-glow-svg {
+      0%,
+      100% {
+        filter: drop-shadow(0 0 0.083em var(--mascot-eye-color));
+      }
+      50% {
+        filter: drop-shadow(0 0 0.2em var(--mascot-eye-color));
+      }
+    }
+
+    @keyframes happy-bounce-body {
+      0%,
+      100% {
+        transform: translateY(0) scale(1);
+      }
+      25% {
+        transform: translateY(-0.03em) scale(1.02);
+      }
+      75% {
+        transform: translateY(-0.02em) scale(1.01);
+      }
+    }
   </style>
 
   <div class="camera-container">
@@ -492,6 +556,12 @@
                 <div class="blade"></div>
               </div>
             </div>
+            <svg class="happy-eye" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M 10 50 Q 10 10, 50 10 Q 90 10, 90 50 Q 70 30, 50 30 Q 30 30, 10 50 Z"
+                fill="var(--mascot-eye-color)"
+              />
+            </svg>
             <div class="lens-center"></div>
             <div class="lens-reflection"></div>
           </div>
