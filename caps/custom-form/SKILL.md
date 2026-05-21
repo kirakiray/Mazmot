@@ -1,7 +1,7 @@
 ---
 name: custom-form
 description: 允许AI创建表单，用户通过填写表单的方式向 AI 提交结构化信息。
-page: ./src/form.html
+page: src/form.html
 ---
 
 # 自定义表单交互

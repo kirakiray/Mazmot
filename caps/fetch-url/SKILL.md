@@ -1,6 +1,7 @@
 ---
 name: fetch-url
 description: 从指定 URL 获取内容
+method: main.js
 ---
 
 # 获取 URL 内容
