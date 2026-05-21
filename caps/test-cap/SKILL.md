@@ -1,7 +1,7 @@
 ---
 name: test-cap
-description: 用于测试其他能力是否可用的能力测试工具
-page: src/test-cap.html
+description: 每个能力都是有自带的测试用例的，你可以用test-cap能力，来查看指定的能力是否有问题，是否可用
+page: src/test-cap-req.html
 test: test/index.html
 ---
 
