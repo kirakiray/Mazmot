@@ -1,17 +1,58 @@
 <template page>
   <style>
     :host {
+      position: relative;
       display: block;
+      padding: 8px 16px;
+    }
+
+    .container {
+      position: relative;
+      height: 100px;
+    }
+
+    iframe {
+      border: none;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 300%;
+      height: 300px;
+      transform-origin: 0 0;
+      transform: scale(0.33333);
     }
   </style>
-  test-cap-request 测试
+  <div class="container"></div>
   <script>
     export default async ({ load }) => {
+      const { loadCapabilityConfig, normalizeCapPath } = await load(
+        "/comps/cap-request/util.js",
+      );
+
       return {
         data: {},
         proto: {
           async init({ data, content, cid }) {
-            debugger;
+            const { capability } = data;
+
+            // 获取对应能力的配置数据
+            const yamlConfig = await loadCapabilityConfig(capability);
+
+            const testPagePath = normalizeCapPath(
+              `/caps/${capability}/${yamlConfig.test}`,
+            );
+
+            const frameEle = $(`<iframe src="${testPagePath}"></iframe>`);
+
+            window.addEventListener("message", (e) => {
+              const { data } = e;
+
+              this.emit("submit", {
+                data,
+              });
+            });
+
+            this.shadow.$(".container").push(frameEle);
           },
           done() {
             debugger;

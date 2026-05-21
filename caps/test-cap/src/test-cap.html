@@ -266,6 +266,7 @@
                       this.testResults.push({
                         cid,
                         desc,
+                        assert: testResult.assert,
                         status: "pass",
                         icon: "✓",
                         message: testResult.content || "测试通过",
@@ -274,6 +275,7 @@
                       this.testResults.push({
                         cid,
                         desc,
+                        assert: testResult.assert,
                         status: "fail",
                         icon: "✗",
                         message: testResult?.content || "断言失败",
@@ -285,6 +287,7 @@
                   this.testResults.push({
                     cid,
                     desc,
+                    assert: false,
                     status: "error",
                     icon: "⚠",
                     message: `运行错误: ${error.message}`,
@@ -292,7 +295,19 @@
                 }
               }
             }
-            console.log(results);
+
+            if (window.parent) {
+              window.parent.postMessage(
+                this.map((e) => {
+                  return {
+                    desc: e.desc,
+                    assert: e.assert,
+                    content: e.message,
+                  };
+                }),
+                "*",
+              );
+            }
           },
         },
       };
