@@ -204,6 +204,36 @@
     export default async ({ load }) => {
       const { createScriptWithSourceMap } = await load("./util.js");
 
+      if (!window.__testCapManager) {
+        window.__testCapManager = {
+          totalComponents: 0,
+          completedComponents: 0,
+          allResults: [],
+          
+          register() {
+            this.totalComponents++;
+          },
+          
+          submitResults(results) {
+            this.allResults.push(...results);
+            this.completedComponents++;
+            
+            if (this.completedComponents === this.totalComponents) {
+              if (window.parent) {
+                window.parent.postMessage(this.allResults, "*");
+              }
+              this.reset();
+            }
+          },
+          
+          reset() {
+            this.totalComponents = 0;
+            this.completedComponents = 0;
+            this.allResults = [];
+          }
+        };
+      }
+
       return {
         tag: "test-cap",
         attrs: {
@@ -296,19 +326,17 @@
               }
             }
 
-            if (window.parent) {
-              window.parent.postMessage(
-                this.map((e) => {
-                  return {
-                    desc: e.desc,
-                    assert: e.assert,
-                    content: e.message,
-                  };
-                }),
-                "*",
-              );
-            }
+            window.__testCapManager.submitResults(
+              this.testResults.map((e) => ({
+                desc: e.desc,
+                assert: e.assert,
+                content: e.message,
+              }))
+            );
           },
+        },
+        ready() {
+          window.__testCapManager.register();
         },
       };
     };

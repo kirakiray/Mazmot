@@ -1,7 +1,7 @@
 ---
 name: test-cap
 description: 每个能力都自带测试用例。当某个能力反复调用失败且查阅文档后仍无法解决时，可使用 test-cap 能力验证该能力是否正常工作，快速定位问题根源。
-page: src/test-cap-req.html
+page: src/test-cap-dialogue.html
 test: test/index.html
 ---
 
