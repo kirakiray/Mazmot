@@ -1,6 +1,7 @@
 ---
 name: run-js
 description: 执行 JavaScript 代码片段，用于数学计算、获取时间等。
+test: test/test-runjs.html
 ---
 
 # 执行 JavaScript 代码
