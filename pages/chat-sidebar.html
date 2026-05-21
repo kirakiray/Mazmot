@@ -42,7 +42,7 @@
           class:active="$data.sessionId === $host.currentSessionId"
           on:click="$host.switchSession($data.sessionId)"
         >
-          {{$data.title || '新对话'}}
+          <div ellipsis="1">{{$data.title || '新对话'}}</div>
           <p-button
             slot="suffix"
             size="s"
@@ -64,12 +64,8 @@
   ></o-consumer>
   <script>
     export default async ({ load }) => {
-      const {
-        saveHistory,
-        generateSessionId,
-        deleteHistory,
-        listHistories,
-      } = await load("../util/history.js");
+      const { saveHistory, generateSessionId, deleteHistory, listHistories } =
+        await load("../util/history.js");
       const { getSystemPrompt } = await load("../util/system-prompt.js");
       const { confirm } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
@@ -85,7 +81,7 @@
 
           const lastSessionId = sessionStorage.getItem("lastSessionId");
           const validLastSession = this.histories.some(
-            (h) => h.sessionId === lastSessionId
+            (h) => h.sessionId === lastSessionId,
           );
 
           if (validLastSession) {

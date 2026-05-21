@@ -79,6 +79,9 @@
       border-radius: 8px;
       border: 1px solid var(--md-sys-color-primary);
     }
+    .hide {
+      display: none !important;
+    }
   </style>
 
   <p-button-group class="tool-btns">
@@ -160,17 +163,15 @@
           </o-else-if>
         </div>
       </div>
-      <o-if :value="$data.page && !$data.hidePage">
-        <div class="page-container">
-          <o-page
-            class="cap-page"
-            attr:src="$data.page"
-            on:page-loaded="$host.runPageInit($data,$ele)"
-            on:submit="$host.pageDone($event,'submit',$data)"
-            on:cancel="$host.pageDone($event,'cancel',$data)"
-          ></o-page>
-        </div>
-      </o-if>
+      <div class="page-container" class:hide="!$data.page || $data.hidePage">
+        <o-page
+          class="cap-page"
+          attr:src="$data.page"
+          on:page-loaded="$host.runPageInit($data,$ele)"
+          on:submit="$host.pageDone($event,'submit',$data)"
+          on:cancel="$host.pageDone($event,'cancel',$data)"
+        ></o-page>
+      </div>
       <o-if :value="$host.debugMode">
         <div class="debug-info">
           <div style="margin-bottom: 8px">
