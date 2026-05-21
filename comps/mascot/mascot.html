@@ -341,7 +341,7 @@
       transform: scale(0.95);
     }
 
-    :host([soulless]) .blade {
+    :host([state="soulless"]) .blade {
       background: linear-gradient(
         180deg,
         #6b7280 0%,
@@ -351,29 +351,118 @@
       box-shadow: 0 0 0.067em rgba(107, 114, 128, 0.4);
     }
 
-    :host([soulless]) .aperture {
+    :host([state="soulless"]) .aperture {
       animation-duration: 60s !important;
     }
 
-    :host([soulless]) .lens-inner {
+    :host([state="soulless"]) .lens-inner {
       box-shadow:
         inset 0 0 0.167em rgba(0, 0, 0, 0.8),
         0 0 0.083em rgba(107, 114, 128, 0.2);
       animation: none !important;
     }
 
-    :host([soulless]) .lens-reflection {
+    :host([state="soulless"]) .lens-reflection {
       animation: none !important;
     }
 
-    :host([soulless]) .eyelid-top,
-    :host([soulless]) .eyelid-bottom {
+    :host([state="soulless"]) .eyelid-top,
+    :host([state="soulless"]) .eyelid-bottom {
       height: 0 !important;
       animation: none !important;
     }
 
-    :host([soulless]) .camera-body {
+    :host([state="soulless"]) .camera-body {
       animation: none !important;
+    }
+
+    :host([state="angry"]) .aperture {
+      animation-duration: 3s !important;
+    }
+
+    :host([state="angry"]) .lens-inner {
+      animation: angry-glow 0.8s ease-in-out infinite;
+    }
+
+    :host([state="angry"]) .eyelid-top {
+      animation: eyelid-angry-top 1.5s ease-in-out infinite !important;
+      border-radius: 0 0 50% 50% / 0 0 100% 100%;
+      height: 0.18em;
+    }
+
+    :host([state="angry"]) .eyelid-bottom {
+      animation: eyelid-angry-bottom 1.5s ease-in-out infinite !important;
+      border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+      height: 0.12em;
+    }
+
+    :host([state="angry"]) .camera-body {
+      animation: float-camera 1.5s ease-in-out infinite, angry-shake 2s ease-in-out infinite;
+    }
+
+    @keyframes angry-glow {
+      0%,
+      100% {
+        box-shadow:
+          inset 0 0 0.167em rgba(0, 0, 0, 0.8),
+          0 0 0.15em var(--mascot-eye-color);
+      }
+      50% {
+        box-shadow:
+          inset 0 0 0.167em rgba(0, 0, 0, 0.8),
+          0 0 0.3em var(--mascot-eye-color);
+      }
+    }
+
+    @keyframes eyelid-angry-top {
+      0%,
+      100% {
+        height: 0.16em;
+        transform: scaleY(1) rotate(0deg);
+      }
+      25% {
+        height: 0.22em;
+        transform: scaleY(1.3) rotate(-3deg);
+      }
+      75% {
+        height: 0.19em;
+        transform: scaleY(1.1) rotate(2deg);
+      }
+    }
+
+    @keyframes eyelid-angry-bottom {
+      0%,
+      100% {
+        height: 0.1em;
+        transform: scaleY(1) rotate(0deg);
+      }
+      25% {
+        height: 0.14em;
+        transform: scaleY(1.2) rotate(3deg);
+      }
+      75% {
+        height: 0.11em;
+        transform: scaleY(1.05) rotate(-2deg);
+      }
+    }
+
+    @keyframes angry-shake {
+      0%,
+      100% {
+        transform: translateY(0) translateX(0) scale(1);
+      }
+      20% {
+        transform: translateY(-0.02em) translateX(-0.01em) scale(1.03);
+      }
+      40% {
+        transform: translateY(-0.04em) translateX(0.01em) scale(1.05);
+      }
+      60% {
+        transform: translateY(-0.02em) translateX(-0.008em) scale(1.03);
+      }
+      80% {
+        transform: translateY(-0.05em) translateX(0.008em) scale(1.06);
+      }
     }
   </style>
 
@@ -419,9 +508,17 @@
     export default async () => {
       return {
         tag: "m-mascot",
-        data: {},
-        attrs: {},
-        proto: {},
+        data: {
+          state: "",
+        },
+        attrs: {
+          state: "",
+        },
+        proto: {
+          setState(newState) {
+            this.state = newState;
+          },
+        },
       };
     };
   </script>
