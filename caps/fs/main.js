@@ -11,7 +11,12 @@ export default async function fs({ data = {}, content }) {
   }
 
   const handle = await get(path, {
-    create: mode === "write" || mode === "mkdir" ? (mode === "mkdir" ? "dir" : "file") : undefined,
+    create:
+      mode === "write" || mode === "mkdir"
+        ? mode === "mkdir"
+          ? "dir"
+          : "file"
+        : undefined,
   });
 
   if (mode === "write") {
@@ -54,7 +59,7 @@ export default async function fs({ data = {}, content }) {
     if (handle.kind !== "dir") {
       throw new Error("Path is not a directory");
     }
-    
+
     const items = [];
     await handle.forEach((name, item) => {
       items.push({

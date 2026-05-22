@@ -13,30 +13,32 @@
   <body>
     <l-m src="/caps/test-cap/src/test-cap.html"></l-m>
 
-    <test-cap label="测试写入文件能力">
+    <test-cap label="测试文件系统完整功能">
       <cap-request>
         <template
           name="fs"
           cid="fs-01"
+          desc="创建测试目录"
+          data-mode="mkdir"
+          data-path="mazmot/test"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-02"
           desc="写入文件1"
           data-mode="write"
           data-path="mazmot/test/test1.txt"
         >
           hello world
         </template>
-        <template
-          name="fetch-url"
-          cid="fetch-02"
-          desc="请求刚刚写入的文件1内容"
-          data-url="/$mazmot/test/test1.txt"
-        >
-        </template>
 
         <template
           name="fs"
           cid="fs-03"
-          desc="读取文件1"
-          data-mode="read"
+          desc="检查文件是否存在"
+          data-mode="exists"
           data-path="mazmot/test/test1.txt"
         >
         </template>
@@ -44,66 +46,277 @@
         <template
           name="fs"
           cid="fs-04"
-          desc="删除文件1"
-          data-mode="delete"
+          desc="获取文件信息"
+          data-mode="info"
           data-path="mazmot/test/test1.txt"
         >
         </template>
 
         <template
-          name="fetch-url"
-          cid="fetch-05"
-          desc="请求已删除的文件1"
-          data-url="/$mazmot/test/test1.txt"
+          name="fs"
+          cid="fs-05"
+          desc="列出目录内容"
+          data-mode="list"
+          data-path="mazmot/test"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-06"
+          desc="复制文件"
+          data-mode="copy"
+          data-path="mazmot/test/test1.txt"
+          data-target-path="mazmot/test"
+          data-target-name="test1_copy.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-07"
+          desc="创建备份目录"
+          data-mode="mkdir"
+          data-path="mazmot/backup"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-08"
+          desc="移动文件到备份目录"
+          data-mode="move"
+          data-path="mazmot/test/test1.txt"
+          data-target-path="mazmot/backup"
+          data-target-name="test1_backup.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-09"
+          desc="读取备份文件"
+          data-mode="read"
+          data-path="mazmot/backup/test1_backup.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-10"
+          desc="读取复制文件"
+          data-mode="read"
+          data-path="mazmot/test/test1_copy.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-11"
+          desc="删除测试文件"
+          data-mode="delete"
+          data-path="mazmot/test/test1_copy.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-12"
+          desc="删除备份文件"
+          data-mode="delete"
+          data-path="mazmot/backup/test1_backup.txt"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-13"
+          desc="删除测试目录"
+          data-mode="delete"
+          data-path="mazmot/test"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-14"
+          desc="删除备份目录"
+          data-mode="delete"
+          data-path="mazmot/backup"
+        >
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-15"
+          desc="验证文件已删除"
+          data-mode="exists"
+          data-path="mazmot/test/test1.txt"
         >
         </template>
       </cap-request>
+
       <template result cid="fs-01">
         <script type="module">
           export default async function (result) {
             return {
-              assert: result,
+              assert: result === true,
+              content: `创建目录结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-02">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
               content: `写入结果: ${result}`,
             };
           }
         </script>
       </template>
-      <template result cid="fetch-02">
-        <script type="module">
-          export default async function (result) {
-            return {
-              assert: result === "hello world",
-              content: `请求结果: ${result}`,
-            };
-          }
-        </script>
-      </template>
+
       <template result cid="fs-03">
         <script type="module">
           export default async function (result) {
             return {
-              assert: result === "hello world",
-              content: `读取结果: ${result}`,
+              assert: result === true,
+              content: `文件存在: ${result}`,
             };
           }
         </script>
       </template>
+
       <template result cid="fs-04">
         <script type="module">
           export default async function (result) {
             return {
-              assert: result === true,
-              content: `删除结果: ${result}`,
+              assert: result.kind === "file" && result.name === "test1.txt",
+              content: `文件信息: ${JSON.stringify(result)}`,
             };
           }
         </script>
       </template>
-      <template result cid="fetch-05">
+
+      <template result cid="fs-05">
         <script type="module">
           export default async function (result) {
             return {
-              assert: !result || result === "",
-              content: `请求已删除文件结果: ${result || "(空)"}`,
+              assert: Array.isArray(result) && result.length > 0,
+              content: `目录内容: ${JSON.stringify(result)}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-06">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result.kind === "file" && result.name === "test1_copy.txt",
+              content: `复制结果: ${JSON.stringify(result)}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-07">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: `创建备份目录结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-08">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result.kind === "file" && result.name === "test1_backup.txt",
+              content: `移动结果: ${JSON.stringify(result)}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-09">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === "hello world",
+              content: `读取备份文件结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-10">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === "hello world",
+              content: `读取复制文件结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-11">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: `删除测试文件结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-12">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: `删除备份文件结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-13">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: `删除测试目录结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-14">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: `删除备份目录结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-15">
+        <script type="module">
+          export default async function (result) {
+            debugger
+            return {
+              assert: result === false,
+              content: `文件已删除验证: ${result}`,
             };
           }
         </script>
