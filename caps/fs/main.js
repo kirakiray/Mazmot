@@ -10,13 +10,17 @@ export default async function fs({ data = {}, content }) {
     throw new Error("path is required");
   }
 
+  if (mode === "exists") {
+    try {
+      const testHandle = await get(path);
+      return testHandle ? true : false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   const handle = await get(path, {
-    create:
-      mode === "write" || mode === "mkdir"
-        ? mode === "mkdir"
-          ? "dir"
-          : "file"
-        : undefined,
+    create: mode === "write" || mode === "mkdir" ? (mode === "mkdir" ? "dir" : "file") : undefined,
   });
 
   if (mode === "write") {
@@ -32,15 +36,6 @@ export default async function fs({ data = {}, content }) {
   if (mode === "delete") {
     await handle.remove();
     return true;
-  }
-
-  if (mode === "exists") {
-    try {
-      const testHandle = await get(path);
-      return testHandle ? true : false;
-    } catch (e) {
-      return false;
-    }
   }
 
   if (mode === "info") {
