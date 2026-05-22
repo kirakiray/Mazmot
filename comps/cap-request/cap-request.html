@@ -300,28 +300,29 @@
 
             items.forEach((item) => {
               item.error = null;
-              item.running = true;
-              item.done = false;
             });
 
             try {
-              const results = await Promise.all(
-                items.map(async (item) => {
-                  let result = null;
-                  try {
-                    result = await this._executeCapability(item);
-                    item.result = result;
-                  } catch (e) {
-                    console.error(e);
-                    item.error = e.message;
-                  }
+              const results = [];
 
-                  item.running = false;
-                  item.done = true;
+              for (const item of items) {
+                item.running = true;
+                item.done = false;
 
-                  return result;
-                }),
-              );
+                let result = null;
+                try {
+                  result = await this._executeCapability(item);
+                  item.result = result;
+                } catch (e) {
+                  console.error(e);
+                  item.error = e.message;
+                }
+
+                item.running = false;
+                item.done = true;
+
+                results.push(result);
+              }
 
               const capabilityResults = items.map((item, i) => ({
                 name: item.name,
