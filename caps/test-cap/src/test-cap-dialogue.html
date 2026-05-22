@@ -30,7 +30,9 @@
       );
 
       return {
-        data: {},
+        data: {
+          _messageHandler: null,
+        },
         proto: {
           async init({ data, content, cid }) {
             const { capability } = data;
@@ -44,19 +46,43 @@
 
             const frameEle = $(`<iframe src="${testPagePath}"></iframe>`);
 
-            window.addEventListener("message", (e) => {
-              const { data } = e;
+            this._messageHandler = (e) => {
+              const expectedOrigin = window.location.origin;
+
+              if (e.origin !== expectedOrigin) {
+                console.warn(`Message from unexpected origin: ${e.origin}`);
+                return;
+              }
+
+              if (!e.data || typeof e.data !== "object") {
+                return;
+              }
+
+              if (
+                e.data.type !== "test-cap-results" ||
+                e.data.source !== "test-cap"
+              ) {
+                return;
+              }
 
               this.emit("submit", {
-                data,
+                data: e.data.payload,
               });
-            });
+            };
+
+            window.addEventListener("message", this._messageHandler);
 
             this.shadow.$(".container").push(frameEle);
           },
           done() {
             debugger;
           },
+        },
+        detached() {
+          if (this._messageHandler) {
+            window.removeEventListener("message", this._messageHandler);
+            this._messageHandler = null;
+          }
         },
       };
     };
