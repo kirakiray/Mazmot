@@ -13,7 +13,7 @@ export default async function getCapability({ data = {}, content }) {
     const capabilityDesc = [];
 
     for (const capabilityName of capabilities) {
-      const capabilityMd = await fetch(`/caps/${capabilityName}/SKILL.md`).then(
+      const capabilityMd = await fetch(`/capabilities/${capabilityName}/SKILL.md`).then(
         (e) => e.text(),
       );
 
@@ -39,7 +39,7 @@ export default async function getCapability({ data = {}, content }) {
 
   if (name) {
     try {
-      const capabilityMd = await fetch(`/caps/${name}/SKILL.md`).then((e) =>
+      const capabilityMd = await fetch(`/capabilities/${name}/SKILL.md`).then((e) =>
         e.text(),
       );
 

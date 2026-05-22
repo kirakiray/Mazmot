@@ -15,7 +15,7 @@ export function normalizeCapPath(path) {
 }
 
 export async function loadCapabilityConfig(capabilityName) {
-  const skillUrl = `/caps/${capabilityName}/SKILL.md`;
+  const skillUrl = `/capabilities/${capabilityName}/SKILL.md`;
   const skillResp = await fetch(skillUrl);
   const skillText = await skillResp.text();
   const yamlStr = skillText.match(/^---(.*?)---/s)[1];

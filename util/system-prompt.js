@@ -1,8 +1,8 @@
-import getCapability from "../caps/get-capability/main.js";
+import getCapability from "../capabilities/get-capability/main.js";
 
 export async function getSystemPrompt() {
   try {
-    const res = await fetch("caps/main.md");
+    const res = await fetch("capabilities/main.md");
     const content = await res.text();
     return [
       {
@@ -18,7 +18,7 @@ export async function getSystemPrompt() {
       },
     ];
   } catch (e) {
-    console.error("Failed to fetch caps/main.md:", e);
+    console.error("Failed to fetch capabilities/main.md:", e);
     return [];
   }
 }

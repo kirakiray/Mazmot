@@ -3,29 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>测试能力组件</title>
     <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
     <link
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
     />
+    <l-m src="/capabilities/test-cap/src/test-cap.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
-  <body>
-    <l-m src="/caps/test-cap/src/test-cap.html"></l-m>
 
-    <test-cap label="测试 run-js 能力">
+  <body>
+    <test-cap label="测试 fetch-url 能力">
       <cap-request>
-        <template name="run-js" cid="run-js-01" desc="自定义提交表单">
-          return 1 + 2 + 3;
+        <template
+          name="fetch-url"
+          cid="fetch-01"
+          desc="请求本地文件内容可用"
+          data-url="/package.json"
+        >
         </template>
       </cap-request>
-      <template result cid="run-js-01">
+      <template result cid="fetch-01">
         <script type="module">
           export default async function (result) {
             // 直接获取内容
+            const data = await fetch("/package.json");
+            const jsonText = await data.text();
+
             return {
-              assert: result === 6,
-              content: result,
+              assert: jsonText === result,
+              content: "获取成功",
             };
           }
         </script>
