@@ -203,6 +203,19 @@
   </style>
   <div>
     <h3>{{ label }}</h3>
+    <o-fill :value="missingResults">
+      <div class="test-result" status="error" style="background: var(--md-sys-color-error-container); border: 2px solid var(--md-sys-color-error);">
+        <div class="test-name" style="color: var(--md-sys-color-on-error-container);">
+          <span class="status-icon">⚠</span>
+          <span class="cid">{{ $data.cid }}</span>
+        </div>
+        <div class="desc" style="color: var(--md-sys-color-on-error-container);">Missing Result Template</div>
+        <div class="message" style="color: var(--md-sys-color-on-error-container); background: rgba(255, 255, 255, 0.6);">
+          No result template found for cid="{{ $data.cid }}" ({{ $data.desc }}).
+          Please add: &lt;template result cid="{{ $data.cid }}"&gt;&lt;script type="module"&gt;...&lt;/script&gt;&lt;/template&gt;
+        </div>
+      </div>
+    </o-fill>
     <o-fill :value="testResults">
       <div class="test-result" attr:status="$data.status">
         <div class="test-name">
@@ -257,6 +270,7 @@
         },
         data: {
           testResults: [],
+          missingResults: [],
         },
         proto: {
           async handleCapabilityResults(results) {
@@ -355,6 +369,35 @@
               `test-cap component can only contain one cap-request component, but ${capRequests.length} were detected. Please merge all templates from multiple cap-request elements into a single cap-request.`,
             );
           }
+
+          const capRequest = capRequests[0];
+          if (capRequest) {
+            const templates = capRequest.all("template[cid]");
+            const missingResults = [];
+
+            templates.forEach((template) => {
+              const cid = template.attr("cid");
+              const desc = template.attr("desc");
+              const resultTemplate = this.$(`template[result][cid=${cid}]`);
+
+              if (!resultTemplate) {
+                missingResults.push({
+                  cid,
+                  desc: desc || cid,
+                });
+              }
+            });
+
+            if (missingResults.length > 0) {
+              this.missingResults = missingResults;
+              missingResults.forEach((item) => {
+                console.warn(
+                  `Missing result template for cid="${item.cid}" (${item.desc})`,
+                );
+              });
+            }
+          }
+
           window.__testCapManager.register();
         },
       };
