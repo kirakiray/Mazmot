@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+  </head>
+  <body>
+    <l-m src="/caps/test-cap/src/test-cap.html"></l-m>
+
+    <test-cap label="测试写入文件能力">
+      <cap-request>
+        <template
+          name="fs"
+          cid="fs-01"
+          desc="写入文件1"
+          data-mode="write"
+          data-path="mazmot/test/test1.txt"
+        >
+          hello world
+        </template>
+        <template
+          name="fetch-url"
+          cid="fetch-02"
+          desc="请求刚刚写入的文件1内容"
+          data-url="/$mazmot/test/test1.txt"
+        >
+        </template>
+      </cap-request>
+      <template result cid="fs-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: !!result,
+              content: `写入结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+      <template result cid="fetch-02">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === "hello world",
+              content: `请求结果: ${result}`,
+            };
+          }
+        </script>
+      </template>
+    </test-cap>
+  </body>
+</html>

@@ -1,4 +1,19 @@
 <template component>
+  <!--
+    使用说明：
+    test-cap 组件内部只能包含一个 cap-request 组件。
+    如果需要测试多个能力请求，请将所有 template 元素放在同一个 cap-request 组件内。
+    
+    示例：
+    <test-cap>
+      <cap-request>
+        <template desc="测试1" cid="test1">...</template>
+        <template desc="测试2" cid="test2">...</template>
+        <template result cid="test1">...</template>
+        <template result cid="test2">...</template>
+      </cap-request>
+    </test-cap>
+  -->
   <l-m src="../../../comps/cap-request/cap-request.html"></l-m>
   <style>
     :host {
@@ -334,6 +349,12 @@
           },
         },
         ready() {
+          const capRequests = this.all("cap-request");
+          if (capRequests.length > 1) {
+            console.warn(
+              `test-cap 组件内部只能包含一个 cap-request 组件，当前检测到 ${capRequests.length} 个。请将多个 cap-request 内的 template 合并到一个 cap-request 中。`,
+            );
+          }
           window.__testCapManager.register();
         },
       };
