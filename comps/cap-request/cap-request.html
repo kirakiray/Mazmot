@@ -381,24 +381,34 @@
               this.allCompleted = false;
             }
           },
-          checkExistingResults() {
+          async checkExistingResults() {
             const dialogHost = this.dialogHost;
             const messages = dialogHost.messages || [];
 
             for (let i = messages.length - 1; i >= 0; i--) {
               const msg = messages[i];
               if (msg.role === "user" && msg.isResponse && msg.responsesData) {
-                this.capRequests.forEach((item) => {
+                for (const item of this.capRequests) {
                   const matchedResult = msg.responsesData.find(
-                    (r) => r.cid === item.cid && r.name === item.name,
+                    (r) => r.cid === item.cid && r.name === item.name
                   );
                   if (matchedResult) {
                     item.done = true;
                     item.running = false;
                     item.result = matchedResult.result;
                     item.error = matchedResult.error;
+
+                    const { loadCapabilityConfig, normalizeCapPath } = await load("./util.js");
+                    const yamlConfig = await loadCapabilityConfig(item.name);
+                    if (yamlConfig.page) {
+                      const pageUrl = normalizeCapPath(
+                        `/capabilities/${item.name}/${yamlConfig.page}`,
+                      );
+                      item.page = pageUrl;
+                      item.hidePage = true;
+                    }
                   }
-                });
+                }
               }
             }
 
@@ -420,7 +430,7 @@
         },
         async attached() {
           await this.loadData();
-          this.checkExistingResults();
+          await this.checkExistingResults();
 
           if (!this.allCompleted) {
             this.runAll();
