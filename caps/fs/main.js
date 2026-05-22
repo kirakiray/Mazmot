@@ -26,7 +26,6 @@ export default async function fs({ data = {}, content }) {
 
   // 删除文件
   if (mode === "delete") {
-    debugger;
     await handle.remove();
     return true;
   }
