@@ -386,27 +386,18 @@
 
             for (let i = messages.length - 1; i >= 0; i--) {
               const msg = messages[i];
-              if (
-                msg.role === "user" &&
-                msg.isResponse &&
-                msg.content.includes("<cap-response>")
-              ) {
-                const responseMatch = msg.content.match(
-                  /<cap-response>([\s\S]*?)<\/cap-response>/,
-                );
-                if (responseMatch) {
-                  const responseContent = responseMatch[1];
-
-                  this.capRequests.forEach((item) => {
-                    const cidPattern = new RegExp(
-                      `<template[^>]*cid="${item.cid}"[^>]*>`,
-                    );
-                    if (cidPattern.test(responseContent)) {
-                      item.done = true;
-                      item.running = false;
-                    }
-                  });
-                }
+              if (msg.role === "user" && msg.isResponse && msg.responsesData) {
+                this.capRequests.forEach((item) => {
+                  const matchedResult = msg.responsesData.find(
+                    (r) => r.cid === item.cid && r.name === item.name
+                  );
+                  if (matchedResult) {
+                    item.done = true;
+                    item.running = false;
+                    item.result = matchedResult.result;
+                    item.error = matchedResult.error;
+                  }
+                });
               }
             }
 
