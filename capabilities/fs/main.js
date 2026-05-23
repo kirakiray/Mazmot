@@ -31,6 +31,8 @@ export default async function fs({ data = {}, content }) {
   if (mode === "write") {
     const temp = $(`<template>${content}</template>`);
 
+    debugger;
+
     let textToWrite = temp.$("script[type='text/plain']").html.trim();
 
     debugger;
