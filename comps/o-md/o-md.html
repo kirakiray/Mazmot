@@ -31,6 +31,31 @@
       );
 
       marked.use({
+        extensions: [
+          {
+            name: "capRequest",
+            level: "block",
+            start(src) {
+              const match = src.match(/<cap-request>/);
+              return match ? match.index : -1;
+            },
+            tokenizer(src) {
+              const rule = /^<cap-request>[\s\S]*?<\/cap-request>/;
+              const match = rule.exec(src);
+              if (match) {
+                return {
+                  type: "capRequest",
+                  raw: match[0],
+                  text: match[0],
+                };
+              }
+              return undefined;
+            },
+            renderer(token) {
+              return token.text;
+            },
+          },
+        ],
         renderer: {
           code({ text, lang }) {
             const code = text || "";
