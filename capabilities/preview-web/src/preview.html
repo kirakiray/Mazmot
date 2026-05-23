@@ -2,14 +2,159 @@
   <style>
     :host {
       display: block;
+      box-sizing: border-box;
+      margin: 0 auto;
+      padding: 24px;
+      max-width: 100%;
+    }
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
+    }
+    .preview-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface, #1a1a1a);
+    }
+    .preview-toolbar {
+      display: flex;
+      gap: 8px;
+    }
+    .preview-frame-wrapper {
+      position: relative;
+      border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .preview-frame {
+      width: 100%;
+      height: 600px;
+      border: none;
+      display: block;
+    }
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .loading-text {
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface, #1a1a1a);
+    }
+    .error-message {
+      padding: 16px;
+      background: var(--md-sys-color-error-container, #ffebee);
+      color: var(--md-sys-color-on-error-container, #c62828);
+      border-radius: 8px;
+      margin-top: 16px;
     }
   </style>
-  preview
+  <div class="preview-container">
+    <div class="preview-header">
+      <h2 class="preview-title">{{ title || '网页预览' }}</h2>
+      <div class="preview-toolbar">
+        <button on:click="refresh" attr:disabled="isLoading">刷新</button>
+        <button on:click="openInNewTab">新窗口打开</button>
+      </div>
+    </div>
+    <div class="preview-frame-wrapper">
+      <o-if :value="isLoading">
+        <div class="loading-overlay">
+          <div class="loading-text">加载中...</div>
+        </div>
+      </o-if>
+      <iframe 
+        class="preview-frame" 
+        attr:src="currentUrl" 
+        attr:width="width || '100%'" 
+        attr:height="height || '600px'"
+        on:load="onFrameLoad"
+      ></iframe>
+    </div>
+    <o-if :value="errorMessage">
+      <div class="error-message">{{ errorMessage }}</div>
+    </o-if>
+  </div>
   <script>
     export default async ({ load }) => {
       return {
-        data: {},
-        attached() {},
+        data: {
+          url: '',
+          title: '网页预览',
+          width: '100%',
+          height: '600px',
+          currentUrl: '',
+          isLoading: false,
+          errorMessage: '',
+        },
+        proto: {
+          async init(config) {
+            const configObj = typeof config === 'string' ? JSON.parse(config) : config;
+            
+            this.url = configObj.url || '';
+            this.title = configObj.title || '网页预览';
+            this.width = configObj.width || '100%';
+            this.height = configObj.height || '600px';
+            
+            if (this.url) {
+              this.loadUrl(this.url);
+            }
+          },
+          
+          loadUrl(url) {
+            this.isLoading = true;
+            this.errorMessage = '';
+            this.currentUrl = url;
+          },
+          
+          onFrameLoad() {
+            this.isLoading = false;
+          },
+          
+          refresh() {
+            if (this.url) {
+              this.isLoading = true;
+              this.errorMessage = '';
+              const timestamp = Date.now();
+              this.currentUrl = this.url + (this.url.includes('?') ? '&' : '?') + '_t=' + timestamp;
+            }
+          },
+          
+          openInNewTab() {
+            if (this.url) {
+              window.open(this.url, '_blank');
+            }
+          },
+          
+          showError(message) {
+            this.isLoading = false;
+            this.errorMessage = message;
+          }
+        },
+        
+        attached() {
+          this.watch('url', (newUrl) => {
+            if (newUrl) {
+              this.loadUrl(newUrl);
+            }
+          });
+        }
       };
     };
   </script>
