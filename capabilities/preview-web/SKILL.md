@@ -1,7 +1,7 @@
 ---
 name: preview-web
 description: 可以预览本地网页文件的内容
-method: main.js
+page: src/preview.html
 ---
 
 # Preview Web
