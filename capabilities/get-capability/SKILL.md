@@ -25,4 +25,4 @@ test: test/test-get-capability.html
   </template>
 </cap-request>
 
-工具将返回指定能力的完整文档。`data-name` 支持逗号分隔的多个能力名称，一次可查询多个。
+工具将返回指定能力的完整文档。如需查询多个能力，请使用多个 `<template>` 标签，每个标签查询一个能力。
