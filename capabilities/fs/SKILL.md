@@ -20,7 +20,7 @@ test: test/fs-demo.html
 
 ### 写入文件
 
-使用 `data-mode="write"` 写入文件内容。使用 `data-content` 属性指定写入内容：
+使用 `data-mode="write"` 写入文件内容。所有写入内容都需要使用 `<script type="text/plain">` 标签包裹，以确保内容被正确传递：
 
 <cap-request>
   <template
@@ -29,17 +29,19 @@ test: test/fs-demo.html
     desc="写入文件"
     data-mode="write"
     data-path="mazmot/test/test1.txt"
-    data-content="hello world"
   >
+    <script type="text/plain">
+hello world
+    </script>
   </template>
 </cap-request>
 
 **返回值**：写入成功返回 `true`
 
 **说明**：
-- 使用 `data-content` 属性指定写入内容
+- 使用 `<script type="text/plain">` 标签包裹所有写入内容
+- 内容会被原样保留，不会被浏览器解析
 - 适用于写入任何类型的文件内容（纯文本、HTML、JSON、代码等）
-- 内容中的特殊字符需要转义：`<` → `&lt;`，`>` → `&gt;`，`"` → `&quot;`
 
 ### 读取文件
 
@@ -246,8 +248,6 @@ test: test/fs-demo.html
 
 ### 可选参数
 
-- `data-content`：写入内容（用于 write 操作）
-  - 适用于写入任何类型的文件内容
-  - 内容中的特殊字符需要转义：`<` → `&lt;`，`>` → `&gt;`，`"` → `&quot;`
 - `data-target-path`：目标路径（用于 move 和 copy 操作）
 - `data-target-name`：目标名称（用于 move 和 copy 操作）
+- 标签内部内容（`content`）：写入模式下，要写入的文件内容

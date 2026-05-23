@@ -29,10 +29,22 @@ export default async function fs({ data = {}, content }) {
   });
 
   if (mode === "write") {
-    if (!data.content) {
-      throw new Error("data-content is required for write operation");
-    }
-    await handle.write(data.content);
+    const temp = $(`<template>${content}</template>`);
+
+    debugger;
+
+    let textToWrite = temp.$("script[type='text/plain']").html.trim();
+
+    debugger;
+
+    // const scriptMatch = content.match(
+    //   /<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i,
+    // );
+    // if (scriptMatch) {
+    //   textToWrite = scriptMatch[1];
+    // }
+
+    await handle.write(textToWrite);
     return true;
   }
 
