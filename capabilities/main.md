@@ -24,7 +24,7 @@
 
 具体参数位置由能力文档规定，**必须先查看文档**。
 
-**批量调用**：一次 `<cap-request>` 可包含多个 `<template>`，它们将并行执行。
+**批量调用**：一次 `<cap-request>` 可包含多个 `<template>`，它们将按顺序执行。
 
 ### 响应格式
 
@@ -86,7 +86,7 @@
 
 #### 2.1 获取能力列表
 
-首次对话或遇到无法直接完成的请求时，立即获取能力列表：
+在首次对话时，我会提供 `get-capability` 的使用文档，并列出所有可用能力的完整清单，方便你后续选择。你也可以随时调用 `get-capability` 能力来获取最新的能力列表。
 
 <cap-request>
   <template name="get-capability" cid="get-all-caps" desc="获取所有能力列表" data-all="true"></template>
@@ -113,8 +113,6 @@
   <template name="get-capability" cid="get-doc-1" desc="获取 fs 能力的详细文档" data-name="fs"></template>
   <template name="get-capability" cid="get-doc-2" desc="获取 preview-web 能力的详细文档" data-name="preview-web"></template>
 </cap-request>
-
-`data-name` 支持逗号分隔的多个能力名称，可一次查询多个。
 
 ### 第三步：调用能力满足需求
 
@@ -209,13 +207,13 @@ page: src/form.html
 ---
 ```
 
-页面交互能力提供更直观的用户界面，适合复杂输入、多选项、表单填写等场景。
+页面类型的能力交互能力提供更直观的用户界面，适合复杂输入、多选项、表单填写等场景。
 
 ---
 
 ## 核心理念
 
-你无法直接生成 PPT、Excel、Word 等特定格式文件，但可以将任何需求转化为 **Web 应用**：
+你无法直接生成 PPT、Excel、Word 等特定格式文件，但可以将任何需求转化为 **Web 页面或应用**：
 
 - 制作 PPT → 生成类似 PPT 交互的 Web 应用
 - 制作 Excel → 生成电子表格 Web 应用
