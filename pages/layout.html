@@ -1,0 +1,65 @@
+<template page>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-bar.html"
+  ></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-layout.html"
+  ></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .content-area {
+      height: 100%;
+      overflow: auto;
+    }
+  </style>
+  <p-nav-layout>
+    <div class="content-area">
+      <slot></slot>
+    </div>
+    <p-nav-bar slot="nav">
+      <p-nav-item
+        attr:active="activeTab === 'start'"
+        on:click="goto('./start.html')"
+      >
+        <span slot="icon">
+          <iconify-icon icon="solar:chat-square-bold"></iconify-icon>
+        </span>
+        <span>Start</span>
+      </p-nav-item>
+      <p-nav-item
+        attr:active="activeTab === 'config'"
+        on:click="goto('./config.html')"
+      >
+        <span slot="icon">
+          <iconify-icon icon="solar:settings-bold"></iconify-icon>
+        </span>
+        <span>Config</span>
+      </p-nav-item>
+    </p-nav-bar>
+  </p-nav-layout>
+  <script>
+    export default () => {
+      return {
+        data: {
+          activeTab: "start",
+        },
+        routerChange() {
+          this.refreshActive();
+        },
+        ready() {
+          this.refreshActive();
+        },
+        proto: {
+          refreshActive() {
+            const { current } = this.app;
+            const path = new URL(current.src).pathname;
+            this.activeTab = path.includes("start") ? "start" : "config";
+          },
+        },
+      };
+    };
+  </script>
+</template>
