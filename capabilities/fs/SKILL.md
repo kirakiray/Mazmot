@@ -19,7 +19,7 @@ test: test/fs-demo.html
 
 ### 写入文件
 
-使用 `data-mode="write"` 写入文件内容，内容放在 template 标签内部：
+使用 `data-mode="write"` 写入文件内容。所有写入内容都需要使用 `<script type="text/plain">` 标签包裹，以确保内容被正确传递：
 
 <cap-request>
   <template
@@ -29,43 +29,18 @@ test: test/fs-demo.html
     data-mode="write"
     data-path="mazmot/test/test1.txt"
   >
+    <script type="text/plain">
 hello world
+    </script>
   </template>
 </cap-request>
 
 **返回值**：写入成功返回 `true`
 
-#### 写入包含 HTML 标签的内容
-
-当需要写入包含 HTML 标签（如 `<!DOCTYPE html>`、`<html>` 等）的内容时，需要使用 `<script type="text/plain">` 标签包裹内容，以避免 HTML 解析器将这些标签当作文档结构处理：
-
-<cap-request>
-  <template
-    name="fs"
-    cid="fs-write-html"
-    desc="写入HTML文件"
-    data-mode="write"
-    data-path="mazmot/test/index.html"
-  >
-    <script type="text/plain">
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <title>Test Page</title>
-</head>
-<body>
-  <h1>Hello World</h1>
-</body>
-</html>
-    </script>
-  </template>
-</cap-request>
-
 **说明**：
-- 使用 `<script type="text/plain">` 标签包裹 HTML 内容
+- 使用 `<script type="text/plain">` 标签包裹所有写入内容
 - 内容会被原样保留，不会被浏览器解析
-- 适用于写入任何包含 HTML/XML 标签的文件
+- 适用于写入任何类型的文件内容（纯文本、HTML、JSON、代码等）
 
 ### 读取文件
 
@@ -275,11 +250,3 @@ hello world
 - `data-target-path`：目标路径（用于 move 和 copy 操作）
 - `data-target-name`：目标名称（用于 move 和 copy 操作）
 - 标签内部内容（`content`）：写入模式下，要写入的文件内容
-
-## 完整测试示例
-
-查看 [test/fs-demo.html](test/fs-demo.html) 了解完整的测试用例，包括：
-- 写入文件并验证
-- 读取文件内容
-- 删除文件
-- 验证文件已被删除
