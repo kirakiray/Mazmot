@@ -31,11 +31,7 @@ export default async function fs({ data = {}, content }) {
   if (mode === "write") {
     const temp = $(`<template>${content}</template>`);
 
-    debugger;
-
     let textToWrite = temp.$("script[type='text/plain']").html.trim();
-
-    debugger;
 
     // const scriptMatch = content.match(
     //   /<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i,
