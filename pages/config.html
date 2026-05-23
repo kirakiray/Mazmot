@@ -1,31 +1,189 @@
 <template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+
   <style>
     :host {
       display: block;
-      padding: 24px;
+      width: 100%;
+      height: 100%;
       box-sizing: border-box;
     }
-    .config-title {
-      font-size: 24px;
-      font-weight: 600;
-      margin-bottom: 16px;
-      color: var(--md-sys-color-on-surface);
+
+    .config-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px;
     }
-    .config-desc {
+
+    .setting-section {
+      margin-bottom: 30px;
+    }
+
+    .setting-section h2 {
+      margin-bottom: 16px;
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .add-form {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .add-form p-select {
+      min-width: 150px;
+    }
+
+    .add-form p-input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .key-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .key-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .key-provider {
+      font-weight: 500;
+    }
+
+    .key-value {
+      font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
-      font-size: 14px;
+    }
+
+    .key-date {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
+
+    .empty-text {
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.6;
+      padding: 20px 0;
     }
   </style>
-  <div>
-    <div class="config-title">Configuration</div>
-    <div class="config-desc">This is the configuration page. Settings will be added here.</div>
+
+  <div class="config-container">
+    <h1>设置</h1>
+
+    <div class="setting-section">
+      <h2>API Key 管理</h2>
+      <div class="add-form">
+        <p-select :value="provider" on:change="provider = $event.target.value">
+          <span slot="label">提供商</span>
+          <p-option value="deepseek">DeepSeek</p-option>
+          <p-option value="kimi">Kimi</p-option>
+        </p-select>
+        <p-input :value="apiKey" on:input="apiKey = $event.target.value">
+          <span slot="label">API Key</span>
+        </p-input>
+        <p-button color="primary" on:click="handleAdd" :disabled="!apiKey.trim()">
+          添加
+        </p-button>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <h2>已保存的 API Key</h2>
+      <o-if :value="apiKeys.length === 0">
+        <p class="empty-text">暂无保存的 API Key</p>
+      </o-if>
+      <p-list>
+        <o-fill :value="apiKeys">
+          <p-list-item>
+            <div class="key-item">
+              <div class="key-info">
+                <span class="key-provider">{{$data.provider}}</span>
+                <span class="key-value">{{$data.maskedKey}}</span>
+                <span class="key-date">{{$data.formattedDate}}</span>
+              </div>
+              <div style="display: flex; gap: 8px">
+                <p-button
+                  size="s"
+                  color="error"
+                  variant="outlined"
+                  on:click="$host.deleteKey($index)"
+                  >删除</p-button
+                >
+              </div>
+            </div>
+          </p-list-item>
+        </o-fill>
+      </p-list>
+    </div>
   </div>
+
+  <p-dialog sync:open="dialogOpen" auto-close>
+    <span slot="title">{{dialogTitle}}</span>
+    <div>{{dialogContent}}</div>
+    <div slot="bottom">
+      <p-button color="primary" on:click="dialogOpen = false">确定</p-button>
+    </div>
+  </p-dialog>
+
   <script>
     export const parent = './layout.html';
 
-    export default async () => {
+    export default async ({ load }) => {
+      const { apiKeys, saveKey } = await load("../ai/main.js");
+
       return {
-        data: {},
+        data: {
+          provider: "deepseek",
+          apiKey: "",
+          apiKeys: [],
+          dialogOpen: false,
+          dialogTitle: "",
+          dialogContent: "",
+        },
+
+        proto: {
+          async handleAdd() {
+            const apiKey = this.apiKey.trim();
+            if (!apiKey) return;
+
+            try {
+              await saveKey(apiKey, this.provider);
+              this.apiKey = "";
+              this.dialogTitle = "成功";
+              this.dialogContent = "API Key 添加成功！";
+              this.dialogOpen = true;
+            } catch (error) {
+              this.dialogTitle = "错误";
+              this.dialogContent = "添加失败：" + error.message;
+              this.dialogOpen = true;
+            }
+          },
+
+          deleteKey(index) {
+            this.apiKeys.splice(index, 1);
+          },
+        },
+
+        attached() {
+          this.apiKeys = apiKeys;
+        },
+
+        detached() {
+          this.apiKeys = [];
+        },
       };
     };
   </script>
