@@ -72,10 +72,16 @@
         {{ $data.desc }}<span class:required-mark="$data.required">*</span>
       </label>
       <o-if :value="$data.type === 'radio'">
-        <p-radio-group sync:value="$data.value">
+        <p-radio-group
+          sync:value="$data.value"
+          attr:disabled="$host.isReadonly"
+        >
           <div class="options-row">
             <o-fill :value="$data.options">
-              <p-radio attr:value="$data.value || $data.label">
+              <p-radio
+                attr:value="$data.value || $data.label"
+                attr:disabled="$host.isReadonly"
+              >
                 {{ $data.label || $data.value }}
               </p-radio>
             </o-fill>
@@ -83,14 +89,18 @@
         </p-radio-group>
       </o-if>
       <o-if :value="$data.type === 'text'">
-        <p-input sync:value="$data.value" attr:placeholder="$data.placeholder">
+        <p-input
+          sync:value="$data.value"
+          attr:placeholder="$data.placeholder"
+          attr:disabled="$host.isReadonly"
+        >
           <o-if :value="$data.label" slot="label">
             <span>{{ $data.label }}</span>
           </o-if>
         </p-input>
       </o-if>
       <o-if :value="$data.type === 'switch'">
-        <p-switch sync:checked="$data.value">
+        <p-switch sync:checked="$data.value" attr:disabled="$host.isReadonly">
           <o-if :value="$data.label"> {{ $data.label }} </o-if>
         </p-switch>
       </o-if>
@@ -99,6 +109,7 @@
           sync:value="$data.value"
           attr:placeholder="$data.placeholder"
           attr:maxlength="$data.maxlength"
+          attr:disabled="$host.isReadonly"
         >
           <o-if :value="$data.label" slot="label">
             <span>{{ $data.label }}</span>
@@ -106,7 +117,7 @@
         </p-textarea>
       </o-if>
       <o-if :value="$data.type === 'checkbox'">
-        <p-checkbox-group :value="$data.value">
+        <p-checkbox-group :value="$data.value" attr:disabled="$host.isReadonly">
           <div class="options-row">
             <o-fill :value="$data.options">
               <p-checkbox attr:value="$data.value || $data.label">
@@ -117,7 +128,11 @@
         </p-checkbox-group>
       </o-if>
       <o-if :value="$data.type === 'select'">
-        <p-select sync:value="$data.value" attr:placeholder="$data.placeholder">
+        <p-select
+          sync:value="$data.value"
+          attr:placeholder="$data.placeholder"
+          attr:disabled="$host.isReadonly"
+        >
           <o-if :value="$data.label" slot="label">
             <span>{{ $data.label }}</span>
           </o-if>
@@ -131,30 +146,32 @@
     </div>
   </o-fill>
 
-  <div class="form-actions">
-    <o-if :value="submitName">
-      <p-button
-        color="primary"
-        size="s"
-        type="submit"
-        attr:disabled="!canSubmit"
-        on:click="submit"
-      >
-        {{ submitName }}
-      </p-button>
-    </o-if>
-    <o-if :value="cancelName">
-      <p-button
-        size="s"
-        type="button"
-        color="error"
-        variant="outlined"
-        on:click="cancel"
-      >
-        {{ cancelName }}
-      </p-button>
-    </o-if>
-  </div>
+  <o-if :value="!isReadonly">
+    <div class="form-actions">
+      <o-if :value="submitName">
+        <p-button
+          color="primary"
+          size="s"
+          type="submit"
+          attr:disabled="!canSubmit"
+          on:click="submit"
+        >
+          {{ submitName }}
+        </p-button>
+      </o-if>
+      <o-if :value="cancelName">
+        <p-button
+          size="s"
+          type="button"
+          color="error"
+          variant="outlined"
+          on:click="cancel"
+        >
+          {{ cancelName }}
+        </p-button>
+      </o-if>
+    </div>
+  </o-if>
   <script>
     export default () => {
       return {
@@ -163,6 +180,7 @@
           formItems: [],
           submitName: "Submit",
           cancelName: "Cancel",
+          isReadonly: false,
         },
         proto: {
           get storageKey() {
@@ -243,12 +261,15 @@
             this.emit("cancel");
           },
           async init({ content, cid, result }) {
-            debugger;
             let arr = content;
             if (typeof content === "string") {
               arr = JSON.parse(content);
             }
             this.cid = cid;
+
+            if (result) {
+              this.isReadonly = true;
+            }
 
             const formItems = [];
             arr.forEach((item) => {
@@ -273,18 +294,26 @@
             });
             this.formItems = formItems;
 
-            const storedData = this.loadFromStorage();
-            if (storedData) {
+            if (result) {
               this.formItems.forEach((item) => {
-                if (storedData.hasOwnProperty(item.name)) {
-                  item.value = storedData[item.name];
+                if (result.hasOwnProperty(item.name)) {
+                  item.value = result[item.name];
                 }
               });
-            }
+            } else {
+              const storedData = this.loadFromStorage();
+              if (storedData) {
+                this.formItems.forEach((item) => {
+                  if (storedData.hasOwnProperty(item.name)) {
+                    item.value = storedData[item.name];
+                  }
+                });
+              }
 
-            this.watchTick(() => {
-              this.saveToStorage();
-            }, 100);
+              this.watchTick(() => {
+                this.saveToStorage();
+              }, 100);
+            }
           },
         },
       };
