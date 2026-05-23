@@ -20,17 +20,28 @@ export default async function fs({ data = {}, content }) {
   }
 
   const handle = await get(path, {
-    create: mode === "write" || mode === "mkdir" ? (mode === "mkdir" ? "dir" : "file") : undefined,
+    create:
+      mode === "write" || mode === "mkdir"
+        ? mode === "mkdir"
+          ? "dir"
+          : "file"
+        : undefined,
   });
 
   if (mode === "write") {
-    let textToWrite = content;
-    
-    const scriptMatch = content.match(/<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i);
-    if (scriptMatch) {
-      textToWrite = scriptMatch[1];
-    }
-    
+    const temp = $(`<template>${content}</template>`);
+
+    let textToWrite = temp.$("script[type='text/plain']").html.trim();
+
+    debugger;
+
+    // const scriptMatch = content.match(
+    //   /<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i,
+    // );
+    // if (scriptMatch) {
+    //   textToWrite = scriptMatch[1];
+    // }
+
     await handle.write(textToWrite);
     return true;
   }
