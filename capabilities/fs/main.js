@@ -24,7 +24,14 @@ export default async function fs({ data = {}, content }) {
   });
 
   if (mode === "write") {
-    await handle.write(content);
+    let textToWrite = content;
+    
+    const scriptMatch = content.match(/<script\s+type=["']text\/plain["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (scriptMatch) {
+      textToWrite = scriptMatch[1];
+    }
+    
+    await handle.write(textToWrite);
     return true;
   }
 
