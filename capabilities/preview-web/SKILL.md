@@ -102,3 +102,35 @@ color: #333;
 - 使用 `$` 前缀表示根路径，确保路径正确
 - 建议将预览项目放在 `mazmot/preview/` 目录下，便于管理
 - 预览窗口支持基本的交互功能，如表单填写、按钮点击等
+
+## 自动高度调整
+
+如果需要 iframe 根据内容自动调整高度，可以在预览页面中添加以下代码：
+
+```html
+<script>
+  function sendHeight() {
+    const height = Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.clientHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight,
+    );
+    window.parent.postMessage(
+      {
+        type: "resize",
+        height: height,
+      },
+      "*",
+    );
+  }
+
+  if (window.parent !== window.self) {
+    window.addEventListener("load", sendHeight);
+    window.addEventListener("resize", sendHeight);
+  }
+</script>
+```
+
+这样 iframe 会根据内容高度自动调整，避免出现滚动条。
