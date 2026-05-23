@@ -1,7 +1,7 @@
 ---
 name: preview-web
 description: 可以预览本地网页文件的内容
-method: main.js
+page: src/preview.html
 ---
 
 # Preview Web
@@ -50,6 +50,7 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
 ### 目录约定
 
 建议将预览文件放在 `mazmot/preview/<项目名>/` 目录下，例如：
+
 - `mazmot/preview/my-demo/index.html`
 - `mazmot/preview/my-demo/style.css`
 - `mazmot/preview/my-demo/script.js`
@@ -57,6 +58,7 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
 ### 路径格式
 
 预览文件时，使用 `$` 开头的根路径地址，例如：
+
 - `$mazmot/preview/my-demo/index.html`
 
 ### 完整示例
@@ -84,29 +86,29 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
     </html>
   </template>
 
-  <template
+<template
     name="fs"
     cid="fs-02"
     desc="写入CSS文件"
     data-mode="write"
     data-path="mazmot/preview/test-demo/style.css">
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    h1 {
-      color: #333;
-    }
-  </template>
+body {
+font-family: sans-serif;
+padding: 20px;
+}
+h1 {
+color: #333;
+}
+</template>
 
-  <template
+<template
     name="fs"
     cid="fs-03"
     desc="写入JS文件"
     data-mode="write"
     data-path="mazmot/preview/test-demo/script.js">
-    console.log('页面加载完成');
-  </template>
+console.log('页面加载完成');
+</template>
 
   <template name="preview-web" cid="preview-web-01" desc="预览网页内容">
     { "url": "$mazmot/preview/test-demo/index.html", "title": "测试页面预览" }
