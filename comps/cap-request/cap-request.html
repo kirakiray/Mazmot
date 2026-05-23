@@ -231,7 +231,7 @@
             const { data } = event;
 
             item.hidePage = true;
-            
+
             if (item._resolve) {
               item._resolve(data);
             } else {
@@ -248,11 +248,17 @@
           },
           runPageInit(item, fillItemEl) {
             const page = fillItemEl.$("o-page");
-            page.init({
+            const initData = {
               content: item.content,
               cid: item.cid,
               data: item.data.toJSON(),
-            });
+            };
+
+            if (item.result) {
+              initData.result = item.result.toJSON();
+            }
+
+            page.init(initData);
           },
           stringify(data, keyArr) {
             if (data === null || data === undefined) {
@@ -404,7 +410,7 @@
               if (msg.role === "user" && msg.isResponse && msg.responsesData) {
                 for (const item of this.capRequests) {
                   const matchedResult = msg.responsesData.find(
-                    (r) => r.cid === item.cid && r.name === item.name
+                    (r) => r.cid === item.cid && r.name === item.name,
                   );
                   if (matchedResult) {
                     item.done = true;
@@ -412,7 +418,8 @@
                     item.result = matchedResult.result;
                     item.error = matchedResult.error;
 
-                    const { loadCapabilityConfig, normalizeCapPath } = await load("./util.js");
+                    const { loadCapabilityConfig, normalizeCapPath } =
+                      await load("./util.js");
                     const yamlConfig = await loadCapabilityConfig(item.name);
                     if (yamlConfig.page) {
                       const pageUrl = normalizeCapPath(

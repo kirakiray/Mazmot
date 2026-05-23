@@ -34,7 +34,7 @@
           _messageHandler: null,
         },
         proto: {
-          async init({ data, content, cid }) {
+          async init({ data, content, cid, result }) {
             const { capability } = data;
 
             // 获取对应能力的配置数据
@@ -65,6 +65,11 @@
                 return;
               }
 
+              if (result) {
+                // 有结果不需要再处理
+                return;
+              }
+
               this.emit("submit", {
                 data: e.data.payload,
               });
@@ -73,9 +78,6 @@
             window.addEventListener("message", this._messageHandler);
 
             this.shadow.$(".container").push(frameEle);
-          },
-          done() {
-            debugger;
           },
         },
         detached() {
