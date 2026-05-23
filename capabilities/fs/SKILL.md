@@ -20,7 +20,9 @@ test: test/fs-demo.html
 
 ### 写入文件
 
-使用 `data-mode="write"` 写入文件内容。所有写入内容都需要使用 `<script type="text/plain">` 标签包裹，以确保内容被正确传递：
+使用 `data-mode="write"` 写入文件内容。
+
+**⚠️ 重要：所有写入内容必须使用 `<script type="text/plain">` 标签包裹，否则内容可能无法正确传递！**
 
 <cap-request>
   <template
@@ -38,10 +40,11 @@ hello world
 
 **返回值**：写入成功返回 `true`
 
-**说明**：
-- 使用 `<script type="text/plain">` 标签包裹所有写入内容
-- 内容会被原样保留，不会被浏览器解析
-- 适用于写入任何类型的文件内容（纯文本、HTML、JSON、代码等）
+**为什么必须使用 `<script type="text/plain">`？**
+- 防止浏览器解析内容中的 HTML 标签
+- 确保内容被原样传递，不会被修改
+- 适用于所有类型的文件内容（纯文本、HTML、JSON、代码等）
+- 如果不使用该标签，包含 HTML 标签的内容会被浏览器错误解析
 
 ### 读取文件
 
