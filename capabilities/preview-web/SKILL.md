@@ -111,13 +111,13 @@ console.log('页面加载完成');
 </template>
 
   <template name="preview-web" cid="preview-web-01" desc="预览网页内容">
-    { "url": "$mazmot/preview/test-demo/index.html", "title": "测试页面预览" }
+    { "url": "/$mazmot/preview/test-demo/index.html", "title": "测试页面预览" }
   </template>
 </cap-request>
 
 ## 注意事项
 
 - 预览的网页地址必须是可访问的本地路径或网络地址
-- 访问的时候，使用 `$` 前缀表示根路径，确保路径正确
 - 建议将预览项目放在 `mazmot/preview/` 目录下，便于管理
+- 访问的时候，使用 `/$mazmot/preview/项目名/文件名` 前缀表示根路径，确保路径正确
 - 预览窗口支持基本的交互功能，如表单填写、按钮点击等
