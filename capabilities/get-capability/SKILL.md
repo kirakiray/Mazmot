@@ -20,8 +20,8 @@ test: test/test-get-capability.html
 ## 获取指定能力的详细使用信息
 
 <cap-request>
-  <template name="get-capability" cid="nez133" desc="获取 fetch-url 能力的详细使用信息" data-name="fetch-url">
   <template name="get-capability" cid="nez134" desc="获取 custom-form 能力的详细使用信息" data-name="custom-form">
+  <template name="get-capability" cid="nez133" desc="获取 fetch-url 能力的详细使用信息" data-name="fetch-url">
   </template>
 </cap-request>
 
