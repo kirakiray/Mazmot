@@ -28,6 +28,13 @@
         <span>Start</span>
       </p-nav-item>
       <p-nav-item
+        attr:active="activeTab === 'apps'"
+        on:click="goto('./apps.html')"
+      >
+        <iconify-icon slot="icon" icon="solar:widget-bold"></iconify-icon>
+        <span>应用</span>
+      </p-nav-item>
+      <p-nav-item
         attr:active="activeTab === 'config'"
         on:click="goto('./config.html')"
       >
@@ -52,7 +59,13 @@
           refreshActive() {
             const { current } = this.app;
             const path = new URL(current.src).pathname;
-            this.activeTab = path.includes("start") ? "start" : "config";
+            if (path.includes("start")) {
+              this.activeTab = "start";
+            } else if (path.includes("apps")) {
+              this.activeTab = "apps";
+            } else if (path.includes("config")) {
+              this.activeTab = "config";
+            }
           },
         },
       };
