@@ -18,24 +18,18 @@ method: main.js
   </template>
 </cap-request>
 
-预览完成后，AI 将接收到网页的相关信息：
-
-<cap-response>
-  <template result name="preview-web" cid="preview-web-01">
-    { "success": true, "url": "/demo/preview-demo.html", "title": "示例网页预览", "timestamp": "2024-01-01T12:00:00Z" }
-  </template>
-</cap-response>
+预览组件并不会返回任何内容，它只是在浏览器中打开一个新窗口，显示指定的网页内容。
 
 ## 参数说明
 
 preview-web 能力接受以下参数：
 
-| 参数    | 必需 | 说明                                     |
-| ------- | ---- | ---------------------------------------- |
-| `url`   | 是   | 要预览的网页地址，可以是相对路径或绝对路径 |
-| `title` | 否   | 预览窗口的标题，默认为"网页预览"          |
-| `width` | 否   | 预览窗口的宽度，默认为 800px             |
-| `height`| 否   | 预览窗口的高度，默认为 600px             |
+| 参数     | 必需 | 说明                                       |
+| -------- | ---- | ------------------------------------------ |
+| `url`    | 是   | 要预览的网页地址，可以是相对路径或绝对路径 |
+| `title`  | 否   | 预览窗口的标题，默认为"网页预览"           |
+| `width`  | 否   | 预览窗口的宽度，默认为 800px               |
+| `height` | 否   | 预览窗口的高度，默认为 600px               |
 
 ## 使用场景
 
@@ -45,6 +39,26 @@ preview-web 能力适用于以下场景：
 2. **组件演示**：展示组件库或页面的实际效果
 3. **文档示例**：在文档中嵌入可交互的网页示例
 4. **测试验证**：验证网页的渲染效果和交互功能
+
+通常会搭配 fs 能力使用，写入html文件到本地，然后再使用 preview-web 能力预览该文件。
+
+## 示例
+
+<cap-request>
+  <template
+    name="fs"
+    cid="fs-02"
+    desc="写入html文件"
+    data-mode="write"
+    data-path="mazmot/preview/test-demo/index.html">
+  <!-- <!DOCTYPE html>... -->
+  <!-- ...html文件内容 -->
+  </template>
+
+  <template name="preview-web" cid="preview-web-01" desc="预览网页内容">
+    { "url": "/mazmot/preview/test-demo/index.html", "title": "示例网页预览" }
+  </template>
+</cap-request>
 
 ## 注意事项
 
