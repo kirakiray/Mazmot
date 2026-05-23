@@ -121,12 +121,12 @@
           <div class="cap-name">{{$data.name}}</div>
         </div>
         <div class="cap-action">
-          <o-if :value="$data.page">
+          <o-if :value="$data.page || $data.hasPage">
             <p-button
               size="small"
               icon
               variant="text"
-              on:click="$data.hidePage = !$data.hidePage"
+              on:click="$host.togglePageView($data)"
               style="margin-right: 8px"
             >
               <n-icon
@@ -238,6 +238,14 @@
               item.result = data;
             }
           },
+          togglePageView(item) {
+            if (item.hasPage && !item.page) {
+              item.page = item._pageUrl;
+              item.hidePage = false;
+            } else {
+              item.hidePage = !item.hidePage;
+            }
+          },
           runPageInit(item, fillItemEl) {
             const page = fillItemEl.$("o-page");
             page.init({
@@ -271,6 +279,7 @@
               );
 
               item.page = pageUrl;
+              item.hidePage = false;
 
               const result = await new Promise((resolve, reject) => {
                 // 挂载 resolve 和 reject 到 item 上，方便在页面中调用
@@ -409,7 +418,8 @@
                       const pageUrl = normalizeCapPath(
                         `/capabilities/${item.name}/${yamlConfig.page}`,
                       );
-                      item.page = pageUrl;
+                      item.hasPage = true;
+                      item._pageUrl = pageUrl;
                       item.hidePage = true;
                     }
                   }
