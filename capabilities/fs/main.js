@@ -26,7 +26,7 @@ export default async function fs({ data = {}, content }) {
   if (mode === "write") {
     let textToWrite = content;
     
-    const scriptMatch = content.match(/<script\s+type=["']text\/plain["'][^>]*>([\s\S]*?)<\/script>/i);
+    const scriptMatch = content.match(/<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i);
     if (scriptMatch) {
       textToWrite = scriptMatch[1];
     }
