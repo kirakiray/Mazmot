@@ -22,7 +22,7 @@ test: test/fs-demo.html
 
 使用 `data-mode="write"` 写入文件内容。
 
-**⚠️ 重要：所有写入内容必须使用 `<script type="text/plain">` 标签包裹，否则内容可能无法正确传递！**
+**⚠️ 重要：所有写入内容必须使用 `<script type="text/plain">` 标签包裹，否则内容无法正确传递！**
 
 <cap-request>
   <template
