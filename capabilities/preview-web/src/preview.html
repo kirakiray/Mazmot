@@ -1,43 +1,96 @@
 <template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <style>
     :host {
       display: block;
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 24px;
+      padding: 0;
       max-width: 100%;
+      height: 100%;
     }
     .preview-container {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
-    .preview-header {
+    .browser-toolbar {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
-    }
-    .preview-title {
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--md-sys-color-on-surface, #1a1a1a);
-    }
-    .preview-toolbar {
-      display: flex;
       gap: 8px;
+      padding: 8px 12px;
+      background: var(--md-sys-color-neutral-container);
+      border-bottom: 1px solid var(--md-sys-color-neutral);
+      min-height: 40px;
+    }
+    .browser-buttons {
+      display: flex;
+      gap: 4px;
+    }
+    .browser-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface);
+      transition: background-color 0.2s;
+    }
+    .browser-btn:hover:not(:disabled) {
+      background: var(--md-sys-color-neutral);
+    }
+    .browser-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .browser-btn.active {
+      background: var(--md-sys-color-neutral);
+    }
+    .url-bar {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: var(--md-sys-color-surface);
+      border: 1px solid var(--md-sys-color-neutral);
+      border-radius: 4px;
+      padding: 4px 12px;
+      height: 28px;
+      min-width: 0;
+    }
+    .url-bar-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .url-text {
+      flex: 1;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .preview-frame-wrapper {
       position: relative;
-      border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
-      border-radius: 8px;
+      flex: 1;
       overflow: hidden;
-      background: white;
+      background: var(--md-sys-color-surface);
     }
     .preview-frame {
       width: 100%;
-      height: 600px;
+      height: 100%;
       border: none;
       display: block;
     }
@@ -47,43 +100,86 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(255, 255, 255, 0.9);
+      background: var(--md-sys-color-surface);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 10;
+      gap: 12px;
+    }
+    .loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--md-sys-color-neutral);
+      border-top: 3px solid var(--md-sys-color-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
     }
     .loading-text {
-      font-size: 16px;
-      color: var(--md-sys-color-on-surface, #1a1a1a);
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
     }
     .error-message {
       padding: 16px;
-      background: var(--md-sys-color-error-container, #ffebee);
-      color: var(--md-sys-color-on-error-container, #c62828);
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
       border-radius: 8px;
-      margin-top: 16px;
+      margin: 16px;
     }
   </style>
   <div class="preview-container">
-    <div class="preview-header">
-      <h2 class="preview-title">{{ title || '网页预览' }}</h2>
-      <div class="preview-toolbar">
-        <button on:click="reload" attr:disabled="isLoading">刷新</button>
-        <button on:click="openInNewTab">新窗口打开</button>
+    <div class="browser-toolbar">
+      <div class="browser-buttons">
+        <button
+          class="browser-btn"
+          on:click="reload"
+          attr:disabled="isLoading"
+          title="刷新"
+        >
+          <n-icon icon="mdi:reload"></n-icon>
+        </button>
+      </div>
+      <div class="url-bar">
+        <svg
+          class="url-bar-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path
+            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+          ></path>
+        </svg>
+        <span class="url-text">{{ displayUrl || 'about:blank' }}</span>
+      </div>
+      <div class="browser-buttons">
+        <button class="browser-btn" on:click="openInNewTab" title="新窗口打开">
+          <n-icon icon="majesticons:open"></n-icon>
+        </button>
       </div>
     </div>
     <div class="preview-frame-wrapper">
       <o-if :value="isLoading">
         <div class="loading-overlay">
+          <div class="loading-spinner"></div>
           <div class="loading-text">加载中...</div>
         </div>
       </o-if>
       <iframe
         class="preview-frame"
         attr:src="currentUrl"
-        attr:width="width || '100%'"
-        attr:height="height || '600px'"
         on:load="onFrameLoad"
       ></iframe>
     </div>
@@ -100,8 +196,11 @@
           width: "100%",
           height: "600px",
           currentUrl: "",
+          displayUrl: "",
           isLoading: false,
           errorMessage: "",
+          history: [],
+          historyIndex: -1,
         },
         watch: {
           url(newUrl) {
@@ -120,14 +219,21 @@
             this.height = configObj.height || "600px";
 
             if (this.url) {
-              this.loadUrl(this.url);
+              this.loadUrl(this.url, true);
             }
           },
 
-          loadUrl(url) {
+          loadUrl(url, addToHistory = false) {
             this.isLoading = true;
             this.errorMessage = "";
+            this.displayUrl = url;
             this.currentUrl = url;
+
+            if (addToHistory) {
+              this.history = this.history.slice(0, this.historyIndex + 1);
+              this.history.push(url);
+              this.historyIndex = this.history.length - 1;
+            }
           },
 
           onFrameLoad() {
@@ -139,11 +245,13 @@
               this.isLoading = true;
               this.errorMessage = "";
               const timestamp = Date.now();
-              this.currentUrl =
+              const url =
                 this.url +
                 (this.url.includes("?") ? "&" : "?") +
                 "_t=" +
                 timestamp;
+              this.displayUrl = this.url;
+              this.currentUrl = url;
             }
           },
 
