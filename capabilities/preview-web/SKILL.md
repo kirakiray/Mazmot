@@ -1,7 +1,7 @@
 ---
 name: preview-web
 description: 可以预览本地网页文件的内容
-page: src/preview.html
+method: main.js
 ---
 
 # Preview Web
@@ -24,12 +24,10 @@ page: src/preview.html
 
 preview-web 能力接受以下参数：
 
-| 参数     | 必需 | 说明                                       |
-| -------- | ---- | ------------------------------------------ |
-| `url`    | 是   | 要预览的网页地址，可以是相对路径或绝对路径 |
-| `title`  | 否   | 预览窗口的标题，默认为"网页预览"           |
-| `width`  | 否   | 预览窗口的宽度，默认为 800px               |
-| `height` | 否   | 预览窗口的高度，默认为 600px               |
+| 参数    | 必需 | 说明                                       |
+| ------- | ---- | ------------------------------------------ |
+| `url`   | 是   | 要预览的网页地址，可以是相对路径或绝对路径 |
+| `title` | 否   | 预览窗口的标题，默认为"网页预览"           |
 
 ## 使用场景
 
@@ -50,7 +48,6 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
 ### 目录约定
 
 建议将预览文件放在 `mazmot/preview/<项目名>/` 目录下，例如：
-
 - `mazmot/preview/my-demo/index.html`
 - `mazmot/preview/my-demo/style.css`
 - `mazmot/preview/my-demo/script.js`
@@ -58,7 +55,6 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
 ### 路径格式
 
 预览文件时，使用 `$` 开头的根路径地址，例如：
-
 - `$mazmot/preview/my-demo/index.html`
 
 ### 完整示例
@@ -86,38 +82,38 @@ preview-web 能力通常与 fs 能力配合使用，工作流程如下：
     </html>
   </template>
 
-<template
+  <template
     name="fs"
     cid="fs-02"
     desc="写入CSS文件"
     data-mode="write"
     data-path="mazmot/preview/test-demo/style.css">
-body {
-font-family: sans-serif;
-padding: 20px;
-}
-h1 {
-color: #333;
-}
-</template>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+  </template>
 
-<template
+  <template
     name="fs"
     cid="fs-03"
     desc="写入JS文件"
     data-mode="write"
     data-path="mazmot/preview/test-demo/script.js">
-console.log('页面加载完成');
-</template>
+    console.log('页面加载完成');
+  </template>
 
   <template name="preview-web" cid="preview-web-01" desc="预览网页内容">
-    { "url": "/$mazmot/preview/test-demo/index.html", "title": "测试页面预览" }
+    { "url": "$mazmot/preview/test-demo/index.html", "title": "测试页面预览" }
   </template>
 </cap-request>
 
 ## 注意事项
 
 - 预览的网页地址必须是可访问的本地路径或网络地址
+- 使用 `$` 前缀表示根路径，确保路径正确
 - 建议将预览项目放在 `mazmot/preview/` 目录下，便于管理
-- 访问的时候，使用 `/$mazmot/preview/项目名/文件名` 前缀表示根路径，确保路径正确
 - 预览窗口支持基本的交互功能，如表单填写、按钮点击等
