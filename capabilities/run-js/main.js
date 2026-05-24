@@ -1,5 +1,5 @@
 export default async function runJS({ data = {}, content }) {
-  let code = data.code;
+  let code = "";
 
   if (!code && content) {
     const temp = $(`<template>${content}</template>`);
@@ -7,12 +7,14 @@ export default async function runJS({ data = {}, content }) {
     if (scriptEl) {
       code = scriptEl.html.trim();
     } else {
-      code = content.trim();
+      throw new Error(
+        "必须将JS代码包裹在<script type='text/plain'></script>标签中",
+      );
     }
   }
 
   if (!code) {
-    throw new Error("code is required");
+    throw new Error("没有JS代码，无法执行");
   }
 
   const fn = new Function(code);

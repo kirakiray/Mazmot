@@ -29,18 +29,28 @@ export default async function fs({ data = {}, content }) {
   });
 
   if (mode === "write") {
+    if (!content) {
+      throw new Error("没有内容，无法写入");
+    }
+
     const temp = $(`<template>${content}</template>`);
+    const scriptEl = temp.$("script[type='text/plain']");
+    let textToWrite;
 
-    let textToWrite = temp.$("script[type='text/plain']").html.trim();
+    if (scriptEl) {
+      textToWrite = scriptEl.html.trim();
+    } else {
+      throw new Error(
+        "必须将写入内容包裹在<script type='text/plain'></script>标签中",
+      );
+    }
 
-    // const scriptMatch = content.match(
-    //   /<script\s+type=["']text\/plain["'][^>]*>([\s\S]*)<\/script>/i,
-    // );
-    // if (scriptMatch) {
-    //   textToWrite = scriptMatch[1];
-    // }
+    if (!textToWrite) {
+      throw new Error("没有文本内容，无法写入");
+    }
 
     await handle.write(textToWrite);
+
     return true;
   }
 
