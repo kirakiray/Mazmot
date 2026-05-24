@@ -19,23 +19,39 @@ test: test/test-runjs.html
 ## 基本用法
 
 <cap-request>
-  <template name="run-js" cid="js001" desc="执行简单计算">return 1 + 2 + 3</template>
+  <template name="run-js" cid="js001" desc="执行简单计算">
+    <script type="text/plain">
+return 1 + 2 + 3
+    </script>
+  </template>
 </cap-request>
 
 ## 数学计算
 
 <cap-request>
-  <template name="run-js" cid="js002" desc="执行复杂数学计算">return Math.sqrt(Math.pow(3, 2) + Math.pow(4, 2));</template>
+  <template name="run-js" cid="js002" desc="执行复杂数学计算">
+    <script type="text/plain">
+return Math.sqrt(Math.pow(3, 2) + Math.pow(4, 2));
+    </script>
+  </template>
 </cap-request>
 
 <cap-request>
-  <template name="run-js" cid="js003" desc="生成随机数">return Math.floor(Math.random() * 100) + 1;</template>
+  <template name="run-js" cid="js003" desc="生成随机数">
+    <script type="text/plain">
+return Math.floor(Math.random() * 100) + 1;
+    </script>
+  </template>
 </cap-request>
 
 ## 获取时间
 
 <cap-request>
-  <template name="run-js" cid="js006" desc="获取本地日期时间">return new Date().toLocaleString();</template>
+  <template name="run-js" cid="js006" desc="获取本地日期时间">
+    <script type="text/plain">
+return new Date().toLocaleString();
+    </script>
+  </template>
 </cap-request>
 
 ## 多行代码
@@ -44,9 +60,11 @@ test: test/test-runjs.html
 
 <cap-request>
   <template name="run-js" cid="js007" desc="执行多行 JavaScript 代码">
+    <script type="text/plain">
 const a = [1, 2, 3, 4, 5];
 const sum = a.reduce((acc, n) => acc + n, 0);
 return sum;
+    </script>
   </template>
 </cap-request>
 
