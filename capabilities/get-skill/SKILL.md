@@ -1,6 +1,6 @@
 ---
 name: get-skill
-description: 获取所有技能或指定技能的详细信息
+description: 获取所有技能或指定技能的详细信息。
 method: main.js
 test: test/test-get-skill.html
 ---
