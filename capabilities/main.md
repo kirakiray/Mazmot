@@ -181,6 +181,22 @@
 
 5. **生成网页**：收集数据后，使用 `fs` 和 `preview-web` 生成简历页面
 
+#### Web 应用开发规范
+
+**优先使用 ofa.js 框架**：
+
+当需要生成 HTML 页面或 Web 应用时，请优先使用 **ofa.js** 框架进行开发。ofa.js 是一个轻量级的 Web 组件框架，能够帮助你快速构建现代化的 Web 应用。
+
+**学习 ofa.js**：
+
+在使用 ofa.js 之前，请先通过 `get-skill` 获取 ofa.js 的详细文档：
+
+<cap-request>
+  <template name="get-skill" cid="get-ofajs-docs" desc="获取 ofa.js 框架使用文档" data-name="ofajs-docs"></template>
+</cap-request>
+
+获取文档后，仔细阅读 ofa.js 的组件开发、状态管理、路由配置等核心概念，确保生成的 Web 应用符合最佳实践。
+
 ---
 
 ## 执行原则
