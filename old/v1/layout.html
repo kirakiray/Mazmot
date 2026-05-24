@@ -1,0 +1,61 @@
+<template page>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-layout.html"
+  ></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-bar.html"
+  ></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-item.html"
+  ></l-m>
+
+  <style>
+    :host {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+
+  <p-nav-layout>
+    <div
+      style="padding: 20px; height: 100%; box-sizing: border-box"
+      on:page-active="handlePageActive"
+    >
+      <slot></slot>
+    </div>
+
+    <p-nav-bar slot="nav">
+      <p-nav-item attr:active="active === 'start'" on:click="gotoNav('start')">
+        <iconify-icon slot="icon" icon="icon-park-outline:play"></iconify-icon>
+        开始
+      </p-nav-item>
+      <p-nav-item
+        attr:active="active === 'setting'"
+        on:click="gotoNav('setting')"
+      >
+        <iconify-icon slot="icon" icon="uil:setting"></iconify-icon>
+        设置
+      </p-nav-item>
+    </p-nav-bar>
+  </p-nav-layout>
+
+  <script>
+    export default async () => {
+      return {
+        data: {
+          active: "start",
+        },
+        proto: {
+          gotoNav(page) {
+            this.active = page;
+            this.goto(`./${page}.html`);
+          },
+          handlePageActive(e) {
+            this.active = e.data;
+          },
+        },
+      };
+    };
+  </script>
+</template>

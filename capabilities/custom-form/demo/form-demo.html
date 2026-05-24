@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自定义表单演示组件</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+  </head>
+  <body>
+    <o-page src="../src/form.html"></o-page>
+    <script type="module">
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const page = $("o-page");
+
+      const data = await fetch("./form.json").then((res) => res.text());
+
+      page.init(data);
+
+      page.on("submit", (e) => {
+        console.log("Form submitted:", e.data);
+        alert("表单数据：" + JSON.stringify(e.data, null, 2));
+      });
+
+      page.on("cancel", () => {
+        console.log("Form cancelled");
+      });
+    </script>
+  </body>
+</html>

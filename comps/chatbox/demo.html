@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>聊天组件演示</title>
+  <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.min.mjs#debug" type="module"></script>
+  <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: var(--md-sys-color-background);
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: var(--md-sys-color-on-background);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .demo-section {
+      margin-bottom: 48px;
+    }
+
+    .demo-title {
+      color: var(--md-sys-color-on-surface);
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-left: 12px;
+      border-left: 4px solid var(--md-sys-color-primary);
+    }
+  </style>
+</head>
+<body>
+  <l-m src="./chatbox.html"></l-m>
+  <l-m src="./chat-item.html"></l-m>
+
+  <h1>聊天组件演示</h1>
+
+  <div class="demo-section">
+    <div class="demo-title">基础用法</div>
+    <m-chatbox>
+      <m-chat-item role="system">你是一个助手,你的任务是回答用户的问题。</m-chat-item>
+      <m-chat-item role="user">你好,你是谁啊?</m-chat-item>
+      <m-chat-item role="assistant">我是一个助手,你可以回答用户的问题。你好!</m-chat-item>
+    </m-chatbox>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">多轮对话</div>
+    <m-chatbox>
+      <m-chat-item role="system">你是一个专业的技术顾问。</m-chat-item>
+      <m-chat-item role="user">请问什么是 Web Components?</m-chat-item>
+      <m-chat-item role="assistant">Web Components 是一套不同的技术,允许你创建可重用的定制元素,它们的功能封装在你的代码之外,并且可以在 web 应用中使用。</m-chat-item>
+      <m-chat-item role="user">它有哪些主要技术?</m-chat-item>
+      <m-chat-item role="assistant">Web Components 主要包括四项技术:Custom Elements(自定义元素)、Shadow DOM(影子 DOM)、HTML templates(HTML 模板)和 HTML Imports(HTML 导入)。</m-chat-item>
+      <m-chat-item role="user">谢谢你的解答!</m-chat-item>
+      <m-chat-item role="assistant">不客气!如果你还有其他问题,随时可以问我。</m-chat-item>
+    </m-chatbox>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">不同角色的消息</div>
+    <m-chatbox>
+      <m-chat-item role="system">系统消息通常用于设置对话的上下文或规则。</m-chat-item>
+      <m-chat-item role="user">用户消息是从用户端发送的内容。</m-chat-item>
+      <m-chat-item role="assistant">助手消息是 AI 或系统回复的内容。</m-chat-item>
+      <m-chat-item role="user">这三种角色各有不同的视觉样式。</m-chat-item>
+      <m-chat-item role="assistant">
+        
+      </m-chat-item>
+    </m-chatbox>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">获取聊天 JSON 数据</div>
+    <m-chatbox id="demo-chatbox">
+      <m-chat-item role="system">你是一个助手，你的任务是回答用户的问题。</m-chat-item>
+      <m-chat-item role="user">你好，你是谁啊？</m-chat-item>
+      <m-chat-item role="assistant">我是一个助手，你可以回答用户的问题。你好！</m-chat-item>
+    </m-chatbox>
+    <button id="get-json-btn" style="margin-top: 16px; padding: 10px 20px; background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">获取 JSON 数据</button>
+    <pre id="json-output" style="margin-top: 16px; padding: 16px; background-color: var(--md-sys-color-surface-container); border-radius: 8px; overflow-x: auto; font-size: 13px; color: var(--md-sys-color-on-surface); display: none;"></pre>
+  </div>
+
+  <script type="module">
+    $('#get-json-btn').on('click', () => {
+      const chatbox = $('#demo-chatbox');
+      const chatData = chatbox.getChatJson();
+      console.log(chatData);
+      const output = $('#json-output');
+      output.text = JSON.stringify(chatData, null, 2);
+      output.css.display = 'block';
+    });
+  </script>
+</body>
+</html>

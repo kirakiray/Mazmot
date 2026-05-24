@@ -1,0 +1,91 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    header {
+      padding: 15px 20px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    nav ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      gap: 20px;
+    }
+    nav li {
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    nav li:hover {
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    nav li.active {
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    nav li a {
+      color: inherit;
+      text-decoration: none;
+      display: block;
+      margin: -8px -16px;
+      padding: 8px 16px;
+    }
+    .main {
+      flex: 1;
+      overflow: auto;
+    }
+  </style>
+  <div class="container">
+    <header>
+      <nav>
+        <ul>
+          <li class:active="activeModels">
+            <a href="./api-keys.html" olink>模型管理</a>
+          </li>
+          <li class:active="activeChat">
+            <a href="./chat.html" olink>聊天</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <div class="main">
+      <slot></slot>
+    </div>
+  </div>
+  <script>
+    export default () => {
+      return {
+        data: {
+          activeModels: false,
+          activeChat: false,
+        },
+        routerChange() {
+          this.refreshActive();
+        },
+        attached() {
+          this.refreshActive();
+        },
+        proto: {
+          refreshActive() {
+            const { current } = this.parent;
+            const path = new URL(current.src).pathname;
+            this.activeModels = path.endsWith("api-keys.html");
+            this.activeChat = path.endsWith("chat.html");
+          },
+        },
+      };
+    };
+  </script>
+</template>

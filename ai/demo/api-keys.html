@@ -1,0 +1,244 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    section {
+      margin-bottom: 30px;
+    }
+
+    form {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    select,
+    input {
+      padding: 8px;
+    }
+
+    select {
+      min-width: 150px;
+    }
+
+    input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    button[type="submit"] {
+      padding: 8px 20px;
+    }
+
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .model-item {
+      border: 1px solid var(--md-sys-color-neutral-container);
+      padding: 15px;
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+    }
+
+    .model-item-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .delete-btn {
+      padding: 5px 15px;
+      background: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .action-btns {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .action-btn {
+      padding: 5px 12px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .action-btn:hover {
+      opacity: 0.9;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .info-box {
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 4px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .empty-text {
+      color: var(--md-sys-color-on-surface);
+      opacity: 0.6;
+    }
+  </style>
+
+  <h1>模型管理演示</h1>
+
+  <section>
+    <h2>添加新模型</h2>
+    <form id="add-model-form">
+      <select
+        id="provider-select"
+        :value="provider"
+        on:change="provider = $event.target.value"
+      >
+        <option value="deepseek">Deepseek</option>
+        <option value="kimi">Kimi</option>
+      </select>
+      <input
+        type="text"
+        :value="apiKey"
+        on:input="apiKey = $event.target.value"
+        placeholder="请输入 API Key"
+      />
+      <button type="button" on:click="handleAdd">添加</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>已有模型列表</h2>
+    <div class="model-list">
+      <o-if :value="apiKeys.length === 0">
+        <p class="empty-text">暂无模型</p>
+      </o-if>
+      <o-fill :value="apiKeys">
+        <div class="model-item">
+          <div class="model-item-content">
+            <div>
+              <strong>供应商:</strong> {{$data.provider}}<br />
+              <strong>API Key:</strong> {{$data.maskedKey}}<br />
+              <strong>并发数:</strong> {{$data.concurrent}}<br />
+              <strong>创建时间:</strong> {{$data.formattedDate}}
+            </div>
+            <button
+              class="delete-btn"
+              on:click="$host.apiKeys.splice($index, 1)"
+            >
+              删除
+            </button>
+          </div>
+          <div class="action-btns">
+            <button class="action-btn" on:click="$host.getModels($data.id)" :disabled="$host.isLoading[$data.id]">
+              获取模型
+            </button>
+            <button class="action-btn" on:click="$host.getRemaining($data.id)" :disabled="$host.isLoading[$data.id]">
+              查询余额
+            </button>
+          </div>
+          <o-if :value="$host.modelInfo[$data.id]">
+            <div class="info-box">{{$host.modelInfo[$data.id]}}</div>
+          </o-if>
+        </div>
+      </o-fill>
+    </div>
+  </section>
+
+  <script>
+    export const parent = "./layout.html";
+    
+    export default async ({ load }) => {
+      const { getAssistant, apiKeys, saveKey } = await load("../main.js");
+
+      return {
+        data: {
+          provider: "deepseek",
+          apiKey: "",
+          apiKeys: [],
+          isLoading: {},
+          modelInfo: {},
+        },
+
+        proto: {
+          async handleAdd() {
+            const apiKey = this.apiKey.trim();
+
+            if (!apiKey) {
+              alert("请输入 API Key");
+              return;
+            }
+
+            try {
+              await saveKey(apiKey, this.provider);
+              this.apiKey = "";
+              alert("添加成功！");
+            } catch (error) {
+              alert("添加失败：" + error.message);
+            }
+          },
+
+          async getModels(id) {
+            this.isLoading[id] = true;
+            try {
+              const assistant = await getAssistant(id);
+              const models = await assistant.getModels();
+              this.modelInfo[id] = `可用模型:\n${models.map(m => `  - ${m.id || m.name}`).join('\n')}`;
+            } catch (error) {
+              this.modelInfo[id] = `获取模型失败: ${error.message}`;
+            } finally {
+              this.isLoading[id] = false;
+            }
+          },
+
+          async getRemaining(id) {
+            this.isLoading[id] = true;
+            try {
+              const assistant = await getAssistant(id);
+              const remaining = await assistant.getRemaining();
+              if (remaining.balanceInfos) {
+                this.modelInfo[id] = `余额信息:\n${remaining.balanceInfos.map(info => 
+                  `  ${info.currency}: ${info.totalBalance}`
+                ).join('\n')}`;
+              } else if (remaining.balance !== undefined) {
+                this.modelInfo[id] = `余额: ${remaining.balance}`;
+              } else {
+                this.modelInfo[id] = `余额信息:\n${JSON.stringify(remaining, null, 2)}`;
+              }
+            } catch (error) {
+              this.modelInfo[id] = `查询余额失败: ${error.message}`;
+            } finally {
+              this.isLoading[id] = false;
+            }
+          },
+        },
+        attached() {
+          this.apiKeys = apiKeys;
+        },
+        detached() {
+          this.apiKeys = [];
+        },
+      };
+    };
+  </script>
+</template>

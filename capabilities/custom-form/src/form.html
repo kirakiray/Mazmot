@@ -1,0 +1,322 @@
+<template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/radio/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/radio/radio.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
+  ></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"
+  ></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      box-sizing: border-box;
+      margin: 0 auto;
+      padding: 24px;
+      max-width: 600px;
+    }
+    .form-item {
+      margin-bottom: 28px;
+    }
+    .form-label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
+      line-height: 1.4;
+    }
+    .required-mark {
+      color: var(--md-sys-color-error);
+      margin-left: 4px;
+    }
+    p-radio,
+    p-checkbox {
+      margin-right: 20px;
+      margin-bottom: 8px;
+      display: inline-flex;
+    }
+    p-textarea {
+      width: 100%;
+    }
+    p-select {
+      width: 100%;
+      max-width: 100%;
+    }
+    p-switch {
+      margin-top: 4px;
+    }
+    .options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .form-actions {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      display: flex;
+      gap: 16px;
+    }
+  </style>
+  <h2>自定义表单</h2>
+  <o-fill :value="formItems">
+    <div class="form-item">
+      <label class="form-label">
+        {{ $data.desc }}<span class:required-mark="$data.required">*</span>
+      </label>
+      <o-if :value="$data.type === 'radio'">
+        <p-radio-group
+          sync:value="$data.value"
+          attr:disabled="$host.isReadonly"
+        >
+          <div class="options-row">
+            <o-fill :value="$data.options">
+              <p-radio
+                attr:value="$data.value || $data.label"
+                attr:disabled="$host.isReadonly"
+              >
+                {{ $data.label || $data.value }}
+              </p-radio>
+            </o-fill>
+          </div>
+        </p-radio-group>
+      </o-if>
+      <o-if :value="$data.type === 'text'">
+        <p-input
+          sync:value="$data.value"
+          attr:placeholder="$data.placeholder"
+          attr:disabled="$host.isReadonly"
+        >
+          <o-if :value="$data.label" slot="label">
+            <span>{{ $data.label }}</span>
+          </o-if>
+        </p-input>
+      </o-if>
+      <o-if :value="$data.type === 'switch'">
+        <p-switch sync:checked="$data.value" attr:disabled="$host.isReadonly">
+          <o-if :value="$data.label"> {{ $data.label }} </o-if>
+        </p-switch>
+      </o-if>
+      <o-if :value="$data.type === 'textarea'">
+        <p-textarea
+          sync:value="$data.value"
+          attr:placeholder="$data.placeholder"
+          attr:maxlength="$data.maxlength"
+          attr:disabled="$host.isReadonly"
+        >
+          <o-if :value="$data.label" slot="label">
+            <span>{{ $data.label }}</span>
+          </o-if>
+        </p-textarea>
+      </o-if>
+      <o-if :value="$data.type === 'checkbox'">
+        <p-checkbox-group :value="$data.value" attr:disabled="$host.isReadonly">
+          <div class="options-row">
+            <o-fill :value="$data.options">
+              <p-checkbox attr:value="$data.value || $data.label">
+                {{ $data.label || $data.value }}
+              </p-checkbox>
+            </o-fill>
+          </div>
+        </p-checkbox-group>
+      </o-if>
+      <o-if :value="$data.type === 'select'">
+        <p-select
+          sync:value="$data.value"
+          attr:placeholder="$data.placeholder"
+          attr:disabled="$host.isReadonly"
+        >
+          <o-if :value="$data.label" slot="label">
+            <span>{{ $data.label }}</span>
+          </o-if>
+          <o-fill :value="$data.options">
+            <p-option attr:value="$data.value"
+              >{{ $data.label || $data.value }}</p-option
+            >
+          </o-fill>
+        </p-select>
+      </o-if>
+    </div>
+  </o-fill>
+
+  <o-if :value="!isReadonly">
+    <div class="form-actions">
+      <o-if :value="submitName">
+        <p-button
+          color="primary"
+          size="s"
+          type="submit"
+          attr:disabled="!canSubmit"
+          on:click="submit"
+        >
+          {{ submitName }}
+        </p-button>
+      </o-if>
+      <o-if :value="cancelName">
+        <p-button
+          size="s"
+          type="button"
+          color="error"
+          variant="outlined"
+          on:click="cancel"
+        >
+          {{ cancelName }}
+        </p-button>
+      </o-if>
+    </div>
+  </o-if>
+  <script>
+    export default () => {
+      return {
+        data: {
+          cid: null,
+          formItems: [],
+          submitName: "Submit",
+          cancelName: "Cancel",
+          isReadonly: false,
+        },
+        proto: {
+          get storageKey() {
+            return this.cid ? `form-data-${this.cid}` : null;
+          },
+          saveToStorage() {
+            if (!this.storageKey) return;
+
+            const data = {};
+            this.formItems.forEach((item) => {
+              data[item.name] = item.value;
+            });
+
+            try {
+              sessionStorage.setItem(this.storageKey, JSON.stringify(data));
+            } catch (e) {
+              console.warn("Failed to save form data to sessionStorage:", e);
+            }
+          },
+          loadFromStorage() {
+            if (!this.storageKey) return null;
+
+            try {
+              const stored = sessionStorage.getItem(this.storageKey);
+              return stored ? JSON.parse(stored) : null;
+            } catch (e) {
+              console.warn("Failed to load form data from sessionStorage:", e);
+              return null;
+            }
+          },
+          clearStorage() {
+            if (!this.storageKey) return;
+
+            try {
+              sessionStorage.removeItem(this.storageKey);
+            } catch (e) {
+              console.warn("Failed to clear form data from sessionStorage:", e);
+            }
+          },
+          get canSubmit() {
+            return this.formItems.every((item) => {
+              if (item.required) {
+                if (item.type === "switch") {
+                  return item.value === true;
+                }
+                if (item.type === "checkbox") {
+                  return item.value && item.value.length > 0;
+                }
+                return (
+                  item.value !== "" &&
+                  item.value !== null &&
+                  item.value !== undefined
+                );
+              }
+              return true;
+            });
+          },
+          submit() {
+            const data = {};
+
+            this.formItems.forEach((item) => {
+              if (item.value?.toJSON) {
+                item.value = item.value.toJSON();
+                return;
+              }
+
+              data[item.name] = item.value;
+            });
+
+            this.clearStorage();
+
+            this.emit("submit", {
+              data,
+            });
+          },
+          cancel() {
+            this.clearStorage();
+            this.emit("cancel");
+          },
+          async init({ content, cid, result }) {
+            let arr = content;
+            if (typeof content === "string") {
+              arr = JSON.parse(content);
+            }
+            this.cid = cid;
+
+            if (result) {
+              this.isReadonly = true;
+            }
+
+            const formItems = [];
+            arr.forEach((item) => {
+              if (item.type === "submit") {
+                this.submitName = item.name || "Submit";
+              } else if (item.type === "cancel") {
+                this.cancelName = item.name || "Cancel";
+              } else {
+                let defaultVal;
+                if (item.type === "switch") {
+                  defaultVal = item.defaultValue || false;
+                } else if (item.type === "checkbox") {
+                  defaultVal = item.defaultValue || [];
+                } else {
+                  defaultVal = item.defaultValue || "";
+                }
+                formItems.push({
+                  ...item,
+                  value: defaultVal,
+                });
+              }
+            });
+            this.formItems = formItems;
+
+            if (result) {
+              this.formItems.forEach((item) => {
+                if (result.hasOwnProperty(item.name)) {
+                  item.value = result[item.name];
+                }
+              });
+            } else {
+              const storedData = this.loadFromStorage();
+              if (storedData) {
+                this.formItems.forEach((item) => {
+                  if (storedData.hasOwnProperty(item.name)) {
+                    item.value = storedData[item.name];
+                  }
+                });
+              }
+
+              this.watchTick(() => {
+                this.saveToStorage();
+              }, 100);
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

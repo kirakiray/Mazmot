@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whisper 本地语音识别</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .status {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .status.loading {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status.ready {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status.recording {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .status.processing {
+      background: #cce5ff;
+      color: #004085;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #recordBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #recordBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    #recordBtn.recording {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    #fileBtn {
+      background: #6c757d;
+      color: white;
+    }
+
+    #fileBtn:hover:not(:disabled) {
+      background: #5a6268;
+    }
+
+    #audioFile {
+      display: none;
+    }
+
+    .result-section {
+      margin-top: 20px;
+    }
+
+    .result-label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .result-box {
+      background: #f8f9fa;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      padding: 20px;
+      min-height: 150px;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #333;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .result-box:empty::before {
+      content: '识别结果将显示在这里...';
+      color: #999;
+    }
+
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .progress-container.show {
+      display: block;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #e9ecef;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .model-select {
+      margin-bottom: 20px;
+    }
+
+    .model-select label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .model-select select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .audio-preview {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .audio-preview.show {
+      display: block;
+    }
+
+    .audio-preview audio {
+      width: 100%;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎤 Whisper 本地语音识别</h1>
+    <p class="subtitle">使用 Transformers.js 在浏览器中运行 Whisper 模型</p>
+
+    <div id="status" class="status loading">⏳ 正在加载模型，首次加载需要下载约 75MB 模型文件...</div>
+
+    <div class="model-select">
+      <label for="modelSelect">选择模型：</label>
+      <select id="modelSelect">
+        <option value="Xenova/whisper-tiny">Tiny (39MB) - 最快</option>
+        <option value="Xenova/whisper-base" selected>Base (74MB) - 推荐</option>
+        <option value="Xenova/whisper-small">Small (244MB) - 更准确</option>
+      </select>
+    </div>
+
+    <div class="controls">
+      <button id="recordBtn" disabled>🎙️ 开始录音</button>
+      <button id="fileBtn" disabled>📁 选择音频文件</button>
+      <input type="file" id="audioFile" accept="audio/*">
+    </div>
+
+    <div class="audio-preview" id="audioPreview">
+      <label class="result-label">音频预览：</label>
+      <audio id="audioPlayer" controls></audio>
+    </div>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text" id="progressText">处理中...</div>
+    </div>
+
+    <div class="result-section">
+      <label class="result-label">识别结果：</label>
+      <div class="result-box" id="result"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+
+    env.allowLocalModels = false;
+
+    const statusEl = document.getElementById('status');
+    const recordBtn = document.getElementById('recordBtn');
+    const fileBtn = document.getElementById('fileBtn');
+    const audioFile = document.getElementById('audioFile');
+    const resultEl = document.getElementById('result');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const modelSelect = document.getElementById('modelSelect');
+    const audioPreview = document.getElementById('audioPreview');
+    const audioPlayer = document.getElementById('audioPlayer');
+
+    let transcriber = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    async function loadModel(modelName) {
+      statusEl.className = 'status loading';
+      statusEl.textContent = '⏳ 正在加载模型，首次加载需要下载模型文件...';
+      recordBtn.disabled = true;
+      fileBtn.disabled = true;
+
+      try {
+        transcriber = await pipeline('automatic-speech-recognition', modelName, {
+          progress_callback: (progress) => {
+            if (progress.status === 'downloading') {
+              const percent = progress.progress ? Math.round(progress.progress) : 0;
+              statusEl.textContent = `⏳ 下载模型中... ${percent}% (${progress.file || ''})`;
+            } else if (progress.status === 'loading') {
+              statusEl.textContent = '⏳ 加载模型到内存...';
+            }
+          }
+        });
+
+        statusEl.className = 'status ready';
+        statusEl.textContent = '✅ 模型已就绪，可以开始录音或选择音频文件';
+        recordBtn.disabled = false;
+        fileBtn.disabled = false;
+      } catch (error) {
+        statusEl.className = 'status';
+        statusEl.textContent = '❌ 模型加载失败: ' + error.message;
+        console.error('Model loading error:', error);
+      }
+    }
+
+    modelSelect.addEventListener('change', () => {
+      loadModel(modelSelect.value);
+    });
+
+    loadModel(modelSelect.value);
+
+    recordBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioPlayer.src = audioUrl;
+            audioPreview.classList.add('show');
+
+            await transcribeAudio(audioBlob);
+
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          recordBtn.textContent = '⏹️ 停止录音';
+          recordBtn.classList.add('recording');
+          statusEl.className = 'status recording';
+          statusEl.textContent = '🔴 正在录音... 点击停止按钮结束';
+        } catch (error) {
+          alert('无法访问麦克风: ' + error.message);
+        }
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        recordBtn.textContent = '🎙️ 开始录音';
+        recordBtn.classList.remove('recording');
+      }
+    });
+
+    fileBtn.addEventListener('click', () => {
+      audioFile.click();
+    });
+
+    audioFile.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const audioUrl = URL.createObjectURL(file);
+        audioPlayer.src = audioUrl;
+        audioPreview.classList.add('show');
+        await transcribeAudio(file);
+      }
+    });
+
+    async function transcribeAudio(audioBlob) {
+      statusEl.className = 'status processing';
+      statusEl.textContent = '⏳ 正在识别音频...';
+      progressContainer.classList.add('show');
+      progressFill.style.width = '0%';
+      progressText.textContent = '准备中...';
+      recordBtn.disabled = true;
+      fileBtn.disabled = true;
+
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)( { sampleRate: 16000 } );
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        const numberOfChannels = audioBuffer.numberOfChannels;
+        const length = audioBuffer.length;
+        const sampleRate = audioBuffer.sampleRate;
+
+        let audioData;
+        if (numberOfChannels === 1) {
+          audioData = audioBuffer.getChannelData(0);
+        } else {
+          audioData = new Float32Array(length);
+          for (let i = 0; i < length; i++) {
+            let sum = 0;
+            for (let channel = 0; channel < numberOfChannels; channel++) {
+              sum += audioBuffer.getChannelData(channel)[i];
+            }
+            audioData[i] = sum / numberOfChannels;
+          }
+        }
+
+        if (sampleRate !== 16000) {
+          const ratio = sampleRate / 16000;
+          const newLength = Math.round(length / ratio);
+          const resampledData = new Float32Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            const srcIndex = Math.floor(i * ratio);
+            resampledData[i] = audioData[srcIndex];
+          }
+          audioData = resampledData;
+        }
+
+        progressFill.style.width = '30%';
+        progressText.textContent = '正在识别...';
+
+        const output = await transcriber(audioData, {
+          chunk_length_s: 30,
+          stride_length_s: 5,
+          language: 'chinese',
+          task: 'transcribe',
+          return_timestamps: true,
+          callback_function: (x) => {
+            if (x.chunks) {
+              progressFill.style.width = '60%';
+              progressText.textContent = `识别进度: ${x.chunks.length} 个片段`;
+            }
+          }
+        });
+
+        progressFill.style.width = '100%';
+        progressText.textContent = '完成!';
+
+        let resultText = '';
+        if (output.chunks && output.chunks.length > 0) {
+          output.chunks.forEach((chunk, index) => {
+            const timestamp = chunk.timestamp ? `[${chunk.timestamp[0]?.toFixed(1) || '0.0'}s - ${chunk.timestamp[1]?.toFixed(1) || '...'}s]` : '';
+            resultText += `${timestamp} ${chunk.text}\n`;
+          });
+        } else {
+          resultText = output.text || '未能识别出内容';
+        }
+
+        resultEl.textContent = resultText;
+        statusEl.className = 'status ready';
+        statusEl.textContent = '✅ 识别完成';
+      } catch (error) {
+        statusEl.className = 'status';
+        statusEl.textContent = '❌ 识别失败: ' + error.message;
+        console.error('Transcription error:', error);
+      } finally {
+        progressContainer.classList.remove('show');
+        recordBtn.disabled = false;
+        fileBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

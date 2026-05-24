@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeechSynthesis API 语音合成</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .status {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .status.speaking {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .settings {
+      margin-bottom: 20px;
+    }
+
+    .setting-item {
+      margin-bottom: 15px;
+    }
+
+    .setting-item label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .setting-item select,
+    .setting-item input[type="range"] {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .setting-item input[type="range"] {
+      padding: 0;
+      height: 8px;
+      cursor: pointer;
+    }
+
+    .range-value {
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #speakBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #speakBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    #speakBtn.speaking {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    #stopBtn {
+      background: #6c757d;
+      color: white;
+    }
+
+    #stopBtn:hover:not(:disabled) {
+      background: #5a6268;
+    }
+
+    .text-section {
+      margin-top: 20px;
+    }
+
+    .text-label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      font-size: 16px;
+      line-height: 1.6;
+      resize: vertical;
+      min-height: 120px;
+      font-family: inherit;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .info-box {
+      background: #e7f3ff;
+      border: 1px solid #b6d4fe;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #084298;
+    }
+
+    .random-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .random-btn:hover {
+      background: #5a6268;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔊 SpeechSynthesis API<span class="badge">浏览器原生</span></h1>
+    <p class="subtitle">使用浏览器内置的 Web Speech API 进行语音合成</p>
+
+    <div class="info-box">
+      ℹ️ <strong>功能说明：</strong>浏览器原生语音合成，支持多种语言和声音，可调节语速、音调和音量。
+    </div>
+
+    <div id="status" class="status">准备就绪，点击按钮开始朗读</div>
+
+    <div class="settings">
+      <div class="setting-item">
+        <label for="voiceSelect">选择声音：</label>
+        <select id="voiceSelect"></select>
+      </div>
+
+      <div class="setting-item">
+        <label for="rateRange">语速：<span id="rateValue">1.0</span></label>
+        <input type="range" id="rateRange" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="setting-item">
+        <label for="pitchRange">音调：<span id="pitchValue">1.0</span></label>
+        <input type="range" id="pitchRange" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="setting-item">
+        <label for="volumeRange">音量：<span id="volumeValue">1.0</span></label>
+        <input type="range" id="volumeRange" min="0" max="1" step="0.1" value="1">
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="speakBtn">🔊 开始朗读</button>
+      <button id="stopBtn" disabled>⏹️ 停止</button>
+    </div>
+
+    <div class="text-section">
+      <label class="text-label">朗读文本：</label>
+      <textarea id="textInput" placeholder="输入要朗读的文本..."></textarea>
+      <button class="random-btn" id="randomBtn">🎲 随机文本</button>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const speakBtn = document.getElementById('speakBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const voiceSelect = document.getElementById('voiceSelect');
+    const rateRange = document.getElementById('rateRange');
+    const pitchRange = document.getElementById('pitchRange');
+    const volumeRange = document.getElementById('volumeRange');
+    const rateValue = document.getElementById('rateValue');
+    const pitchValue = document.getElementById('pitchValue');
+    const volumeValue = document.getElementById('volumeValue');
+    const textInput = document.getElementById('textInput');
+    const randomBtn = document.getElementById('randomBtn');
+
+    const randomTexts = [
+      '你好，欢迎来到语音合成的世界！这是一个非常有趣的功能。',
+      '今天天气真不错，适合出去走走，享受美好的时光。',
+      '人工智能正在改变我们的生活方式，让一切变得更加便捷。',
+      '学习编程是一件很有意思的事情，你可以创造出各种神奇的东西。',
+      '互联网让世界变得更加紧密，我们可以随时随地获取信息。',
+      '保持好奇心，不断探索未知，你会发现生活中处处充满惊喜。',
+      'Hello, this is a demonstration of the Web Speech API synthesis feature.',
+      'Technology makes our lives better and more convenient every day.',
+      'The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet.',
+      'Life is like a box of chocolates, you never know what you are going to get.'
+    ];
+
+    let voices = [];
+    let isSpeaking = false;
+
+    function loadVoices() {
+      voices = speechSynthesis.getVoices();
+      voiceSelect.innerHTML = '';
+
+      if (voices.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = '默认声音';
+        voiceSelect.appendChild(option);
+        return;
+      }
+
+      voices.forEach((voice, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        if (voice.default) {
+          option.selected = true;
+        }
+        voiceSelect.appendChild(option);
+      });
+    }
+
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    loadVoices();
+
+    rateRange.addEventListener('input', () => {
+      rateValue.textContent = rateRange.value;
+    });
+
+    pitchRange.addEventListener('input', () => {
+      pitchValue.textContent = pitchRange.value;
+    });
+
+    volumeRange.addEventListener('input', () => {
+      volumeValue.textContent = volumeRange.value;
+    });
+
+    randomBtn.addEventListener('click', () => {
+      const randomIndex = Math.floor(Math.random() * randomTexts.length);
+      textInput.value = randomTexts[randomIndex];
+    });
+
+    speakBtn.addEventListener('click', () => {
+      const text = textInput.value.trim();
+      
+      if (!text) {
+        statusEl.textContent = '请输入要朗读的文本';
+        return;
+      }
+
+      if (isSpeaking) {
+        speechSynthesis.cancel();
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      if (voices.length > 0 && voiceSelect.value) {
+        utterance.voice = voices[parseInt(voiceSelect.value)];
+      }
+      
+      utterance.rate = parseFloat(rateRange.value);
+      utterance.pitch = parseFloat(pitchRange.value);
+      utterance.volume = parseFloat(volumeRange.value);
+
+      utterance.onstart = () => {
+        isSpeaking = true;
+        speakBtn.textContent = '🔊 正在朗读...';
+        speakBtn.classList.add('speaking');
+        stopBtn.disabled = false;
+        statusEl.className = 'status speaking';
+        statusEl.textContent = '正在朗读...';
+      };
+
+      utterance.onend = () => {
+        isSpeaking = false;
+        speakBtn.textContent = '🔊 开始朗读';
+        speakBtn.classList.remove('speaking');
+        stopBtn.disabled = true;
+        statusEl.className = 'status';
+        statusEl.textContent = '朗读完成';
+      };
+
+      utterance.onerror = (event) => {
+        isSpeaking = false;
+        speakBtn.textContent = '🔊 开始朗读';
+        speakBtn.classList.remove('speaking');
+        stopBtn.disabled = true;
+        statusEl.className = 'status';
+        statusEl.textContent = '朗读出错: ' + event.error;
+      };
+
+      speechSynthesis.speak(utterance);
+    });
+
+    stopBtn.addEventListener('click', () => {
+      speechSynthesis.cancel();
+      isSpeaking = false;
+      speakBtn.textContent = '🔊 开始朗读';
+      speakBtn.classList.remove('speaking');
+      stopBtn.disabled = true;
+      statusEl.className = 'status';
+      statusEl.textContent = '已停止朗读';
+    });
+
+    randomBtn.click();
+  </script>
+</body>
+</html>

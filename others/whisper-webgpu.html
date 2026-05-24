@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whisper WebGPU 加速版</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .gpu-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .gpu-badge.webgpu {
+      background: linear-gradient(135deg, #00c853 0%, #00e676 100%);
+      color: white;
+    }
+
+    .gpu-badge.wasm {
+      background: #ffc107;
+      color: #333;
+    }
+
+    .status {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .status.loading {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status.ready {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status.recording {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .status.processing {
+      background: #cce5ff;
+      color: #004085;
+    }
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #recordBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #recordBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    #recordBtn.recording {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    #fileBtn {
+      background: #6c757d;
+      color: white;
+    }
+
+    #fileBtn:hover:not(:disabled) {
+      background: #5a6268;
+    }
+
+    #audioFile {
+      display: none;
+    }
+
+    .result-section {
+      margin-top: 20px;
+    }
+
+    .result-label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .result-box {
+      background: #f8f9fa;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      padding: 20px;
+      min-height: 150px;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #333;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .result-box:empty::before {
+      content: '识别结果将显示在这里...';
+      color: #999;
+    }
+
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .progress-container.show {
+      display: block;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #e9ecef;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .model-select {
+      margin-bottom: 20px;
+    }
+
+    .model-select label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .model-select select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .audio-preview {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .audio-preview.show {
+      display: block;
+    }
+
+    .audio-preview audio {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .performance-info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .performance-info h3 {
+      margin-bottom: 10px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .performance-info .stat {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .performance-info .stat-value {
+      font-weight: 600;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Whisper WebGPU 加速版</h1>
+    <p class="subtitle">使用 WebGPU 加速，速度提升 3-5 倍 <span id="gpuBadge" class="gpu-badge"></span></p>
+
+    <div id="status" class="status loading">⏳ 检测 WebGPU 支持...</div>
+
+    <div class="model-select">
+      <label for="modelSelect">选择模型：</label>
+      <select id="modelSelect">
+        <option value="Xenova/whisper-tiny">Tiny (39MB) - 最快</option>
+        <option value="Xenova/whisper-base" selected>Base (74MB) - 推荐</option>
+        <option value="Xenova/whisper-small">Small (244MB) - 更准确</option>
+      </select>
+    </div>
+
+    <div class="model-select">
+      <label for="precisionSelect">精度选择：</label>
+      <select id="precisionSelect">
+        <option value="fp32">FP32 - 最高精度（最大）</option>
+        <option value="fp16">FP16 - 高精度（推荐）</option>
+        <option value="q8">Q8 - 平衡精度和速度</option>
+        <option value="q4" selected>Q4 - 最快但精度较低</option>
+      </select>
+    </div>
+
+    <div class="model-select">
+      <label for="languageSelect">语言选择：</label>
+      <select id="languageSelect">
+        <option value="auto">自动检测</option>
+        <option value="zh" selected>中文</option>
+        <option value="english">English 英语</option>
+        <option value="japanese">Japanese 日语</option>
+        <option value="korean">Korean 韩语</option>
+        <option value="french">French 法语</option>
+        <option value="german">German 德语</option>
+        <option value="spanish">Spanish 西班牙语</option>
+        <option value="russian">Russian 俄语</option>
+        <option value="arabic">Arabic 阿拉伯语</option>
+        <option value="portuguese">Portuguese 葡萄牙语</option>
+        <option value="italian">Italian 意大利语</option>
+        <option value="dutch">Dutch 荷兰语</option>
+        <option value="hindi">Hindi 印地语</option>
+        <option value="thai">Thai 泰语</option>
+        <option value="vietnamese">Vietnamese 越南语</option>
+        <option value="turkish">Turkish 土耳其语</option>
+      </select>
+    </div>
+
+    <div class="controls">
+      <button id="recordBtn" disabled>🎙️ 开始录音</button>
+      <button id="fileBtn" disabled>📁 选择音频文件</button>
+      <input type="file" id="audioFile" accept="audio/*">
+    </div>
+
+    <div class="audio-preview" id="audioPreview">
+      <label class="result-label">音频预览：</label>
+      <audio id="audioPlayer" controls></audio>
+    </div>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text" id="progressText">处理中...</div>
+    </div>
+
+    <div class="result-section">
+      <label class="result-label">识别结果：</label>
+      <div class="result-box" id="result"></div>
+    </div>
+
+    <div class="performance-info" id="performanceInfo" style="display: none;">
+      <h3>📊 性能统计</h3>
+      <div class="stat">
+        <span>音频时长:</span>
+        <span class="stat-value" id="audioDuration">-</span>
+      </div>
+      <div class="stat">
+        <span>处理时间:</span>
+        <span class="stat-value" id="processingTime">-</span>
+      </div>
+      <div class="stat">
+        <span>实时因子 (RTF):</span>
+        <span class="stat-value" id="rtf">-</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
+
+    env.allowLocalModels = false;
+
+    const statusEl = document.getElementById('status');
+    const gpuBadge = document.getElementById('gpuBadge');
+    const recordBtn = document.getElementById('recordBtn');
+    const fileBtn = document.getElementById('fileBtn');
+    const audioFile = document.getElementById('audioFile');
+    const resultEl = document.getElementById('result');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const modelSelect = document.getElementById('modelSelect');
+    const precisionSelect = document.getElementById('precisionSelect');
+    const languageSelect = document.getElementById('languageSelect');
+    const audioPreview = document.getElementById('audioPreview');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const performanceInfo = document.getElementById('performanceInfo');
+    const audioDurationEl = document.getElementById('audioDuration');
+    const processingTimeEl = document.getElementById('processingTime');
+    const rtfEl = document.getElementById('rtf');
+
+    let transcriber = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let useWebGPU = false;
+    let audioDuration = 0;
+
+    async function checkWebGPUSupport() {
+      if (!navigator.gpu) {
+        console.log('WebGPU API not available');
+        return false;
+      }
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          console.log('No GPU adapter found');
+          return false;
+        }
+        const device = await adapter.requestDevice();
+        console.log('WebGPU device created successfully');
+        return device !== null;
+      } catch (e) {
+        console.error('WebGPU check failed:', e);
+        return false;
+      }
+    }
+
+    async function loadModel(modelName) {
+      statusEl.className = 'status loading';
+      statusEl.textContent = '⏳ 正在加载模型...';
+      recordBtn.disabled = true;
+      fileBtn.disabled = true;
+
+      try {
+        const options = {
+          progress_callback: (progress) => {
+            if (progress.status === 'downloading') {
+              const percent = progress.progress ? Math.round(progress.progress) : 0;
+              statusEl.textContent = `⏳ 下载模型中... ${percent}% (${progress.file || ''})`;
+            } else if (progress.status === 'loading') {
+              statusEl.textContent = '⏳ 加载模型到内存...';
+            }
+          },
+          dtype: precisionSelect.value
+        };
+
+        if (useWebGPU) {
+          options.device = 'webgpu';
+        }
+
+        transcriber = await pipeline('automatic-speech-recognition', modelName, options);
+
+        statusEl.className = 'status ready';
+        statusEl.textContent = `✅ 模型已就绪 (${useWebGPU ? 'WebGPU 加速' : 'WASM 模式'})`;
+        recordBtn.disabled = false;
+        fileBtn.disabled = false;
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = '❌ 模型加载失败: ' + error.message;
+        console.error('Model loading error:', error);
+      }
+    }
+
+    async function init() {
+      const webGPUSupported = await checkWebGPUSupport();
+      useWebGPU = webGPUSupported;
+
+      if (webGPUSupported) {
+        gpuBadge.className = 'gpu-badge webgpu';
+        gpuBadge.textContent = 'WebGPU';
+        statusEl.className = 'status ready';
+        statusEl.textContent = '✅ WebGPU 已启用';
+      } else {
+        gpuBadge.className = 'gpu-badge wasm';
+        gpuBadge.textContent = 'WASM';
+        statusEl.className = 'status loading';
+        statusEl.textContent = '⚠️ WebGPU 不可用，使用 WASM 模式（较慢）';
+      }
+
+      await loadModel(modelSelect.value);
+    }
+
+    modelSelect.addEventListener('change', () => {
+      loadModel(modelSelect.value);
+    });
+
+    precisionSelect.addEventListener('change', () => {
+      loadModel(modelSelect.value);
+    });
+
+    init();
+
+    recordBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioPlayer.src = audioUrl;
+            audioPreview.classList.add('show');
+
+            await transcribeAudio(audioBlob);
+
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          recordBtn.textContent = '⏹️ 停止录音';
+          recordBtn.classList.add('recording');
+          statusEl.className = 'status recording';
+          statusEl.textContent = '🔴 正在录音... 点击停止按钮结束';
+        } catch (error) {
+          alert('无法访问麦克风: ' + error.message);
+        }
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        recordBtn.textContent = '🎙️ 开始录音';
+        recordBtn.classList.remove('recording');
+      }
+    });
+
+    fileBtn.addEventListener('click', () => {
+      audioFile.click();
+    });
+
+    audioFile.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const audioUrl = URL.createObjectURL(file);
+        audioPlayer.src = audioUrl;
+        audioPreview.classList.add('show');
+        await transcribeAudio(file);
+      }
+    });
+
+    async function transcribeAudio(audioBlob) {
+      statusEl.className = 'status processing';
+      statusEl.textContent = '⏳ 正在识别音频...';
+      progressContainer.classList.add('show');
+      progressFill.style.width = '0%';
+      progressText.textContent = '准备中...';
+      recordBtn.disabled = true;
+      fileBtn.disabled = true;
+      performanceInfo.style.display = 'none';
+
+      const startTime = performance.now();
+
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        audioDuration = audioBuffer.duration;
+
+        const numberOfChannels = audioBuffer.numberOfChannels;
+        const length = audioBuffer.length;
+        const sampleRate = audioBuffer.sampleRate;
+
+        let audioData;
+        if (numberOfChannels === 1) {
+          audioData = audioBuffer.getChannelData(0);
+        } else {
+          audioData = new Float32Array(length);
+          for (let i = 0; i < length; i++) {
+            let sum = 0;
+            for (let channel = 0; channel < numberOfChannels; channel++) {
+              sum += audioBuffer.getChannelData(channel)[i];
+            }
+            audioData[i] = sum / numberOfChannels;
+          }
+        }
+
+        if (sampleRate !== 16000) {
+          const ratio = sampleRate / 16000;
+          const newLength = Math.round(length / ratio);
+          const resampledData = new Float32Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            const srcIndex = Math.floor(i * ratio);
+            resampledData[i] = audioData[srcIndex];
+          }
+          audioData = resampledData;
+        }
+
+        progressFill.style.width = '30%';
+        progressText.textContent = '正在识别...';
+
+        const transcribeOptions = {
+          chunk_length_s: 30,
+          stride_length_s: 5,
+          task: 'transcribe',
+          return_timestamps: true,
+          callback_function: (x) => {
+            if (x.chunks) {
+              progressFill.style.width = '60%';
+              progressText.textContent = `识别进度: ${x.chunks.length} 个片段`;
+            }
+          }
+        };
+
+        if (languageSelect.value !== 'auto') {
+          transcribeOptions.language = languageSelect.value;
+        }
+
+        const output = await transcriber(audioData, transcribeOptions);
+
+        progressFill.style.width = '100%';
+        progressText.textContent = '完成!';
+
+        const endTime = performance.now();
+        const processingTimeMs = endTime - startTime;
+        const processingTime = (processingTimeMs / 1000).toFixed(2);
+        const rtf = (processingTimeMs / 1000 / audioDuration).toFixed(2);
+
+        let resultText = '';
+        if (output.chunks && output.chunks.length > 0) {
+          output.chunks.forEach((chunk, index) => {
+            const timestamp = chunk.timestamp ? `[${chunk.timestamp[0]?.toFixed(1) || '0.0'}s - ${chunk.timestamp[1]?.toFixed(1) || '...'}s]` : '';
+            resultText += `${timestamp} ${chunk.text}\n`;
+          });
+        } else {
+          resultText = output.text || '未能识别出内容';
+        }
+
+        resultEl.textContent = resultText;
+        statusEl.className = 'status ready';
+        statusEl.textContent = '✅ 识别完成';
+
+        audioDurationEl.textContent = `${audioDuration.toFixed(1)}s`;
+        processingTimeEl.textContent = `${processingTime}s`;
+        rtfEl.textContent = rtf;
+        performanceInfo.style.display = 'block';
+
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = '❌ 识别失败: ' + error.message;
+        console.error('Transcription error:', error);
+      } finally {
+        progressContainer.classList.remove('show');
+        recordBtn.disabled = false;
+        fileBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

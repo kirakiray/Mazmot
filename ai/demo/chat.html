@@ -1,0 +1,417 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .chat-header {
+      margin-bottom: 20px;
+    }
+
+    .chat-header h1 {
+      margin: 0 0 10px 0;
+    }
+
+    .model-selector {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .model-selector select {
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid var(--md-sys-color-neutral-container);
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .option-group {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--md-sys-color-neutral-container);
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--md-sys-color-on-neutral-container);
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--md-sys-color-primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+      background-color: var(--md-sys-color-on-primary);
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--md-sys-color-neutral-container);
+      border-radius: 8px;
+      padding: 15px;
+      background: var(--md-sys-color-surface);
+      margin-bottom: 15px;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      padding: 10px 15px;
+      border-radius: 8px;
+      max-width: 80%;
+    }
+
+    .message.user {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .message.assistant {
+      background: var(--md-sys-color-neutral-container);
+      color: var(--md-sys-color-on-neutral-container);
+    }
+
+    .message-content {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .thinking-section {
+      margin-bottom: 10px;
+    }
+
+    .thinking-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--md-sys-color-on-neutral-container);
+      opacity: 0.7;
+      user-select: none;
+    }
+
+    .thinking-header:hover {
+      opacity: 1;
+    }
+
+    .thinking-icon {
+      display: inline-block;
+      transition: transform 0.2s;
+    }
+
+    .thinking-icon.expanded {
+      transform: rotate(90deg);
+    }
+
+    .thinking-content {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--md-sys-color-surface);
+      border-radius: 6px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-left: 3px solid var(--md-sys-color-primary);
+    }
+
+    .input-area {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-area textarea {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--md-sys-color-neutral-container);
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .input-area textarea:focus {
+      outline: none;
+      border-color: var(--md-sys-color-primary);
+    }
+
+    .send-btn {
+      padding: 12px 24px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+
+    .send-btn:hover {
+      opacity: 0.9;
+    }
+
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--md-sys-color-on-surface);
+      opacity: 0.6;
+      padding: 40px;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--md-sys-color-on-neutral-container);
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>AI 聊天</h1>
+      <div class="model-selector">
+        <label>选择模型：</label>
+        <select sync:value="selectedModel">
+          <o-fill :value="apiKeys">
+            <option attr:value="$data.id">
+              {{$data.provider}} - {{$data.maskedKey}}
+            </option>
+          </o-fill>
+        </select>
+      </div>
+      <div class="option-group">
+        <div class="option-item">
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="streamEnabled" on:change="streamEnabled = $event.target.checked">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>流式输出</span>
+        </div>
+        <div class="option-item">
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="thinkingEnabled" on:change="thinkingEnabled = $event.target.checked">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>思考模式</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="messages">
+      <o-if :value="messages.length === 0">
+        <div class="empty-state">
+          <p>开始和 AI 对话吧！</p>
+        </div>
+      </o-if>
+      <o-fill :value="messages">
+        <div class="message {{$data.role}}">
+          <o-if :value="$data.reasoningContent">
+            <div class="thinking-section">
+              <div class="thinking-header" on:click="$data.thinkingExpanded = !$data.thinkingExpanded">
+                <span class="thinking-icon {{$data.thinkingExpanded ? 'expanded' : ''}}">▶</span>
+                <span>思考过程</span>
+              </div>
+              <o-if :value="$data.thinkingExpanded">
+                <div class="thinking-content">{{$data.reasoningContent}}</div>
+              </o-if>
+            </div>
+          </o-if>
+          <div class="message-content">{{$data.content}}</div>
+        </div>
+      </o-fill>
+      <o-if :value="isLoading">
+        <div class="message assistant">
+          <div class="loading"></div>
+        </div>
+      </o-if>
+    </div>
+
+    <div class="input-area">
+      <textarea
+        :value="inputMessage"
+        on:input="inputMessage = $event.target.value"
+        placeholder="输入消息..."
+        rows="3"
+      ></textarea>
+      <button
+        class="send-btn"
+        on:click="sendMessage"
+        :disabled="isLoading || !inputMessage.trim()"
+      >
+        发送
+      </button>
+    </div>
+  </div>
+
+  <script>
+    export const parent = "./layout.html";
+
+    export default async ({ load }) => {
+      const { getAssistant, apiKeys } = await load("../main.js");
+
+      return {
+        data: {
+          selectedModel: "",
+          inputMessage: "",
+          messages: [],
+          isLoading: false,
+          apiKeys: [],
+          streamEnabled: true,
+          thinkingEnabled: false,
+        },
+        proto: {
+          async sendMessage() {
+            const message = this.inputMessage.trim();
+            if (!message || this.isLoading) return;
+
+            if (!this.selectedModel && this.apiKeys.length > 0) {
+              this.selectedModel = this.apiKeys[0].id;
+            }
+
+            if (!this.selectedModel) {
+              alert("请先添加模型");
+              return;
+            }
+
+            this.messages.push({
+              role: "user",
+              content: message,
+            });
+
+            this.inputMessage = "";
+            this.isLoading = true;
+
+            const assistantMessageIndex = this.messages.length;
+            this.messages.push({
+              role: "assistant",
+              content: "",
+              reasoningContent: "",
+              thinkingExpanded: false,
+            });
+
+            try {
+              const assistant = await getAssistant(this.selectedModel);
+              
+              const chatMessages = this.messages.slice(0, -1).map(m => ({
+                role: m.role,
+                content: m.content
+              }));
+              
+              if (this.streamEnabled) {
+                await assistant.chat({
+                  messages: chatMessages,
+                  thinking: this.thinkingEnabled,
+                  stream: true,
+                  onStream: (data) => {
+                    this.messages[assistantMessageIndex].content = data.content;
+                    if (data.reasoningContent) {
+                      this.messages[assistantMessageIndex].reasoningContent = data.reasoningContent;
+                    }
+                  },
+                });
+              } else {
+                const response = await assistant.chat({
+                  messages: chatMessages,
+                  thinking: this.thinkingEnabled,
+                  stream: false,
+                });
+                this.messages[assistantMessageIndex].content = response.content;
+                if (response.reasoningContent) {
+                  this.messages[assistantMessageIndex].reasoningContent = response.reasoningContent;
+                }
+              }
+            } catch (error) {
+              this.messages[assistantMessageIndex].content = `错误: ${error.message}`;
+              this.messages[assistantMessageIndex].reasoningContent = "";
+            } finally {
+              this.isLoading = false;
+            }
+          },
+        },
+
+        attached() {
+          this.apiKeys = apiKeys;
+          if (apiKeys.length > 0) {
+            this.selectedModel = apiKeys[0].id;
+          }
+        },
+
+        detached() {
+          this.apiKeys = [];
+        },
+      };
+    };
+  </script>
+</template>

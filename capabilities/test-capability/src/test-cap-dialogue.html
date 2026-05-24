@@ -1,0 +1,91 @@
+<template page>
+  <style>
+    :host {
+      position: relative;
+      display: block;
+    }
+
+    .container {
+      position: relative;
+      height: 100px;
+    }
+
+    iframe {
+      border: none;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 200%;
+      height: 200px;
+      transform-origin: 0 0;
+      transform: scale(0.5);
+    }
+  </style>
+  <div class="container"></div>
+  <script>
+    export default async ({ load }) => {
+      const { loadCapabilityConfig, normalizeCapPath } = await load(
+        "/comps/cap-request/util.js",
+      );
+
+      return {
+        data: {
+          _messageHandler: null,
+        },
+        proto: {
+          async init({ data, content, cid, result }) {
+            const { capability } = data;
+
+            // 获取对应能力的配置数据
+            const yamlConfig = await loadCapabilityConfig(capability);
+
+            const testPagePath = normalizeCapPath(
+              `/capabilities/${capability}/${yamlConfig.test}`,
+            );
+
+            const frameEle = $(`<iframe src="${testPagePath}"></iframe>`);
+
+            this._messageHandler = (e) => {
+              const expectedOrigin = window.location.origin;
+
+              if (e.origin !== expectedOrigin) {
+                console.warn(`Message from unexpected origin: ${e.origin}`);
+                return;
+              }
+
+              if (!e.data || typeof e.data !== "object") {
+                return;
+              }
+
+              if (
+                e.data.type !== "test-cap-results" ||
+                e.data.source !== "test-cap"
+              ) {
+                return;
+              }
+
+              if (result) {
+                // 有结果不需要再处理
+                return;
+              }
+
+              this.emit("submit", {
+                data: e.data.payload,
+              });
+            };
+
+            window.addEventListener("message", this._messageHandler);
+
+            this.shadow.$(".container").push(frameEle);
+          },
+        },
+        detached() {
+          if (this._messageHandler) {
+            window.removeEventListener("message", this._messageHandler);
+            this._messageHandler = null;
+          }
+        },
+      };
+    };
+  </script>
+</template>

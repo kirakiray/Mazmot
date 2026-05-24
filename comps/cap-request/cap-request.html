@@ -1,0 +1,472 @@
+<template component>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/group.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <style>
+    :host {
+      position: relative;
+      display: block;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--md-sys-color-neutral);
+      border-radius: 12px;
+      padding: 4px 16px;
+      margin-bottom: 12px;
+      background-color: var(--md-sys-color-surface);
+      transition: all 0.2s ease;
+      box-shadow: 0 0 0 1px var(--md-sys-color-neutral-container);
+    }
+    .cap-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .cap-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .cap-name {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cap-desc {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .cap-action {
+      display: flex;
+      align-items: center;
+    }
+    .debug-info {
+      margin-top: 12px;
+      padding: 12px;
+      background-color: var(--md-sys-color-neutral-container);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-neutral-container);
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+      overflow-x: auto;
+      margin-bottom: 12px;
+    }
+
+    .tool-btns {
+      position: absolute;
+      right: 0px;
+      top: -24px;
+      opacity: 0;
+      transition: all 0.2s ease;
+    }
+
+    :host(:hover) .tool-btns {
+      opacity: 1;
+    }
+
+    .cap-page {
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border: 1px solid var(--md-sys-color-primary);
+    }
+    .hide {
+      display: none !important;
+    }
+  </style>
+
+  <p-button-group class="tool-btns">
+    <p-button
+      size="small"
+      icon
+      attr:color="allCompleted ? 'success' : 'primary'"
+      attr:disabled="isRunningAll"
+      on:click="runAll()"
+    >
+      <o-if :value="isRunningAll">
+        <n-icon icon="line-md:loading-twotone-loop"></n-icon>
+      </o-if>
+      <o-if :value="!isRunningAll && allCompleted">
+        <n-icon icon="material-symbols:done-rounded"></n-icon>
+      </o-if>
+      <o-if :value="!isRunningAll && !allCompleted">
+        <n-icon icon="line-md:play"></n-icon>
+      </o-if>
+    </p-button>
+    <p-button
+      size="small"
+      icon
+      on:click="debugMode = !debugMode"
+      variant="outlined"
+    >
+      <n-icon icon="carbon:debug"></n-icon>
+    </p-button>
+  </p-button-group>
+  <o-fill :value="capRequests">
+    <div attr:data-item-cid="$data.cid">
+      <div class="item">
+        <div class="cap-icon">⚡</div>
+        <div class="cap-content">
+          <div class="cap-desc">{{$data.desc}}</div>
+          <div class="cap-name">{{$data.name}}</div>
+        </div>
+        <div class="cap-action">
+          <o-if :value="$data.page || $data.hasPage">
+            <p-button
+              size="small"
+              icon
+              variant="text"
+              on:click="$host.togglePageView($data)"
+              style="margin-right: 8px"
+            >
+              <n-icon
+                attr:icon="$data.hidePage ? 'material-symbols:visibility' : 'material-symbols:visibility-off'"
+              ></n-icon>
+            </p-button>
+          </o-if>
+          <o-if :value="$data.error">
+            <n-icon
+              icon="material-symbols:error-rounded"
+              style="color: var(--md-sys-color-error)"
+            ></n-icon>
+          </o-if>
+          <o-else-if :value="$data.running">
+            <n-icon
+              icon="line-md:loading-twotone-loop"
+              style="color: var(--md-sys-color-primary)"
+            ></n-icon>
+          </o-else-if>
+          <o-else-if :value="!$data.running && $data.done">
+            <n-icon
+              icon="material-symbols:done-rounded"
+              style="color: var(--md-sys-color-success)"
+            ></n-icon>
+          </o-else-if>
+          <o-else-if :value="!$data.running && !$data.done && !$data.error">
+            <span
+              style="
+                font-size: 12px;
+                color: var(--md-sys-color-on-surface-variant);
+              "
+            >
+              等待运行
+            </span>
+          </o-else-if>
+        </div>
+      </div>
+      <div class="page-container" class:hide="!$data.page || $data.hidePage">
+        <o-page
+          class="cap-page"
+          attr:src="$data.page"
+          on:page-loaded="$host.runPageInit($data,$ele)"
+          on:submit="$host.pageDone($event,'submit',$data)"
+          on:cancel="$host.pageDone($event,'cancel',$data)"
+        ></o-page>
+      </div>
+      <o-if :value="$host.debugMode">
+        <div class="debug-info">
+          <div style="margin-bottom: 8px">
+            <strong>输入信息:</strong>
+            <div style="margin-top: 4px">{{$host.stringifyInfo($data)}}</div>
+          </div>
+          <o-if :value="$data.done">
+            <div style="margin-bottom: 8px">
+              <strong>输出信息:</strong>
+              <div style="margin-top: 4px">
+                {{$host.stringify($data.result)}}
+              </div>
+            </div>
+          </o-if>
+          <o-if :value="$data.error">
+            <div>
+              <strong style="color: var(--md-sys-color-error)">
+                错误信息:
+              </strong>
+              <div style="margin-top: 4px; color: var(--md-sys-color-error)">
+                {{$data.error}}
+              </div>
+            </div>
+          </o-if>
+        </div>
+      </o-if>
+    </div>
+  </o-fill>
+  <script>
+    export default async function ({ load }) {
+      const { loadCapabilityConfig, normalizeCapPath } =
+        await load("./util.js");
+
+      return {
+        tag: "cap-request",
+        data: {
+          capRequests: [
+            // {
+            //   name: "",
+            //   cid: "",
+            //   desc: "",
+            //   data: {},
+            //   content: "",
+            //   running: false,
+            //   done: false,
+            // },
+          ],
+          debugMode: false,
+          isRunningAll: false,
+          allCompleted: false,
+        },
+        proto: {
+          pageDone(event, type, item) {
+            const { data } = event;
+
+            item.hidePage = true;
+
+            if (item._resolve) {
+              item._resolve(data);
+            } else {
+              item.result = data;
+            }
+          },
+          togglePageView(item) {
+            if (item.hasPage && !item.page) {
+              item.page = item._pageUrl;
+              item.hidePage = false;
+            } else {
+              item.hidePage = !item.hidePage;
+            }
+          },
+          runPageInit(item, fillItemEl) {
+            const page = fillItemEl.$("o-page");
+            const initData = {
+              content: item.content,
+              cid: item.cid,
+              data: item.data.toJSON(),
+            };
+
+            if (item.result) {
+              initData.result = item.result.toJSON();
+            }
+
+            page.init(initData);
+          },
+          stringifyInfo(data) {
+            return this.stringify(data, [
+              "name",
+              "desc",
+              "cid",
+              "content",
+              "data",
+            ]);
+          },
+          stringify(data, keyArr) {
+            if (data === null || data === undefined) {
+              return "null";
+            }
+            if (keyArr) {
+              const reData = {};
+              keyArr.forEach((key) => {
+                reData[key] = data[key];
+              });
+              return JSON.stringify(reData);
+            }
+            return JSON.stringify(data);
+          },
+          async _executeCapability(item) {
+            const capabilityName = item.name;
+
+            const yamlConfig = await loadCapabilityConfig(capabilityName);
+
+            if (yamlConfig.page) {
+              // 使用页面能力
+              const pageUrl = normalizeCapPath(
+                `/capabilities/${capabilityName}/${yamlConfig.page}`,
+              );
+
+              item.page = pageUrl;
+              item.hidePage = false;
+
+              const result = await new Promise((resolve, reject) => {
+                // 挂载 resolve 和 reject 到 item 上，方便在页面中调用
+                item._resolve = resolve;
+                item._reject = reject;
+              });
+
+              return result;
+            }
+
+            // 使用 method 能力
+            const url = normalizeCapPath(
+              `/capabilities/${capabilityName}/${yamlConfig.method}`,
+            );
+            const module = await load(url);
+            const capabilityRunner = module.default;
+            return await capabilityRunner({
+              data: item.data,
+              content: item.content,
+            });
+          },
+          async runAll() {
+            if (this.isRunningAll) return;
+            this.isRunningAll = true;
+
+            const items = this.capRequests.filter(
+              (item) => !item.done && !item.running,
+            );
+            if (items.length === 0) {
+              this.isRunningAll = false;
+              return;
+            }
+
+            items.forEach((item) => {
+              item.error = null;
+            });
+
+            try {
+              const results = [];
+
+              for (const item of items) {
+                item.running = true;
+                item.done = false;
+
+                let result = null;
+                try {
+                  result = await this._executeCapability(item);
+                  item.result = result;
+                } catch (e) {
+                  console.error(e);
+                  item.error = e.message;
+                }
+
+                item.running = false;
+                item.done = true;
+
+                results.push(result);
+              }
+
+              const capabilityResults = items.map((item, i) => ({
+                name: item.name,
+                cid: item.cid,
+                result: results[i],
+                error: item.error,
+              }));
+
+              const { dialogHost } = this;
+
+              if (!this.ele.isConnected) {
+                return;
+              }
+
+              await dialogHost.handleCapabilityResults(capabilityResults);
+
+              this.allCompleted = this.capRequests.every((r) => r.done);
+            } catch (e) {
+              items.forEach((item) => {
+                item.running = false;
+              });
+              throw e;
+            } finally {
+              this.isRunningAll = false;
+            }
+          },
+          async loadData() {
+            try {
+              const items = [];
+
+              this.all("template").forEach((temp) => {
+                const content = temp.html.trim();
+
+                items.push({
+                  name: temp.attr("name"),
+                  cid: temp.attr("cid"),
+                  desc: temp.attr("desc"),
+                  data: {
+                    ...temp.data,
+                  },
+                  content,
+                  running: false,
+                  done: false,
+                });
+              });
+
+              if (items.length === 0 && this.text.trim()) {
+                throw new Error("未找到有效的 <template> 标签");
+              }
+
+              this.capRequests = items;
+            } catch (e) {
+              console.error("Failed to load requests:", e);
+            } finally {
+              this.allCompleted = false;
+            }
+          },
+          async checkExistingResults() {
+            const dialogHost = this.dialogHost;
+            const messages = dialogHost.messages || [];
+
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const msg = messages[i];
+              if (msg.role === "user" && msg.isResponse && msg.responsesData) {
+                for (const item of this.capRequests) {
+                  const matchedResult = msg.responsesData.find(
+                    (r) => r.cid === item.cid && r.name === item.name,
+                  );
+                  if (matchedResult) {
+                    item.done = true;
+                    item.running = false;
+                    item.result = matchedResult.result;
+                    item.error = matchedResult.error;
+
+                    const { loadCapabilityConfig, normalizeCapPath } =
+                      await load("./util.js");
+                    const yamlConfig = await loadCapabilityConfig(item.name);
+                    if (yamlConfig.page) {
+                      const pageUrl = normalizeCapPath(
+                        `/capabilities/${item.name}/${yamlConfig.page}`,
+                      );
+                      item.hasPage = true;
+                      item._pageUrl = pageUrl;
+                      item.hidePage = true;
+                    }
+                  }
+                }
+              }
+            }
+
+            this.allCompleted = this.capRequests.every((r) => r.done);
+          },
+          get dialogHost() {
+            const paths = this.composedPath();
+            const dialogHost = paths.find(
+              (ele) =>
+                ele.getAttribute && ele.getAttribute("dialogue-host") !== null,
+            );
+
+            if (!dialogHost) {
+              throw new Error("No dialogue host found");
+            }
+
+            return $(dialogHost);
+          },
+        },
+        async attached() {
+          await this.loadData();
+          await this.checkExistingResults();
+
+          if (!this.allCompleted) {
+            this.runAll();
+          }
+        },
+      };
+    }
+  </script>
+</template>
