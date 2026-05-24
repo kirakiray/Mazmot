@@ -6,15 +6,15 @@ export default async function getSkill({ data = {}, content }) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (all) {
-    const skills = await fetch(import.meta.resolve("../../skills/used.json")).then(
-      (e) => e.json(),
-    );
+    const skills = await fetch(
+      import.meta.resolve("../../skills/used.json"),
+    ).then((e) => e.json());
 
     const skillDesc = [];
 
     for (const skillName of skills) {
-      const skillMd = await fetch(`/skills/${skillName}/SKILL.md`).then(
-        (e) => e.text(),
+      const skillMd = await fetch(`/skills/${skillName}/SKILL.md`).then((e) =>
+        e.text(),
       );
 
       if (!skillMd.trim()) {
@@ -39,13 +39,13 @@ export default async function getSkill({ data = {}, content }) {
 
   if (name) {
     try {
-      const filePath = file 
+      const filePath = file
         ? `/skills/${name}/${file}`
         : `/skills/${name}/SKILL.md`;
-      
+
       const fileContent = await fetch(filePath).then((e) => {
         if (!e.ok) {
-          throw new Error(`File not found: ${file || 'SKILL.md'}`);
+          throw new Error(`File not found: ${file || "SKILL.md"}`);
         }
         return e.text();
       });
@@ -67,7 +67,7 @@ export default async function getSkill({ data = {}, content }) {
       return {
         name: name,
         file: file || "SKILL.md",
-        error: error.message || "Failed to fetch file",
+        error: "Skill not found",
       };
     }
   }
