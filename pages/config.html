@@ -86,15 +86,19 @@
     <div class="setting-section">
       <h2>API Key 管理</h2>
       <div class="add-form">
-        <p-select :value="provider" on:change="provider = $event.target.value">
+        <p-select sync:value="provider">
           <span slot="label">提供商</span>
           <p-option value="deepseek">DeepSeek</p-option>
           <p-option value="kimi">Kimi</p-option>
         </p-select>
-        <p-input :value="apiKey" on:input="apiKey = $event.target.value">
+        <p-input sync:value="apiKey">
           <span slot="label">API Key</span>
         </p-input>
-        <p-button color="primary" on:click="handleAdd" :disabled="!apiKey.trim()">
+        <p-button
+          color="primary"
+          on:click="handleAdd"
+          attr:disabled="!apiKey.trim()"
+        >
           添加
         </p-button>
       </div>
@@ -139,7 +143,7 @@
   </p-dialog>
 
   <script>
-    export const parent = './layout.html';
+    export const parent = "./layout.html";
 
     export default async ({ load }) => {
       const { apiKeys, saveKey } = await load("../ai/main.js");
