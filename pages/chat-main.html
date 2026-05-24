@@ -2,6 +2,7 @@
   <l-m src="../comps/chatbox/chatbox.html"></l-m>
   <l-m src="../comps/o-md/o-md.html"></l-m>
   <l-m src="../comps/cap-request/cap-request.html"></l-m>
+  <l-m src="../comps/mascot/mascot.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <style>
@@ -30,6 +31,9 @@
           attr:is-response="$data.isResponse"
           attr:hidden="$data.hidden"
         >
+          <o-if :value="$data.role === 'assistant'" slot="avatar">
+            <m-mascot  style="--mascot-size:28px"></m-mascot>
+          </o-if>
           <o-if :value="$data.role !== 'system' && !$data.isResponse">
             <o-md>{{$data.content}}</o-md>
           </o-if>
@@ -37,21 +41,22 @@
           <o-if :value="$data.usage">
             <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
               模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}} tokens
-              <span o-if="$data.usage.prompt_cache_hit_tokens"
-                >| 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
-                tokens</span
-              >
-              <span o-if="$data.usage.prompt_cache_miss_tokens"
-                >| 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
-                tokens</span
-              >
+              <span>
+                | 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
+                tokens
+                </span>
+              <span>
+                | 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
+                tokens
+                </span>
               | 输出: {{$data.usage.completion_tokens}} tokens
             </div>
           </o-if>
         </m-chat-item>
       </o-fill>
       <o-if :value="isLoading">
-        <m-chat-item role="assistant">AI 正在处理...</m-chat-item>
+        <m-chat-item role="assistant">AI 正在处理...
+        </m-chat-item>
       </o-if>
       <o-if :value="!hasVisibleMessages && !isLoading">
         </m-chat-item>
