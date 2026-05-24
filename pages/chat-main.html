@@ -32,8 +32,9 @@
           attr:hidden="$data.hidden"
         >
           <o-if :value="$data.role === 'assistant'" slot="avatar">
-            <m-mascot  style="--mascot-size:28px"></m-mascot>
+            <m-mascot style="--mascot-size: 28px"></m-mascot>
           </o-if>
+          <o-else slot="avatar"> U </o-else>
           <o-if :value="$data.role !== 'system' && !$data.isResponse">
             <o-md>{{$data.content}}</o-md>
           </o-if>
@@ -42,26 +43,28 @@
             <div style="font-size: 12px; opacity: 0.6; margin-top: 8px">
               模型: {{$data.model}} | 输入: {{$data.usage.prompt_tokens}} tokens
               <span>
-                | 缓存命中: {{$data.usage.prompt_cache_hit_tokens}}
-                tokens
-                </span>
+                | 缓存命中: {{$data.usage.prompt_cache_hit_tokens}} tokens
+              </span>
               <span>
-                | 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}}
-                tokens
-                </span>
+                | 缓存未命中: {{$data.usage.prompt_cache_miss_tokens}} tokens
+              </span>
               | 输出: {{$data.usage.completion_tokens}} tokens
             </div>
           </o-if>
         </m-chat-item>
       </o-fill>
       <o-if :value="isLoading">
-        <m-chat-item role="assistant">AI 正在处理...
-        </m-chat-item>
+        <m-chat-item role="assistant">AI 正在处理... </m-chat-item>
       </o-if>
       <o-if :value="!hasVisibleMessages && !isLoading">
-        </m-chat-item>
         <div
-          style="display: flex; justify-content: center; align-items: center;min-height: 300px;color: var(--md-sys-color-normal);"
+          style="
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+            color: var(--md-sys-color-normal);
+          "
         >
           请输入消息
         </div>
@@ -138,7 +141,7 @@
                   : JSON.stringify(r.result);
               return `<template result name="${r.name}" cid="${r.cid}">${resultStr}</template>`;
             });
-            
+
             this.messages.push({
               role: "user",
               content: `<cap-response>${templates.join("\n")}</cap-response>`,
