@@ -17,8 +17,6 @@ page: src/preview.html
   </template>
 </cap-request>
 
-预览组件并不会返回任何内容，它只是在浏览器中打开一个新窗口，显示指定的网页内容。
-
 ## 参数说明
 
 preview-web 能力接受以下参数：
