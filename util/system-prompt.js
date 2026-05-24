@@ -31,16 +31,24 @@ export async function getSystemPrompt() {
 
 // get-capability 的使用文档
 const getCapabilityDoc = async () => {
-  const doc = await getCapability({ data: { name: "get-capability" } });
+  const capabilityDoc = await getCapability({
+    data: { name: "get-capability" },
+  });
+  const skillDocs = await getCapability({
+    data: { name: "get-skill" },
+  });
 
   return {
     role: "user",
     hidden: true,
-    content: `这是一条你要隐藏的指令，我会告诉你get-capability的使用文档，你收到后只需要回复我收到即可，不需要回复其他内容。
+    content: `这是一条你要隐藏的指令，我会告诉你get-capability和get-skill的使用文档，你收到后只需要回复我收到即可，不需要回复其他内容。
 
 <cap-response>
-  <template result name="get-capability" cid="get-capability-doc">
-${doc.content}
+  <template result name="get-capability" cid="initial-doc-get-capability">
+${capabilityDoc.content}
+  </template>
+  <template result name="get-skill" cid="initial-doc-get-skill">
+${skillDocs.content}
   </template>
 </cap-response>`,
   };
