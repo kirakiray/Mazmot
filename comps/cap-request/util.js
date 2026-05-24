@@ -17,8 +17,19 @@ export function normalizeCapPath(path) {
 export async function loadCapabilityConfig(capabilityName) {
   const skillUrl = `/capabilities/${capabilityName}/SKILL.md`;
   const skillResp = await fetch(skillUrl);
-  const skillText = await skillResp.text();
-  const yamlStr = skillText.match(/^---(.*?)---/s)[1];
-  const yamlConfig = yaml.load(yamlStr);
+  if (!skillResp.ok) {
+    throw new Error(`Capability not found: ${skillUrl}`);
+  }
+  let yamlConfig;
+  try {
+    const skillText = await skillResp.text();
+    const yamlStr = skillText.match(/^---(.*?)---/s)[1];
+    yamlConfig = yaml.load(yamlStr);
+  } catch (e) {
+    // 解析SKILL.md失败，抛出更详细的错误信息
+    throw new Error(
+      `Failed to parse SKILL.md for capability "${capabilityName}": ${e.message}`,
+    );
+  }
   return yamlConfig;
 }

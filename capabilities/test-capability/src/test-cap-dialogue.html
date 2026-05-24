@@ -39,6 +39,16 @@
             // 获取对应能力的配置数据
             const yamlConfig = await loadCapabilityConfig(capability);
 
+            if (!yamlConfig.test) {
+              this.emit("submit", {
+                data: {
+                  name: capability,
+                  error: "该能力没有测试页面",
+                },
+              });
+              return;
+            }
+
             const testPagePath = normalizeCapPath(
               `/capabilities/${capability}/${yamlConfig.test}`,
             );
