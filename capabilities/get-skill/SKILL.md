@@ -24,4 +24,13 @@ test: test/test-get-skill.html
   </template>
 </cap-request>
 
-工具将返回指定技能的完整文档。如需查询多个技能，请使用多个 `<template>` 标签，每个标签查询一个技能。
+工具将返回指定技能的 SKILL.md 文档。如需查询多个技能，请使用多个 `<template>` 标签，每个标签查询一个技能。
+
+## 获取技能目录下的特定文件
+
+<cap-request>
+  <template name="get-skill" cid="sk135" desc="获取 ofajs-docs 技能的 api.md 文件内容" data-name="ofajs-docs" data-file="references/api.md">
+  </template>
+</cap-request>
+
+通过 `data-file` 参数可以获取技能目录下的特定文件内容。文件路径相对于技能目录根目录。这对于获取技能相关的代码示例、参考文档等资源非常有用。

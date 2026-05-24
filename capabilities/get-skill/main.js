@@ -1,7 +1,7 @@
 import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
 
 export default async function getSkill({ data = {}, content }) {
-  const { all, name } = data;
+  const { all, name, file } = data;
 
   await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -39,25 +39,35 @@ export default async function getSkill({ data = {}, content }) {
 
   if (name) {
     try {
-      const skillMd = await fetch(`/skills/${name}/SKILL.md`).then((e) =>
-        e.text(),
-      );
+      const filePath = file 
+        ? `/skills/${name}/${file}`
+        : `/skills/${name}/SKILL.md`;
+      
+      const fileContent = await fetch(filePath).then((e) => {
+        if (!e.ok) {
+          throw new Error(`File not found: ${file || 'SKILL.md'}`);
+        }
+        return e.text();
+      });
 
-      if (!skillMd.trim()) {
+      if (!fileContent.trim()) {
         return {
           name: name,
-          error: "Skill not found",
+          file: file || "SKILL.md",
+          error: "File is empty",
         };
       }
 
       return {
         name: name,
-        content: skillMd,
+        file: file || "SKILL.md",
+        content: fileContent,
       };
     } catch (error) {
       return {
         name: name,
-        error: error.message || "Failed to fetch skill",
+        file: file || "SKILL.md",
+        error: error.message || "Failed to fetch file",
       };
     }
   }

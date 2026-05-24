@@ -19,7 +19,7 @@
           name="get-skill"
           cid="get-skill-01"
           desc="获取所有技能列表"
-          data-all="true" 
+          data-all="true"
         >
         </template>
       </cap-request>
@@ -52,6 +52,32 @@
             return {
               assert: hasContent,
               content: hasContent ? "成功获取技能详情" : "获取失败",
+            };
+          }
+        </script>
+      </template>
+    </test-capability>
+
+    <test-capability label="测试获取技能目录下的特定文件">
+      <cap-request>
+        <template
+          name="get-skill"
+          cid="get-skill-03"
+          desc="获取 ofajs-docs 技能的 api.md 文件"
+          data-name="ofajs-docs"
+          data-file="references/api.md"
+        >
+        </template>
+      </cap-request>
+      <template result cid="get-skill-03">
+        <script type="module">
+          export default async function (result) {
+            const hasContent = result.name === "ofajs-docs" && 
+                              result.file === "references/api.md" && 
+                              result.content;
+            return {
+              assert: hasContent,
+              content: hasContent ? "成功获取技能文件内容" : "获取失败",
             };
           }
         </script>
