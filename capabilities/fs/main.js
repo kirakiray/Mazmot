@@ -34,16 +34,7 @@ export default async function fs({ data = {}, content }) {
     }
 
     const temp = $(`<template>${content}</template>`);
-    const scriptEl = temp.$("script[type='text/plain']");
-    let textToWrite;
-
-    if (scriptEl) {
-      textToWrite = scriptEl.html.trim();
-    } else {
-      throw new Error(
-        "必须将写入内容包裹在<script type='text/plain'></script>标签中",
-      );
-    }
+    let textToWrite = temp.ele.content.textContent.trim();
 
     if (!textToWrite) {
       throw new Error("没有文本内容，无法写入");

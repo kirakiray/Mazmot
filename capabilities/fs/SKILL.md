@@ -20,9 +20,9 @@ test: test/fs-demo.html
 
 ### 写入文件
 
-使用 `data-mode="write"` 写入文件内容。
+使用 `data-mode="write"` 写入文件内容。写入内容直接放在 template 标签内部，无需任何包裹标签。
 
-**⚠️ 重要：所有写入内容必须使用 `<script type="text/plain">` 标签包裹，否则内容无法正确传递！**
+**纯文本内容示例**（不含 `<`、`>`、`&` 字符时无需转义）：
 
 <cap-request>
   <template
@@ -32,19 +32,51 @@ test: test/fs-demo.html
     data-mode="write"
     data-path="mazmot/test/test1.txt"
   >
-    <script type="text/plain">
 hello world
-    </script>
   </template>
 </cap-request>
 
 **返回值**：写入成功返回 `true`
 
-**为什么必须使用 `<script type="text/plain">`？**
-- 防止浏览器解析内容中的 HTML 标签
-- 确保内容被原样传递，不会被修改
-- 适用于所有类型的文件内容（纯文本、HTML、JSON、代码等）
-- 如果不使用该标签，包含 HTML 标签的内容会被浏览器错误解析
+**⚠️ 重要：HTML 特殊字符转义规则**
+
+由于写入内容直接放在 HTML 模板中，内容中的 HTML 特殊字符**必须提前转义**，否则会被浏览器解析为 HTML 标签而丢失或变形。
+
+需要转义的字符（**必须按以下顺序处理**）：
+
+| 原字符 | 转义为 | 说明 |
+|--------|--------|------|
+| `&` | `&amp;` | **必须第一个转义**，避免后续转义结果被二次转义 |
+| `<` | `&lt;` | 防止被解析为 HTML 标签 |
+| `>` | `&gt;` | 防止被解析为 HTML 标签闭合 |
+
+**包含 HTML 标签的内容示例**（必须转义 `<`、`>`、`&`）：
+
+<cap-request>
+  <template
+    name="fs"
+    cid="fs-write-html"
+    desc="写入HTML文件"
+    data-mode="write"
+    data-path="mazmot/test/index.html"
+  >
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;script src=&quot;app.js&quot;&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  Hello World
+&lt;/body&gt;
+&lt;/html&gt;
+  </template>
+</cap-request>
+
+**常见需要转义的场景**：
+- 写入 HTML 文件：所有标签的 `<` `>` 必须转义
+- 写入 XML/JSON 文件：内容中的 `<` `>` `&` 必须转义
+- 写入代码文件：代码中的 `<` `>` `&` 必须转义
+- 写入纯文本：不含 `<` `>` `&` 的文本无需转义
 
 ### 读取文件
 
