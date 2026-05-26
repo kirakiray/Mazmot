@@ -3,16 +3,130 @@
     :host {
       display: block;
     }
+    .cap-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 16px;
+    }
+    .cap-item {
+      padding: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .cap-item:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+    .cap-item h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+    }
+    .cap-item p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .empty-text {
+      font-size: 14px;
+    }
   </style>
   <link rel="stylesheet" href="./app-public.css" />
-  <div class="empty-state">
+  <div class="cap-list" o-if="capList.length">
+    <div class="cap-item" o-for="cap in capList">
+      <h3>{{cap.name}}</h3>
+      <p>{{cap.desc}}</p>
+    </div>
+  </div>
+  <div class="empty-state" o-else>
     <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
     <p class="empty-text">暂时没有能力</p>
   </div>
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { get } = await load("/nos/fs/main.js");
+
+      const capList = [];
+
+      try {
+        const capDir = await get("mazmot/capabilities");
+        if (capDir) {
+          for await (const [name, handle] of capDir.entries()) {
+            if (handle.kind === "dir") {
+              const skillFile = await get(
+                `mazmot/capabilities/${name}/SKILL.md`,
+                { create: false },
+              );
+              if (skillFile) {
+                const content = await skillFile.text();
+                const descMatch = content.match(/description:\s*(.+)/);
+                capList.push({
+                  name,
+                  desc: descMatch ? descMatch[1].trim() : "",
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
       return {
-        data: {},
+        data: {
+          capList: [],
+        },
+        proto: {
+          async loadData() {
+            const { get } = await this.load("/nos/fs/main.js");
+            const list = [];
+
+            try {
+              const capDir = await get("mazmot/capabilities");
+
+              debugger;
+
+              if (capDir) {
+                for await (const [name, handle] of capDir.entries()) {
+                  if (handle.kind === "dir") {
+                    const skillFile = await get(
+                      `mazmot/capabilities/${name}/SKILL.md`,
+                      { create: false },
+                    );
+                    if (skillFile) {
+                      const content = await skillFile.text();
+                      const descMatch = content.match(/description:\s*(.+)/);
+                      list.push({
+                        name,
+                        desc: descMatch ? descMatch[1].trim() : "",
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
+
+            this.capList = list;
+          },
+        },
+        attached() {
+          this.loadData();
+        },
       };
     };
   </script>
