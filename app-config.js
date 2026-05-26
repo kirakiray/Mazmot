@@ -1,4 +1,4 @@
-export const home = "./pages/start.html";
+export const home = "./pages/start/start.html";
 
 export const pageAnime = {
   current: {
