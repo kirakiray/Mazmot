@@ -45,45 +45,21 @@
     }
   </style>
   <link rel="stylesheet" href="./app-public.css" />
-  <div class="cap-list" o-if="capList.length">
-    <div class="cap-item" o-for="cap in capList">
-      <h3>{{cap.name}}</h3>
-      <p>{{cap.desc}}</p>
+  <o-fill :value="capList">
+    <div class="cap-item">
+      <h3>{{$data.name}}</h3>
+      <p>{{$data.desc}}</p>
     </div>
-  </div>
-  <div class="empty-state" o-else>
-    <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
-    <p class="empty-text">暂时没有能力</p>
-  </div>
+  </o-fill>
+  <o-if :value="!capList.length">
+    <div class="empty-state">
+      <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
+      <p class="empty-text">暂时没有能力</p>
+    </div>
+  </o-if>
   <script>
     export default async ({ load }) => {
       const { get } = await load("/nos/fs/main.js");
-
-      const capList = [];
-
-      try {
-        const capDir = await get("mazmot/capabilities");
-        if (capDir) {
-          for await (const [name, handle] of capDir.entries()) {
-            if (handle.kind === "dir") {
-              const skillFile = await get(
-                `mazmot/capabilities/${name}/SKILL.md`,
-                { create: false },
-              );
-              if (skillFile) {
-                const content = await skillFile.text();
-                const descMatch = content.match(/description:\s*(.+)/);
-                capList.push({
-                  name,
-                  desc: descMatch ? descMatch[1].trim() : "",
-                });
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
 
       return {
         data: {
@@ -91,7 +67,6 @@
         },
         proto: {
           async loadData() {
-            const { get } = await this.load("/nos/fs/main.js");
             const list = [];
 
             try {
