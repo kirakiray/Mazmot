@@ -1,5 +1,6 @@
 <template page>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <style>
     :host {
       display: block;
@@ -44,37 +45,57 @@
     .empty-text {
       font-size: 14px;
     }
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
   <link rel="stylesheet" href="./app-public.css" />
   <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
 
-  <p-list slot="sublist">
-    <o-fill :value="skillList">
-      <p-list-item>
-        <span
-          slot="prefix"
-          style="
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: var(--md-sys-color-secondary-container);
-            color: var(--md-sys-color-on-secondary-container);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          "
-          >{{$data.name[0].toUpperCase()}}</span
-        >
-        {{$data.name}}
-        <div secondary>{{$data.desc}}</div>
-      </p-list-item>
-    </o-fill>
-  </p-list>
-  <o-if :value="!skillList.length">
+  <o-if :value="loading">
     <div class="empty-state">
-      <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
-      <p class="empty-text">暂时没有技能</p>
+      <iconify-icon
+        class="empty-icon"
+        icon="solar:refresh-linear"
+        style="animation: spin 1s linear infinite"
+      ></iconify-icon>
+      <p class="empty-text">加载中...</p>
     </div>
+  </o-if>
+  <o-if :value="!loading">
+    <p-list>
+      <o-fill :value="skillList">
+        <p-list-item>
+          <span
+            slot="prefix"
+            style="
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              background-color: var(--md-sys-color-secondary-container);
+              color: var(--md-sys-color-on-secondary-container);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            "
+            >{{$data.name[0].toUpperCase()}}</span
+          >
+          {{$data.name}}
+          <div secondary>{{$data.desc}}</div>
+        </p-list-item>
+      </o-fill>
+    </p-list>
+    <o-if :value="!skillList.length">
+      <div class="empty-state">
+        <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
+        <p class="empty-text">暂时没有技能</p>
+      </div>
+    </o-if>
   </o-if>
   <script>
     export default async ({ load }) => {
@@ -84,6 +105,7 @@
       return {
         data: {
           skillList: [],
+          loading: true,
         },
         proto: {
           async loadData() {
@@ -116,8 +138,8 @@
             } catch (e) {
               console.error(e);
             }
-
             this.skillList = list;
+            this.loading = false;
           },
         },
         attached() {
