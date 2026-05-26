@@ -1,4 +1,7 @@
 <template page>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-bar.html"
+  ></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <style>
     :host {
@@ -9,17 +12,48 @@
     }
   </style>
   <link rel="stylesheet" href="./apps/app-public.css" />
+  <p-nav-bar style="--label-parallel: true; padding: 24px 12px">
+    <p-nav-item
+      attr:active="currentTab === 'apps'"
+      on:click="currentTab = 'apps'"
+    >
+      <iconify-icon icon="duo-icons:app" slot="icon"></iconify-icon>
+      <span>应用</span>
+    </p-nav-item>
+    <p-nav-item
+      attr:active="currentTab === 'capabilities'"
+      on:click="currentTab = 'capabilities'"
+    >
+      <iconify-icon icon="tabler:bulb" slot="icon"></iconify-icon>
+      <span>能力</span>
+    </p-nav-item>
+    <p-nav-item
+      attr:active="currentTab === 'skills'"
+      on:click="currentTab = 'skills'"
+    >
+      <iconify-icon icon="tabler:book" slot="icon"></iconify-icon>
+      <span>技能</span>
+    </p-nav-item>
+  </p-nav-bar>
   <div class="apps-container">
-    <o-page src="./apps/apps.html"></o-page>
-    <o-page src="./apps/capabilities.html"></o-page>
-    <o-page src="./apps/skills.html"></o-page>
+    <o-if :value="currentTab === 'apps'">
+      <o-page src="./apps/apps.html"></o-page>
+    </o-if>
+    <o-if :value="currentTab === 'capabilities'">
+      <o-page src="./apps/capabilities.html"></o-page>
+    </o-if>
+    <o-if :value="currentTab === 'skills'">
+      <o-page src="./apps/skills.html"></o-page>
+    </o-if>
   </div>
   <script>
     export const parent = "./layout.html";
 
     export default async () => {
       return {
-        data: {},
+        data: {
+          currentTab: "apps",
+        },
       };
     };
   </script>
