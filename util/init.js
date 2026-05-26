@@ -5,7 +5,10 @@ async function writeJsonToNos(jsonData, rootDir) {
     for (const [filePath, fileData] of Object.entries(files)) {
       const fullPath = `${rootDir}/${capName}/${filePath}`;
       const file = await get(fullPath, { create: "file" });
-      await file.write(fileData.text);
+      const existingContent = await file.text();
+      if (!existingContent.trim()) {
+        await file.write(fileData.text);
+      }
     }
   }
 }
