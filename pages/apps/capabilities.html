@@ -60,6 +60,7 @@
   <script>
     export default async ({ load }) => {
       const { get } = await load("/nos/fs/main.js");
+      const yaml = await load("/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs");
 
       return {
         data: {
@@ -81,11 +82,14 @@
                     );
                     if (skillFile) {
                       const content = await skillFile.text();
-                      const descMatch = content.match(/description:\s*(.+)/);
-                      list.push({
-                        name,
-                        desc: descMatch ? descMatch[1].trim() : "",
-                      });
+                      const yamlStr = content.match(/^---(.*?)---/s);
+                      if (yamlStr) {
+                        const yamlConfig = yaml.load(yamlStr[1]);
+                        list.push({
+                          name,
+                          desc: yamlConfig.description || "",
+                        });
+                      }
                     }
                   }
                 }
