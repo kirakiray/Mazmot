@@ -1,0 +1,137 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <style>
+    :host {
+      display: block;
+    }
+    .cap-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 16px;
+    }
+    .cap-item {
+      padding: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .cap-item:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+    .cap-item h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+    }
+    .cap-item p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .empty-text {
+      font-size: 14px;
+    }
+  </style>
+  <link rel="stylesheet" href="./app-public.css" />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+
+  <p-list-item collapsible expanded button>
+    <n-icon
+      icon="solar:bookmark-linear"
+      slot="prefix"
+      style="font-size: 20px"
+    ></n-icon>
+    技能
+    <p-list slot="sublist">
+      <o-fill :value="skillList">
+        <p-list-item>
+          <span
+            slot="prefix"
+            style="
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              background-color: var(--md-sys-color-secondary-container);
+              color: var(--md-sys-color-on-secondary-container);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            "
+            >{{$data.name[0].toUpperCase()}}</span
+          >
+          {{$data.name}}
+          <div secondary>{{$data.desc}}</div>
+        </p-list-item>
+      </o-fill>
+    </p-list>
+  </p-list-item>
+  <o-if :value="!skillList.length">
+    <div class="empty-state">
+      <iconify-icon class="empty-icon" icon="solar:box-linear"></iconify-icon>
+      <p class="empty-text">暂时没有技能</p>
+    </div>
+  </o-if>
+  <script>
+    export default async ({ load }) => {
+      const { get } = await load("/nos/fs/main.js");
+      const yaml = await load("/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs");
+
+      return {
+        data: {
+          skillList: [],
+        },
+        proto: {
+          async loadData() {
+            const list = [];
+
+            try {
+              const capDir = await get("mazmot/skills");
+
+              if (capDir) {
+                for await (const [name, handle] of capDir.entries()) {
+                  if (handle.kind === "dir") {
+                    const skillFile = await get(
+                      `mazmot/skills/${name}/SKILL.md`,
+                      { create: false },
+                    );
+                    if (skillFile) {
+                      const content = await skillFile.text();
+                      const yamlStr = content.match(/^---(.*?)---/s);
+                      if (yamlStr) {
+                        const yamlConfig = yaml.load(yamlStr[1]);
+                        list.push({
+                          name,
+                          desc: yamlConfig.description || "",
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
+
+            this.skillList = list;
+          },
+        },
+        attached() {
+          this.loadData();
+        },
+      };
+    };
+  </script>
+</template>
