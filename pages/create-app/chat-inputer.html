@@ -70,6 +70,7 @@
         sync:value="messageText"
         attr:maxlength="maxLength"
         size="s"
+        on:keydown="handleKeyDown"
       >
       </p-textarea>
     </div>
@@ -113,6 +114,12 @@
           maxLength: 500,
         },
         proto: {
+          handleKeyDown(e) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              this.handleSend();
+            }
+          },
           handleSend() {
             console.log("handleSend called, messageText:", this.messageText);
             if (this.messageText.trim()) {
