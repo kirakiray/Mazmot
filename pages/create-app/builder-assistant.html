@@ -6,8 +6,10 @@
     :host {
       display: flex;
       flex-direction: column;
+      box-sizing: border-box;
       flex: 1;
       height: 100%;
+      padding: 16px;
     }
     m-chatbox {
       display: block;
@@ -126,13 +128,26 @@
             }
           },
           async callAssistant() {
-            if (!this.messages.some((m) => m.role === "system")) return;
+            console.log("callAssistant called, messages:", this.messages);
+            console.log(
+              "Has system message:",
+              this.messages.some((m) => m.role === "system"),
+            );
+
+            if (!this.messages.some((m) => m.role === "system")) {
+              console.log("No system message, returning early");
+              return;
+            }
 
             this.isLoading = true;
 
             try {
+              console.log("Getting assistant...");
               const assistant = await getAssistant();
+              console.log("Assistant:", assistant);
+
               if (!assistant) {
+                console.log("No assistant available");
                 this.messages.push({
                   role: "assistant",
                   content: "请先在设置中配置 DeepSeek API Key",
@@ -145,11 +160,13 @@
                 content: m.content,
               }));
 
+              console.log("Sending chat request with messages:", chatMessages);
               const response = await assistant.chat({
                 messages: chatMessages,
                 model: "deepseek-v4-pro",
               });
 
+              console.log("Response received:", response);
               this.messages.push({
                 role: "assistant",
                 content: response.content,
@@ -159,6 +176,7 @@
 
               await this.saveProject();
             } catch (e) {
+              console.error("Error in callAssistant:", e);
               this.messages.push({
                 role: "assistant",
                 content: "请求失败：" + e.message,
@@ -168,8 +186,13 @@
             }
           },
           async sendMessage(e) {
+            console.log("sendMessage called, event:", e);
             const msg = (e?.data?.message || this.inputMessage || "").trim();
-            if (!msg || this.isLoading) return;
+            console.log("Message to send:", msg);
+            if (!msg || this.isLoading) {
+              console.log("Early return: no message or loading");
+              return;
+            }
 
             this.messages.push({ role: "user", content: msg });
             this.inputMessage = "";
@@ -178,6 +201,7 @@
             await this.callAssistant();
           },
           async loadProject() {
+            console.log("loadProject called, projectPath:", this.projectPath);
             const projectHandle = await get(this.projectPath, {
               create: "dir",
             });
@@ -193,16 +217,21 @@
               }
             }
 
+            console.log("Found chat files:", chatFiles);
+
             let targetChatHandle = null;
 
             if (chatFiles.length === 0) {
+              console.log("No chat files found, creating new one");
               const newChatFile = `chat-${Date.now()}.json`;
 
               targetChatHandle = await projectHandle.get(newChatFile, {
                 create: "file",
               });
 
+              console.log("Getting system prompt...");
               const initMessages = await getSystemPrompt();
+              console.log("System prompt:", initMessages);
               this.messages = initMessages;
               await targetChatHandle.write(JSON.stringify(this.messages));
             } else {
@@ -212,15 +241,18 @@
                 return maxNum > curNum ? max : cur;
               }, chatFiles[0]);
 
+              console.log("Loading chat file:", maxFile);
               targetChatHandle = await projectHandle.get(maxFile, {
                 create: "file",
               });
 
               const chatContent = await targetChatHandle.json();
+              console.log("Loaded chat content:", chatContent);
               this.messages = chatContent;
             }
 
             this.currentChatFile = targetChatHandle.name;
+            console.log("Current chat file set to:", this.currentChatFile);
           },
           async saveProject() {
             if (!this.currentChatFile) return;
