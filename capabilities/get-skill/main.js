@@ -1,4 +1,5 @@
 import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
+import { get } from "/nos/fs/main.js";
 
 export default async function getSkill({ data = {}, content }) {
   const { all, name, file } = data;
@@ -6,32 +7,42 @@ export default async function getSkill({ data = {}, content }) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (all) {
-    const skills = await fetch(
-      import.meta.resolve("../../skills/used.json"),
-    ).then((e) => e.json());
-
     const skillDesc = [];
 
-    for (const skillName of skills) {
-      const skillMd = await fetch(`/skills/${skillName}/SKILL.md`).then((e) =>
-        e.text(),
-      );
+    try {
+      const skillDir = await get("mazmot/skills");
 
-      if (!skillMd.trim()) {
-        continue;
+      if (skillDir) {
+        for await (const [skillName, handle] of skillDir.entries()) {
+          if (handle.kind === "dir") {
+            const skillFile = await get(`mazmot/skills/${skillName}/SKILL.md`, {
+              create: false,
+            });
+
+            if (skillFile) {
+              const skillMd = await skillFile.text();
+
+              if (!skillMd.trim()) {
+                continue;
+              }
+
+              const frontMatterMatch = skillMd.match(/^---\n([\s\S]*?)\n---/);
+              const yamlConfig = yaml.load(frontMatterMatch[1]);
+
+              const desc = yamlConfig.description;
+              delete yamlConfig.description;
+
+              skillDesc.push({
+                ...yamlConfig,
+                name: skillName,
+                desc,
+              });
+            }
+          }
+        }
       }
-
-      const frontMatterMatch = skillMd.match(/^---\n([\s\S]*?)\n---/);
-      const yamlConfig = yaml.load(frontMatterMatch[1]);
-
-      const desc = yamlConfig.description;
-      delete yamlConfig.description;
-
-      skillDesc.push({
-        ...yamlConfig,
-        name: skillName,
-        desc,
-      });
+    } catch (error) {
+      console.error("Error reading skills:", error);
     }
 
     return skillDesc;
@@ -40,15 +51,20 @@ export default async function getSkill({ data = {}, content }) {
   if (name) {
     try {
       const filePath = file
-        ? `/skills/${name}/${file}`
-        : `/skills/${name}/SKILL.md`;
+        ? `mazmot/skills/${name}/${file}`
+        : `mazmot/skills/${name}/SKILL.md`;
 
-      const fileContent = await fetch(filePath).then((e) => {
-        if (!e.ok) {
-          throw new Error(`File not found: ${file || "SKILL.md"}`);
-        }
-        return e.text();
-      });
+      const fileHandle = await get(filePath, { create: false });
+
+      if (!fileHandle) {
+        return {
+          name: name,
+          file: file || "SKILL.md",
+          error: "Skill not found",
+        };
+      }
+
+      const fileContent = await fileHandle.text();
 
       if (!fileContent.trim()) {
         return {

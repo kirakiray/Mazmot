@@ -1,4 +1,5 @@
 import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
+import { get } from "/nos/fs/main.js";
 
 export default async function getCapability({ data = {}, content }) {
   const { all, name } = data;
@@ -6,32 +7,45 @@ export default async function getCapability({ data = {}, content }) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (all) {
-    const capabilities = await fetch(import.meta.resolve("../used.json")).then(
-      (e) => e.json(),
-    );
-
     const capabilityDesc = [];
 
-    for (const capabilityName of capabilities) {
-      const capabilityMd = await fetch(
-        `/capabilities/${capabilityName}/SKILL.md`,
-      ).then((e) => e.text());
+    try {
+      const capDir = await get("mazmot/capabilities");
 
-      if (!capabilityMd.trim()) {
-        continue;
+      if (capDir) {
+        for await (const [capabilityName, handle] of capDir.entries()) {
+          if (handle.kind === "dir") {
+            const skillFile = await get(
+              `mazmot/capabilities/${capabilityName}/SKILL.md`,
+              { create: false },
+            );
+
+            if (skillFile) {
+              const capabilityMd = await skillFile.text();
+
+              if (!capabilityMd.trim()) {
+                continue;
+              }
+
+              const frontMatterMatch = capabilityMd.match(
+                /^---\n([\s\S]*?)\n---/,
+              );
+              const yamlConfig = yaml.load(frontMatterMatch[1]);
+
+              const desc = yamlConfig.description;
+              delete yamlConfig.description;
+
+              capabilityDesc.push({
+                ...yamlConfig,
+                name: capabilityName,
+                desc,
+              });
+            }
+          }
+        }
       }
-
-      const frontMatterMatch = capabilityMd.match(/^---\n([\s\S]*?)\n---/);
-      const yamlConfig = yaml.load(frontMatterMatch[1]);
-
-      const desc = yamlConfig.description;
-      delete yamlConfig.description;
-
-      capabilityDesc.push({
-        ...yamlConfig,
-        name: capabilityName,
-        desc,
-      });
+    } catch (error) {
+      console.error("Error reading capabilities:", error);
     }
 
     return capabilityDesc;
@@ -39,9 +53,18 @@ export default async function getCapability({ data = {}, content }) {
 
   if (name) {
     try {
-      const capabilityMd = await fetch(`/capabilities/${name}/SKILL.md`).then(
-        (e) => e.text(),
-      );
+      const skillFile = await get(`mazmot/capabilities/${name}/SKILL.md`, {
+        create: false,
+      });
+
+      if (!skillFile) {
+        return {
+          name: name,
+          error: "Capability not found",
+        };
+      }
+
+      const capabilityMd = await skillFile.text();
 
       if (!capabilityMd.trim()) {
         return {
