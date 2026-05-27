@@ -1,14 +1,140 @@
 <template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  
   <style>
     :host {
       display: block;
+      width: 600px;
+      max-width: 90vw;
+    }
+    
+    .chat-inputer {
+      background: var(--md-sys-color-surface-container-high, #f5f5f5);
+      border-radius: 24px;
+      padding: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .input-area {
+      margin-bottom: 12px;
+    }
+    
+    .input-area p-textarea {
+      width: 100%;
+    }
+    
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    
+    .toolbar-left {
+      display: flex;
+      gap: 4px;
+    }
+    
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .char-count {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant, #666);
+    }
+    
+    .char-count.warning {
+      color: var(--md-sys-color-error, #d32f2f);
     }
   </style>
-  聊天窗口
+  
+  <div class="chat-inputer">
+    <div class="input-area">
+      <p-textarea 
+        placeholder="输入消息..." 
+        sync:value="messageText"
+        attr:maxlength="maxLength"
+        attr:size="s"
+      >
+      </p-textarea>
+    </div>
+    
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <p-button 
+          size="s" 
+          variant="text" 
+          on:click="handleAttach"
+        >
+          <span slot="prefix">📎</span>
+        </p-button>
+        
+        <p-button 
+          size="s" 
+          variant="text" 
+          on:click="handleEmoji"
+        >
+          <span slot="prefix">😊</span>
+        </p-button>
+        
+        <p-button 
+          size="s" 
+          variant="text" 
+          on:click="handleVoice"
+        >
+          <span slot="prefix">🎤</span>
+        </p-button>
+      </div>
+      
+      <div class="toolbar-right">
+        <span 
+          class="char-count"
+          class:warning="messageText.length > maxLength * 0.8"
+        >
+          {{messageText.length}}/{{maxLength}}
+        </span>
+        
+        <p-button 
+          size="s" 
+          color="primary" 
+          on:click="handleSend"
+          attr:disabled="!messageText.trim()"
+        >
+          <span slot="prefix">📤</span>
+          发送
+        </p-button>
+      </div>
+    </div>
+  </div>
+  
   <script>
     export default async () => {
       return {
-        data: {},
+        data: {
+          messageText: "",
+          maxLength: 500,
+        },
+        proto: {
+          handleSend() {
+            if (this.messageText.trim()) {
+              console.log("发送消息:", this.messageText);
+              this.messageText = "";
+            }
+          },
+          handleAttach() {
+            console.log("添加附件");
+          },
+          handleEmoji() {
+            console.log("选择表情");
+          },
+          handleVoice() {
+            console.log("语音输入");
+          },
+        },
       };
     };
   </script>
