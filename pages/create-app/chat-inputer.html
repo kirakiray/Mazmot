@@ -95,15 +95,15 @@
           on:click="handleSend"
           attr:disabled="!messageText.trim()"
         >
-          <n-icon
-            slot="prefix"
-            icon="material-symbols:send-outline-rounded"
-          ></n-icon>
+          <n-icon slot="prefix" icon="ri:chat-ai-line"></n-icon>
           发送
         </p-button>
       </div>
     </div>
   </div>
+  </div>
+
+  <o-consumer name="app-builder"></o-consumer>
 
   <script>
     export default async () => {
@@ -115,15 +115,14 @@
         proto: {
           handleSend() {
             if (this.messageText.trim()) {
-              console.log("发送消息:", this.messageText);
+              const provider = this.getProvider("app-builder");
+              if (provider) {
+                provider.dispatch("send-message", {
+                  data: { message: this.messageText },
+                });
+              }
               this.messageText = "";
             }
-          },
-          handleAttach() {
-            console.log("添加附件");
-          },
-          handleEmoji() {
-            console.log("选择表情");
           },
           handleVoice() {
             console.log("语音输入");
