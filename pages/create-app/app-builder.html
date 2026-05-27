@@ -18,36 +18,36 @@
       border-right: rgba(128, 128, 128, 0.2) solid 1px;
     }
   </style>
-  <div class="container">
-    <div class="left">
-      <o-page src="./builder-assistant.html"></o-page>
+  <o-provider name="app-builder" sync:project-path="projectPath">
+    <div class="container">
+      <div class="left">
+        <o-page src="./builder-assistant.html"></o-page>
+      </div>
+      <div class="right">
+        <o-page src="./emulator.html"></o-page>
+      </div>
     </div>
-    <div class="right">
-      <o-page src="./emulator.html"></o-page>
-    </div>
-  </div>
-  <o-page
-    src="./chat-inputer.html"
-    style="
-      position: absolute;
-      left: 50%;
-      bottom: 30%;
-      transform: translateX(-50%);
-    "
-  ></o-page>
+    <o-page
+      src="./chat-inputer.html"
+      style="
+        position: absolute;
+        left: 50%;
+        bottom: 30%;
+        transform: translateX(-50%);
+      "
+    ></o-page>
+  </o-provider>
   <script>
     export const parent = "../layout.html";
 
-    export default async ({ query }) => {
+    export default async ({ query, load }) => {
+      const path = query.path || "mazmot/apps/test"; // 项目路径
+
       return {
         data: {
-          appName: query.appName || "New App",
+          projectPath: path,
         },
-        proto: {
-          handleButtonClick() {
-            this.appName = "Change the value";
-          },
-        },
+        proto: {},
       };
     };
   </script>

@@ -1,4 +1,5 @@
 <template page>
+  <l-m src="../../comps/chatbox/chatbox.html"></l-m>
   <style>
     :host {
       display: block;
@@ -6,11 +7,99 @@
       height: 100%;
     }
   </style>
-  应用助手
+  <o-fill :value="messages"> </o-fill>
+  <o-consumer name="app-builder" watch:project-path="projectPath"></o-consumer>
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { get } = await load("/nos/fs/main.js");
+
       return {
-        data: {},
+        data: {
+          projectPath: null,
+          messages: [],
+          currentChatFile: null,
+        },
+        watch: {
+          projectPath(newPath) {
+            if (newPath) {
+              this.loadProject();
+            }
+          },
+          //   async currentChatFile(currentChatFile) {
+          //     if (!currentChatFile) return;
+
+          //     debugger;
+          //   },
+        },
+        proto: {
+          async handleCapabilityResults(results) {
+            debugger;
+            console.log(results);
+          },
+          async loadProject() {
+            // 加载项目数据
+            const projectHandle = await get(this.projectPath, {
+              create: "dir",
+            });
+
+            // 遍历获取聊天文件
+            const chatFiles = [];
+            for await (const [name, handle] of projectHandle.entries()) {
+              if (
+                handle.kind === "file" &&
+                name.startsWith("chat-") &&
+                name.endsWith(".json")
+              ) {
+                chatFiles.push(name);
+              }
+            }
+
+            let targetChatHandle = null;
+
+            if (chatFiles.length === 0) {
+              // 创建一个新的文件
+              const newChatFile = `chat-${Date.now()}.json`;
+
+              targetChatHandle = await projectHandle.get(newChatFile, {
+                create: "file",
+              });
+
+              // 写入空数组
+              await targetChatHandle.write(JSON.stringify([]));
+            } else {
+              // 去数字最大的文件
+              const maxFile = chatFiles.reduce((max, cur) => {
+                const maxNum = Number(max.split("-")[1]);
+                const curNum = Number(cur.split("-")[1]);
+                return maxNum > curNum ? max : cur;
+              }, chatFiles[0]);
+
+              targetChatHandle = await projectHandle.get(maxFile, {
+                create: "file",
+              });
+            }
+
+            // 获取最近的聊天记录文件
+            this.currentChatFile = targetChatHandle.name;
+
+            // 读取聊天记录文件
+            const chatContent = await targetChatHandle.json();
+            this.messages = chatContent;
+          },
+          // 保存项目数据
+          async saveProject() {
+            const projectHandle = await get(this.projectPath, {
+              create: "dir",
+            });
+
+            // 写入聊天记录文件
+            await projectHandle
+              .get(this.currentChatFile, {
+                create: "file",
+              })
+              .write(JSON.stringify(this.messages));
+          },
+        },
       };
     };
   </script>
