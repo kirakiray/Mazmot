@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>向量检索演示 - Vector Retrieval Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .info-box {
+      background: #e7f3ff;
+      border: 1px solid #b6d4fe;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #084298;
+    }
+
+    .info-box ul {
+      margin-top: 8px;
+      margin-left: 20px;
+    }
+
+    .info-box li {
+      margin-bottom: 4px;
+    }
+
+    .search-section {
+      margin-bottom: 30px;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 15px;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .search-btn {
+      padding: 15px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .search-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .search-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .options {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .option-item label {
+      font-size: 14px;
+      color: #555;
+    }
+
+    .option-item input,
+    .option-item select {
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .results-section {
+      margin-top: 30px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .result-count {
+      background: #667eea;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .result-item {
+      background: #f8f9fa;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 15px;
+      transition: all 0.3s;
+    }
+
+    .result-item:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .result-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .result-score {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .result-content {
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .result-meta {
+      font-size: 12px;
+      color: #888;
+      display: flex;
+      gap: 15px;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-size: 16px;
+    }
+
+    .documents-section {
+      margin-top: 40px;
+      padding-top: 30px;
+      border-top: 2px solid #e9ecef;
+    }
+
+    .document-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .document-card {
+      background: white;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      padding: 20px;
+      transition: all 0.3s;
+    }
+
+    .document-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+
+    .document-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .document-content {
+      font-size: 14px;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .document-vector {
+      font-size: 12px;
+      color: #999;
+      font-family: monospace;
+      background: #f8f9fa;
+      padding: 8px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #667eea;
+    }
+
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #667eea;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 10px;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      border-radius: 8px 8px 0 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .tab:hover {
+      background: #f8f9fa;
+    }
+
+    .tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .vector-viz {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 10px;
+    }
+
+    .vector-bar {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .vector-label {
+      width: 80px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .vector-value {
+      flex: 1;
+      height: 20px;
+      background: #e9ecef;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .vector-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s;
+    }
+
+    .vector-number {
+      width: 60px;
+      text-align: right;
+      font-size: 12px;
+      color: #666;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 向量检索演示<span class="badge">纯浏览器实现</span></h1>
+    <p class="subtitle">使用余弦相似度进行向量检索，无需服务器，完全在浏览器中运行</p>
+
+    <div class="info-box">
+      ℹ️ <strong>关于向量检索：</strong>
+      <ul>
+        <li>向量检索是将文本转换为向量表示，通过计算向量相似度来查找相关内容</li>
+        <li>本演示使用简单的词频向量作为示例，实际应用中通常使用预训练的嵌入模型</li>
+        <li>余弦相似度衡量两个向量之间的夹角，值越接近 1 表示越相似</li>
+        <li>所有计算都在浏览器本地完成，无需网络请求</li>
+      </ul>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="search">🔍 检索</button>
+      <button class="tab" data-tab="documents">📚 文档库</button>
+      <button class="tab" data-tab="about">ℹ️ 说明</button>
+    </div>
+
+    <div id="searchTab" class="tab-content active">
+      <div class="search-section">
+        <div class="search-box">
+          <input 
+            type="text" 
+            id="searchInput" 
+            class="search-input" 
+            placeholder="输入查询文本，例如：机器学习、编程、数据科学..."
+          >
+          <button id="searchBtn" class="search-btn">🔍 检索</button>
+        </div>
+
+        <div class="options">
+          <div class="option-item">
+            <label>返回结果数：</label>
+            <select id="topK">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+          <div class="option-item">
+            <label>相似度阈值：</label>
+            <input type="number" id="threshold" value="0.1" min="0" max="1" step="0.1">
+          </div>
+        </div>
+      </div>
+
+      <div class="results-section">
+        <div class="section-title">
+          检索结果
+          <span id="resultCount" class="result-count" style="display: none;">0</span>
+        </div>
+        <div id="resultsContainer">
+          <div class="no-results">输入查询文本开始检索</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="documentsTab" class="tab-content">
+      <div class="documents-section">
+        <div class="section-title">文档库</div>
+        <p style="color: #666; margin-bottom: 20px;">当前文档库中包含 <strong id="docCount">0</strong> 个文档</p>
+        <div id="documentsContainer" class="document-grid"></div>
+      </div>
+    </div>
+
+    <div id="aboutTab" class="tab-content">
+      <div class="info-box">
+        <h3 style="margin-bottom: 15px;">🎯 工作原理</h3>
+        <p style="line-height: 1.8;">
+          <strong>1. 文本向量化：</strong>将文本转换为数值向量。本演示使用简单的词频向量（TF）作为示例。
+          在实际应用中，通常会使用预训练的语言模型（如 BERT、GPT 等）生成更高质量的向量表示。
+        </p>
+        <br>
+        <p style="line-height: 1.8;">
+          <strong>2. 相似度计算：</strong>使用余弦相似度衡量两个向量之间的相似程度。
+          余弦相似度的值范围在 [-1, 1] 之间，值越接近 1 表示两个向量越相似。
+        </p>
+        <br>
+        <p style="line-height: 1.8;">
+          <strong>3. 检索排序：</strong>根据查询向量与文档向量的相似度进行排序，
+          返回最相关的文档。
+        </p>
+      </div>
+
+      <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+        <h3 style="margin-bottom: 15px;">⚠️ 注意事项</h3>
+        <ul>
+          <li>本演示使用简单的词频向量，仅用于教学目的</li>
+          <li>实际应用中应使用专业的嵌入模型（如 Transformers.js）</li>
+          <li>词频向量无法捕捉语义信息，只能进行关键词匹配</li>
+          <li>对于大规模文档，需要使用向量数据库进行高效检索</li>
+        </ul>
+      </div>
+
+      <div class="info-box" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">
+        <h3 style="margin-bottom: 15px;">💡 扩展建议</h3>
+        <ul>
+          <li>使用 <a href="https://huggingface.co/docs/transformers.js" target="_blank" style="color: #155724; text-decoration: underline;">Transformers.js</a> 在浏览器中运行预训练模型</li>
+          <li>使用 <a href="https://js.langchain.com/" target="_blank" style="color: #155724; text-decoration: underline;">LangChain.js</a> 构建更复杂的检索应用</li>
+          <li>使用 IndexedDB 存储大量文档和向量</li>
+          <li>使用 Web Workers 进行后台计算，避免阻塞 UI</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const documents = [
+      {
+        id: 1,
+        title: "机器学习基础",
+        content: "机器学习是人工智能的一个分支，它使计算机系统能够从数据中学习和改进，而无需进行明确的编程。机器学习算法使用历史数据作为输入来预测新的输出值。",
+        category: "AI"
+      },
+      {
+        id: 2,
+        title: "深度学习简介",
+        content: "深度学习是机器学习的一个子集，它使用人工神经网络来模拟人脑的工作方式。深度学习在图像识别、自然语言处理和语音识别等领域取得了突破性进展。",
+        category: "AI"
+      },
+      {
+        id: 3,
+        title: "Python 编程入门",
+        content: "Python 是一种高级编程语言，以其简洁的语法和强大的功能而闻名。Python 广泛应用于 Web 开发、数据分析、人工智能和科学计算等领域。",
+        category: "编程"
+      },
+      {
+        id: 4,
+        title: "JavaScript 异步编程",
+        content: "JavaScript 的异步编程是处理耗时操作的关键技术。Promise 和 async/await 是现代 JavaScript 中处理异步操作的主要方式，使代码更易读和维护。",
+        category: "编程"
+      },
+      {
+        id: 5,
+        title: "数据科学工作流程",
+        content: "数据科学是一个跨学科领域，结合了统计学、机器学习和领域知识来从数据中提取洞察。典型的数据科学工作流程包括数据收集、清洗、分析和可视化。",
+        category: "数据"
+      },
+      {
+        id: 6,
+        title: "自然语言处理技术",
+        content: "自然语言处理（NLP）是人工智能的一个重要分支，致力于让计算机理解和处理人类语言。NLP 技术广泛应用于机器翻译、情感分析、文本分类等任务。",
+        category: "AI"
+      },
+      {
+        id: 7,
+        title: "数据库设计原则",
+        content: "良好的数据库设计是应用程序性能和数据完整性的基础。关系型数据库使用表格结构存储数据，而非关系型数据库则提供更灵活的数据模型。",
+        category: "数据"
+      },
+      {
+        id: 8,
+        title: "Web 前端开发",
+        content: "前端开发涉及创建用户界面和用户体验。HTML、CSS 和 JavaScript 是前端开发的三大核心技术。现代前端框架如 React、Vue 和 Angular 极大地提高了开发效率。",
+        category: "编程"
+      },
+      {
+        id: 9,
+        title: "计算机视觉应用",
+        content: "计算机视觉是人工智能的一个领域，使计算机能够从图像或视频中提取信息。应用场景包括人脸识别、自动驾驶、医学影像分析等。",
+        category: "AI"
+      },
+      {
+        id: 10,
+        title: "API 设计最佳实践",
+        content: "良好的 API 设计对于构建可维护和可扩展的系统至关重要。RESTful API 和 GraphQL 是两种流行的 API 设计风格，各有其适用场景。",
+        category: "编程"
+      }
+    ];
+
+    class VectorRetrieval {
+      constructor() {
+        this.vocabulary = new Map();
+        this.documentVectors = [];
+        this.idfVector = [];
+      }
+
+      tokenize(text) {
+        const processed = text.toLowerCase()
+          .replace(/[^\w\s\u4e00-\u9fa5]/g, ' ');
+        
+        const tokens = [];
+        const parts = processed.split(/\s+/);
+        
+        parts.forEach(part => {
+          if (part.length === 0) return;
+          
+          const hasChinese = /[\u4e00-\u9fa5]/.test(part);
+          
+          if (hasChinese) {
+            for (let i = 0; i < part.length; i++) {
+              for (let j = i + 1; j <= Math.min(i + 4, part.length); j++) {
+                tokens.push(part.substring(i, j));
+              }
+            }
+          } else {
+            tokens.push(part);
+          }
+        });
+        
+        return tokens.filter(word => word.length > 0);
+      }
+
+      buildVocabulary(docs) {
+        const wordDocCount = new Map();
+        
+        docs.forEach(doc => {
+          const words = this.tokenize(doc.title + ' ' + doc.content);
+          const uniqueWords = new Set(words);
+          
+          uniqueWords.forEach(word => {
+            wordDocCount.set(word, (wordDocCount.get(word) || 0) + 1);
+          });
+        });
+
+        let index = 0;
+        wordDocCount.forEach((count, word) => {
+          this.vocabulary.set(word, {
+            index: index++,
+            idf: Math.log(docs.length / count)
+          });
+        });
+      }
+
+      textToVector(text) {
+        const words = this.tokenize(text);
+        const vector = new Array(this.vocabulary.size).fill(0);
+        const wordCount = new Map();
+
+        words.forEach(word => {
+          wordCount.set(word, (wordCount.get(word) || 0) + 1);
+        });
+
+        wordCount.forEach((count, word) => {
+          if (this.vocabulary.has(word)) {
+            const { index, idf } = this.vocabulary.get(word);
+            vector[index] = (count / words.length) * idf;
+          }
+        });
+
+        return vector;
+      }
+
+      cosineSimilarity(vec1, vec2) {
+        let dotProduct = 0;
+        let norm1 = 0;
+        let norm2 = 0;
+
+        for (let i = 0; i < vec1.length; i++) {
+          dotProduct += vec1[i] * vec2[i];
+          norm1 += vec1[i] * vec1[i];
+          norm2 += vec2[i] * vec2[i];
+        }
+
+        if (norm1 === 0 || norm2 === 0) return 0;
+
+        return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+      }
+
+      indexDocuments(docs) {
+        this.buildVocabulary(docs);
+        this.documentVectors = docs.map(doc => ({
+          ...doc,
+          vector: this.textToVector(doc.title + ' ' + doc.content)
+        }));
+      }
+
+      search(query, topK = 5, threshold = 0) {
+        const queryVector = this.textToVector(query);
+        
+        const results = this.documentVectors.map(doc => ({
+          ...doc,
+          score: this.cosineSimilarity(queryVector, doc.vector)
+        }));
+
+        return results
+          .filter(r => r.score >= threshold)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topK);
+      }
+    }
+
+    const retrieval = new VectorRetrieval();
+    retrieval.indexDocuments(documents);
+
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const resultCount = document.getElementById('resultCount');
+    const topKSelect = document.getElementById('topK');
+    const thresholdInput = document.getElementById('threshold');
+    const documentsContainer = document.getElementById('documentsContainer');
+    const docCount = document.getElementById('docCount');
+
+    function displayResults(results) {
+      if (results.length === 0) {
+        resultsContainer.innerHTML = '<div class="no-results">未找到相关文档</div>';
+        resultCount.style.display = 'none';
+        return;
+      }
+
+      resultCount.textContent = results.length;
+      resultCount.style.display = 'inline-block';
+
+      resultsContainer.innerHTML = results.map((result, index) => `
+        <div class="result-item">
+          <div class="result-header">
+            <div class="result-title">${index + 1}. ${result.title}</div>
+            <div class="result-score">相似度: ${(result.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="result-content">${result.content}</div>
+          <div class="result-meta">
+            <span>📁 分类: ${result.category}</span>
+            <span>🆔 ID: ${result.id}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function performSearch() {
+      const query = searchInput.value.trim();
+      
+      if (!query) {
+        resultsContainer.innerHTML = '<div class="no-results">请输入查询文本</div>';
+        resultCount.style.display = 'none';
+        return;
+      }
+
+      const topK = parseInt(topKSelect.value);
+      const threshold = parseFloat(thresholdInput.value);
+
+      searchBtn.disabled = true;
+      resultsContainer.innerHTML = '<div class="loading">正在检索...</div>';
+
+      setTimeout(() => {
+        const allResults = retrieval.search(query, 10, 0);
+        const filteredResults = allResults.filter(r => r.score >= threshold).slice(0, topK);
+        
+        if (filteredResults.length === 0 && allResults.length > 0) {
+          const topResults = allResults.slice(0, 3);
+          resultsContainer.innerHTML = `
+            <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404; margin-bottom: 20px;">
+              ⚠️ 没有找到相似度 ≥ ${threshold} 的结果。以下是相似度最高的 ${topResults.length} 个结果：
+            </div>
+          `;
+          displayResults(topResults);
+        } else {
+          displayResults(filteredResults);
+        }
+        
+        searchBtn.disabled = false;
+      }, 300);
+    }
+
+    function displayDocuments() {
+      docCount.textContent = documents.length;
+      
+      documentsContainer.innerHTML = documents.map(doc => `
+        <div class="document-card">
+          <div class="document-title">${doc.title}</div>
+          <div class="document-content">${doc.content}</div>
+          <div class="document-meta" style="font-size: 12px; color: #888; margin-top: 10px;">
+            📁 ${doc.category} | 🆔 ${doc.id}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    searchBtn.addEventListener('click', performSearch);
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + 'Tab').classList.add('active');
+      });
+    });
+
+    displayDocuments();
+  </script>
+</body>
+</html>
