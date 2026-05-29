@@ -8,7 +8,7 @@ export async function initCode(projectPath) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My App</title>
-  <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mj#debug" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
   <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
   <style>
     html, body {
