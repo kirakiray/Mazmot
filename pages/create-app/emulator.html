@@ -14,7 +14,8 @@
     .toolbar {
       padding: 8px 12px;
       background: var(--md-sys-color-surface-variant);
-      border-bottom: 1px solid rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      border-bottom: 1px solid
+        rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
       display: flex;
       align-items: center;
       gap: 10px;
@@ -31,7 +32,8 @@
       background: var(--md-sys-color-surface);
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.2);
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.2);
     }
     .open-btn {
       padding: 4px 12px;
@@ -47,7 +49,9 @@
       transition: background 0.2s;
     }
     .open-btn:hover {
-      background: rgb(from var(--md-sys-color-primary) calc(r - 10) calc(g - 10) calc(b - 10));
+      background: rgb(
+        from var(--md-sys-color-primary) calc(r - 10) calc(g - 10) calc(b - 10)
+      );
     }
     .open-btn:disabled {
       background: var(--md-sys-color-neutral-container);
@@ -97,13 +101,13 @@
         data: {
           projectPath: "",
           iframeLoaded: false,
+          iframeUrl: "",
         },
         proto: {
-          get iframeUrl() {
-            console.log("projectPath2:", this.projectPath);
-            if (!this.projectPath) return "";
-            return `/$${this.projectPath}/project/index.html`;
-          },
+          // get iframeUrl() {
+          //   if (!this.projectPath) return "";
+          //   return `/$${this.projectPath}/project/index.html`;
+          // },
           handleLoad() {
             this.iframeLoaded = true;
           },
@@ -115,7 +119,12 @@
         },
         watch: {
           projectPath() {
-            this.iframeLoaded = false;
+            if (!this.projectPath) {
+              this.iframeLoaded = false;
+              this.iframeUrl = "";
+              return;
+            }
+            this.iframeUrl = `/$${this.projectPath}/project/index.html`;
           },
         },
       };
