@@ -10,6 +10,7 @@ export async function initCode(projectPath) {
   <title>My App</title>
   <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
   <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
+  <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
   <style>
     html, body {
       height: 100%;
@@ -65,14 +66,15 @@ export const pageAnime = {
     }
     header {
       padding: 15px 20px;
-      background: #4a90e2;
-      color: white;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      box-shadow: 0 2px 4px rgb(from var(--md-sys-color-on-primary) r g b / 0.1);
     }
     main {
       flex: 1;
       overflow: auto;
       padding: 20px;
+      background: var(--md-sys-color-surface);
     }
   </style>
   <div class="layout">
@@ -105,20 +107,31 @@ export const pageAnime = {
       padding: 40px 20px;
     }
     h1 {
-      color: #333;
+      color: var(--md-sys-color-on-surface);
       margin-bottom: 20px;
     }
     p {
-      color: #666;
+      color: var(--md-sys-color-on-surface-variant);
       line-height: 1.6;
     }
     .card {
       max-width: 600px;
       margin: 30px auto;
       padding: 20px;
-      border: 1px solid #e0e0e0;
+      border: 1px solid rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.2);
       border-radius: 8px;
-      background: #f9f9f9;
+      background: var(--md-sys-color-surface-variant);
+    }
+    h3 {
+      color: var(--md-sys-color-on-surface);
+      margin-top: 0;
+    }
+    code {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
     }
   </style>
   <div class="welcome">

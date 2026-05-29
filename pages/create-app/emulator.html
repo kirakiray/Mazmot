@@ -13,30 +13,51 @@
     }
     .toolbar {
       padding: 8px 12px;
-      background: #f5f5f5;
-      border-bottom: 1px solid #e0e0e0;
+      background: var(--md-sys-color-surface-variant);
+      border-bottom: 1px solid rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
       display: flex;
       align-items: center;
       gap: 10px;
     }
     .toolbar-title {
       font-weight: 500;
-      color: #333;
+      color: var(--md-sys-color-on-surface);
     }
     .toolbar-url {
       flex: 1;
       font-size: 12px;
-      color: #666;
+      color: var(--md-sys-color-on-surface-variant);
       font-family: monospace;
-      background: white;
+      background: var(--md-sys-color-surface);
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid #ddd;
+      border: 1px solid rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.2);
+    }
+    .open-btn {
+      padding: 4px 12px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.2s;
+    }
+    .open-btn:hover {
+      background: rgb(from var(--md-sys-color-primary) calc(r - 10) calc(g - 10) calc(b - 10));
+    }
+    .open-btn:disabled {
+      background: var(--md-sys-color-neutral-container);
+      color: var(--md-sys-color-on-neutral);
+      cursor: not-allowed;
     }
     .iframe-wrapper {
       flex: 1;
       position: relative;
-      background: white;
+      background: var(--md-sys-color-surface);
     }
     iframe {
       width: 100%;
@@ -48,13 +69,17 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      color: #999;
+      color: var(--md-sys-color-on-surface-variant);
     }
   </style>
   <div class="emulator-container">
     <div class="toolbar">
       <span class="toolbar-title">Preview</span>
       <div class="toolbar-url">{{iframeUrl}}</div>
+      <button class="open-btn" on:click="openInNewTab" :disabled="!iframeUrl">
+        <iconify-icon icon="lucide:external-link" width="14"></iconify-icon>
+        Open
+      </button>
     </div>
     <div class="iframe-wrapper">
       <o-if :value="!iframeLoaded">
@@ -81,6 +106,11 @@
           },
           handleLoad() {
             this.iframeLoaded = true;
+          },
+          openInNewTab() {
+            if (this.iframeUrl) {
+              window.open(this.iframeUrl, "_blank");
+            }
           },
         },
         watch: {
