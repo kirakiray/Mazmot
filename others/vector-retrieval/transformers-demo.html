@@ -1,623 +1,805 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI 向量检索 - Transformers.js</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 向量检索 - Transformers.js</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      min-height: 100vh;
-      padding: 20px;
-    }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+          sans-serif;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 20px;
-      padding: 40px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
 
-    h1 {
-      text-align: center;
-      color: #333;
-      margin-bottom: 10px;
-      font-size: 32px;
-    }
+      h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 32px;
+      }
 
-    .subtitle {
-      text-align: center;
-      color: #666;
-      margin-bottom: 30px;
-      font-size: 14px;
-    }
+      .subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 14px;
+      }
 
-    .badge {
-      display: inline-block;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      margin-left: 8px;
-    }
+      .badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        margin-left: 8px;
+      }
 
-    .info-box {
-      background: #e7f3ff;
-      border: 1px solid #b6d4fe;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: #084298;
-    }
+      .info-box {
+        background: #e7f3ff;
+        border: 1px solid #b6d4fe;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        color: #084298;
+      }
 
-    .info-box ul {
-      margin-top: 8px;
-      margin-left: 20px;
-    }
+      .info-box ul {
+        margin-top: 8px;
+        margin-left: 20px;
+      }
 
-    .info-box li {
-      margin-bottom: 4px;
-    }
+      .info-box li {
+        margin-bottom: 4px;
+      }
 
-    .loading-section {
-      text-align: center;
-      padding: 40px;
-      background: #f8f9fa;
-      border-radius: 10px;
-      margin-bottom: 20px;
-    }
+      .loading-section {
+        text-align: center;
+        padding: 40px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        margin-bottom: 20px;
+      }
 
-    .loading-spinner {
-      display: inline-block;
-      width: 50px;
-      height: 50px;
-      border: 5px solid #e9ecef;
-      border-top-color: #f093fb;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
+      .loading-spinner {
+        display: inline-block;
+        width: 50px;
+        height: 50px;
+        border: 5px solid #e9ecef;
+        border-top-color: #f093fb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
 
-    .loading-text {
-      font-size: 16px;
-      color: #333;
-      margin-bottom: 10px;
-    }
+      .loading-text {
+        font-size: 16px;
+        color: #333;
+        margin-bottom: 10px;
+      }
 
-    .loading-progress {
-      font-size: 14px;
-      color: #666;
-    }
+      .loading-progress {
+        font-size: 14px;
+        color: #666;
+      }
 
-    .progress-bar {
-      width: 100%;
-      height: 8px;
-      background: #e9ecef;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 10px;
-    }
+      .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 10px;
+      }
 
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%);
-      transition: width 0.3s;
-    }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%);
+        transition: width 0.3s;
+      }
 
-    .search-section {
-      margin-bottom: 30px;
-    }
+      .search-section {
+        margin-bottom: 30px;
+      }
 
-    .search-box {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
+      .search-box {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
 
-    .search-input {
-      flex: 1;
-      padding: 15px;
-      border: 2px solid #e9ecef;
-      border-radius: 10px;
-      font-size: 16px;
-      transition: border-color 0.3s;
-    }
+      .search-input {
+        flex: 1;
+        padding: 15px;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        font-size: 16px;
+        transition: border-color 0.3s;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: #f093fb;
-    }
+      .search-input:focus {
+        outline: none;
+        border-color: #f093fb;
+      }
 
-    .search-btn {
-      padding: 15px 30px;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
+      .search-btn {
+        padding: 15px 30px;
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
 
-    .search-btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(240, 147, 251, 0.4);
-    }
+      .search-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(240, 147, 251, 0.4);
+      }
 
-    .search-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
+      .search-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
 
-    .options {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-      margin-bottom: 20px;
-    }
+      .options {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        margin-bottom: 20px;
+      }
 
-    .option-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+      .option-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
 
-    .option-item label {
-      font-size: 14px;
-      color: #555;
-    }
+      .option-item label {
+        font-size: 14px;
+        color: #555;
+      }
 
-    .option-item input,
-    .option-item select {
-      padding: 8px;
-      border: 2px solid #e9ecef;
-      border-radius: 6px;
-      font-size: 14px;
-    }
+      .option-item input,
+      .option-item select {
+        padding: 8px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+      }
 
-    .results-section {
-      margin-top: 30px;
-    }
+      .results-section {
+        margin-top: 30px;
+      }
 
-    .section-title {
-      font-size: 20px;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+      .section-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    .result-count {
-      background: #f093fb;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 14px;
-    }
+      .result-count {
+        background: #f093fb;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 14px;
+      }
 
-    .result-item {
-      background: #f8f9fa;
-      border: 2px solid #e9ecef;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 15px;
-      transition: all 0.3s;
-    }
+      .result-item {
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        transition: all 0.3s;
+      }
 
-    .result-item:hover {
-      border-color: #f093fb;
-      box-shadow: 0 4px 12px rgba(240, 147, 251, 0.15);
-    }
+      .result-item:hover {
+        border-color: #f093fb;
+        box-shadow: 0 4px 12px rgba(240, 147, 251, 0.15);
+      }
 
-    .result-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
+      .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
 
-    .result-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #333;
-    }
+      .result-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+      }
 
-    .result-score {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 14px;
-      font-weight: 600;
-    }
+      .result-score {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+      }
 
-    .result-content {
-      color: #555;
-      line-height: 1.6;
-      margin-bottom: 10px;
-    }
+      .result-content {
+        color: #555;
+        line-height: 1.6;
+        margin-bottom: 10px;
+      }
 
-    .result-meta {
-      font-size: 12px;
-      color: #888;
-      display: flex;
-      gap: 15px;
-    }
+      .result-meta {
+        font-size: 12px;
+        color: #888;
+        display: flex;
+        gap: 15px;
+      }
 
-    .no-results {
-      text-align: center;
-      padding: 40px;
-      color: #999;
-      font-size: 16px;
-    }
+      .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+        font-size: 16px;
+      }
 
-    .model-info {
-      background: #d4edda;
-      border: 1px solid #c3e6cb;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: #155724;
-    }
+      .model-info {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        color: #155724;
+      }
 
-    .model-name {
-      font-weight: 600;
-      color: #0f5132;
-    }
+      .model-name {
+        font-weight: 600;
+        color: #0f5132;
+      }
 
-    .error-box {
-      background: #f8d7da;
-      border: 1px solid #f5c6cb;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: #721c24;
-    }
+      .error-box {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        color: #721c24;
+      }
 
-    .stats-box {
-      background: #fff3cd;
-      border: 1px solid #ffc107;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      color: #856404;
-    }
+      .stats-box {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        color: #856404;
+      }
 
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 15px;
-      margin-top: 10px;
-    }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-top: 10px;
+      }
 
-    .stat-item {
-      text-align: center;
-    }
+      .stat-item {
+        text-align: center;
+      }
 
-    .stat-value {
-      font-size: 24px;
-      font-weight: 600;
-      color: #f093fb;
-    }
+      .stat-value {
+        font-size: 24px;
+        font-weight: 600;
+        color: #f093fb;
+      }
 
-    .stat-label {
-      font-size: 12px;
-      color: #666;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🤖 AI 向量检索<span class="badge">Transformers.js</span></h1>
-    <p class="subtitle">使用预训练模型生成高质量嵌入向量，支持语义检索</p>
+      .stat-label {
+        font-size: 12px;
+        color: #666;
+      }
 
-    <div class="info-box">
-      ℹ️ <strong>关于 Transformers.js：</strong>
-      <ul>
-        <li>在浏览器中直接运行预训练的机器学习模型</li>
-        <li>无需服务器，完全本地化处理，保护隐私</li>
-        <li>使用多语言模型，支持中英文语义理解</li>
-        <li>首次加载需要下载模型文件（约 100MB），请耐心等待</li>
-      </ul>
-    </div>
+      .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 10px;
+      }
 
-    <div id="loadingSection" class="loading-section">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">正在加载 AI 模型...</div>
-      <div class="loading-progress" id="loadingProgress">准备中...</div>
-      <div class="progress-bar">
-        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      .tab {
+        padding: 10px 20px;
+        background: transparent;
+        border: none;
+        border-radius: 8px 8px 0 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .tab:hover {
+        background: #f8f9fa;
+      }
+
+      .tab.active {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+      }
+
+      .tab-content {
+        display: none;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      .document-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+      }
+
+      .document-card {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        transition: all 0.3s;
+      }
+
+      .document-card:hover {
+        border-color: #f093fb;
+        box-shadow: 0 4px 12px rgba(240, 147, 251, 0.15);
+      }
+
+      .document-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+      }
+
+      .document-content {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 10px;
+      }
+
+      .document-meta {
+        font-size: 12px;
+        color: #888;
+        display: flex;
+        gap: 15px;
+        margin-top: 10px;
+      }
+
+      .embedding-preview {
+        margin-top: 10px;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-size: 11px;
+        color: #666;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🤖 AI 向量检索<span class="badge">Transformers.js</span></h1>
+      <p class="subtitle">使用预训练模型生成高质量嵌入向量，支持语义检索</p>
+
+      <div class="info-box">
+        ℹ️ <strong>关于 Transformers.js：</strong>
+        <ul>
+          <li>在浏览器中直接运行预训练的机器学习模型</li>
+          <li>无需服务器，完全本地化处理，保护隐私</li>
+          <li>使用多语言模型，支持中英文语义理解</li>
+          <li>首次加载需要下载模型文件（约 100MB），请耐心等待</li>
+        </ul>
       </div>
-    </div>
 
-    <div id="errorSection" class="error-box" style="display: none;">
-      <strong>❌ 加载失败：</strong>
-      <div id="errorMessage"></div>
-    </div>
-
-    <div id="mainSection" style="display: none;">
-      <div class="model-info">
-        ✅ 模型加载成功！使用 <span class="model-name">Xenova/paraphrase-multilingual-MiniLM-L12-v2</span> 模型
-      </div>
-
-      <div class="stats-box">
-        <strong>📊 系统状态：</strong>
-        <div class="stats-grid">
-          <div class="stat-item">
-            <div class="stat-value" id="docCount">0</div>
-            <div class="stat-label">文档数量</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value" id="vectorDim">384</div>
-            <div class="stat-label">向量维度</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value" id="indexedCount">0</div>
-            <div class="stat-label">已索引</div>
-          </div>
+      <div id="loadingSection" class="loading-section">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在加载 AI 模型...</div>
+        <div class="loading-progress" id="loadingProgress">准备中...</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill" style="width: 0%"></div>
         </div>
       </div>
 
-      <div class="search-section">
-        <div class="search-box">
-          <input 
-            type="text" 
-            id="searchInput" 
-            class="search-input" 
-            placeholder="输入查询文本，例如：人工智能、编程语言、数据分析..."
-            disabled
+      <div id="errorSection" class="error-box" style="display: none">
+        <strong>❌ 加载失败：</strong>
+        <div id="errorMessage"></div>
+      </div>
+
+      <div id="mainSection" style="display: none">
+        <div class="model-info">
+          ✅ 模型加载成功！使用
+          <span class="model-name"
+            >Xenova/paraphrase-multilingual-MiniLM-L12-v2</span
           >
-          <button id="searchBtn" class="search-btn" disabled>🔍 检索</button>
+          模型
         </div>
 
-        <div class="options">
-          <div class="option-item">
-            <label>返回结果数：</label>
-            <select id="topK" disabled>
-              <option value="3">3</option>
-              <option value="5" selected>5</option>
-              <option value="10">10</option>
-            </select>
-          </div>
-          <div class="option-item">
-            <label>相似度阈值：</label>
-            <input type="number" id="threshold" value="0.5" min="0" max="1" step="0.1" disabled>
+        <div class="stats-box">
+          <strong>📊 系统状态：</strong>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value" id="docCount">0</div>
+              <div class="stat-label">文档数量</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="vectorDim">384</div>
+              <div class="stat-label">向量维度</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="indexedCount">0</div>
+              <div class="stat-label">已索引</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="results-section">
-        <div class="section-title">
-          检索结果
-          <span id="resultCount" class="result-count" style="display: none;">0</span>
+        <div class="tabs">
+          <button class="tab active" data-tab="search">🔍 检索</button>
+          <button class="tab" data-tab="documents">📚 文档库</button>
+          <button class="tab" data-tab="about">ℹ️ 说明</button>
         </div>
-        <div id="resultsContainer">
-          <div class="no-results">等待索引完成...</div>
+
+        <div id="searchTab" class="tab-content active">
+          <div class="search-section">
+            <div class="search-box">
+              <input
+                type="text"
+                id="searchInput"
+                class="search-input"
+                placeholder="输入查询文本，例如：人工智能、编程语言、数据分析..."
+                disabled
+              />
+              <button id="searchBtn" class="search-btn" disabled>🔍 检索</button>
+            </div>
+
+            <div class="options">
+              <div class="option-item">
+                <label>返回结果数：</label>
+                <select id="topK" disabled>
+                  <option value="3">3</option>
+                  <option value="5" selected>5</option>
+                  <option value="10">10</option>
+                </select>
+              </div>
+              <div class="option-item">
+                <label>相似度阈值：</label>
+                <input
+                  type="number"
+                  id="threshold"
+                  value="0.5"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  disabled
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="results-section">
+            <div class="section-title">
+              检索结果
+              <span id="resultCount" class="result-count" style="display: none"
+                >0</span
+              >
+            </div>
+            <div id="resultsContainer">
+              <div class="no-results">等待索引完成...</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="documentsTab" class="tab-content">
+          <div class="section-title">文档库</div>
+          <p style="color: #666; margin-bottom: 20px;">
+            当前文档库中包含 <strong id="totalDocCount">0</strong> 个已索引文档
+          </p>
+          <div id="documentsContainer" class="document-grid"></div>
+        </div>
+
+        <div id="aboutTab" class="tab-content">
+          <div class="info-box">
+            <h3 style="margin-bottom: 15px;">🎯 工作原理</h3>
+            <p style="line-height: 1.8;">
+              <strong>1. 模型加载：</strong>使用 Transformers.js 在浏览器中加载预训练的多语言嵌入模型。
+              该模型经过大量文本训练，能够理解语义关系。
+            </p>
+            <br>
+            <p style="line-height: 1.8;">
+              <strong>2. 嵌入生成：</strong>将文本转换为 384 维的密集向量表示。
+              这些向量捕捉了文本的语义信息，相似的文本在向量空间中距离更近。
+            </p>
+            <br>
+            <p style="line-height: 1.8;">
+              <strong>3. 语义检索：</strong>通过计算查询向量与文档向量的余弦相似度，
+              找到语义上最相关的文档，而不仅仅是关键词匹配。
+            </p>
+          </div>
+
+          <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+            <h3 style="margin-bottom: 15px;">⚠️ 注意事项</h3>
+            <ul>
+              <li>首次加载需要下载约 100MB 的模型文件</li>
+              <li>需要现代浏览器支持（Chrome、Edge、Safari）</li>
+              <li>所有计算都在本地完成，保护隐私</li>
+              <li>模型会被浏览器缓存，后续访问更快</li>
+            </ul>
+          </div>
+
+          <div class="info-box" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">
+            <h3 style="margin-bottom: 15px;">💡 技术优势</h3>
+            <ul>
+              <li><strong>语义理解：</strong>能识别同义词和相关概念</li>
+              <li><strong>多语言支持：</strong>原生支持中英文等多种语言</li>
+              <li><strong>隐私保护：</strong>所有处理都在本地完成</li>
+              <li><strong>无需服务器：</strong>纯浏览器实现，无需后端</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
-    
-    env.allowLocalModels = false;
+    <script type="module">
+      import {
+        pipeline,
+        env,
+      } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1";
 
-    const documents = [
-      {
-        id: 1,
-        title: "机器学习基础",
-        content: "机器学习是人工智能的一个分支，它使计算机系统能够从数据中学习和改进，而无需进行明确的编程。机器学习算法使用历史数据作为输入来预测新的输出值。",
-        category: "AI"
-      },
-      {
-        id: 2,
-        title: "深度学习简介",
-        content: "深度学习是机器学习的一个子集，它使用人工神经网络来模拟人脑的工作方式。深度学习在图像识别、自然语言处理和语音识别等领域取得了突破性进展。",
-        category: "AI"
-      },
-      {
-        id: 3,
-        title: "Python 编程入门",
-        content: "Python 是一种高级编程语言，以其简洁的语法和强大的功能而闻名。Python 广泛应用于 Web 开发、数据分析、人工智能和科学计算等领域。",
-        category: "编程"
-      },
-      {
-        id: 4,
-        title: "JavaScript 异步编程",
-        content: "JavaScript 的异步编程是处理耗时操作的关键技术。Promise 和 async/await 是现代 JavaScript 中处理异步操作的主要方式，使代码更易读和维护。",
-        category: "编程"
-      },
-      {
-        id: 5,
-        title: "数据科学工作流程",
-        content: "数据科学是一个跨学科领域，结合了统计学、机器学习和领域知识来从数据中提取洞察。典型的数据科学工作流程包括数据收集、清洗、分析和可视化。",
-        category: "数据"
-      },
-      {
-        id: 6,
-        title: "自然语言处理技术",
-        content: "自然语言处理（NLP）是人工智能的一个重要分支，致力于让计算机理解和处理人类语言。NLP 技术广泛应用于机器翻译、情感分析、文本分类等任务。",
-        category: "AI"
-      },
-      {
-        id: 7,
-        title: "数据库设计原则",
-        content: "良好的数据库设计是应用程序性能和数据完整性的基础。关系型数据库使用表格结构存储数据，而非关系型数据库则提供更灵活的数据模型。",
-        category: "数据"
-      },
-      {
-        id: 8,
-        title: "Web 前端开发",
-        content: "前端开发涉及创建用户界面和用户体验。HTML、CSS 和 JavaScript 是前端开发的三大核心技术。现代前端框架如 React、Vue 和 Angular 极大地提高了开发效率。",
-        category: "编程"
-      },
-      {
-        id: 9,
-        title: "计算机视觉应用",
-        content: "计算机视觉是人工智能的一个领域，使计算机能够从图像或视频中提取信息。应用场景包括人脸识别、自动驾驶、医学影像分析等。",
-        category: "AI"
-      },
-      {
-        id: 10,
-        title: "API 设计最佳实践",
-        content: "良好的 API 设计对于构建可维护和可扩展的系统至关重要。RESTful API 和 GraphQL 是两种流行的 API 设计风格，各有其适用场景。",
-        category: "编程"
-      }
-    ];
+      env.allowLocalModels = false;
 
-    class AIEmbeddingRetrieval {
-      constructor() {
-        this.extractor = null;
-        this.documentEmbeddings = [];
-        this.isReady = false;
-      }
+      const documents = [
+        {
+          id: 1,
+          title: "机器学习基础",
+          content:
+            "机器学习是人工智能的一个分支，它使计算机系统能够从数据中学习和改进，而无需进行明确的编程。机器学习算法使用历史数据作为输入来预测新的输出值。",
+          category: "AI",
+        },
+        {
+          id: 2,
+          title: "深度学习简介",
+          content:
+            "深度学习是机器学习的一个子集，它使用人工神经网络来模拟人脑的工作方式。深度学习在图像识别、自然语言处理和语音识别等领域取得了突破性进展。",
+          category: "AI",
+        },
+        {
+          id: 3,
+          title: "Python 编程入门",
+          content:
+            "Python 是一种高级编程语言，以其简洁的语法和强大的功能而闻名。Python 广泛应用于 Web 开发、数据分析、人工智能和科学计算等领域。",
+          category: "编程",
+        },
+        {
+          id: 4,
+          title: "JavaScript 异步编程",
+          content:
+            "JavaScript 的异步编程是处理耗时操作的关键技术。Promise 和 async/await 是现代 JavaScript 中处理异步操作的主要方式，使代码更易读和维护。",
+          category: "编程",
+        },
+        {
+          id: 5,
+          title: "数据科学工作流程",
+          content:
+            "数据科学是一个跨学科领域，结合了统计学、机器学习和领域知识来从数据中提取洞察。典型的数据科学工作流程包括数据收集、清洗、分析和可视化。",
+          category: "数据",
+        },
+        {
+          id: 6,
+          title: "自然语言处理技术",
+          content:
+            "自然语言处理（NLP）是人工智能的一个重要分支，致力于让计算机理解和处理人类语言。NLP 技术广泛应用于机器翻译、情感分析、文本分类等任务。",
+          category: "AI",
+        },
+        {
+          id: 7,
+          title: "数据库设计原则",
+          content:
+            "良好的数据库设计是应用程序性能和数据完整性的基础。关系型数据库使用表格结构存储数据，而非关系型数据库则提供更灵活的数据模型。",
+          category: "数据",
+        },
+        {
+          id: 8,
+          title: "Web 前端开发",
+          content:
+            "前端开发涉及创建用户界面和用户体验。HTML、CSS 和 JavaScript 是前端开发的三大核心技术。现代前端框架如 React、Vue 和 Angular 极大地提高了开发效率。",
+          category: "编程",
+        },
+        {
+          id: 9,
+          title: "计算机视觉应用",
+          content:
+            "计算机视觉是人工智能的一个领域，使计算机能够从图像或视频中提取信息。应用场景包括人脸识别、自动驾驶、医学影像分析等。",
+          category: "AI",
+        },
+        {
+          id: 10,
+          title: "API 设计最佳实践",
+          content:
+            "良好的 API 设计对于构建可维护和可扩展的系统至关重要。RESTful API 和 GraphQL 是两种流行的 API 设计风格，各有其适用场景。",
+          category: "编程",
+        },
+      ];
 
-      async initialize(progressCallback) {
-        try {
-          progressCallback('正在下载模型文件...', 10);
-          
-          this.extractor = await pipeline('feature-extraction', 
-            'Xenova/paraphrase-multilingual-MiniLM-L12-v2', {
-              progress_callback: (progress) => {
-                if (progress.status === 'downloading') {
-                  const percent = Math.round((progress.loaded / progress.total) * 80) + 10;
-                  progressCallback(`下载模型: ${progress.file}`, percent);
-                } else if (progress.status === 'loading') {
-                  progressCallback('正在加载模型...', 90);
-                }
-              }
-            }
-          );
-
-          progressCallback('模型加载完成！', 100);
-          this.isReady = true;
-          return true;
-        } catch (error) {
-          console.error('Model initialization failed:', error);
-          throw error;
-        }
-      }
-
-      async generateEmbedding(text) {
-        if (!this.isReady) {
-          throw new Error('Model not initialized');
+      class AIEmbeddingRetrieval {
+        constructor() {
+          this.extractor = null;
+          this.documentEmbeddings = [];
+          this.isReady = false;
         }
 
-        const output = await this.extractor(text, { 
-          pooling: 'mean', 
-          normalize: true 
-        });
-        
-        return Array.from(output.data);
-      }
+        async initialize(progressCallback) {
+          try {
+            progressCallback("正在下载模型文件...", 10);
 
-      async indexDocuments(docs, progressCallback) {
-        this.documentEmbeddings = [];
-        
-        for (let i = 0; i < docs.length; i++) {
-          const doc = docs[i];
-          const text = doc.title + ' ' + doc.content;
-          
-          const embedding = await this.generateEmbedding(text);
-          
-          this.documentEmbeddings.push({
-            ...doc,
-            embedding: embedding
-          });
+            this.extractor = await pipeline(
+              "feature-extraction",
+              "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+              {
+                progress_callback: (progress) => {
+                  if (progress.status === "downloading") {
+                    const percent =
+                      Math.round((progress.loaded / progress.total) * 80) + 10;
+                    progressCallback(`下载模型: ${progress.file}`, percent);
+                  } else if (progress.status === "loading") {
+                    progressCallback("正在加载模型...", 90);
+                  }
+                },
+              },
+            );
 
-          if (progressCallback) {
-            progressCallback(i + 1, docs.length);
+            progressCallback("模型加载完成！", 100);
+            this.isReady = true;
+            return true;
+          } catch (error) {
+            console.error("Model initialization failed:", error);
+            throw error;
           }
         }
-      }
 
-      cosineSimilarity(vec1, vec2) {
-        let dotProduct = 0;
-        let norm1 = 0;
-        let norm2 = 0;
+        async generateEmbedding(text) {
+          if (!this.isReady) {
+            throw new Error("Model not initialized");
+          }
 
-        for (let i = 0; i < vec1.length; i++) {
-          dotProduct += vec1[i] * vec2[i];
-          norm1 += vec1[i] * vec1[i];
-          norm2 += vec2[i] * vec2[i];
+          const output = await this.extractor(text, {
+            pooling: "mean",
+            normalize: true,
+          });
+
+          return Array.from(output.data);
         }
 
-        if (norm1 === 0 || norm2 === 0) return 0;
+        async indexDocuments(docs, progressCallback) {
+          this.documentEmbeddings = [];
 
-        return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+          for (let i = 0; i < docs.length; i++) {
+            const doc = docs[i];
+            const text = doc.title + " " + doc.content;
+
+            const embedding = await this.generateEmbedding(text);
+
+            this.documentEmbeddings.push({
+              ...doc,
+              embedding: embedding,
+            });
+
+            if (progressCallback) {
+              progressCallback(i + 1, docs.length);
+            }
+          }
+        }
+
+        cosineSimilarity(vec1, vec2) {
+          let dotProduct = 0;
+          let norm1 = 0;
+          let norm2 = 0;
+
+          for (let i = 0; i < vec1.length; i++) {
+            dotProduct += vec1[i] * vec2[i];
+            norm1 += vec1[i] * vec1[i];
+            norm2 += vec2[i] * vec2[i];
+          }
+
+          if (norm1 === 0 || norm2 === 0) return 0;
+
+          return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+        }
+
+        async search(query, topK = 5, threshold = 0) {
+          const queryEmbedding = await this.generateEmbedding(query);
+
+          const results = this.documentEmbeddings.map((doc) => ({
+            ...doc,
+            score: this.cosineSimilarity(queryEmbedding, doc.embedding),
+          }));
+
+          return results
+            .filter((r) => r.score >= threshold)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topK);
+        }
       }
 
-      async search(query, topK = 5, threshold = 0) {
-        const queryEmbedding = await this.generateEmbedding(query);
-        
-        const results = this.documentEmbeddings.map(doc => ({
-          ...doc,
-          score: this.cosineSimilarity(queryEmbedding, doc.embedding)
-        }));
+      const retrieval = new AIEmbeddingRetrieval();
 
-        return results
-          .filter(r => r.score >= threshold)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, topK);
-      }
-    }
+      const loadingSection = document.getElementById("loadingSection");
+      const loadingProgress = document.getElementById("loadingProgress");
+      const progressFill = document.getElementById("progressFill");
+      const errorSection = document.getElementById("errorSection");
+      const errorMessage = document.getElementById("errorMessage");
+      const mainSection = document.getElementById("mainSection");
+      const searchInput = document.getElementById("searchInput");
+      const searchBtn = document.getElementById("searchBtn");
+      const resultsContainer = document.getElementById("resultsContainer");
+      const resultCount = document.getElementById("resultCount");
+      const topKSelect = document.getElementById("topK");
+      const thresholdInput = document.getElementById("threshold");
+      const docCountEl = document.getElementById("docCount");
+      const indexedCountEl = document.getElementById("indexedCount");
 
-    const retrieval = new AIEmbeddingRetrieval();
-
-    const loadingSection = document.getElementById('loadingSection');
-    const loadingProgress = document.getElementById('loadingProgress');
-    const progressFill = document.getElementById('progressFill');
-    const errorSection = document.getElementById('errorSection');
-    const errorMessage = document.getElementById('errorMessage');
-    const mainSection = document.getElementById('mainSection');
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    const resultsContainer = document.getElementById('resultsContainer');
-    const resultCount = document.getElementById('resultCount');
-    const topKSelect = document.getElementById('topK');
-    const thresholdInput = document.getElementById('threshold');
-    const docCountEl = document.getElementById('docCount');
-    const indexedCountEl = document.getElementById('indexedCount');
-
-    function updateProgress(text, percent) {
-      loadingProgress.textContent = text;
-      progressFill.style.width = `${percent}%`;
-    }
-
-    function displayResults(results) {
-      if (results.length === 0) {
-        resultsContainer.innerHTML = '<div class="no-results">未找到相关文档</div>';
-        resultCount.style.display = 'none';
-        return;
+      function updateProgress(text, percent) {
+        loadingProgress.textContent = text;
+        progressFill.style.width = `${percent}%`;
       }
 
-      resultCount.textContent = results.length;
-      resultCount.style.display = 'inline-block';
+      function displayResults(results) {
+        if (results.length === 0) {
+          resultsContainer.innerHTML =
+            '<div class="no-results">未找到相关文档</div>';
+          resultCount.style.display = "none";
+          return;
+        }
 
-      resultsContainer.innerHTML = results.map((result, index) => `
+        resultCount.textContent = results.length;
+        resultCount.style.display = "inline-block";
+
+        resultsContainer.innerHTML = results
+          .map(
+            (result, index) => `
         <div class="result-item">
           <div class="result-header">
             <div class="result-title">${index + 1}. ${result.title}</div>
@@ -629,92 +811,132 @@
             <span>🆔 ID: ${result.id}</span>
           </div>
         </div>
-      `).join('');
-    }
-
-    async function performSearch() {
-      const query = searchInput.value.trim();
-      
-      if (!query) {
-        resultsContainer.innerHTML = '<div class="no-results">请输入查询文本</div>';
-        resultCount.style.display = 'none';
-        return;
+      `,
+          )
+          .join("");
       }
 
-      const topK = parseInt(topKSelect.value);
-      const threshold = parseFloat(thresholdInput.value);
+      async function performSearch() {
+        const query = searchInput.value.trim();
 
-      searchBtn.disabled = true;
-      searchInput.disabled = true;
-      resultsContainer.innerHTML = '<div class="no-results">🔍 正在计算嵌入向量...</div>';
+        if (!query) {
+          resultsContainer.innerHTML =
+            '<div class="no-results">请输入查询文本</div>';
+          resultCount.style.display = "none";
+          return;
+        }
 
-      try {
-        const results = await retrieval.search(query, topK, threshold);
-        
-        if (results.length === 0) {
-          const allResults = await retrieval.search(query, 10, 0);
-          const topResults = allResults.slice(0, 3);
-          
-          if (topResults.length > 0) {
-            resultsContainer.innerHTML = `
+        const topK = parseInt(topKSelect.value);
+        const threshold = parseFloat(thresholdInput.value);
+
+        searchBtn.disabled = true;
+        searchInput.disabled = true;
+        resultsContainer.innerHTML =
+          '<div class="no-results">🔍 正在计算嵌入向量...</div>';
+
+        try {
+          const results = await retrieval.search(query, topK, threshold);
+
+          if (results.length === 0) {
+            const allResults = await retrieval.search(query, 10, 0);
+            const topResults = allResults.slice(0, 3);
+
+            if (topResults.length > 0) {
+              resultsContainer.innerHTML = `
               <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404; margin-bottom: 20px;">
                 ⚠️ 没有找到相似度 ≥ ${threshold} 的结果。以下是相似度最高的 ${topResults.length} 个结果：
               </div>
             `;
-            displayResults(topResults);
+              displayResults(topResults);
+            } else {
+              resultsContainer.innerHTML =
+                '<div class="no-results">未找到相关文档</div>';
+            }
           } else {
-            resultsContainer.innerHTML = '<div class="no-results">未找到相关文档</div>';
+            displayResults(results);
           }
-        } else {
-          displayResults(results);
+        } catch (error) {
+          resultsContainer.innerHTML = `<div class="error-box">❌ 检索失败: ${error.message}</div>`;
+        } finally {
+          searchBtn.disabled = false;
+          searchInput.disabled = false;
         }
-      } catch (error) {
-        resultsContainer.innerHTML = `<div class="error-box">❌ 检索失败: ${error.message}</div>`;
-      } finally {
-        searchBtn.disabled = false;
-        searchInput.disabled = false;
       }
-    }
 
-    async function initializeApp() {
-      try {
-        await retrieval.initialize(updateProgress);
+      async function initializeApp() {
+        try {
+          await retrieval.initialize(updateProgress);
+
+          loadingSection.style.display = "none";
+          mainSection.style.display = "block";
+
+          docCountEl.textContent = documents.length;
+
+          resultsContainer.innerHTML =
+            '<div class="no-results">📝 正在索引文档...</div>';
+
+          await retrieval.indexDocuments(documents, (current, total) => {
+            indexedCountEl.textContent = current;
+            resultsContainer.innerHTML = `<div class="no-results">📝 正在索引文档... ${current}/${total}</div>`;
+          });
+
+          resultsContainer.innerHTML =
+            '<div class="no-results">✅ 索引完成！输入查询文本开始检索</div>';
+
+          searchInput.disabled = false;
+          searchBtn.disabled = false;
+          topKSelect.disabled = false;
+          thresholdInput.disabled = false;
+          
+          displayDocuments();
+        } catch (error) {
+          loadingSection.style.display = "none";
+          errorSection.style.display = "block";
+          errorMessage.textContent = error.message;
+          console.error("Initialization failed:", error);
+        }
+      }
+
+      function displayDocuments() {
+        const totalDocCountEl = document.getElementById('totalDocCount');
+        const documentsContainer = document.getElementById('documentsContainer');
         
-        loadingSection.style.display = 'none';
-        mainSection.style.display = 'block';
+        totalDocCountEl.textContent = retrieval.documentEmbeddings.length;
         
-        docCountEl.textContent = documents.length;
-        
-        resultsContainer.innerHTML = '<div class="no-results">📝 正在索引文档...</div>';
-        
-        await retrieval.indexDocuments(documents, (current, total) => {
-          indexedCountEl.textContent = current;
-          resultsContainer.innerHTML = `<div class="no-results">📝 正在索引文档... ${current}/${total}</div>`;
+        documentsContainer.innerHTML = retrieval.documentEmbeddings.map(doc => `
+          <div class="document-card">
+            <div class="document-title">${doc.title}</div>
+            <div class="document-content">${doc.content}</div>
+            <div class="document-meta">
+              <span>📁 ${doc.category}</span>
+              <span>🆔 ${doc.id}</span>
+            </div>
+            <div class="embedding-preview">
+              向量维度: ${doc.embedding.length} | 
+              前5维: [${doc.embedding.slice(0, 5).map(v => v.toFixed(3)).join(', ')}...]
+            </div>
+          </div>
+        `).join('');
+      }
+
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          tab.classList.add('active');
+          document.getElementById(tab.dataset.tab + 'Tab').classList.add('active');
         });
-        
-        resultsContainer.innerHTML = '<div class="no-results">✅ 索引完成！输入查询文本开始检索</div>';
-        
-        searchInput.disabled = false;
-        searchBtn.disabled = false;
-        topKSelect.disabled = false;
-        thresholdInput.disabled = false;
-        
-      } catch (error) {
-        loadingSection.style.display = 'none';
-        errorSection.style.display = 'block';
-        errorMessage.textContent = error.message;
-        console.error('Initialization failed:', error);
-      }
-    }
+      });
 
-    searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        performSearch();
-      }
-    });
+      searchBtn.addEventListener("click", performSearch);
+      searchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          performSearch();
+        }
+      });
 
-    initializeApp();
-  </script>
-</body>
+      initializeApp();
+    </script>
+  </body>
 </html>
