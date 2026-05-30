@@ -197,23 +197,15 @@ export const pageAnime = {
   for (const [filePath, { code, aimap }] of Object.entries(files)) {
     const handle = await get(`${projectPath}/${filePath}`, { create: "file" });
     await handle.write(code);
+
     if (aimap) {
-      const pathArr = filePath.split("/");
-
-      let aimapHandle;
-      if (pathArr.length > 1) {
-        aimapHandle = await get(
-          `${projectPath}/${pathArr.slice(0, -1).join("/")}/.aimap/${pathArr[pathArr.length - 1]}.md`,
-          {
-            create: "file",
-          },
-        );
-      } else {
-        aimapHandle = await get(`${projectPath}/.aimap/${filePath}.md`, {
-          create: "file",
-        });
-      }
-
+      const parts = filePath.split("/");
+      const fileName = parts.pop();
+      const aimapDir = parts.length > 0 ? `${parts.join("/")}/` : "";
+      const aimapHandle = await get(
+        `${projectPath}/${aimapDir}.aimap/${fileName}.md`,
+        { create: "file" }
+      );
       await aimapHandle.write(aimap);
     }
   }
