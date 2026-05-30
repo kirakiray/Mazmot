@@ -4,6 +4,16 @@ import { get } from "/nos/fs/main.js";
 export async function initCode(projectPath) {
   const files = {
     "index.html": {
+      aimap: `文件类型: HTML 入口文件
+主要功能: 应用程序入口，加载 ofa.js 框架和路由系统
+关键组件:
+  - o-router: 路由容器组件
+  - o-app: 应用组件，引用 app-config.js 配置
+依赖资源:
+  - ofa.js 核心库 (debug 模式)
+  - ofa.js 路由插件
+  - Punch-UI 全局样式
+用途: 作为单页应用的 HTML 入口，初始化整个应用框架`,
       code: `<!DOCTYPE html>
 <html lang="en"> 
 <head>
@@ -31,6 +41,15 @@ export async function initCode(projectPath) {
 </html>`,
     },
     "app-config.js": {
+      aimap: `文件类型: JavaScript 配置文件
+主要功能: ofa.js 应用核心配置
+导出配置:
+  - home: 首页路由路径，指向 ./pages/home.html
+  - pageAnime: 页面切换动画配置
+    - current: 当前页面状态 (opacity: 1, 无位移)
+    - next: 下一页面进入动画 (从右侧淡入)
+    - previous: 上一页面返回动画 (从左侧淡入)
+用途: 定义应用路由入口和页面过渡动画效果`,
       code: `export const home = "./pages/home.html";
 
 export const pageAnime = {
@@ -49,6 +68,16 @@ export const pageAnime = {
 };`,
     },
     "pages/layout.html": {
+      aimap: `文件类型: ofa.js 页面模块 (Layout 模板)
+主要功能: 应用通用布局模板，提供页面骨架结构
+布局结构:
+  - header: 顶部导航栏，显示应用标题 "My App"
+  - main: 内容区域，使用 <slot> 插槽承载子页面内容
+样式特点:
+  - 使用 CSS Flexbox 垂直布局
+  - header 使用主题色背景 (var(--md-sys-color-primary))
+  - main 区域可滚动，使用表面背景色
+用途: 作为其他页面的父级布局模板，通过 parent 属性引用`,
       code: `<template page>
   <style>
     :host {
@@ -91,6 +120,18 @@ export const pageAnime = {
 </template>`,
     },
     "pages/home.html": {
+      aimap: `文件类型: ofa.js 页面模块 (首页)
+主要功能: 应用首页，展示欢迎信息和入门指南
+页面结构:
+  - 欢迎区域 (.welcome): 居中显示标题和简介
+  - 卡片区域 (.card): 展示快速入门指南
+    - 列出关键文件说明 (app-config.js, home.html, layout.html)
+模块配置:
+  - parent: ./layout.html (继承布局模板)
+样式特点:
+  - 使用 Material Design 配色变量
+  - 卡片使用圆角边框和表面变体背景
+用途: 作为应用默认首页，引导用户了解项目结构`,
       code: `<template page>
   <style>
     :host {
@@ -153,10 +194,27 @@ export const pageAnime = {
     },
   };
 
-  await get(`${projectPath}/pages`, { create: "dir" });
-
-  for (const [filePath, { code }] of Object.entries(files)) {
+  for (const [filePath, { code, aimap }] of Object.entries(files)) {
     const handle = await get(`${projectPath}/${filePath}`, { create: "file" });
     await handle.write(code);
+    if (aimap) {
+      const pathArr = filePath.split("/");
+
+      let aimapHandle;
+      if (pathArr.length > 1) {
+        aimapHandle = await get(
+          `${projectPath}/${pathArr.slice(0, -1).join("/")}/.aimap/${pathArr[pathArr.length - 1]}.md`,
+          {
+            create: "file",
+          },
+        );
+      } else {
+        aimapHandle = await get(`${projectPath}/.aimap/${filePath}.md`, {
+          create: "file",
+        });
+      }
+
+      await aimapHandle.write(aimap);
+    }
   }
 }
