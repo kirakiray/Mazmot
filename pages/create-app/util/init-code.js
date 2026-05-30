@@ -1,9 +1,11 @@
 import { get } from "/nos/fs/main.js";
 
+// 初始化项目代码
 export async function initCode(projectPath) {
-  const indexHtml = await get(`${projectPath}/index.html`, { create: "file" });
-  await indexHtml.write(`<!DOCTYPE html>
-<html lang="en">
+  const files = {
+    "index.html": {
+      code: `<!DOCTYPE html>
+<html lang="en"> 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -26,12 +28,10 @@ export async function initCode(projectPath) {
     <o-app src="./app-config.js"></o-app>
   </o-router>
 </body>
-</html>`);
-
-  const appConfig = await get(`${projectPath}/app-config.js`, {
-    create: "file",
-  });
-  await appConfig.write(`export const home = "./pages/home.html";
+</html>`,
+    },
+    "app-config.js": {
+      code: `export const home = "./pages/home.html";
 
 export const pageAnime = {
   current: {
@@ -46,14 +46,10 @@ export const pageAnime = {
     opacity: 0,
     transform: "translate(-30px, 0)",
   },
-};`);
-
-  const pagesDir = await get(`${projectPath}/pages`, { create: "dir" });
-
-  const layoutHtml = await get(`${projectPath}/pages/layout.html`, {
-    create: "file",
-  });
-  await layoutHtml.write(`<template page>
+};`,
+    },
+    "pages/layout.html": {
+      code: `<template page>
   <style>
     :host {
       display: block;
@@ -92,12 +88,10 @@ export const pageAnime = {
       };
     };
   </script>
-</template>`);
-
-  const homeHtml = await get(`${projectPath}/pages/home.html`, {
-    create: "file",
-  });
-  await homeHtml.write(`<template page>
+</template>`,
+    },
+    "pages/home.html": {
+      code: `<template page>
   <style>
     :host {
       display: block;
@@ -155,7 +149,14 @@ export const pageAnime = {
       };
     };
   </script>
-</template>`);
+</template>`,
+    },
+  };
 
-  console.log("App initialized successfully at:", projectPath);
+  await get(`${projectPath}/pages`, { create: "dir" });
+
+  for (const [filePath, { code }] of Object.entries(files)) {
+    const handle = await get(`${projectPath}/${filePath}`, { create: "file" });
+    await handle.write(code);
+  }
 }
