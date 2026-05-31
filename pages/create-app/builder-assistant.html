@@ -71,6 +71,31 @@
         <div style="margin-bottom: 12px; color: var(--md-sys-color-normal)">
           AI 请求了以下能力，点击确认发送结果
         </div>
+        <o-fill :value="pendingResults">
+          <div style="margin-bottom: 12px; background: var(--md-sys-color-surface-container); border-radius: 8px; overflow: hidden;">
+            <div
+              style="padding: 8px 12px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
+              on:click="$host.toggleResultExpand($index)"
+            >
+              <span>{{$data.name}}</span>
+              <span style="font-size: 10px;">{{$host.resultExpanded[$index] ? '▼' : '▶'}}</span>
+            </div>
+            <o-if :value="$host.resultExpanded[$index]">
+              <div style="padding: 0 12px 12px 12px;">
+                <o-if :value="$data.error">
+                  <div style="font-size: 13px; color: var(--md-sys-color-error); font-family: monospace; word-break: break-all;">
+                    {{$data.error}}
+                  </div>
+                </o-if>
+                <o-else>
+                  <div style="font-size: 13px; color: var(--md-sys-color-on-surface); font-family: monospace; word-break: break-all; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+                    {{typeof $data.result === 'string' ? $data.result : JSON.stringify($data.result, null, 2)}}
+                  </div>
+                </o-else>
+              </div>
+            </o-if>
+          </div>
+        </o-fill>
         <button
           style="
             padding: 8px 16px;
@@ -106,6 +131,7 @@
           isLoading: false,
           currentChatFile: null,
           pendingResults: null,
+          resultExpanded: {},
         },
         watch: {
           async projectPath(newPath) {
@@ -119,8 +145,15 @@
             if (!this.messages) return false;
             return this.messages.some((m) => m.role !== "system" && !m.hidden);
           },
+          toggleResultExpand(index) {
+            this.resultExpanded = {
+              ...this.resultExpanded,
+              [index]: !this.resultExpanded[index],
+            };
+          },
           async handleCapabilityResults(results) {
             this.pendingResults = results;
+            this.resultExpanded = {};
           },
           async confirmSend() {
             if (!this.pendingResults) return;

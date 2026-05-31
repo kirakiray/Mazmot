@@ -16,10 +16,10 @@ method: main.js
 
 **操作步骤**：
 
-调用 `emulator-aimap` 能力获取项目的所有 aimap 索引信息：
+调用 `get-aimap` 能力获取项目的所有 aimap 索引信息：
 
 <cap-request>
-  <template name="emulator-aimap" cid="understand001" desc="获取项目的 aimap 索引信息" data-project-path="your-project-path">
+  <template name="get-aimap" cid="understand001" desc="获取项目的 aimap 索引信息" data-project-path="your-project-path">
   </template>
 </cap-request>
 
