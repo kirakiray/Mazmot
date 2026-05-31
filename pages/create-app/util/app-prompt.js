@@ -29,7 +29,8 @@ export async function getAppPrompt({ projectPath }) {
         role: "user",
         hidden: true,
         content: `这是一条隐藏的指令，我告诉你当前的项目的基本信息，你收到后只需要回复我收到即可，不需要回复其他内容。
-- 当前的项目路径：${projectPath}`,
+- 当前的项目路径：${projectPath}
+- 你正处于**应用开发模式**`,
       },
       {
         role: "assistant",
