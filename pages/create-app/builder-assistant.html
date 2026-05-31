@@ -195,7 +195,14 @@
                 name.startsWith("chat-") &&
                 name.endsWith(".json")
               ) {
-                chatFiles.push(name);
+                // 确保是有效的内容，无效则删除
+                try {
+                  await handle.json();
+                  chatFiles.push(name);
+                } catch (e) {
+                  await handle.remove();
+                  continue;
+                }
               }
             }
 
@@ -208,7 +215,9 @@
                 create: "file",
               });
 
-              const initMessages = await getAppPrompt();
+              const initMessages = await getAppPrompt({
+                projectPath: this.projectPath + "/project",
+              });
               this.messages = initMessages;
               await targetChatHandle.write(JSON.stringify(this.messages));
             } else {

@@ -1,6 +1,9 @@
 import getCapability from "../../../capabilities/get-capability/main.js";
 
-export async function getAppPrompt() {
+export async function getAppPrompt({ projectPath }) {
+  if (!projectPath) {
+    throw new Error("projectPath is required");
+  }
   try {
     const res = await fetch(import.meta.resolve("./app-prompt.md"));
     const content = await res.text();
@@ -17,6 +20,17 @@ export async function getAppPrompt() {
         content: "收到",
       },
       await getCapabilitiesMessage(),
+      {
+        role: "assistant",
+        hidden: true,
+        content: "收到",
+      },
+      {
+        role: "user",
+        hidden: true,
+        content: `这是一条隐藏的指令，我告诉你当前的项目的基本信息，你收到后只需要回复我收到即可，不需要回复其他内容。
+- 当前的项目路径：${projectPath}`,
+      },
       {
         role: "assistant",
         hidden: true,
@@ -59,7 +73,7 @@ const getCapabilitiesMessage = async () => {
   return {
     role: "user",
     hidden: true,
-    content: `这是一条你要隐藏的指令，我会告诉你你拥有的能力列表，你收到后只需要回复我收到即可，不需要回复其他内容。
+    content: `这是一条你要隐藏的指令，我会告诉你拥有的能力列表，你收到后只需要回复我收到即可，不需要回复其他内容。
 
 <cap-response>
   <template result name="get-capability" cid="first-get-all-capabilities">
