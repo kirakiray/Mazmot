@@ -73,11 +73,11 @@ export default async function fs({ data = {}, content }) {
     }
 
     const items = [];
-    await handle.forEach((name, item) => {
+    await handle.forEach((handle) => {
       items.push({
-        name,
-        kind: item.kind,
-        path: item.path,
+        name: handle.name,
+        kind: handle.kind,
+        path: handle.path,
       });
     });
     return items;

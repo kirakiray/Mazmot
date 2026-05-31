@@ -18,7 +18,7 @@
   },
   "emulator-aimap": {
     "SKILL.md": {
-      "text": "---\nname: emulator-aimap\ndescription: 应用开发模式可用；获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构\nmethod: main.js\n---\n\n# 获取项目 aimap 索引\n\n**emulator-aimap** 用于在应用开发模式下获取项目的所有 aimap 索引信息。它会递归扫描项目目录，查找所有 `.aimap` 目录下的 `.md` 文件，并返回结构化的索引数据，帮助快速了解项目结构。\n\n## 获取项目的所有 aimap 索引\n\n<cap-request>\n  <template name=\"emulator-aimap\" cid=\"aim001\" desc=\"获取项目的所有 aimap 索引信息\" data-project-path=\"your-project-path\">\n  </template>\n</cap-request>\n\n工具将返回项目中所有文件的 aimap 索引信息，包括文件路径、aimap 文件路径和索引描述内容。\n"
+      "text": "---\nname: emulator-aimap\ndescription: 获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构；只有在应用开发模式下可用。\nmethod: main.js\n---\n\n# 获取项目 aimap 索引\n\n**emulator-aimap** 用于在应用开发模式下获取项目的所有 aimap 索引信息。它会递归扫描项目目录，查找所有 `.aimap` 目录下的 `.md` 文件，并返回结构化的索引数据，帮助快速了解项目结构。\n\n## 获取项目的所有 aimap 索引\n\n<cap-request>\n  <template name=\"emulator-aimap\" cid=\"aim001\" desc=\"获取项目的所有 aimap 索引信息\" data-project-path=\"your-project-path\">\n  </template>\n</cap-request>\n\n工具将返回项目中所有文件的 aimap 索引信息，包括文件路径、aimap 文件路径和索引描述内容。\n"
     },
     "main.js": {
       "text": "import { get } from \"/nos/fs/main.js\";\n\nexport default async ({ data = {}, content }) => {\n  const { projectPath } = data;\n\n  if (!projectPath) {\n    throw new Error(\"projectPath is required\");\n  }\n\n  const aimapList = [];\n\n  const projectDir = await get(projectPath);\n\n  await collectAimapFiles(projectDir, projectPath, aimapList);\n\n  debugger;\n\n  return {\n    data: {\n      aimaps: aimapList,\n    },\n  };\n};\n\nasync function collectAimapFiles(dir, basePath, aimapList, currentPath = \"\") {\n  try {\n    const aimapDirPath = currentPath ? `${currentPath}/.aimap` : \".aimap\";\n\n    try {\n      const aimapDir = await dir.get(aimapDirPath);\n\n      if (aimapDir && aimapDir.kind === \"dir\") {\n        await collectAimapFromDir(aimapDir, basePath, currentPath, aimapList);\n      }\n    } catch (e) {\n      // .aimap 目录不存在，继续处理子目录\n    }\n\n    for await (const [name, handle] of dir.entries()) {\n      if (handle.kind === \"dir\" && name !== \".aimap\" && !name.startsWith(\".\")) {\n        const subPath = currentPath ? `${currentPath}/${name}` : name;\n        await collectAimapFiles(handle, basePath, aimapList, subPath);\n      }\n    }\n  } catch (error) {\n    console.error(`Error collecting aimap files from ${currentPath}:`, error);\n  }\n}\n\nasync function collectAimapFromDir(aimapDir, basePath, currentPath, aimapList) {\n  for await (const [name, handle] of aimapDir.entries()) {\n    if (handle.kind === \"file\" && name.endsWith(\".md\")) {\n      try {\n        const content = await handle.text();\n\n        const originalFileName = name.slice(0, -3);\n        const originalFilePath = currentPath\n          ? `${currentPath}/${originalFileName}`\n          : originalFileName;\n\n        const aimapPath = currentPath\n          ? `${currentPath}/.aimap/${name}`\n          : `.aimap/${name}`;\n\n        aimapList.push({\n          path: originalFilePath,\n          aimapPath: aimapPath,\n          content: content.trim(),\n        });\n      } catch (error) {\n        console.error(`Error reading aimap file ${name}:`, error);\n      }\n    }\n  }\n}\n"
@@ -26,7 +26,7 @@
   },
   "emulator-capture": {
     "SKILL.md": {
-      "text": "---\nname: emulator-capture\ndescription: 应用开发模式可用；应用模拟器视图获取能力，支持获取当前应用模拟器的截图或元素样式信息\nmethod: main.js\n---\n"
+      "text": "---\nname: emulator-capture\ndescription: 获取应用模拟器视图，支持获取当前应用模拟器的截图或元素样式信息；只有在应用开发模式下可用。\nmethod: main.js\n---\n"
     },
     "main.js": {
       "text": "export default function emulatorView() {\n  debugger;\n  console.log(\"emulatorView\");\n}\n"
@@ -34,7 +34,7 @@
   },
   "emulator-console": {
     "SKILL.md": {
-      "text": "---\nname: emulator-console\ndescription: 应用开发模式可用；应用模拟器日志管理能力，支持获取或清空当前应用模拟器的控制台打印信息\nmethod: main.js\n---\n"
+      "text": "---\nname: emulator-console\ndescription: 获取应用模拟器日志，支持获取或清空当前应用模拟器的控制台打印信息；只有在应用开发模式下可用。\nmethod: main.js\n---\n"
     },
     "main.js": {
       "text": "export default function emulatorLog() {\n  debugger;\n  console.log(\"emulatorLog\");\n}\n"
@@ -42,7 +42,7 @@
   },
   "emulator-interact": {
     "SKILL.md": {
-      "text": "---\nname: emulator-interact\ndescription: 应用开发模式可用；应用模拟器交互能力，支持对当前应用模拟器中的指定元素进行点击或输入操作\nmethod: main.js\n---\n"
+      "text": "---\nname: emulator-interact\ndescription: 与应用模拟器交互，支持对当前应用模拟器中的指定元素进行点击或输入操作；只有在应用开发模式下可用。\nmethod: main.js\n---\n"
     },
     "main.js": {
       "text": "export default function emulatorTap() {\n  debugger;\n  console.log(\"emulatorTap\");\n}\n"
@@ -50,7 +50,7 @@
   },
   "emulator-navigate": {
     "SKILL.md": {
-      "text": "---\nname: emulator-navigate\ndescription: 应用开发模式可用；应用模拟器页面导航能力，支持跳转到指定页面或刷新当前页面\nmethod: main.js\n---\n"
+      "text": "---\nname: emulator-navigate\ndescription: 导航应用模拟器页面，支持跳转到指定页面或刷新当前页面；只有在应用开发模式下可用。\nmethod: main.js\n---\n"
     },
     "main.js": {
       "text": "export default function emulatorJump() {\n  debugger;\n  console.log(\"emulatorJump\");\n}\n"
