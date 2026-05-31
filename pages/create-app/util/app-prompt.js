@@ -2,7 +2,7 @@ import getCapability from "../../../capabilities/get-capability/main.js";
 
 export async function getAppPrompt() {
   try {
-    const res = await fetch("./app-prompt.md");
+    const res = await fetch(import.meta.resolve("./app-prompt.md"));
     const content = await res.text();
     return [
       {
