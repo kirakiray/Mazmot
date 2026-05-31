@@ -1,6 +1,6 @@
 ---
 name: emulator-aimap
-description: 应用开发模式可用；获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构
+description: 获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构；只有在应用开发模式下可用。
 method: main.js
 ---
 

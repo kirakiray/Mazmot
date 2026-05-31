@@ -66,6 +66,26 @@
         请输入消息
       </div>
     </o-if>
+    <o-if :value="pendingResults">
+      <div style="padding: 16px; border-top: 1px solid var(--md-sys-color-outline-variant)">
+        <div style="margin-bottom: 12px; color: var(--md-sys-color-normal)">
+          AI 请求了以下能力，点击确认发送结果
+        </div>
+        <button
+          style="
+            padding: 8px 16px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          "
+          on:click="confirmSend"
+        >
+          确认发送
+        </button>
+      </div>
+    </o-if>
   </m-chatbox>
   <o-consumer
     name="app-builder"
@@ -85,6 +105,7 @@
           inputMessage: "",
           isLoading: false,
           currentChatFile: null,
+          pendingResults: null,
         },
         watch: {
           async projectPath(newPath) {
@@ -99,6 +120,12 @@
             return this.messages.some((m) => m.role !== "system" && !m.hidden);
           },
           async handleCapabilityResults(results) {
+            this.pendingResults = results;
+          },
+          async confirmSend() {
+            if (!this.pendingResults) return;
+
+            const results = this.pendingResults;
             const templates = results.map((r) => {
               if (r.error) {
                 return `<template error name="${r.name}" cid="${r.cid}">${r.error}</template>`;
@@ -117,6 +144,8 @@
               responsesData: results,
             });
 
+            this.pendingResults = null;
+            await this.saveProject();
             await this.callAssistant();
           },
           handleKeyDown(e) {

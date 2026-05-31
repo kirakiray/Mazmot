@@ -1,5 +1,5 @@
 ---
 name: emulator-capture
-description: 应用开发模式可用；应用模拟器视图获取能力，支持获取当前应用模拟器的截图或元素样式信息
+description: 获取应用模拟器视图，支持获取当前应用模拟器的截图或元素样式信息；只有在应用开发模式下可用。
 method: main.js
 ---
