@@ -11,8 +11,6 @@ export default async ({ data = {}, content }) => {
 
   const aimapList = await collectAimapFiles(projectDir, projectPath);
 
-  debugger;
-
   return {
     data: {
       aimaps: aimapList,
@@ -24,60 +22,34 @@ async function collectAimapFiles(dir, basePath, currentPath = "") {
   const aimapList = [];
 
   try {
-    try {
-      const aimapDir = await dir.get(".aimap");
-
-      if (aimapDir && aimapDir.kind === "dir") {
-        const aimaps = await collectAimapFromDir(
-          aimapDir,
-          basePath,
-          currentPath,
-        );
-        aimapList.push(...aimaps);
+    const aimapDir = await dir.get(".aimap");
+    if (aimapDir?.kind === "dir") {
+      for await (const [name, handle] of aimapDir.entries()) {
+        if (handle.kind === "file" && name.endsWith(".md")) {
+          try {
+            const content = await handle.text();
+            const originalFileName = name.slice(0, -3);
+            aimapList.push({
+              path: currentPath
+                ? `${currentPath}/${originalFileName}`
+                : originalFileName,
+              aimapPath: currentPath
+                ? `${currentPath}/.aimap/${name}`
+                : `.aimap/${name}`,
+              content: content.trim(),
+            });
+          } catch (error) {
+            console.error(`Error reading aimap file ${name}:`, error);
+          }
+        }
       }
-    } catch (e) {
-      // .aimap 目录不存在，继续处理子目录
     }
+  } catch (e) {}
 
-    for await (const [name, handle] of dir.entries()) {
-      if (handle.kind === "dir" && name !== ".aimap" && !name.startsWith(".")) {
-        const subPath = currentPath ? `${currentPath}/${name}` : name;
-        const subAimaps = await collectAimapFiles(handle, basePath, subPath);
-        aimapList.push(...subAimaps);
-      }
-    }
-  } catch (error) {
-    console.error(`Error collecting aimap files from ${currentPath}:`, error);
-  }
-
-  return aimapList;
-}
-
-async function collectAimapFromDir(aimapDir, basePath, currentPath) {
-  const aimapList = [];
-
-  for await (const [name, handle] of aimapDir.entries()) {
-    if (handle.kind === "file" && name.endsWith(".md")) {
-      try {
-        const content = await handle.text();
-
-        const originalFileName = name.slice(0, -3);
-        const originalFilePath = currentPath
-          ? `${currentPath}/${originalFileName}`
-          : originalFileName;
-
-        const aimapPath = currentPath
-          ? `${currentPath}/.aimap/${name}`
-          : `.aimap/${name}`;
-
-        aimapList.push({
-          path: originalFilePath,
-          aimapPath: aimapPath,
-          content: content.trim(),
-        });
-      } catch (error) {
-        console.error(`Error reading aimap file ${name}:`, error);
-      }
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === "dir" && name !== ".aimap" && !name.startsWith(".")) {
+      const subPath = currentPath ? `${currentPath}/${name}` : name;
+      aimapList.push(...(await collectAimapFiles(handle, basePath, subPath)));
     }
   }
 
