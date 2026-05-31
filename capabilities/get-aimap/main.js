@@ -7,11 +7,9 @@ export default async ({ data = {}, content }) => {
     throw new Error("projectPath is required");
   }
 
-  const aimapList = [];
-
   const projectDir = await get(projectPath);
 
-  await collectAimapFiles(projectDir, projectPath, aimapList);
+  const aimapList = await collectAimapFiles(projectDir, projectPath);
 
   debugger;
 
@@ -22,7 +20,9 @@ export default async ({ data = {}, content }) => {
   };
 };
 
-async function collectAimapFiles(dir, basePath, aimapList, currentPath = "") {
+async function collectAimapFiles(dir, basePath, currentPath = "") {
+  const aimapList = [];
+  
   try {
     const aimapDirPath = currentPath ? `${currentPath}/.aimap` : ".aimap";
 
@@ -30,7 +30,8 @@ async function collectAimapFiles(dir, basePath, aimapList, currentPath = "") {
       const aimapDir = await dir.get(aimapDirPath);
 
       if (aimapDir && aimapDir.kind === "dir") {
-        await collectAimapFromDir(aimapDir, basePath, currentPath, aimapList);
+        const aimaps = await collectAimapFromDir(aimapDir, basePath, currentPath);
+        aimapList.push(...aimaps);
       }
     } catch (e) {
       // .aimap 目录不存在，继续处理子目录
@@ -39,15 +40,20 @@ async function collectAimapFiles(dir, basePath, aimapList, currentPath = "") {
     for await (const [name, handle] of dir.entries()) {
       if (handle.kind === "dir" && name !== ".aimap" && !name.startsWith(".")) {
         const subPath = currentPath ? `${currentPath}/${name}` : name;
-        await collectAimapFiles(handle, basePath, aimapList, subPath);
+        const subAimaps = await collectAimapFiles(handle, basePath, subPath);
+        aimapList.push(...subAimaps);
       }
     }
   } catch (error) {
     console.error(`Error collecting aimap files from ${currentPath}:`, error);
   }
+  
+  return aimapList;
 }
 
-async function collectAimapFromDir(aimapDir, basePath, currentPath, aimapList) {
+async function collectAimapFromDir(aimapDir, basePath, currentPath) {
+  const aimapList = [];
+  
   for await (const [name, handle] of aimapDir.entries()) {
     if (handle.kind === "file" && name.endsWith(".md")) {
       try {
@@ -72,4 +78,6 @@ async function collectAimapFromDir(aimapDir, basePath, currentPath, aimapList) {
       }
     }
   }
+  
+  return aimapList;
 }
