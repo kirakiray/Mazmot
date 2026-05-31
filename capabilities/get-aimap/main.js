@@ -22,15 +22,17 @@ export default async ({ data = {}, content }) => {
 
 async function collectAimapFiles(dir, basePath, currentPath = "") {
   const aimapList = [];
-  
-  try {
-    const aimapDirPath = currentPath ? `${currentPath}/.aimap` : ".aimap";
 
+  try {
     try {
-      const aimapDir = await dir.get(aimapDirPath);
+      const aimapDir = await dir.get(".aimap");
 
       if (aimapDir && aimapDir.kind === "dir") {
-        const aimaps = await collectAimapFromDir(aimapDir, basePath, currentPath);
+        const aimaps = await collectAimapFromDir(
+          aimapDir,
+          basePath,
+          currentPath,
+        );
         aimapList.push(...aimaps);
       }
     } catch (e) {
@@ -47,13 +49,13 @@ async function collectAimapFiles(dir, basePath, currentPath = "") {
   } catch (error) {
     console.error(`Error collecting aimap files from ${currentPath}:`, error);
   }
-  
+
   return aimapList;
 }
 
 async function collectAimapFromDir(aimapDir, basePath, currentPath) {
   const aimapList = [];
-  
+
   for await (const [name, handle] of aimapDir.entries()) {
     if (handle.kind === "file" && name.endsWith(".md")) {
       try {
@@ -78,6 +80,6 @@ async function collectAimapFromDir(aimapDir, basePath, currentPath) {
       }
     }
   }
-  
+
   return aimapList;
 }
