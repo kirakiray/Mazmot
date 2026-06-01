@@ -114,7 +114,7 @@
             >
               <span>{{$data.name}}</span>
               <span style="font-size: 10px"
-                >{{$host.resultExpanded[$index] ? '▼' : '▶'}}</span
+                >{{$host.resultExpanded[$index] ? '▼' : '◀'}}</span
               >
             </div>
             <o-if :value="$host.resultExpanded[$index]">
@@ -199,6 +199,10 @@
           },
         },
         proto: {
+          
+          get emulator() {
+            return this.host.shadow.$("#emulator");
+          },
           get hasVisibleMessages() {
             if (!this.messages) return false;
             return this.messages.some((m) => m.role !== "system" && !m.hidden);
@@ -293,7 +297,8 @@
 
               const response = await assistant.chat({
                 messages: chatMessages,
-                model: "deepseek-v4-flash",
+                // model: "deepseek-v4-flash",
+                model: "deepseek-v4-pro",
               });
 
               this.messages.push({
