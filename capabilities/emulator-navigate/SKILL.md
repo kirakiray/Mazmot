@@ -37,3 +37,23 @@ method: main.js
 </cap-request>
 
 工具将导航模拟器到指定的 URL 地址，并返回跳转后的 URL 地址和成功状态。
+
+## 加载失败
+
+`reload` 和 `go` 在等待 iframe 加载时（默认 30 秒）若发生错误或超时，操作将以失败返回，响应格式为：
+
+<cap-response>
+  <template error name="emulator-navigate" cid="nav004">
+    {
+      "success": false,
+      "error": "Iframe load failed"   // 或 "Iframe load timeout"
+    }
+  </template>
+</cap-response>
+
+触发失败的常见情况：
+
+- 目标地址不可达、网络中断，iframe 触发 `error` 事件 → `error: "Iframe load failed"`
+- 页面加载耗时超过 30 秒仍未触发 `load` 事件 → `error: "Iframe load timeout"`
+
+`current-info` 操作不涉及加载流程，不会返回失败信息。

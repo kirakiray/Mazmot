@@ -12,18 +12,32 @@ export default async function emulatorNavigate({
   }
 
   if (action === "reload") {
-    await emulator.reload();
-    return {
-      success: true,
-      url: emulator.url,
-    };
+    try {
+      await emulator.reload();
+      return {
+        success: true,
+        url: emulator.url,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
   }
 
   if (action === "go") {
-    await emulator.go(url);
-    return {
-      success: true,
-      url: url,
-    };
+    try {
+      await emulator.go(url);
+      return {
+        success: true,
+        url,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
   }
 }
