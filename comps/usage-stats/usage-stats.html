@@ -12,10 +12,10 @@
   </style>
 
   <div class="usage-stats">
-    模型: {{model}} | 输入: {{usage.prompt_tokens}} tokens
-    <span> | 缓存命中: {{usage.prompt_cache_hit_tokens}} tokens </span>
-    <span> | 缓存未命中: {{usage.prompt_cache_miss_tokens}} tokens </span>
-    | 输出: {{usage.completion_tokens}} tokens
+    模型: {{model}} | 输入: {{promptTokensFormatted}} tokens
+    <span> | 缓存命中: {{cacheHitTokensFormatted}} tokens </span>
+    <span> | 缓存未命中: {{cacheMissTokensFormatted}} tokens </span>
+    | 输出: {{completionTokensFormatted}} tokens
   </div>
 
   <script>
@@ -30,6 +30,26 @@
           prompt_cache_hit_tokens: 0,
           prompt_cache_miss_tokens: 0,
           completion_tokens: 0,
+        },
+      },
+      proto: {
+        get promptTokensFormatted() {
+          return this.formatTokens(this.usage.prompt_tokens);
+        },
+        get cacheHitTokensFormatted() {
+          return this.formatTokens(this.usage.prompt_cache_hit_tokens);
+        },
+        get cacheMissTokensFormatted() {
+          return this.formatTokens(this.usage.prompt_cache_miss_tokens);
+        },
+        get completionTokensFormatted() {
+          return this.formatTokens(this.usage.completion_tokens);
+        },
+        formatTokens(value) {
+          if (value >= 1000) {
+            return (value / 1000).toFixed(2) + "k";
+          }
+          return value;
         },
       },
     };
