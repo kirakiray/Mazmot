@@ -30,10 +30,10 @@ method: main.js
 
 ## 跳转到指定页面
 
-使用 `goto` 操作跳转到指定的网页地址：
+使用 `go` 操作跳转到指定的网页地址：
 
 <cap-request>
-  <template name="emulator-navigate" cid="nav003" desc="跳转到test页面" data-action="goto" data-url="/$mazmot/apps/test/project/index.html"></template>
+  <template name="emulator-navigate" cid="nav003" desc="跳转到test页面" data-action="go" data-url="/$mazmot/apps/test/project/index.html"></template>
 </cap-request>
 
 工具将导航模拟器到指定的 URL 地址。

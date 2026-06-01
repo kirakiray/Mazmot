@@ -104,8 +104,11 @@
           iframeUrl: "",
         },
         proto: {
-          get src() {
-            return this.shadow.$("iframe").ele.src;
+          get iframe() {
+            return this.shadow.$("iframe") && this.shadow.$("iframe").ele;
+          },
+          get url() {
+            return this.iframe?.src || "";
           },
           handleLoad() {
             this.iframeLoaded = true;
@@ -114,6 +117,21 @@
             if (this.iframeUrl) {
               window.open(this.iframeUrl, "_blank");
             }
+          },
+          reload() {
+            const iframe = this.iframe;
+            if (!iframe) {
+              return;
+            }
+            this.iframeLoaded = false;
+            iframe.src = iframe.src;
+          },
+          go(url) {
+            if (!url) {
+              return;
+            }
+            this.iframeUrl = url;
+            this.iframeLoaded = false;
           },
         },
         watch: {
