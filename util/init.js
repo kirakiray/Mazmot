@@ -1,6 +1,6 @@
 import { get, init } from "/nos/fs/main.js";
 
-async function writeJsonToNos(jsonData, rootDir) {
+export async function writeJsonToNos(jsonData, rootDir) {
   for (const [capName, files] of Object.entries(jsonData)) {
     for (const [filePath, fileData] of Object.entries(files)) {
       const fullPath = `${rootDir}/${capName}/${filePath}`;
