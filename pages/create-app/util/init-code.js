@@ -1,6 +1,22 @@
 import { get } from "/nos/fs/main.js";
 
-// 初始化项目代码
+async function shouldWriteFile(path) {
+  try {
+    const handle = await get(path);
+    const content = await handle.text();
+    return !content || content.trim() === "";
+  } catch (e) {
+    return true;
+  }
+}
+
+async function writeFileIfEmpty(path, content) {
+  if (await shouldWriteFile(path)) {
+    const handle = await get(path, { create: "file" });
+    await handle.write(content);
+  }
+}
+
 export async function initCode(projectPath) {
   const files = {
     "index.html": {
@@ -196,18 +212,15 @@ export const pageAnime = {
   };
 
   for (const [filePath, { code, aimap }] of Object.entries(files)) {
-    const handle = await get(`${projectPath}/${filePath}`, { create: "file" });
-    await handle.write(code);
+    const fullPath = `${projectPath}/${filePath}`;
+    await writeFileIfEmpty(fullPath, code);
 
     if (aimap) {
       const parts = filePath.split("/");
       const fileName = parts.pop();
       const aimapDir = parts.length > 0 ? `${parts.join("/")}/` : "";
-      const aimapHandle = await get(
-        `${projectPath}/${aimapDir}.aimap/${fileName}.md`,
-        { create: "file" }
-      );
-      await aimapHandle.write(aimap);
+      const aimapPath = `${projectPath}/${aimapDir}.aimap/${fileName}.md`;
+      await writeFileIfEmpty(aimapPath, aimap);
     }
   }
 }
