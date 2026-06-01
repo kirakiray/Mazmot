@@ -143,8 +143,7 @@
                       overflow-y: auto;
                     "
                   >
-                    {{typeof $data.result === 'string' ? $data.result :
-                    JSON.stringify($data.result, null, 2)}}
+                    {{$host.formatResult($data.result)}}
                   </div>
                 </o-else>
               </div>
@@ -199,7 +198,11 @@
           },
         },
         proto: {
-          
+          formatResult(result) {
+            return typeof result === "string"
+              ? result
+              : JSON.stringify(result, null, 2);
+          },
           get emulator() {
             return this.host.shadow.$("#emulator");
           },
