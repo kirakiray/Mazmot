@@ -1,4 +1,4 @@
-export default function emulatorJump() {
+export default function emulatorNavigate({ data = {}, content }) {
   debugger;
-  console.log("emulatorJump");
+  console.log("emulatorNavigate");
 }
