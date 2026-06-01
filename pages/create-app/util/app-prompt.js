@@ -5,7 +5,7 @@ export async function getAppPrompt({ projectPath }) {
     throw new Error("projectPath is required");
   }
   try {
-    const res = await fetch(import.meta.resolve("./app-prompt.md"));
+    const res = await fetch(import.meta.resolve("/util/system-prompt.md"));
     const content = await res.text();
     return [
       {
