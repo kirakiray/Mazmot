@@ -3,7 +3,7 @@ export default function emulatorNavigate({ data = {}, content, emulator }) {
 
   if (action === "current-info") {
     return {
-      url: emulator.url,
+      src: emulator.src,
     };
   }
 }
