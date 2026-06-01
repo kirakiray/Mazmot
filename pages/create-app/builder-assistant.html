@@ -177,6 +177,9 @@
       const { get } = await load("/nos/fs/main.js");
       const { getAssistant } = await load("../../ai/main.js");
       const { getAppPrompt } = await load("./util/app-prompt.js");
+      const { confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
 
       return {
         data: {
@@ -209,7 +212,26 @@
           async deleteMessage(index) {
             if (index < 0 || index >= this.messages.length) return;
 
+            const result = await confirm({
+              title: "删除确认",
+              message: "确定要删除这条消息及其后面的所有消息吗？",
+              yes: "删除",
+              cancel: "取消",
+            });
+
+            if (!result) return;
+
+            debugger
+
             this.messages = this.messages.slice(0, index);
+
+            // 查看最后一个消息是否是响应项
+            const lastItem = this.messages.slice(-1)[0];
+            if (lastItem.isResponse) {
+              // 删除最后一个响应项，不然的会导致无法进行后续操作
+              this.messages.pop();
+            }
+
             await this.saveProject();
           },
           async handleCapabilityResults(results) {
