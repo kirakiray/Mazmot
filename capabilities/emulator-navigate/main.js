@@ -1,4 +1,8 @@
-export default function emulatorNavigate({ data = {}, content, emulator }) {
+export default async function emulatorNavigate({
+  data = {},
+  content,
+  emulator,
+}) {
   const { action, url } = data;
 
   if (action === "current-info") {
@@ -8,7 +12,7 @@ export default function emulatorNavigate({ data = {}, content, emulator }) {
   }
 
   if (action === "reload") {
-    emulator.reload();
+    await emulator.reload();
     return {
       success: true,
       url: emulator.url,
@@ -16,7 +20,7 @@ export default function emulatorNavigate({ data = {}, content, emulator }) {
   }
 
   if (action === "go") {
-    emulator.go(url);
+    await emulator.go(url);
     return {
       success: true,
       url: url,
