@@ -34,11 +34,34 @@
         </o-if>
         <o-else slot="avatar"> U </o-else>
         <o-if :value="$data.role !== 'system' && !$data.isResponse">
-          <o-md>{{$data.content}}</o-md>
+          <div style="position: relative">
+            <o-md>{{$data.content}}</o-md>
+            <button
+              style="
+                position: absolute;
+                top: 0;
+                right: 0;
+                padding: 4px 8px;
+                background: var(--md-sys-color-error-container);
+                color: var(--md-sys-color-on-error-container);
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                opacity: 0.7;
+              "
+              on:click="$host.deleteMessage($index)"
+            >
+              删除
+            </button>
+          </div>
         </o-if>
 
         <o-if :value="$data.usage">
-          <m-usage-stats attr:model="$data.model" :usage="$data.usage"></m-usage-stats>
+          <m-usage-stats
+            attr:model="$data.model"
+            :usage="$data.usage"
+          ></m-usage-stats>
         </o-if>
       </m-chat-item>
     </o-fill>
@@ -59,29 +82,69 @@
       </div>
     </o-if>
     <o-if :value="pendingResults">
-      <div style="padding: 16px; border-top: 1px solid var(--md-sys-color-outline-variant)">
+      <div
+        style="
+          padding: 16px;
+          border-top: 1px solid var(--md-sys-color-outline-variant);
+        "
+      >
         <div style="margin-bottom: 12px; color: var(--md-sys-color-normal)">
           AI 请求了以下能力，点击确认发送结果
         </div>
         <o-fill :value="pendingResults">
-          <div style="margin-bottom: 12px; background: var(--md-sys-color-surface-container); border-radius: 8px; overflow: hidden;">
+          <div
+            style="
+              margin-bottom: 12px;
+              background: var(--md-sys-color-surface-container);
+              border-radius: 8px;
+              overflow: hidden;
+            "
+          >
             <div
-              style="padding: 8px 12px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
+              style="
+                padding: 8px 12px;
+                font-size: 12px;
+                color: var(--md-sys-color-on-surface-variant);
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
               on:click="$host.toggleResultExpand($index)"
             >
               <span>{{$data.name}}</span>
-              <span style="font-size: 10px;">{{$host.resultExpanded[$index] ? '▼' : '▶'}}</span>
+              <span style="font-size: 10px"
+                >{{$host.resultExpanded[$index] ? '▼' : '▶'}}</span
+              >
             </div>
             <o-if :value="$host.resultExpanded[$index]">
-              <div style="padding: 0 12px 12px 12px;">
+              <div style="padding: 0 12px 12px 12px">
                 <o-if :value="$data.error">
-                  <div style="font-size: 13px; color: var(--md-sys-color-error); font-family: monospace; word-break: break-all;">
+                  <div
+                    style="
+                      font-size: 13px;
+                      color: var(--md-sys-color-error);
+                      font-family: monospace;
+                      word-break: break-all;
+                    "
+                  >
                     {{$data.error}}
                   </div>
                 </o-if>
                 <o-else>
-                  <div style="font-size: 13px; color: var(--md-sys-color-on-surface); font-family: monospace; word-break: break-all; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
-                    {{typeof $data.result === 'string' ? $data.result : JSON.stringify($data.result, null, 2)}}
+                  <div
+                    style="
+                      font-size: 13px;
+                      color: var(--md-sys-color-on-surface);
+                      font-family: monospace;
+                      word-break: break-all;
+                      white-space: pre-wrap;
+                      max-height: 200px;
+                      overflow-y: auto;
+                    "
+                  >
+                    {{typeof $data.result === 'string' ? $data.result :
+                    JSON.stringify($data.result, null, 2)}}
                   </div>
                 </o-else>
               </div>
@@ -142,6 +205,12 @@
               ...this.resultExpanded,
               [index]: !this.resultExpanded[index],
             };
+          },
+          async deleteMessage(index) {
+            if (index < 0 || index >= this.messages.length) return;
+
+            this.messages = this.messages.slice(0, index);
+            await this.saveProject();
           },
           async handleCapabilityResults(results) {
             this.pendingResults = results;
@@ -272,6 +341,7 @@
               const initMessages = await getAppPrompt({
                 projectPath: this.projectPath + "/project",
               });
+
               this.messages = initMessages;
               await targetChatHandle.write(JSON.stringify(this.messages));
             } else {
@@ -286,7 +356,16 @@
               });
 
               const chatContent = await targetChatHandle.json();
-              this.messages = chatContent;
+
+              const lastItem = chatContent.slice(-1)[0];
+              if (lastItem.isResponse) {
+                // 删除最后一个响应项，不然的会导致无法进行后续操作
+                chatContent.pop();
+                this.messages = chatContent;
+                await this.saveProject();
+              } else {
+                this.messages = chatContent;
+              }
             }
 
             this.currentChatFile = targetChatHandle.name;
