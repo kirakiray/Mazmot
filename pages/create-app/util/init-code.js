@@ -131,6 +131,9 @@ export const pageAnime = {
     export default async () => {
       return {
         data: {},
+        attached() {
+          console.log('[Layout] Layout component attached');
+        }
       };
     };
   </script>
@@ -204,6 +207,9 @@ export const pageAnime = {
     export default async () => {
       return {
         data: {},
+        attached() {
+          console.log('[Home Page] Home page component attached');
+        }
       };
     };
   </script>

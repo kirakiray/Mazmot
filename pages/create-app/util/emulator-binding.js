@@ -23,6 +23,8 @@
 
   const logs = [];
 
+  const originConsole = console;
+
   // 代理并记录所有的console 调用
   Object.keys(console).forEach((key) => {
     outerConsole[key] = (...args) => {
@@ -30,7 +32,7 @@
         logs.length = 0;
       }
       logs.push({ key, args });
-      console[key].apply(console, args);
+      originConsole[key].apply(originConsole, args);
     };
   });
 
