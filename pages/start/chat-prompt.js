@@ -1,6 +1,6 @@
-import getCapability from "../capabilities/get-capability/main.js";
+import getCapability from "../../capabilities/get-capability/main.js";
 
-export async function getSystemPrompt() {
+export async function getChatPrompt() {
   try {
     const res = await fetch("capabilities/main.md");
     const content = await res.text();
@@ -29,7 +29,6 @@ export async function getSystemPrompt() {
   }
 }
 
-// get-capability 的使用文档
 const getCapabilityDoc = async () => {
   const capabilityDoc = await getCapability({
     data: { name: "get-capability" },
@@ -54,7 +53,6 @@ ${skillDocs.content}
   };
 };
 
-// 获取所有能力列表
 const getCapabilitiesMessage = async () => {
   const capabilities = await getCapability({ data: { all: true } });
 
@@ -73,4 +71,4 @@ ${JSON.stringify(capabilities, null, 2)}
 
 window.getCapabilitiesMessage = getCapabilitiesMessage;
 
-export default getSystemPrompt;
+export default getChatPrompt;

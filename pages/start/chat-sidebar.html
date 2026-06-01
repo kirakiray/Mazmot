@@ -66,7 +66,7 @@
     export default async ({ load }) => {
       const { saveHistory, generateSessionId, deleteHistory, listHistories } =
         await load("../../util/history.js");
-      const { getSystemPrompt } = await load("../../util/system-prompt.js");
+      const { getChatPrompt } = await load("./chat-prompt.js");
       const { confirm } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
       );
@@ -101,7 +101,7 @@
           async createNewSession() {
             const newSessionId = generateSessionId();
             sessionStorage.setItem("lastSessionId", newSessionId);
-            const initMessages = await getSystemPrompt();
+            const initMessages = await getChatPrompt();
             await saveHistory(newSessionId, initMessages);
             const provider = this.getProvider("chat-data");
             provider.sessionId = newSessionId;
