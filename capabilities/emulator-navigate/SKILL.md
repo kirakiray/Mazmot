@@ -26,7 +26,7 @@ method: main.js
   <template name="emulator-navigate" cid="nav002" desc="刷新当前模拟器页面" data-action="reload"></template>
 </cap-request>
 
-工具将刷新模拟器中当前显示的页面。
+工具将刷新模拟器中当前显示的页面，并返回刷新后的 URL 地址。
 
 ## 跳转到指定页面
 
@@ -36,4 +36,4 @@ method: main.js
   <template name="emulator-navigate" cid="nav003" desc="跳转到test页面" data-action="go" data-url="/$mazmot/apps/test/project/index.html"></template>
 </cap-request>
 
-工具将导航模拟器到指定的 URL 地址。
+工具将导航模拟器到指定的 URL 地址，并返回跳转后的 URL 地址和成功状态。
