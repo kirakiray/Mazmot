@@ -33,8 +33,21 @@ export default async function fs({ data = {}, content }) {
       throw new Error("没有内容，无法写入");
     }
 
-    const temp = $(`<template>${content}</template>`);
-    let textToWrite = temp.ele.content.textContent.trim();
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = content;
+    let textToWrite = textarea.value.trim();
+
+    if (content.startsWith(`<template page="">`)) {
+      textToWrite = textToWrite.replace(
+        '<template page="">',
+        "<template page>",
+      );
+    } else if (content.startsWith(`<template component="">`)) {
+      textToWrite = textToWrite.replace(
+        '<template component="">',
+        "<template component>",
+      );
+    }
 
     if (!textToWrite) {
       throw new Error("没有文本内容，无法写入");
