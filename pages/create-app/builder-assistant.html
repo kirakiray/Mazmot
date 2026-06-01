@@ -4,6 +4,7 @@
   <l-m src="../../comps/mascot/mascot.html"></l-m>
   <l-m src="../../comps/cap-request/cap-request.html"></l-m>
   <l-m src="../../comps/usage-stats/usage-stats.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
   <style>
     :host {
       display: flex;
@@ -151,19 +152,29 @@
             </o-if>
           </div>
         </o-fill>
-        <button
-          style="
-            padding: 8px 16px;
-            background: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-          "
-          on:click="confirmSend"
-        >
-          确认发送
-        </button>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <button
+            style="
+              padding: 8px 16px;
+              background: var(--md-sys-color-primary);
+              color: var(--md-sys-color-on-primary);
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+            "
+            on:click="confirmSend"
+          >
+            确认发送
+          </button>
+          <p-switch
+            size="s"
+            checked-value="true"
+            unchecked-value="false"
+            sync:value="autoConfirm"
+          >
+            自动确认
+          </p-switch>
+        </div>
       </div>
     </o-if>
   </m-chatbox>
@@ -190,6 +201,7 @@
           currentChatFile: null,
           pendingResults: null,
           resultExpanded: {},
+          autoConfirm: false,
         },
         watch: {
           async projectPath(newPath) {
@@ -243,6 +255,10 @@
           async handleCapabilityResults(results) {
             this.pendingResults = results;
             this.resultExpanded = {};
+
+            if (this.autoConfirm) {
+              await this.confirmSend();
+            }
           },
           async confirmSend() {
             if (!this.pendingResults) return;
