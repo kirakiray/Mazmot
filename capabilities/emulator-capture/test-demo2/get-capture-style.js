@@ -4,11 +4,44 @@
  */
 
 /**
+ * 获取元素的直接文本内容（不包含子元素的文本）
+ */
+function getDirectTextContent(element) {
+  let text = '';
+  for (const node of element.childNodes) {
+    if (node.nodeType === 3) { // 文本节点
+      text += node.textContent;
+    }
+  }
+  return text.trim() || undefined;
+}
+
+/**
+ * 清理对象中的 undefined 字段
+ */
+function cleanObject(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const cleaned = cleanObject(value);
+        if (Object.keys(cleaned).length > 0) {
+          result[key] = cleaned;
+        }
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * 获取单个元素的完整样式信息
  * @param {Element} element - DOM 元素
  * @returns {object|null} 样式信息对象
  */
-function getCaptureStyle(element) {
+export function getCaptureStyle(element) {
   if (!element || element.nodeType !== 1) return null;
 
   const computed = window.getComputedStyle(element);
@@ -113,44 +146,11 @@ function getCaptureStyle(element) {
 }
 
 /**
- * 获取元素的直接文本内容（不包含子元素的文本）
- */
-function getDirectTextContent(element) {
-  let text = '';
-  for (const node of element.childNodes) {
-    if (node.nodeType === 3) { // 文本节点
-      text += node.textContent;
-    }
-  }
-  return text.trim() || undefined;
-}
-
-/**
- * 清理对象中的 undefined 字段
- */
-function cleanObject(obj) {
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        const cleaned = cleanObject(value);
-        if (Object.keys(cleaned).length > 0) {
-          result[key] = cleaned;
-        }
-      } else {
-        result[key] = value;
-      }
-    }
-  }
-  return result;
-}
-
-/**
  * 递归获取元素及所有子元素的样式信息，返回嵌套树形结构
  * @param {Element} element - 传入的根元素
  * @returns {object|null} 嵌套的样式信息对象，children 包含子元素
  */
-function captureElementStyles(element) {
+export function captureElementStyles(element) {
   if (!element || element.nodeType !== 1) {
     console.warn('captureElementStyles: 传入的不是一个有效的元素');
     return null;
@@ -198,7 +198,7 @@ function captureElementStyles(element) {
 /**
  * 将截取的样式信息应用到元素上
  */
-function applyStyles(el, item) {
+export function applyStyles(el, item) {
   const s = el.style;
 
   if (item.rect) {
@@ -275,7 +275,7 @@ function applyStyles(el, item) {
  * @param {object} captureNode - captureElementStyles 返回的嵌套对象
  * @returns {HTMLElement|null} 还原的元素
  */
-function restoreFromCapture(captureNode) {
+export function restoreFromCapture(captureNode) {
   if (!captureNode) return null;
 
   // fragment 虚拟容器
@@ -307,11 +307,4 @@ function restoreFromCapture(captureNode) {
   }
 
   return el;
-}
-
-// 导出
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { captureElementStyles, getCaptureStyle, restoreFromCapture, applyStyles };
-} else {
-  window.CaptureStyle = { captureElementStyles, getCaptureStyle, restoreFromCapture, applyStyles };
 }

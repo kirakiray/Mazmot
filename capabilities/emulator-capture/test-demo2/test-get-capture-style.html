@@ -95,8 +95,9 @@
     <div id="json-output">点击"截取样式"按钮开始...</div>
   </div>
 
-  <script src="get-capture-style.js"></script>
-  <script>
+  <script type="module">
+    import { captureElementStyles, restoreFromCapture } from './get-capture-style.js';
+
     let capturedData = null;
 
     // 绑定按钮事件
@@ -105,7 +106,7 @@
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
       const sourceEl = iframeDoc.body;
 
-      capturedData = CaptureStyle.captureElementStyles(sourceEl);
+      capturedData = captureElementStyles(sourceEl);
 
       document.getElementById('json-output').textContent = JSON.stringify(capturedData, null, 2);
       console.log('截取到的样式数据：', capturedData);
@@ -120,7 +121,7 @@
       const container = document.getElementById('restore-container');
       container.innerHTML = '';
 
-      const restoredEl = CaptureStyle.restoreFromCapture(capturedData);
+      const restoredEl = restoreFromCapture(capturedData);
       if (restoredEl) {
         container.appendChild(restoredEl);
         console.log('还原成功！', restoredEl);
