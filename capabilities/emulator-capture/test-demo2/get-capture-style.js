@@ -191,9 +191,119 @@ function captureElementStyles(element) {
   return styleInfo;
 }
 
+/**
+ * 将截取的样式信息应用到元素上
+ */
+function applyStyles(el, item) {
+  const s = el.style;
+
+  if (item.rect) {
+    s.position = 'absolute';
+    s.left = item.rect.x + 'px';
+    s.top = item.rect.y + 'px';
+    s.width = item.rect.width + 'px';
+    s.height = item.rect.height + 'px';
+  }
+
+  if (item.margin) {
+    s.marginTop = item.margin.top + 'px';
+    s.marginRight = item.margin.right + 'px';
+    s.marginBottom = item.margin.bottom + 'px';
+    s.marginLeft = item.margin.left + 'px';
+  }
+  if (item.padding) {
+    s.paddingTop = item.padding.top + 'px';
+    s.paddingRight = item.padding.right + 'px';
+    s.paddingBottom = item.padding.bottom + 'px';
+    s.paddingLeft = item.padding.left + 'px';
+  }
+  if (item.border) {
+    if (item.border.topWidth) s.borderTop = `${item.border.topWidth}px ${item.border.topStyle || 'solid'} ${item.border.topColor || 'transparent'}`;
+    if (item.border.rightWidth) s.borderRight = `${item.border.rightWidth}px ${item.border.rightStyle || 'solid'} ${item.border.rightColor || 'transparent'}`;
+    if (item.border.bottomWidth) s.borderBottom = `${item.border.bottomWidth}px ${item.border.bottomStyle || 'solid'} ${item.border.bottomColor || 'transparent'}`;
+    if (item.border.leftWidth) s.borderLeft = `${item.border.leftWidth}px ${item.border.leftStyle || 'solid'} ${item.border.leftColor || 'transparent'}`;
+  }
+
+  if (item.backgroundColor && item.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+    s.backgroundColor = item.backgroundColor;
+  }
+  if (item.color) s.color = item.color;
+  if (item.fontSize) s.fontSize = item.fontSize;
+  if (item.fontFamily) s.fontFamily = item.fontFamily;
+  if (item.fontWeight) s.fontWeight = item.fontWeight;
+  if (item.fontStyle) s.fontStyle = item.fontStyle;
+  if (item.lineHeight) s.lineHeight = item.lineHeight;
+  if (item.textAlign) s.textAlign = item.textAlign;
+  if (item.textDecoration) s.textDecoration = item.textDecoration;
+  if (item.letterSpacing) s.letterSpacing = item.letterSpacing;
+  if (item.whiteSpace) s.whiteSpace = item.whiteSpace;
+  if (item.wordBreak) s.wordBreak = item.wordBreak;
+
+  if (item.borderRadius) {
+    s.borderRadius = `${item.borderRadius.topLeft} ${item.borderRadius.topRight} ${item.borderRadius.bottomRight} ${item.borderRadius.bottomLeft}`;
+  }
+
+  if (item.boxShadow) s.boxShadow = item.boxShadow;
+  if (item.opacity !== undefined && item.opacity < 1) s.opacity = item.opacity;
+  if (item.overflow) s.overflow = item.overflow;
+
+  if (item.display) s.display = item.display;
+  if (item.position) s.position = item.position;
+  if (item.zIndex) s.zIndex = item.zIndex;
+  if (item.transform) s.transform = item.transform;
+
+  if (item.flexDirection) s.flexDirection = item.flexDirection;
+  if (item.justifyContent) s.justifyContent = item.justifyContent;
+  if (item.alignItems) s.alignItems = item.alignItems;
+  if (item.flexWrap) s.flexWrap = item.flexWrap;
+  if (item.gap) s.gap = item.gap;
+
+  if (item.gridTemplateColumns) s.gridTemplateColumns = item.gridTemplateColumns;
+  if (item.gridTemplateRows) s.gridTemplateRows = item.gridTemplateRows;
+}
+
+/**
+ * 将截取的嵌套样式信息还原为真实 DOM 元素
+ * @param {object} captureNode - captureElementStyles 返回的嵌套对象
+ * @returns {HTMLElement|null} 还原的元素
+ */
+function restoreFromCapture(captureNode) {
+  if (!captureNode) return null;
+
+  // fragment 虚拟容器
+  if (captureNode.tagName === 'fragment') {
+    const wrapper = document.createElement('div');
+    if (captureNode.children) {
+      captureNode.children.forEach(child => {
+        const el = restoreFromCapture(child);
+        if (el) wrapper.appendChild(el);
+      });
+    }
+    return wrapper;
+  }
+
+  const el = document.createElement(captureNode.tagName);
+
+  if (captureNode.className) el.className = captureNode.className;
+  if (captureNode.id) el.id = captureNode.id;
+  if (captureNode.textContent) el.textContent = captureNode.textContent;
+
+  applyStyles(el, captureNode);
+
+  // 递归还原子元素
+  if (captureNode.children) {
+    captureNode.children.forEach(child => {
+      const childEl = restoreFromCapture(child);
+      if (childEl) el.appendChild(childEl);
+    });
+  }
+
+  return el;
+}
+
 // 导出
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { captureElementStyles, getCaptureStyle };
+  module.exports = { captureElementStyles, getCaptureStyle, restoreFromCapture, applyStyles };
 } else {
-  window.CaptureStyle = { captureElementStyles, getCaptureStyle };
+  window.CaptureStyle = { captureElementStyles, getCaptureStyle, restoreFromCapture, applyStyles };
 }
