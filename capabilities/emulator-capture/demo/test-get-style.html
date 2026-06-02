@@ -209,6 +209,11 @@
         <h1>🎯 样式提取器测试页面</h1>
         
         <div class="controls">
+            <select id="presetSelect" style="padding: 10px; border-radius: 8px; border: 2px solid #667eea; font-size: 14px;">
+                <option value="minimal">最小化模式（数据最小）</option>
+                <option value="standard" selected>标准模式（推荐）</option>
+                <option value="full">完整模式（数据最大）</option>
+            </select>
             <button id="extractBtn" onclick="extractStyles()">提取样式数据</button>
             <button id="downloadBtn" onclick="downloadJSON()" disabled>下载JSON</button>
             <div id="status" class="status" style="display: none;"></div>
@@ -245,6 +250,10 @@
                     <div class="stat-value" id="dataSize">-</div>
                     <div class="stat-label">数据大小</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="compressionRatio">-</div>
+                    <div class="stat-label">压缩率</div>
+                </div>
             </div>
         </div>
     </div>
@@ -254,6 +263,23 @@
     
     <script>
         let extractedData = null;
+
+        // 配置说明
+        const CONFIG_INFO = {
+            minimal: '只提取基本样式（尺寸、盒模型、外观），跳过所有默认值，数据量最小',
+            standard: '提取常用样式（尺寸、盒模型、外观、文本、布局），跳过默认值，推荐使用',
+            full: '提取所有样式信息，包含Flex/Grid布局，不跳过默认值，数据量最大'
+        };
+
+        // 显示配置说明
+        function showConfigInfo() {
+            const presetSelect = document.getElementById('presetSelect');
+            const presetName = presetSelect.value;
+            console.log(`当前配置: ${presetName} - ${CONFIG_INFO[presetName]}`);
+        }
+
+        // 监听配置变化
+        document.getElementById('presetSelect')?.addEventListener('change', showConfigInfo);
 
         // 显示状态信息
         function showStatus(message, type) {
@@ -273,12 +299,19 @@
             const extractBtn = document.getElementById('extractBtn');
             const downloadBtn = document.getElementById('downloadBtn');
             const output = document.getElementById('output');
+            const presetSelect = document.getElementById('presetSelect');
             
             try {
                 // 禁用按钮，显示加载状态
                 extractBtn.disabled = true;
                 extractBtn.textContent = '提取中...';
                 showStatus('正在提取样式数据...', 'loading');
+
+                // 获取选择的配置预设
+                const presetName = presetSelect.value;
+                const config = StyleExtractor.PRESETS[presetName];
+                
+                console.log('使用配置:', presetName, config);
 
                 // 获取iframe元素
                 const iframe = document.getElementById('resumeFrame');
@@ -294,7 +327,7 @@
                 });
 
                 // 使用StyleExtractor获取样式数据
-                extractedData = await StyleExtractor.getIframeStyles(iframe);
+                extractedData = await StyleExtractor.getIframeStyles(iframe, config);
 
                 // 打印到控制台
                 console.group('🎯 提取的样式数据');
@@ -336,6 +369,18 @@
             const bytes = new Blob([jsonStr]).size;
             const kb = (bytes / 1024).toFixed(2);
             document.getElementById('dataSize').textContent = `${kb} KB`;
+
+            // 计算压缩率（与完整模式对比）
+            const fullConfig = StyleExtractor.PRESETS.full;
+            const fullData = StyleExtractor.exportStylesToJSON(data);
+            const fullBytes = new Blob([fullData]).size;
+            
+            // 估算完整模式的大小（基于当前数据）
+            const avgSizePerElement = bytes / data.metadata.totalElements;
+            const estimatedFullSize = avgSizePerElement * data.metadata.totalElements * 2.5; // 估算完整模式大约2.5倍
+            
+            const compressionRatio = ((1 - bytes / estimatedFullSize) * 100).toFixed(1);
+            document.getElementById('compressionRatio').textContent = `${compressionRatio}%`;
         }
 
         // 下载JSON文件

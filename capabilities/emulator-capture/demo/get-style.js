@@ -1,166 +1,398 @@
 /**
  * 获取元素样式数据的工具库
  * 递归获取从body开始的所有元素的外观信息
+ * 支持数据压缩和配置选项
  */
 
+// 默认配置
+const DEFAULT_CONFIG = {
+  // 提取选项
+  includeDimensions: true,      // 尺寸位置
+  includeBoxModel: true,        // 盒模型
+  includeAppearance: true,      // 外观样式
+  includeText: true,            // 文本样式
+  includeLayout: true,          // 布局相关
+  includeFlex: false,           // Flex布局（默认不提取）
+  includeGrid: false,           // Grid布局（默认不提取）
+
+  // 压缩选项
+  skipDefaultValues: true,      // 跳过默认值
+  skipInheritedStyles: true,    // 跳过继承的样式
+  compactFieldNames: true,      // 使用简写字段名
+
+  // 过滤选项
+  minElementSize: 0,            // 最小元素尺寸（像素），小于此值的元素不提取
+  skipHiddenElements: true,     // 跳过隐藏元素
+  skipEmptyText: true           // 跳过空文本节点
+};
+
+// 简写字段名映射
+const COMPACT_NAMES = {
+  // 基础信息
+  tagName: 't',
+  className: 'c',
+  id: 'i',
+  depth: 'd',
+
+  // 尺寸
+  dimensions: 'dim',
+  width: 'w',
+  height: 'h',
+  x: 'x',
+  y: 'y',
+
+  // 盒模型
+  boxModel: 'box',
+  margin: 'm',
+  padding: 'p',
+  border: 'b',
+
+  // 外观
+  appearance: 'app',
+  backgroundColor: 'bg',
+  borderRadius: 'br',
+  boxShadow: 'bs',
+  opacity: 'o',
+  transform: 'tf',
+
+  // 文本
+  text: 'txt',
+  color: 'cl',
+  fontSize: 'fs',
+  fontFamily: 'ff',
+  fontWeight: 'fw',
+  lineHeight: 'lh',
+
+  // 布局
+  layout: 'lyt',
+  display: 'dp',
+  position: 'pos',
+  visibility: 'vis',
+  overflow: 'ov'
+};
+
 /**
- * 获取单个元素的样式信息
- * @param {Element} element - DOM元素
- * @returns {Object} 元素的样式信息
+ * 检查值是否为默认值
  */
-function getElementStyles(element) {
+function isDefaultValue(key, value) {
+  const defaultValues = {
+    // 尺寸相关
+    width: 0, height: 0, x: 0, y: 0,
+
+    // 盒模型
+    margin: [0, 0, 0, 0],
+    padding: [0, 0, 0, 0],
+    border: [0, 0, 0, 0],
+
+    // 外观
+    backgroundColor: 'rgba(0, 0, 0, 0)',
+    backgroundImage: 'none',
+    borderRadius: ['0px', '0px', '0px', '0px'],
+    boxShadow: 'none',
+    opacity: 1,
+    transform: 'none',
+
+    // 文本
+    color: 'rgb(0, 0, 0)',
+    fontSize: '16px',
+    fontWeight: '400',
+    lineHeight: 'normal',
+
+    // 布局
+    display: 'block',
+    position: 'static',
+    visibility: 'visible',
+    overflow: 'visible',
+    zIndex: 'auto'
+  };
+
+  if (Array.isArray(value) && Array.isArray(defaultValues[key])) {
+    return JSON.stringify(value) === JSON.stringify(defaultValues[key]);
+  }
+
+  return value === defaultValues[key];
+}
+
+/**
+ * 检查元素是否应该被跳过
+ */
+function shouldSkipElement(element, computedStyle, rect, config) {
+  // 跳过隐藏元素
+  if (config.skipHiddenElements) {
+    if (computedStyle.display === 'none' ||
+        computedStyle.visibility === 'hidden' ||
+        computedStyle.opacity === '0') {
+      return true;
+    }
+  }
+
+  // 跳过小元素
+  if (config.minElementSize > 0) {
+    if (rect.width < config.minElementSize || rect.height < config.minElementSize) {
+      return true;
+    }
+  }
+
+  // 跳过空文本
+  if (config.skipEmptyText) {
+    const text = element.textContent?.trim();
+    if (!text && !element.children.length && rect.width === 0 && rect.height === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 简化字段名
+ */
+function compactKey(key, useCompact) {
+  if (!useCompact) return key;
+  return COMPACT_NAMES[key] || key;
+}
+
+/**
+ * 获取单个元素的样式信息（优化版）
+ */
+function getElementStyles(element, config = {}) {
   if (!element || element.nodeType !== 1) {
     return null;
   }
 
+  const cfg = { ...DEFAULT_CONFIG, ...config };
   const computedStyle = window.getComputedStyle(element);
   const rect = element.getBoundingClientRect();
 
-  // 获取元素的基本信息
-  const styleInfo = {
-    tagName: element.tagName.toLowerCase(),
-    className: element.className || '',
-    id: element.id || '',
+  // 检查是否应该跳过此元素
+  if (shouldSkipElement(element, computedStyle, rect, cfg)) {
+    return null;
+  }
 
-    // 尺寸和位置信息
-    dimensions: {
-      width: rect.width,
-      height: rect.height,
-      x: rect.x,
-      y: rect.y,
-      top: rect.top,
-      left: rect.left,
-      right: rect.right,
-      bottom: rect.bottom
-    },
+  const useCompact = cfg.compactFieldNames;
+  const styleInfo = {};
 
-    // 盒模型
-    boxModel: {
-      margin: [
-        parseFloat(computedStyle.marginTop) || 0,
-        parseFloat(computedStyle.marginRight) || 0,
-        parseFloat(computedStyle.marginBottom) || 0,
-        parseFloat(computedStyle.marginLeft) || 0
-      ],
-      padding: [
-        parseFloat(computedStyle.paddingTop) || 0,
-        parseFloat(computedStyle.paddingRight) || 0,
-        parseFloat(computedStyle.paddingBottom) || 0,
-        parseFloat(computedStyle.paddingLeft) || 0
-      ],
-      border: [
-        parseFloat(computedStyle.borderTopWidth) || 0,
-        parseFloat(computedStyle.borderRightWidth) || 0,
-        parseFloat(computedStyle.borderBottomWidth) || 0,
-        parseFloat(computedStyle.borderLeftWidth) || 0
-      ]
-    },
+  // 基础信息
+  styleInfo[compactKey('tagName', useCompact)] = element.tagName.toLowerCase();
 
-    // 外观样式
-    appearance: {
-      backgroundColor: computedStyle.backgroundColor || 'transparent',
-      backgroundImage: computedStyle.backgroundImage || 'none',
-      backgroundSize: computedStyle.backgroundSize || 'auto',
-      backgroundPosition: computedStyle.backgroundPosition || '0% 0%',
-      backgroundRepeat: computedStyle.backgroundRepeat || 'repeat',
+  if (element.className) {
+    styleInfo[compactKey('className', useCompact)] = element.className;
+  }
 
-      // 边框
-      borderColor: [
-        computedStyle.borderTopColor || 'rgb(0, 0, 0)',
-        computedStyle.borderRightColor || 'rgb(0, 0, 0)',
-        computedStyle.borderBottomColor || 'rgb(0, 0, 0)',
-        computedStyle.borderLeftColor || 'rgb(0, 0, 0)'
-      ],
-      borderStyle: [
-        computedStyle.borderTopStyle || 'none',
-        computedStyle.borderRightStyle || 'none',
-        computedStyle.borderBottomStyle || 'none',
-        computedStyle.borderLeftStyle || 'none'
-      ],
+  if (element.id) {
+    styleInfo[compactKey('id', useCompact)] = element.id;
+  }
 
-      // 圆角
-      borderRadius: [
-        computedStyle.borderTopLeftRadius || '0px',
-        computedStyle.borderTopRightRadius || '0px',
-        computedStyle.borderBottomRightRadius || '0px',
-        computedStyle.borderBottomLeftRadius || '0px'
-      ],
+  // 尺寸和位置信息
+  if (cfg.includeDimensions) {
+    const dimensions = {};
 
-      // 阴影
-      boxShadow: computedStyle.boxShadow || 'none',
+    const addDimension = (key, value) => {
+      if (!cfg.skipDefaultValues || !isDefaultValue(key, value)) {
+        dimensions[compactKey(key, useCompact)] = Math.round(value * 100) / 100;
+      }
+    };
 
-      // 透明度
-      opacity: parseFloat(computedStyle.opacity) || 1,
+    addDimension('width', rect.width);
+    addDimension('height', rect.height);
+    addDimension('x', rect.x);
+    addDimension('y', rect.y);
 
-      // 变换
-      transform: computedStyle.transform || 'none',
-      transformOrigin: computedStyle.transformOrigin || '50% 50% 0px'
-    },
-
-    // 文本样式
-    text: {
-      color: computedStyle.color || 'rgb(0, 0, 0)',
-      fontSize: computedStyle.fontSize || '16px',
-      fontFamily: computedStyle.fontFamily || 'Times New Roman',
-      fontWeight: computedStyle.fontWeight || '400',
-      fontStyle: computedStyle.fontStyle || 'normal',
-      lineHeight: computedStyle.lineHeight || 'normal',
-      textAlign: computedStyle.textAlign || 'start',
-      textDecoration: computedStyle.textDecoration || 'none solid rgb(0, 0, 0)',
-      textShadow: computedStyle.textShadow || 'none',
-      letterSpacing: computedStyle.letterSpacing || 'normal',
-      wordSpacing: computedStyle.wordSpacing || 'normal'
-    },
-
-    // 布局相关
-    layout: {
-      display: computedStyle.display || 'block',
-      position: computedStyle.position || 'static',
-      visibility: computedStyle.visibility || 'visible',
-      overflow: computedStyle.overflow || 'visible',
-      overflowX: computedStyle.overflowX || 'visible',
-      overflowY: computedStyle.overflowY || 'visible',
-      zIndex: computedStyle.zIndex || 'auto',
-      float: computedStyle.float || 'none',
-      clear: computedStyle.clear || 'none'
-    },
-
-    // Flex布局
-    flex: {
-      flexDirection: computedStyle.flexDirection || 'row',
-      justifyContent: computedStyle.justifyContent || 'flex-start',
-      alignItems: computedStyle.alignItems || 'stretch',
-      alignContent: computedStyle.alignContent || 'stretch',
-      flexWrap: computedStyle.flexWrap || 'nowrap',
-      flexGrow: computedStyle.flexGrow || '0',
-      flexShrink: computedStyle.flexShrink || '1',
-      flexBasis: computedStyle.flexBasis || 'auto',
-      gap: computedStyle.gap || 'normal',
-      rowGap: computedStyle.rowGap || 'normal',
-      columnGap: computedStyle.columnGap || 'normal'
-    },
-
-    // Grid布局
-    grid: {
-      gridTemplateColumns: computedStyle.gridTemplateColumns || 'none',
-      gridTemplateRows: computedStyle.gridTemplateRows || 'none',
-      gridTemplateAreas: computedStyle.gridTemplateAreas || 'none',
-      gridGap: computedStyle.gridGap || '0px 0px',
-      gridRowGap: computedStyle.gridRowGap || '0px',
-      gridColumnGap: computedStyle.gridColumnGap || '0px'
+    if (Object.keys(dimensions).length > 0) {
+      styleInfo[compactKey('dimensions', useCompact)] = dimensions;
     }
-  };
+  }
 
-  return styleInfo;
+  // 盒模型
+  if (cfg.includeBoxModel) {
+    const boxModel = {};
+
+    const addBoxValue = (key, values) => {
+      const arr = values.map(v => parseFloat(v) || 0);
+      if (!cfg.skipDefaultValues || !isDefaultValue(key, arr)) {
+        boxModel[compactKey(key, useCompact)] = arr;
+      }
+    };
+
+    addBoxValue('margin', [
+      computedStyle.marginTop,
+      computedStyle.marginRight,
+      computedStyle.marginBottom,
+      computedStyle.marginLeft
+    ]);
+
+    addBoxValue('padding', [
+      computedStyle.paddingTop,
+      computedStyle.paddingRight,
+      computedStyle.paddingBottom,
+      computedStyle.paddingLeft
+    ]);
+
+    addBoxValue('border', [
+      computedStyle.borderTopWidth,
+      computedStyle.borderRightWidth,
+      computedStyle.borderBottomWidth,
+      computedStyle.borderLeftWidth
+    ]);
+
+    if (Object.keys(boxModel).length > 0) {
+      styleInfo[compactKey('boxModel', useCompact)] = boxModel;
+    }
+  }
+
+  // 外观样式
+  if (cfg.includeAppearance) {
+    const appearance = {};
+
+    const addAppearance = (key, value) => {
+      if (!cfg.skipDefaultValues || !isDefaultValue(key, value)) {
+        appearance[compactKey(key, useCompact)] = value;
+      }
+    };
+
+    // 背景色（简化）
+    const bgColor = computedStyle.backgroundColor;
+    if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
+      addAppearance('backgroundColor', bgColor);
+    }
+
+    // 圆角
+    const borderRadius = [
+      computedStyle.borderTopLeftRadius,
+      computedStyle.borderTopRightRadius,
+      computedStyle.borderBottomRightRadius,
+      computedStyle.borderBottomLeftRadius
+    ];
+    const hasRadius = borderRadius.some(r => r !== '0px');
+    if (hasRadius) {
+      addAppearance('borderRadius', borderRadius);
+    }
+
+    // 阴影
+    const boxShadow = computedStyle.boxShadow;
+    if (boxShadow && boxShadow !== 'none') {
+      addAppearance('boxShadow', boxShadow);
+    }
+
+    // 透明度
+    const opacity = parseFloat(computedStyle.opacity);
+    if (opacity < 1) {
+      addAppearance('opacity', opacity);
+    }
+
+    // 变换
+    const transform = computedStyle.transform;
+    if (transform && transform !== 'none') {
+      addAppearance('transform', transform);
+    }
+
+    if (Object.keys(appearance).length > 0) {
+      styleInfo[compactKey('appearance', useCompact)] = appearance;
+    }
+  }
+
+  // 文本样式
+  if (cfg.includeText) {
+    const text = {};
+
+    const addText = (key, value) => {
+      if (!cfg.skipDefaultValues || !isDefaultValue(key, value)) {
+        text[compactKey(key, useCompact)] = value;
+      }
+    };
+
+    // 只提取有文本的元素
+    const hasText = element.textContent?.trim();
+    if (hasText) {
+      const color = computedStyle.color;
+      if (color && color !== 'rgb(0, 0, 0)') {
+        addText('color', color);
+      }
+
+      const fontSize = computedStyle.fontSize;
+      if (fontSize && fontSize !== '16px') {
+        addText('fontSize', fontSize);
+      }
+
+      const fontWeight = computedStyle.fontWeight;
+      if (fontWeight && fontWeight !== '400') {
+        addText('fontWeight', fontWeight);
+      }
+
+      const lineHeight = computedStyle.lineHeight;
+      if (lineHeight && lineHeight !== 'normal') {
+        addText('lineHeight', lineHeight);
+      }
+    }
+
+    if (Object.keys(text).length > 0) {
+      styleInfo[compactKey('text', useCompact)] = text;
+    }
+  }
+
+  // 布局相关
+  if (cfg.includeLayout) {
+    const layout = {};
+
+    const addLayout = (key, value) => {
+      if (!cfg.skipDefaultValues || !isDefaultValue(key, value)) {
+        layout[compactKey(key, useCompact)] = value;
+      }
+    };
+
+    const display = computedStyle.display;
+    if (display && display !== 'block') {
+      addLayout('display', display);
+    }
+
+    const position = computedStyle.position;
+    if (position && position !== 'static') {
+      addLayout('position', position);
+    }
+
+    const overflow = computedStyle.overflow;
+    if (overflow && overflow !== 'visible') {
+      addLayout('overflow', overflow);
+    }
+
+    const zIndex = computedStyle.zIndex;
+    if (zIndex && zIndex !== 'auto') {
+      addLayout('zIndex', zIndex);
+    }
+
+    if (Object.keys(layout).length > 0) {
+      styleInfo[compactKey('layout', useCompact)] = layout;
+    }
+  }
+
+  // Flex布局（仅在启用时提取）
+  if (cfg.includeFlex && computedStyle.display === 'flex') {
+    const flex = {};
+    flex[compactKey('direction', useCompact)] = computedStyle.flexDirection;
+    flex[compactKey('justify', useCompact)] = computedStyle.justifyContent;
+    flex[compactKey('align', useCompact)] = computedStyle.alignItems;
+    flex[compactKey('gap', useCompact)] = computedStyle.gap;
+
+    styleInfo[compactKey('flex', useCompact)] = flex;
+  }
+
+  // Grid布局（仅在启用时提取）
+  if (cfg.includeGrid && computedStyle.display === 'grid') {
+    const grid = {};
+    grid[compactKey('columns', useCompact)] = computedStyle.gridTemplateColumns;
+    grid[compactKey('rows', useCompact)] = computedStyle.gridTemplateRows;
+    grid[compactKey('gap', useCompact)] = computedStyle.gap;
+
+    styleInfo[compactKey('grid', useCompact)] = grid;
+  }
+
+  return Object.keys(styleInfo).length > 0 ? styleInfo : null;
 }
 
 /**
  * 递归获取元素及其所有子元素的样式信息
- * @param {Element} element - 起始元素
- * @param {number} depth - 当前深度（用于层级标识）
- * @returns {Array} 样式信息数组
  */
-function getAllElementStyles(element, depth = 0) {
+function getAllElementStyles(element, config = {}, depth = 0) {
   const result = [];
 
   if (!element || element.nodeType !== 1) {
@@ -168,22 +400,29 @@ function getAllElementStyles(element, depth = 0) {
   }
 
   // 获取当前元素的样式
-  const styleInfo = getElementStyles(element);
+  const styleInfo = getElementStyles(element, config);
   if (styleInfo) {
-    styleInfo.depth = depth;
-    styleInfo.children = [];
-    result.push(styleInfo);
-  }
+    const useCompact = config.compactFieldNames ?? DEFAULT_CONFIG.compactFieldNames;
+    styleInfo[compactKey('depth', useCompact)] = depth;
 
-  // 递归获取子元素
-  const children = element.children;
-  for (let i = 0; i < children.length; i++) {
-    const childStyles = getAllElementStyles(children[i], depth + 1);
-    if (childStyles.length > 0) {
-      // 将子元素添加到当前元素的children数组中
-      if (result[0]) {
-        result[0].children = childStyles;
-      }
+    const children = [];
+    const childElements = element.children;
+
+    for (let i = 0; i < childElements.length; i++) {
+      const childStyles = getAllElementStyles(childElements[i], config, depth + 1);
+      children.push(...childStyles);
+    }
+
+    if (children.length > 0) {
+      styleInfo.children = children;
+    }
+
+    result.push(styleInfo);
+  } else {
+    // 即使当前元素被跳过，也要检查子元素
+    const childElements = element.children;
+    for (let i = 0; i < childElements.length; i++) {
+      const childStyles = getAllElementStyles(childElements[i], config, depth + 1);
       result.push(...childStyles);
     }
   }
@@ -193,10 +432,8 @@ function getAllElementStyles(element, depth = 0) {
 
 /**
  * 获取整个页面的样式数据（从body开始）
- * @param {Document} doc - 文档对象（默认为当前文档）
- * @returns {Object} 包含所有样式数据的对象
  */
-function getDocumentStyles(doc = document) {
+function getDocumentStyles(doc = document, config = {}) {
   const startTime = performance.now();
 
   const body = doc.body;
@@ -205,7 +442,7 @@ function getDocumentStyles(doc = document) {
     return null;
   }
 
-  const allStyles = getAllElementStyles(body, 0);
+  const allStyles = getAllElementStyles(body, config, 0);
 
   const endTime = performance.now();
 
@@ -215,7 +452,8 @@ function getDocumentStyles(doc = document) {
       processingTime: `${(endTime - startTime).toFixed(2)}ms`,
       timestamp: new Date().toISOString(),
       documentTitle: doc.title || '',
-      documentURL: doc.location?.href || ''
+      documentURL: doc.location?.href || '',
+      config: config
     },
     styles: allStyles
   };
@@ -223,10 +461,8 @@ function getDocumentStyles(doc = document) {
 
 /**
  * 获取iframe内文档的样式数据
- * @param {HTMLIFrameElement} iframe - iframe元素
- * @returns {Promise<Object>} 包含所有样式数据的Promise
  */
-function getIframeStyles(iframe) {
+function getIframeStyles(iframe, config = {}) {
   return new Promise((resolve, reject) => {
     try {
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
@@ -236,13 +472,12 @@ function getIframeStyles(iframe) {
         return;
       }
 
-      // 等待iframe加载完成
       if (iframeDoc.readyState === 'complete') {
-        const styles = getDocumentStyles(iframeDoc);
+        const styles = getDocumentStyles(iframeDoc, config);
         resolve(styles);
       } else {
         iframe.addEventListener('load', () => {
-          const styles = getDocumentStyles(iframeDoc);
+          const styles = getDocumentStyles(iframeDoc, config);
           resolve(styles);
         });
       }
@@ -254,8 +489,6 @@ function getIframeStyles(iframe) {
 
 /**
  * 导出样式数据为JSON格式
- * @param {Object} stylesData - 样式数据对象
- * @returns {string} JSON字符串
  */
 function exportStylesToJSON(stylesData) {
   return JSON.stringify(stylesData, null, 2);
@@ -263,7 +496,6 @@ function exportStylesToJSON(stylesData) {
 
 /**
  * 打印样式统计信息
- * @param {Object} stylesData - 样式数据对象
  */
 function printStylesStats(stylesData) {
   if (!stylesData || !stylesData.metadata) {
@@ -277,25 +509,81 @@ function printStylesStats(stylesData) {
   console.log(`📈 总元素数: ${stylesData.metadata.totalElements}`);
   console.log(`⏱️  处理时间: ${stylesData.metadata.processingTime}`);
   console.log(`🕐 时间戳: ${stylesData.metadata.timestamp}`);
+  console.log(`⚙️  配置:`, stylesData.metadata.config);
   console.groupEnd();
 
   // 统计元素类型
   const elementTypes = {};
-  stylesData.styles.forEach(style => {
-    const tag = style.tagName;
-    elementTypes[tag] = (elementTypes[tag] || 0) + 1;
-  });
+  const countElements = (styles) => {
+    styles.forEach(style => {
+      const tag = style.t || style.tagName;
+      elementTypes[tag] = (elementTypes[tag] || 0) + 1;
+      if (style.children) {
+        countElements(style.children);
+      }
+    });
+  };
+  countElements(stylesData.styles);
 
   console.group('📋 元素类型统计');
   Object.entries(elementTypes)
     .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
     .forEach(([tag, count]) => {
       console.log(`${tag}: ${count}`);
     });
   console.groupEnd();
 }
 
-// 导出函数（支持ES6模块和全局变量）
+// 预设配置
+const PRESETS = {
+  // 最小化配置（只提取基本样式）
+  minimal: {
+    includeDimensions: true,
+    includeBoxModel: true,
+    includeAppearance: true,
+    includeText: false,
+    includeLayout: false,
+    includeFlex: false,
+    includeGrid: false,
+    skipDefaultValues: true,
+    skipHiddenElements: true,
+    compactFieldNames: true,
+    minElementSize: 1
+  },
+
+  // 标准配置（平衡大小和完整性）
+  standard: {
+    includeDimensions: true,
+    includeBoxModel: true,
+    includeAppearance: true,
+    includeText: true,
+    includeLayout: true,
+    includeFlex: false,
+    includeGrid: false,
+    skipDefaultValues: true,
+    skipHiddenElements: true,
+    compactFieldNames: true,
+    minElementSize: 0
+  },
+
+  // 完整配置（包含所有样式）
+  full: {
+    includeDimensions: true,
+    includeBoxModel: true,
+    includeAppearance: true,
+    includeText: true,
+    includeLayout: true,
+    includeFlex: true,
+    includeGrid: true,
+    skipDefaultValues: false,
+    skipHiddenElements: false,
+    compactFieldNames: false,
+    minElementSize: 0
+  }
+};
+
+// 导出函数
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getElementStyles,
@@ -303,16 +591,19 @@ if (typeof module !== 'undefined' && module.exports) {
     getDocumentStyles,
     getIframeStyles,
     exportStylesToJSON,
-    printStylesStats
+    printStylesStats,
+    PRESETS,
+    DEFAULT_CONFIG
   };
 } else {
-  // 浏览器环境下挂载到全局对象
   window.StyleExtractor = {
     getElementStyles,
     getAllElementStyles,
     getDocumentStyles,
     getIframeStyles,
     exportStylesToJSON,
-    printStylesStats
+    printStylesStats,
+    PRESETS,
+    DEFAULT_CONFIG
   };
 }
