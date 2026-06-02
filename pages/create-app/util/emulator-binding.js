@@ -1,22 +1,24 @@
 // 用于绑定 iframe 和外部信息的工具
 (async () => {
   window.addEventListener("message", (event) => {
-    const { data } = event;
+    const { data, ports } = event;
 
     if (data.type === "get-console") {
-      debugger;
+      const port = ports[0];
+      if (port) {
+        port.postMessage({ result: logs.slice() });
+      }
       return;
     }
 
     if (data.type === "clear-console") {
-      // 清空 console 日志
       logs.length = 0;
+      const port = ports[0];
+      if (port) {
+        port.postMessage({ result: true });
+      }
       return;
     }
-
-    if(data.type === "get-aimap"){}
-
-    console.log("emulator-message", event);
   });
 
   const outerConsole = {};
@@ -25,7 +27,6 @@
 
   const originConsole = console;
 
-  // 代理并记录所有的console 调用
   Object.keys(console).forEach((key) => {
     outerConsole[key] = (...args) => {
       if (key === "clear") {

@@ -26,10 +26,10 @@
   },
   "emulator-console": {
     "SKILL.md": {
-      "text": "---\nname: emulator-console\ndescription: 获取应用模拟器日志，支持获取或清空当前应用模拟器的控制台打印信息；只有在应用开发模式下可用。\nmethod: main.js\n---\n"
+      "text": "---\nname: emulator-console\ndescription: 获取应用模拟器日志，支持获取或清空当前应用模拟器的控制台打印信息；只有在应用开发模式下可用。\nmethod: main.js\n---\n\n# 模拟器控制台日志\n\n**emulator-console** 用于在应用开发模式下获取或清空模拟器的控制台日志。支持获取当前日志内容和清空日志记录。\n\n## 获取控制台日志\n\n使用 `get` 操作获取当前模拟器的控制台日志：\n\n<cap-request>\n  <template name=\"emulator-console\" cid=\"log001\" desc=\"获取模拟器控制台日志\" data-action=\"get\"></template>\n</cap-request>\n\n工具将返回当前模拟器的控制台日志内容。\n\n## 清空控制台日志\n\n使用 `clear` 操作清空模拟器的控制台日志：\n\n<cap-request>\n  <template name=\"emulator-console\" cid=\"log002\" desc=\"清空模拟器控制台日志\" data-action=\"clear\"></template>\n</cap-request>\n\n工具将清空模拟器中的控制台日志记录，并返回清空状态。\n"
     },
     "main.js": {
-      "text": "export default function emulatorLog() {\n  debugger;\n  console.log(\"emulatorLog\");\n}\n"
+      "text": "export default async function emulatorConsole({ data = {}, emulator }) {\n  const { action } = data;\n\n  if (action === \"get\") {\n    try {\n      const logs = await sendMessage(emulator.iframe, { type: \"get-console\" });\n      return {\n        success: true,\n        logs,\n      };\n    } catch (err) {\n      return {\n        success: false,\n        error: err.message,\n      };\n    }\n  }\n\n  if (action === \"clear\") {\n    try {\n      await sendMessage(emulator.iframe, { type: \"clear-console\" });\n      return {\n        success: true,\n      };\n    } catch (err) {\n      return {\n        success: false,\n        error: err.message,\n      };\n    }\n  }\n}\n\nfunction sendMessage(iframe, message) {\n  return new Promise((resolve, reject) => {\n    if (!iframe || !iframe.contentWindow) {\n      reject(new Error(\"Iframe not available\"));\n      return;\n    }\n\n    const channel = new MessageChannel();\n    const timeout = setTimeout(() => {\n      reject(new Error(\"Message timeout\"));\n    }, 5000);\n\n    channel.port1.onmessage = (event) => {\n      clearTimeout(timeout);\n      if (event.data.error) {\n        reject(new Error(event.data.error));\n      } else {\n        resolve(event.data.result);\n      }\n    };\n\n    iframe.contentWindow.postMessage(message, \"*\", [channel.port2]);\n  });\n}\n"
     }
   },
   "emulator-interact": {
