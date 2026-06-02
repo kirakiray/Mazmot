@@ -60,6 +60,10 @@ function getCaptureStyle(element) {
 
     // 外观
     backgroundColor: computed.backgroundColor,
+    backgroundImage: computed.backgroundImage !== 'none' ? computed.backgroundImage : undefined,
+    backgroundSize: computed.backgroundSize !== 'auto' ? computed.backgroundSize : undefined,
+    backgroundPosition: computed.backgroundPosition !== '0% 0%' ? computed.backgroundPosition : undefined,
+    backgroundRepeat: computed.backgroundRepeat !== 'repeat' ? computed.backgroundRepeat : undefined,
     color: computed.color,
     fontSize: computed.fontSize,
     fontFamily: computed.fontFamily,
@@ -227,6 +231,10 @@ function applyStyles(el, item) {
   if (item.backgroundColor && item.backgroundColor !== 'rgba(0, 0, 0, 0)') {
     s.backgroundColor = item.backgroundColor;
   }
+  if (item.backgroundImage) s.backgroundImage = item.backgroundImage;
+  if (item.backgroundSize) s.backgroundSize = item.backgroundSize;
+  if (item.backgroundPosition) s.backgroundPosition = item.backgroundPosition;
+  if (item.backgroundRepeat) s.backgroundRepeat = item.backgroundRepeat;
   if (item.color) s.color = item.color;
   if (item.fontSize) s.fontSize = item.fontSize;
   if (item.fontFamily) s.fontFamily = item.fontFamily;
