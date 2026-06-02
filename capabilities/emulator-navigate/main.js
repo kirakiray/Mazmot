@@ -6,17 +6,25 @@ export default async function emulatorNavigate({
   const { action, url } = data;
 
   if (action === "current-info") {
+    const iframe = emulator.iframe;
     return {
-      url: emulator.url,
+      url: iframe?.src || "",
     };
   }
 
   if (action === "reload") {
     try {
-      await emulator.reload();
+      const iframe = emulator.iframe;
+      if (!iframe) {
+        return { success: false, error: "No iframe available" };
+      }
+      emulator.iframeLoaded = false;
+      const loadPromise = listenIframeLoad(iframe);
+      iframe.src = iframe.src;
+      await loadPromise;
       return {
         success: true,
-        url: emulator.url,
+        url: iframe.src,
       };
     } catch (err) {
       return {
@@ -28,7 +36,21 @@ export default async function emulatorNavigate({
 
   if (action === "go") {
     try {
-      await emulator.go(url);
+      if (!url) {
+        return { success: false, error: "No URL provided" };
+      }
+      emulator.iframeLoaded = false;
+      let iframe = emulator.iframe;
+      let loadPromise;
+      if (iframe) {
+        loadPromise = listenIframeLoad(iframe);
+      }
+      emulator.iframeUrl = url;
+      if (!loadPromise) {
+        iframe = await pollIframe(emulator);
+        loadPromise = listenIframeLoad(iframe);
+      }
+      await loadPromise;
       return {
         success: true,
         url,
@@ -40,4 +62,50 @@ export default async function emulatorNavigate({
       };
     }
   }
+}
+
+function listenIframeLoad(iframe, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Iframe load timeout"));
+    }, timeout);
+    const onLoad = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Iframe load failed"));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      iframe.removeEventListener("load", onLoad);
+      iframe.removeEventListener("error", onError);
+    };
+    iframe.addEventListener("load", onLoad);
+    iframe.addEventListener("error", onError);
+  });
+}
+
+function pollIframe(emulator, timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    const iframe = emulator.iframe;
+    if (iframe) {
+      resolve(iframe);
+      return;
+    }
+    const timer = setTimeout(() => {
+      clearInterval(interval);
+      reject(new Error("Iframe not available"));
+    }, timeout);
+    const interval = setInterval(() => {
+      const iframe = emulator.iframe;
+      if (iframe) {
+        clearTimeout(timer);
+        clearInterval(interval);
+        resolve(iframe);
+      }
+    }, 50);
+  });
 }
