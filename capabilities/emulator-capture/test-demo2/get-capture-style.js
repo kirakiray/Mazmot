@@ -1,7 +1,37 @@
 /**
  * 递归获取元素及其所有子元素的样式信息和内容
- * 返回嵌套树形结构，每个元素通过 children 包含子元素
+ * 返回压缩后的嵌套树形结构，使用短键名和简写值减少数据量
  */
+
+// 短键名映射
+const K = {
+  tagName: 't', className: 'c', id: 'i',
+  rect: 'r', margin: 'm', padding: 'p', border: 'b',
+  backgroundColor: 'bg', backgroundImage: 'bi', backgroundSize: 'bs',
+  backgroundPosition: 'bp', backgroundRepeat: 'br',
+  color: 'co', fontSize: 'fs', fontFamily: 'ff', fontWeight: 'fw',
+  fontStyle: 'fi', lineHeight: 'lh', textAlign: 'ta',
+  textDecoration: 'td', letterSpacing: 'ls', whiteSpace: 'ws', wordBreak: 'wb',
+  borderRadius: 'ra', boxShadow: 'sh', opacity: 'o',
+  overflow: 'ov', overflowX: 'ox', overflowY: 'oy',
+  display: 'd', position: 'po', zIndex: 'z', transform: 'tf',
+  flexDirection: 'fd', justifyContent: 'jc', alignItems: 'ai',
+  flexWrap: 'fwr', gap: 'g',
+  gridTemplateColumns: 'gc', gridTemplateRows: 'gr',
+  textContent: 'tx', children: 'ch',
+};
+
+// 反向映射
+const RK = Object.fromEntries(Object.entries(K).map(([k, v]) => [v, k]));
+
+/**
+ * 盒模型四值简写：全0→undefined，全同→单值，否则→数组[T,R,B,L]
+ */
+function shorthandBox(top, right, bottom, left) {
+  if (top === 0 && right === 0 && bottom === 0 && left === 0) return undefined;
+  if (top === right && right === bottom && bottom === left) return top;
+  return [top, right, bottom, left];
+}
 
 /**
  * 获取元素的直接文本内容（不包含子元素的文本）
@@ -9,7 +39,7 @@
 function getDirectTextContent(element) {
   let text = '';
   for (const node of element.childNodes) {
-    if (node.nodeType === 3) { // 文本节点
+    if (node.nodeType === 3) {
       text += node.textContent;
     }
   }
@@ -17,29 +47,7 @@ function getDirectTextContent(element) {
 }
 
 /**
- * 清理对象中的 undefined 字段
- */
-function cleanObject(obj) {
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        const cleaned = cleanObject(value);
-        if (Object.keys(cleaned).length > 0) {
-          result[key] = cleaned;
-        }
-      } else {
-        result[key] = value;
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * 获取单个元素的完整样式信息
- * @param {Element} element - DOM 元素
- * @returns {object|null} 样式信息对象
+ * 获取单个元素的完整样式信息（压缩格式）
  */
 export function getCaptureStyle(element) {
   if (!element || element.nodeType !== 1) return null;
@@ -50,105 +58,129 @@ export function getCaptureStyle(element) {
   // 跳过不可见元素
   if (computed.display === 'none' || computed.visibility === 'hidden') return null;
 
-  const info = {
-    tagName: element.tagName.toLowerCase(),
-    className: element.className || undefined,
-    id: element.id || undefined,
+  const info = {};
 
-    // 位置和尺寸（相对于视口）
-    rect: {
-      x: Math.round(rect.x * 100) / 100,
-      y: Math.round(rect.y * 100) / 100,
-      width: Math.round(rect.width * 100) / 100,
-      height: Math.round(rect.height * 100) / 100,
-    },
+  // 基础标识
+  info[K.tagName] = element.tagName.toLowerCase();
+  if (element.className) info[K.className] = element.className;
+  if (element.id) info[K.id] = element.id;
 
-    // 盒模型
-    margin: {
-      top: parseFloat(computed.marginTop) || 0,
-      right: parseFloat(computed.marginRight) || 0,
-      bottom: parseFloat(computed.marginBottom) || 0,
-      left: parseFloat(computed.marginLeft) || 0,
-    },
-    padding: {
-      top: parseFloat(computed.paddingTop) || 0,
-      right: parseFloat(computed.paddingRight) || 0,
-      bottom: parseFloat(computed.paddingBottom) || 0,
-      left: parseFloat(computed.paddingLeft) || 0,
-    },
-    border: {
-      topWidth: parseFloat(computed.borderTopWidth) || 0,
-      rightWidth: parseFloat(computed.borderRightWidth) || 0,
-      bottomWidth: parseFloat(computed.borderBottomWidth) || 0,
-      leftWidth: parseFloat(computed.borderLeftWidth) || 0,
-      topColor: computed.borderTopColor,
-      rightColor: computed.borderRightColor,
-      bottomColor: computed.borderBottomColor,
-      leftColor: computed.borderLeftColor,
-      topStyle: computed.borderTopStyle,
-      rightStyle: computed.borderRightStyle,
-      bottomStyle: computed.borderBottomStyle,
-      leftStyle: computed.borderLeftStyle,
-    },
+  // 位置和尺寸：[x, y, w, h]
+  info[K.rect] = [
+    Math.round(rect.x * 100) / 100,
+    Math.round(rect.y * 100) / 100,
+    Math.round(rect.width * 100) / 100,
+    Math.round(rect.height * 100) / 100,
+  ];
 
-    // 外观
-    backgroundColor: computed.backgroundColor,
-    backgroundImage: computed.backgroundImage !== 'none' ? computed.backgroundImage : undefined,
-    backgroundSize: computed.backgroundSize !== 'auto' ? computed.backgroundSize : undefined,
-    backgroundPosition: computed.backgroundPosition !== '0% 0%' ? computed.backgroundPosition : undefined,
-    backgroundRepeat: computed.backgroundRepeat !== 'repeat' ? computed.backgroundRepeat : undefined,
-    color: computed.color,
-    fontSize: computed.fontSize,
-    fontFamily: computed.fontFamily,
-    fontWeight: computed.fontWeight,
-    fontStyle: computed.fontStyle,
-    lineHeight: computed.lineHeight,
-    textAlign: computed.textAlign,
-    textDecoration: computed.textDecoration,
-    letterSpacing: computed.letterSpacing,
-    whiteSpace: computed.whiteSpace,
-    wordBreak: computed.wordBreak,
+  // 盒模型简写
+  const mt = parseFloat(computed.marginTop) || 0;
+  const mr = parseFloat(computed.marginRight) || 0;
+  const mb = parseFloat(computed.marginBottom) || 0;
+  const ml = parseFloat(computed.marginLeft) || 0;
+  const marginVal = shorthandBox(mt, mr, mb, ml);
+  if (marginVal !== undefined) info[K.margin] = marginVal;
 
-    borderRadius: {
-      topLeft: computed.borderTopLeftRadius,
-      topRight: computed.borderTopRightRadius,
-      bottomRight: computed.borderBottomRightRadius,
-      bottomLeft: computed.borderBottomLeftRadius,
-    },
-    boxShadow: computed.boxShadow !== 'none' ? computed.boxShadow : undefined,
-    opacity: parseFloat(computed.opacity),
-    overflow: computed.overflow,
-    overflowX: computed.overflowX,
-    overflowY: computed.overflowY,
+  const pt = parseFloat(computed.paddingTop) || 0;
+  const pr = parseFloat(computed.paddingRight) || 0;
+  const pb = parseFloat(computed.paddingBottom) || 0;
+  const pl = parseFloat(computed.paddingLeft) || 0;
+  const paddingVal = shorthandBox(pt, pr, pb, pl);
+  if (paddingVal !== undefined) info[K.padding] = paddingVal;
 
-    // 布局
-    display: computed.display,
-    position: computed.position,
-    zIndex: computed.zIndex !== 'auto' ? computed.zIndex : undefined,
-    transform: computed.transform !== 'none' ? computed.transform : undefined,
+  // 边框简写
+  const btw = parseFloat(computed.borderTopWidth) || 0;
+  const brw = parseFloat(computed.borderRightWidth) || 0;
+  const bbw = parseFloat(computed.borderBottomWidth) || 0;
+  const blw = parseFloat(computed.borderLeftWidth) || 0;
+  if (btw !== 0 || brw !== 0 || bbw !== 0 || blw !== 0) {
+    const allSame = btw === brw && brw === bbw && bbw === blw
+      && computed.borderTopStyle === computed.borderRightStyle
+      && computed.borderRightStyle === computed.borderBottomStyle
+      && computed.borderBottomStyle === computed.borderLeftStyle
+      && computed.borderTopColor === computed.borderRightColor
+      && computed.borderRightColor === computed.borderBottomColor
+      && computed.borderBottomColor === computed.borderLeftColor;
+    if (allSame) {
+      info[K.border] = `${btw}px ${computed.borderTopStyle} ${computed.borderTopColor}`;
+    } else {
+      info[K.border] = {
+        w: shorthandBox(btw, brw, bbw, blw),
+        s: [computed.borderTopStyle, computed.borderRightStyle, computed.borderBottomStyle, computed.borderLeftStyle],
+        c: [computed.borderTopColor, computed.borderRightColor, computed.borderBottomColor, computed.borderLeftColor],
+      };
+    }
+  }
 
-    // Flex
-    flexDirection: computed.flexDirection !== 'row' ? computed.flexDirection : undefined,
-    justifyContent: computed.justifyContent !== 'flex-start' ? computed.justifyContent : undefined,
-    alignItems: computed.alignItems !== 'stretch' ? computed.alignItems : undefined,
-    flexWrap: computed.flexWrap !== 'nowrap' ? computed.flexWrap : undefined,
-    gap: computed.gap !== 'normal' ? computed.gap : undefined,
+  // 外观（跳过默认值）
+  const bg = computed.backgroundColor;
+  if (bg !== 'rgba(0, 0, 0, 0)') info[K.backgroundColor] = bg;
 
-    // Grid
-    gridTemplateColumns: computed.gridTemplateColumns !== 'none' ? computed.gridTemplateColumns : undefined,
-    gridTemplateRows: computed.gridTemplateRows !== 'none' ? computed.gridTemplateRows : undefined,
+  if (computed.backgroundImage !== 'none') info[K.backgroundImage] = computed.backgroundImage;
+  if (computed.backgroundSize !== 'auto') info[K.backgroundSize] = computed.backgroundSize;
+  if (computed.backgroundPosition !== '0% 0%') info[K.backgroundPosition] = computed.backgroundPosition;
+  if (computed.backgroundRepeat !== 'repeat') info[K.backgroundRepeat] = computed.backgroundRepeat;
 
-    // 文本内容：只取直接文本节点，不包含子元素的文本
-    textContent: getDirectTextContent(element),
-  };
+  if (computed.color) info[K.color] = computed.color;
+  if (computed.fontSize) info[K.fontSize] = computed.fontSize;
+  if (computed.fontFamily) info[K.fontFamily] = computed.fontFamily;
+  if (computed.fontWeight !== '400') info[K.fontWeight] = computed.fontWeight;
+  if (computed.fontStyle !== 'normal') info[K.fontStyle] = computed.fontStyle;
+  if (computed.lineHeight !== 'normal') info[K.lineHeight] = computed.lineHeight;
+  if (computed.textAlign !== 'start') info[K.textAlign] = computed.textAlign;
+  if (computed.textDecoration !== 'none solid rgb(0, 0, 0)') info[K.textDecoration] = computed.textDecoration;
+  if (computed.letterSpacing !== 'normal') info[K.letterSpacing] = computed.letterSpacing;
+  if (computed.whiteSpace !== 'normal') info[K.whiteSpace] = computed.whiteSpace;
+  if (computed.wordBreak !== 'normal') info[K.wordBreak] = computed.wordBreak;
 
-  return cleanObject(info);
+  // 圆角简写
+  const rtl = computed.borderTopLeftRadius;
+  const rtr = computed.borderTopRightRadius;
+  const rbr = computed.borderBottomRightRadius;
+  const rbl = computed.borderBottomLeftRadius;
+  if (rtl !== '0px' || rtr !== '0px' || rbr !== '0px' || rbl !== '0px') {
+    if (rtl === rtr && rtr === rbr && rbr === rbl) {
+      info[K.borderRadius] = rtl;
+    } else {
+      info[K.borderRadius] = [rtl, rtr, rbr, rbl];
+    }
+  }
+
+  if (computed.boxShadow !== 'none') info[K.boxShadow] = computed.boxShadow;
+
+  const opacity = parseFloat(computed.opacity);
+  if (opacity < 1) info[K.opacity] = opacity;
+
+  if (computed.overflow !== 'visible') info[K.overflow] = computed.overflow;
+  if (computed.overflowX !== 'visible') info[K.overflowX] = computed.overflowX;
+  if (computed.overflowY !== 'visible') info[K.overflowY] = computed.overflowY;
+
+  // 布局（跳过默认值）
+  if (computed.display !== 'block') info[K.display] = computed.display;
+  if (computed.position !== 'static') info[K.position] = computed.position;
+  if (computed.zIndex !== 'auto') info[K.zIndex] = computed.zIndex;
+  if (computed.transform !== 'none') info[K.transform] = computed.transform;
+
+  // Flex（跳过默认值）
+  if (computed.flexDirection !== 'row') info[K.flexDirection] = computed.flexDirection;
+  if (computed.justifyContent !== 'flex-start') info[K.justifyContent] = computed.justifyContent;
+  if (computed.alignItems !== 'stretch') info[K.alignItems] = computed.alignItems;
+  if (computed.flexWrap !== 'nowrap') info[K.flexWrap] = computed.flexWrap;
+  if (computed.gap !== 'normal') info[K.gap] = computed.gap;
+
+  // Grid
+  if (computed.gridTemplateColumns !== 'none') info[K.gridTemplateColumns] = computed.gridTemplateColumns;
+  if (computed.gridTemplateRows !== 'none') info[K.gridTemplateRows] = computed.gridTemplateRows;
+
+  // 文本内容
+  const text = getDirectTextContent(element);
+  if (text) info[K.textContent] = text;
+
+  return info;
 }
 
 /**
- * 递归获取元素及所有子元素的样式信息，返回嵌套树形结构
- * @param {Element} element - 传入的根元素
- * @returns {object|null} 嵌套的样式信息对象，children 包含子元素
+ * 递归获取元素及所有子元素的样式信息，返回压缩的嵌套树形结构
  */
 export function captureElementStyles(element) {
   if (!element || element.nodeType !== 1) {
@@ -159,12 +191,10 @@ export function captureElementStyles(element) {
   const styleInfo = getCaptureStyle(element);
 
   if (!styleInfo) {
-    // 当前元素被跳过，但如果只有一个子元素，直接返回该子元素的结果
     const children = element.children;
     if (children.length === 1) {
       return captureElementStyles(children[0]);
     }
-    // 多个子元素时，将它们合并到一个虚拟容器中
     if (children.length > 0) {
       const childResults = [];
       for (let i = 0; i < children.length; i++) {
@@ -173,13 +203,12 @@ export function captureElementStyles(element) {
       }
       if (childResults.length === 1) return childResults[0];
       if (childResults.length > 1) {
-        return { tagName: 'fragment', children: childResults };
+        return { [K.tagName]: 'fragment', [K.children]: childResults };
       }
     }
     return null;
   }
 
-  // 递归处理子元素
   const childElements = element.children;
   if (childElements.length > 0) {
     const children = [];
@@ -188,7 +217,7 @@ export function captureElementStyles(element) {
       if (childInfo) children.push(childInfo);
     }
     if (children.length > 0) {
-      styleInfo.children = children;
+      styleInfo[K.children] = children;
     }
   }
 
@@ -196,112 +225,152 @@ export function captureElementStyles(element) {
 }
 
 /**
- * 将截取的样式信息应用到元素上
+ * 解析盒模型简写值为 {top, right, bottom, left}
  */
-export function applyStyles(el, item) {
+function parseBox(val) {
+  if (val === undefined) return { top: 0, right: 0, bottom: 0, left: 0 };
+  if (typeof val === 'number') return { top: val, right: val, bottom: val, left: val };
+  if (Array.isArray(val)) return { top: val[0], right: val[1], bottom: val[2], left: val[3] };
+  return { top: 0, right: 0, bottom: 0, left: 0 };
+}
+
+/**
+ * 将截取的样式信息应用到元素上
+ * @param {HTMLElement} el - 目标元素
+ * @param {object} item - 截取数据
+ * @param {boolean} isRoot - 是否为根元素
+ */
+export function applyStyles(el, item, isRoot = false) {
   const s = el.style;
 
-  if (item.rect) {
-    s.position = 'absolute';
-    s.left = item.rect.x + 'px';
-    s.top = item.rect.y + 'px';
-    s.width = item.rect.width + 'px';
-    s.height = item.rect.height + 'px';
+  // 盒模型
+  const margin = parseBox(item[K.margin]);
+  if (margin.top || margin.right || margin.bottom || margin.left) {
+    s.margin = `${margin.top}px ${margin.right}px ${margin.bottom}px ${margin.left}px`;
+  }
+  const padding = parseBox(item[K.padding]);
+  if (padding.top || padding.right || padding.bottom || padding.left) {
+    s.padding = `${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px`;
   }
 
-  if (item.margin) {
-    s.marginTop = item.margin.top + 'px';
-    s.marginRight = item.margin.right + 'px';
-    s.marginBottom = item.margin.bottom + 'px';
-    s.marginLeft = item.margin.left + 'px';
-  }
-  if (item.padding) {
-    s.paddingTop = item.padding.top + 'px';
-    s.paddingRight = item.padding.right + 'px';
-    s.paddingBottom = item.padding.bottom + 'px';
-    s.paddingLeft = item.padding.left + 'px';
-  }
-  if (item.border) {
-    if (item.border.topWidth) s.borderTop = `${item.border.topWidth}px ${item.border.topStyle || 'solid'} ${item.border.topColor || 'transparent'}`;
-    if (item.border.rightWidth) s.borderRight = `${item.border.rightWidth}px ${item.border.rightStyle || 'solid'} ${item.border.rightColor || 'transparent'}`;
-    if (item.border.bottomWidth) s.borderBottom = `${item.border.bottomWidth}px ${item.border.bottomStyle || 'solid'} ${item.border.bottomColor || 'transparent'}`;
-    if (item.border.leftWidth) s.borderLeft = `${item.border.leftWidth}px ${item.border.leftStyle || 'solid'} ${item.border.leftColor || 'transparent'}`;
+  // 边框
+  const border = item[K.border];
+  if (border) {
+    if (typeof border === 'string') {
+      s.border = border;
+    } else {
+      const bw = parseBox(border.w);
+      const bs = border.s;
+      const bc = border.c;
+      if (bw.top) s.borderTop = `${bw.top}px ${bs[0]} ${bc[0]}`;
+      if (bw.right) s.borderRight = `${bw.right}px ${bs[1]} ${bc[1]}`;
+      if (bw.bottom) s.borderBottom = `${bw.bottom}px ${bs[2]} ${bc[2]}`;
+      if (bw.left) s.borderLeft = `${bw.left}px ${bs[3]} ${bc[3]}`;
+    }
   }
 
-  if (item.backgroundColor && item.backgroundColor !== 'rgba(0, 0, 0, 0)') {
-    s.backgroundColor = item.backgroundColor;
+  // 外观
+  const bg = item[K.backgroundColor];
+  if (bg && bg !== 'rgba(0, 0, 0, 0)') s.backgroundColor = bg;
+  if (item[K.backgroundImage]) s.backgroundImage = item[K.backgroundImage];
+  if (item[K.backgroundSize]) s.backgroundSize = item[K.backgroundSize];
+  if (item[K.backgroundPosition]) s.backgroundPosition = item[K.backgroundPosition];
+  if (item[K.backgroundRepeat]) s.backgroundRepeat = item[K.backgroundRepeat];
+  if (item[K.color]) s.color = item[K.color];
+  if (item[K.fontSize]) s.fontSize = item[K.fontSize];
+  if (item[K.fontFamily]) s.fontFamily = item[K.fontFamily];
+  if (item[K.fontWeight]) s.fontWeight = item[K.fontWeight];
+  if (item[K.fontStyle]) s.fontStyle = item[K.fontStyle];
+  if (item[K.lineHeight]) s.lineHeight = item[K.lineHeight];
+  if (item[K.textAlign]) s.textAlign = item[K.textAlign];
+  if (item[K.textDecoration]) s.textDecoration = item[K.textDecoration];
+  if (item[K.letterSpacing]) s.letterSpacing = item[K.letterSpacing];
+  if (item[K.whiteSpace]) s.whiteSpace = item[K.whiteSpace];
+  if (item[K.wordBreak]) s.wordBreak = item[K.wordBreak];
+
+  // 圆角
+  const radius = item[K.borderRadius];
+  if (radius) {
+    if (typeof radius === 'string') {
+      s.borderRadius = radius;
+    } else {
+      s.borderRadius = `${radius[0]} ${radius[1]} ${radius[2]} ${radius[3]}`;
+    }
   }
-  if (item.backgroundImage) s.backgroundImage = item.backgroundImage;
-  if (item.backgroundSize) s.backgroundSize = item.backgroundSize;
-  if (item.backgroundPosition) s.backgroundPosition = item.backgroundPosition;
-  if (item.backgroundRepeat) s.backgroundRepeat = item.backgroundRepeat;
-  if (item.color) s.color = item.color;
-  if (item.fontSize) s.fontSize = item.fontSize;
-  if (item.fontFamily) s.fontFamily = item.fontFamily;
-  if (item.fontWeight) s.fontWeight = item.fontWeight;
-  if (item.fontStyle) s.fontStyle = item.fontStyle;
-  if (item.lineHeight) s.lineHeight = item.lineHeight;
-  if (item.textAlign) s.textAlign = item.textAlign;
-  if (item.textDecoration) s.textDecoration = item.textDecoration;
-  if (item.letterSpacing) s.letterSpacing = item.letterSpacing;
-  if (item.whiteSpace) s.whiteSpace = item.whiteSpace;
-  if (item.wordBreak) s.wordBreak = item.wordBreak;
 
-  if (item.borderRadius) {
-    s.borderRadius = `${item.borderRadius.topLeft} ${item.borderRadius.topRight} ${item.borderRadius.bottomRight} ${item.borderRadius.bottomLeft}`;
+  if (item[K.boxShadow]) s.boxShadow = item[K.boxShadow];
+  if (item[K.opacity] !== undefined && item[K.opacity] < 1) s.opacity = item[K.opacity];
+  if (item[K.overflow]) s.overflow = item[K.overflow];
+
+  // 布局
+  if (item[K.display]) s.display = item[K.display];
+  if (item[K.position]) s.position = item[K.position];
+  if (item[K.zIndex]) s.zIndex = item[K.zIndex];
+  if (item[K.transform]) s.transform = item[K.transform];
+
+  // Flex
+  if (item[K.flexDirection]) s.flexDirection = item[K.flexDirection];
+  if (item[K.justifyContent]) s.justifyContent = item[K.justifyContent];
+  if (item[K.alignItems]) s.alignItems = item[K.alignItems];
+  if (item[K.flexWrap]) s.flexWrap = item[K.flexWrap];
+  if (item[K.gap]) s.gap = item[K.gap];
+
+  // Grid
+  if (item[K.gridTemplateColumns]) s.gridTemplateColumns = item[K.gridTemplateColumns];
+  if (item[K.gridTemplateRows]) s.gridTemplateRows = item[K.gridTemplateRows];
+
+  // 尺寸：根元素用 rect 的宽高，非根元素只在有明确尺寸时设置
+  const r = item[K.rect];
+  if (r) {
+    if (isRoot) {
+      s.width = r[2] + 'px';
+      s.height = r[3] + 'px';
+    } else {
+      // 非根元素：只在非 auto 尺寸时设置（避免覆盖 flex/grid 的自动尺寸）
+      if (r[2] > 0 && item[K.display] !== 'flex' && item[K.display] !== 'grid') {
+        s.width = r[2] + 'px';
+      }
+      if (r[3] > 0 && !item[K.textContent]) {
+        // 有文本内容的元素高度由内容撑开，不固定
+      }
+    }
   }
-
-  if (item.boxShadow) s.boxShadow = item.boxShadow;
-  if (item.opacity !== undefined && item.opacity < 1) s.opacity = item.opacity;
-  if (item.overflow) s.overflow = item.overflow;
-
-  if (item.display) s.display = item.display;
-  if (item.position) s.position = item.position;
-  if (item.zIndex) s.zIndex = item.zIndex;
-  if (item.transform) s.transform = item.transform;
-
-  if (item.flexDirection) s.flexDirection = item.flexDirection;
-  if (item.justifyContent) s.justifyContent = item.justifyContent;
-  if (item.alignItems) s.alignItems = item.alignItems;
-  if (item.flexWrap) s.flexWrap = item.flexWrap;
-  if (item.gap) s.gap = item.gap;
-
-  if (item.gridTemplateColumns) s.gridTemplateColumns = item.gridTemplateColumns;
-  if (item.gridTemplateRows) s.gridTemplateRows = item.gridTemplateRows;
 }
 
 /**
  * 将截取的嵌套样式信息还原为真实 DOM 元素
- * @param {object} captureNode - captureElementStyles 返回的嵌套对象
- * @returns {HTMLElement|null} 还原的元素
  */
-export function restoreFromCapture(captureNode) {
+export function restoreFromCapture(captureNode, isRoot = true) {
   if (!captureNode) return null;
 
+  const tagName = captureNode[K.tagName];
+
   // fragment 虚拟容器
-  if (captureNode.tagName === 'fragment') {
+  if (tagName === 'fragment') {
     const wrapper = document.createElement('div');
-    if (captureNode.children) {
-      captureNode.children.forEach(child => {
-        const el = restoreFromCapture(child);
+    const children = captureNode[K.children];
+    if (children) {
+      children.forEach(child => {
+        const el = restoreFromCapture(child, false);
         if (el) wrapper.appendChild(el);
       });
     }
     return wrapper;
   }
 
-  const el = document.createElement(captureNode.tagName);
+  const el = document.createElement(tagName);
 
-  if (captureNode.className) el.className = captureNode.className;
-  if (captureNode.id) el.id = captureNode.id;
-  if (captureNode.textContent) el.textContent = captureNode.textContent;
+  if (captureNode[K.className]) el.className = captureNode[K.className];
+  if (captureNode[K.id]) el.id = captureNode[K.id];
+  if (captureNode[K.textContent]) el.textContent = captureNode[K.textContent];
 
-  applyStyles(el, captureNode);
+  applyStyles(el, captureNode, isRoot);
 
   // 递归还原子元素
-  if (captureNode.children) {
-    captureNode.children.forEach(child => {
-      const childEl = restoreFromCapture(child);
+  const children = captureNode[K.children];
+  if (children) {
+    children.forEach(child => {
+      const childEl = restoreFromCapture(child, false);
       if (childEl) el.appendChild(childEl);
     });
   }

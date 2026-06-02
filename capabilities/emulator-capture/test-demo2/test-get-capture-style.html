@@ -67,6 +67,39 @@
       word-break: break-all;
     }
     #json-area h2 { color: #fff; margin-bottom: 12px; }
+
+    /* 数据大小比率区域 */
+    #size-ratio-area {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    #size-ratio-area h2 { margin-bottom: 12px; color: #333; font-size: 18px; }
+    #size-ratio-output {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 14px;
+      line-height: 2;
+    }
+    #size-ratio-output .label { color: #666; }
+    #size-ratio-output .value { color: #333; font-weight: 600; }
+    #size-ratio-output .ratio { color: #667eea; font-weight: 700; font-size: 16px; }
+    #size-ratio-output .bar-bg {
+      display: inline-block;
+      width: 200px;
+      height: 12px;
+      background: #eee;
+      border-radius: 6px;
+      overflow: hidden;
+      vertical-align: middle;
+      margin: 0 8px;
+    }
+    #size-ratio-output .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
@@ -95,20 +128,63 @@
     <div id="json-output">点击"截取样式"按钮开始...</div>
   </div>
 
+  <!-- 数据大小比率 -->
+  <div id="size-ratio-area">
+    <h2>数据大小比率</h2>
+    <div id="size-ratio-output">点击"截取样式"按钮后显示...</div>
+  </div>
+
   <script type="module">
     import { captureElementStyles, restoreFromCapture } from './get-capture-style.js';
 
     let capturedData = null;
+    let sourceHtmlSize = 0;
+
+    // 格式化字节大小
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // 更新大小比率显示
+    function updateSizeRatio(captureJson) {
+      const captureSize = new Blob([captureJson]).size;
+
+      const ratio = sourceHtmlSize > 0 ? (captureSize / sourceHtmlSize * 100).toFixed(1) : 0;
+      const barPercent = sourceHtmlSize > 0 ? Math.min(captureSize / sourceHtmlSize * 100, 100) : 0;
+
+      document.getElementById('size-ratio-output').innerHTML = `
+        <div><span class="label">iframe 源文件大小：</span><span class="value">${formatBytes(sourceHtmlSize)}</span></div>
+        <div><span class="label">截取数据大小：</span><span class="value">${formatBytes(captureSize)}</span>
+          <span class="bar-bg"><span class="bar-fill" style="width: ${barPercent}%"></span></span>
+        </div>
+        <div><span class="label">比率：</span><span class="ratio">${ratio}%</span> <span class="label">（截取数据 / 源文件）</span></div>
+      `;
+    }
 
     // 绑定按钮事件
-    document.getElementById('btn-capture').addEventListener('click', () => {
+    document.getElementById('btn-capture').addEventListener('click', async () => {
       const iframe = document.getElementById('source-iframe');
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
       const sourceEl = iframeDoc.body;
 
+      // 获取 iframe 源文件大小
+      try {
+        const resp = await fetch('jianli.html');
+        const htmlText = await resp.text();
+        sourceHtmlSize = new Blob([htmlText]).size;
+      } catch (e) {
+        // fetch 失败时用 iframe 内 HTML 估算
+        sourceHtmlSize = new Blob([iframeDoc.documentElement.outerHTML]).size;
+      }
+
       capturedData = captureElementStyles(sourceEl);
 
-      document.getElementById('json-output').textContent = JSON.stringify(capturedData, null, 2);
+      const captureJson = JSON.stringify(capturedData, null, 2);
+      document.getElementById('json-output').textContent = captureJson;
+
+      updateSizeRatio(captureJson);
       console.log('截取到的样式数据：', capturedData);
     });
 
