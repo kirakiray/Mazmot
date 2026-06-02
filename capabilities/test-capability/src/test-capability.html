@@ -284,6 +284,26 @@
           missingResults: [],
         },
         proto: {
+          get emulator() {
+            const iframe = this.$("iframe");
+
+            if (!iframe) return null;
+
+            // 返回模拟的
+            return {
+              iframe: iframe,
+              url: iframe.src,
+              go(url) {
+                iframe.src = url;
+              },
+              async reload() {
+                const src = iframe.src;
+                iframe.src = "";
+                await new Promise((resolve) => setTimeout(resolve, 300));
+                iframe.src = src;
+              },
+            };
+          },
           async handleCapabilityResults(results) {
             this.testResults = [];
 
