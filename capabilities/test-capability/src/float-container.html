@@ -42,6 +42,18 @@
       position: relative;
     }
 
+    .drag-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      cursor: grabbing;
+    }
+
+    :host([dragging]) .drag-overlay {
+      display: block;
+    }
+
     ::slotted(iframe) {
       width: 640px;
       height: 640px;
@@ -53,6 +65,7 @@
   </style>
   <div class="drag-handle" on:mousedown="startDrag">Emulator</div>
   <div class="viewport">
+    <div class="drag-overlay"></div>
     <slot></slot>
   </div>
   <script>
@@ -71,6 +84,8 @@
             host.style.left = startLeft + "px";
             host.style.top = startTop + "px";
             host.style.right = "auto";
+
+            host.setAttribute("dragging", "");
 
             this._dragState = {
               startX: e.clientX,
@@ -93,6 +108,7 @@
 
           this._onMouseUp = () => {
             this._dragState = null;
+            this.ele.removeAttribute("dragging");
           };
 
           document.addEventListener("mousemove", this._onMouseMove);
