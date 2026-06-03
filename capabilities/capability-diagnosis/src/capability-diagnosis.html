@@ -259,8 +259,12 @@
               payload: this.allResults,
             };
             const targetOrigin = window.location.origin;
-            window.parent !== window &&
-              window.parent.postMessage(message, targetOrigin);
+            if (window.parent !== window) {
+              window.parent.postMessage(
+                JSON.parse(JSON.stringify(message)),
+                targetOrigin,
+              );
+            }
           }
           this.reset();
         }
