@@ -15,6 +15,7 @@
 
   <body>
     <test-capability label="测试test-cap能力是否可用">
+      <iframe src="" frameborder="0"></iframe>
       <cap-request>
         <template
           name="fetch-url"
@@ -31,6 +32,14 @@
           <script type="text/plain">
             return 1 + 2 + 3;
           </script>
+        </template>
+        <template
+          name="emulator-navigate"
+          data-action="go"
+          data-url="https://www.baidu.com"
+          cid="emulator-navigate-01"
+          desc="导航到https://www.baidu.com"
+        >
         </template>
       </cap-request>
       <template result cid="fetch-01">
@@ -52,6 +61,17 @@
           export default async function (result) {
             return {
               assert: result === 6,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+      <template result cid="emulator-navigate-01">
+        <script type="module">
+          export default async function (result) {
+            debugger;
+            return {
+              assert: result === "https://www.baidu.com",
               content: result,
             };
           }

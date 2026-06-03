@@ -5,6 +5,8 @@ export default async function emulatorNavigate({
 }) {
   const { action, url } = data;
 
+  debugger
+
   if (action === "current-info") {
     const iframe = emulator.iframe;
     return {
@@ -40,16 +42,21 @@ export default async function emulatorNavigate({
         return { success: false, error: "No URL provided" };
       }
       emulator.iframeLoaded = false;
+
       let iframe = emulator.iframe;
       let loadPromise;
+
       if (iframe) {
+        // iframe 已存在，先注册监听器再更新 URL
         loadPromise = listenIframeLoad(iframe);
-      }
-      emulator.iframeUrl = url;
-      if (!loadPromise) {
+        emulator.iframeUrl = url;
+      } else {
+        // iframe 不存在，先设置 URL 触发创建，再等待并监听
+        emulator.iframeUrl = url;
         iframe = await pollIframe(emulator);
         loadPromise = listenIframeLoad(iframe);
       }
+
       await loadPromise;
       return {
         success: true,
