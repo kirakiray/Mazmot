@@ -2,6 +2,7 @@
 name: emulator-navigate
 description: 导航应用模拟器页面，支持获取当前页面信息、刷新页面和跳转到指定页面；只有在应用开发模式下可用。
 method: main.js
+test: test/test-emulator-navigate.html
 ---
 
 # 模拟器导航

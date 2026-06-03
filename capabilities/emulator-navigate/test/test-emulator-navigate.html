@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 emulator-navigate 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m src="/capabilities/test-capability/src/test-capability.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+
+  <body>
+    <test-capability label="测试 emulator-navigate 能力">
+      <iframe src="" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-navigate"
+          data-action="go"
+          data-url="/package.json"
+          cid="nav-go-01"
+          desc="导航到 /package.json"
+        >
+        </template>
+        <template
+          name="emulator-navigate"
+          data-action="current-info"
+          cid="nav-info-01"
+          desc="获取当前模拟器页面信息"
+        >
+        </template>
+        <template
+          name="emulator-navigate"
+          data-action="reload"
+          cid="nav-reload-01"
+          desc="刷新当前模拟器页面"
+        >
+        </template>
+      </cap-request>
+      <template result cid="nav-go-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result.success && result.url.includes("/package.json"),
+              content: result,
+            };
+          }
+        </script>
+      </template>
+      <template result cid="nav-info-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: !!result.url && result.url.includes("/package.json"),
+              content: result,
+            };
+          }
+        </script>
+      </template>
+      <template result cid="nav-reload-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result.success && result.url.includes("/package.json"),
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </test-capability>
+  </body>
+</html>
