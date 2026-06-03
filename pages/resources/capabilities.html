@@ -1,6 +1,8 @@
 <template page>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <style>
     :host {
       display: block;
@@ -52,6 +54,11 @@
       color: var(--md-sys-color-primary);
       vertical-align: middle;
     }
+    .test-dialog-iframe {
+      width: 100%;
+      height: 60vh;
+      border: none;
+    }
     @keyframes spin {
       from {
         transform: rotate(0deg);
@@ -96,6 +103,11 @@
             <n-icon class="test-badge" icon="fluent-mdl2:test-case"></n-icon>
           </o-if>
           <div secondary>{{$data.desc}}</div>
+          <o-if :value="$data.hasTest" slot="suffix">
+            <p-button on:click="$host.runTest($data)" icon variant="outlined" size="xs">
+              <n-icon icon="pajamas:work-item-test-case"></n-icon>
+            </p-button>
+          </o-if>
         </p-list-item>
       </o-fill>
     </p-list>
@@ -106,6 +118,9 @@
       </div>
     </o-if>
   </o-if>
+  <p-dialog id="testDialog" title="测试能力" :open="showDialog">
+    <iframe class="test-dialog-iframe" attr:src="testDialogSrc"></iframe>
+  </p-dialog>
   <script>
     export default async ({ load }) => {
       const { get } = await load("/nos/fs/main.js");
@@ -115,8 +130,15 @@
         data: {
           capList: [],
           loading: true,
+          testDialogSrc: "",
+          showDialog: false,
         },
         proto: {
+          runTest(capData) {
+            const testUrl = `/$mazmot/capabilities/${capData.name}/${capData.testPath}`;
+            this.testDialogSrc = testUrl;
+            this.showDialog = true;
+          },
           async loadData() {
             const list = [];
 
@@ -139,6 +161,7 @@
                           name,
                           desc: yamlConfig.description || "",
                           hasTest: !!yamlConfig.test,
+                          testPath: yamlConfig.test || "",
                         });
                       }
                     }
