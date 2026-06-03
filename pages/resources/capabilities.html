@@ -54,6 +54,18 @@
       color: var(--md-sys-color-primary);
       vertical-align: middle;
     }
+    .test-pass-badge {
+      display: inline-block;
+      margin-left: 8px;
+      color: var(--md-sys-color-success);
+      vertical-align: middle;
+    }
+    .test-fail-badge {
+      display: inline-block;
+      margin-left: 8px;
+      color: var(--md-sys-color-error);
+      vertical-align: middle;
+    }
     @keyframes spin {
       from {
         transform: rotate(0deg);
@@ -94,8 +106,14 @@
             >{{$data.name[0].toUpperCase()}}</span
           >
           <b>{{$data.name}}</b>
-          <o-if :value="$data.hasTest">
+          <o-if :value="$data.hasTest && !$data.testStatus">
             <n-icon class="test-badge" icon="fluent-mdl2:test-case"></n-icon>
+          </o-if>
+          <o-if :value="$data.testStatus === 'pass'">
+            <n-icon class="test-pass-badge" icon="mdi:check-circle"></n-icon>
+          </o-if>
+          <o-if :value="$data.testStatus === 'fail'">
+            <n-icon class="test-fail-badge" icon="mdi:close-circle"></n-icon>
           </o-if>
           <div secondary>{{$data.desc}}</div>
           <o-if :value="$data.hasTest" slot="suffix">
@@ -118,7 +136,12 @@
       </div>
     </o-if>
   </o-if>
-  <test-dialog :open="showDialog" :iframe-src="testDialogSrc" on:click-mask="showDialog = false"></test-dialog>
+  <test-dialog
+    :open="showDialog"
+    :iframe-src="testDialogSrc"
+    on:click-mask="showDialog = false"
+    on:test-complete="handleTestComplete($event)"
+  ></test-dialog>
   <script>
     export default async ({ load }) => {
       const { get } = await load("/nos/fs/main.js");
@@ -130,12 +153,25 @@
           loading: true,
           testDialogSrc: "",
           showDialog: false,
+          currentTestCap: null,
         },
         proto: {
           runTest(capData) {
             const testUrl = `/$mazmot/capabilities/${capData.name}/${capData.testPath}`;
             this.testDialogSrc = testUrl;
+            this.currentTestCap = capData;
             this.showDialog = true;
+          },
+          handleTestComplete(event) {
+            const { allPass } = event.data;
+            if (this.currentTestCap) {
+              const item = this.capList.find(
+                (c) => c.name === this.currentTestCap.name
+              );
+              if (item) {
+                item.testStatus = allPass ? "pass" : "fail";
+              }
+            }
           },
           async loadData() {
             const list = [];
