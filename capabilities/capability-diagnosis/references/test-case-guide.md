@@ -27,7 +27,7 @@ test: test/test-fetch-url.html
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
     />
-    <l-m src="/capabilities/test-capability/src/test-capability.html"></l-m>
+    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
     <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
   <body>
@@ -38,9 +38,9 @@ test: test/test-fetch-url.html
 
 ## 核心标签
 
-| 标签                             | 作用                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------- |
-| `<test-capability>`              | 测试容器，`label` 属性设置标题                                                  |
+| 标签                                  | 作用                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `<capability-diagnosis>`             | 测试容器，`label` 属性设置标题                                                  |
 | `<cap-request>`                  | 包裹所有能力调用                                                                |
 | `<template>` (在 cap-request 内) | 发起能力调用，`name` 指定能力名，`cid` 唯一标识，`desc` 描述，`data-*` 传递参数 |
 | `<template result>`              | 断言结果，通过 `cid` 与调用配对                                                 |
@@ -52,7 +52,7 @@ test: test/test-fetch-url.html
 纯脚本能力（SKILL.md 含 `method` 字段）直接调用：
 
 ```html
-<test-capability label="测试 fetch-url 能力">
+<capability-diagnosis label="测试 fetch-url 能力">
   <cap-request>
     <template
       name="fetch-url"
@@ -70,7 +70,7 @@ test: test/test-fetch-url.html
       }
     </script>
   </template>
-</test-capability>
+</capability-diagnosis>
 ```
 
 若能力需要传入脚本内容（如 `run-js`），使用 `<script type="text/plain">`：
@@ -91,7 +91,7 @@ test: test/test-fetch-url.html
 2. 使用 `emulator-navigate` 能力导航到目标页面
 
 ```html
-<test-capability label="测试应用开发模式能力">
+<capability-diagnosis label="测试应用开发模式能力">
   <iframe src="" frameborder="0" slot="emulator"></iframe>
   <cap-request>
     <template
@@ -114,7 +114,7 @@ test: test/test-fetch-url.html
       }
     </script>
   </template>
-</test-capability>
+</capability-diagnosis>
 ```
 
 `emulator-navigate` 的 `go` 操作返回 `{ success: boolean, url: string }`。
@@ -124,4 +124,4 @@ test: test/test-fetch-url.html
 - 每个 `<template>` 的 `cid` 必须唯一，用于关联调用与断言
 - `<cap-request>` 内的多个 `<template>` 按顺序执行
 - 测试应用开发模式能力时，`<iframe slot="emulator">` 必须放在 `<cap-request>` 之前
-- 普通能力和应用开发模式能力可在同一个 `<test-capability>` 中混合测试
+- 普通能力和应用开发模式能力可在同一个 `<capability-diagnosis>` 中混合测试
