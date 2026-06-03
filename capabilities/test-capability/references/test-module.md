@@ -23,7 +23,10 @@ test: test/test-fetch-url.html
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>测试 xxx 能力</title>
     <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
-    <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
     <l-m src="/capabilities/test-capability/src/test-capability.html"></l-m>
     <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
@@ -35,12 +38,12 @@ test: test/test-fetch-url.html
 
 ## 核心标签
 
-| 标签 | 作用 |
-|------|------|
-| `<test-capability>` | 测试容器，`label` 属性设置标题 |
-| `<cap-request>` | 包裹所有能力调用 |
+| 标签                             | 作用                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `<test-capability>`              | 测试容器，`label` 属性设置标题                                                  |
+| `<cap-request>`                  | 包裹所有能力调用                                                                |
 | `<template>` (在 cap-request 内) | 发起能力调用，`name` 指定能力名，`cid` 唯一标识，`desc` 描述，`data-*` 传递参数 |
-| `<template result>` | 断言结果，通过 `cid` 与调用配对 |
+| `<template result>`              | 断言结果，通过 `cid` 与调用配对                                                 |
 
 断言函数返回 `{ assert: boolean, content: any }`，所有 `assert` 为 `true` 则测试通过。
 
@@ -51,7 +54,12 @@ test: test/test-fetch-url.html
 ```html
 <test-capability label="测试 fetch-url 能力">
   <cap-request>
-    <template name="fetch-url" cid="fetch-01" desc="请求本地文件" data-url="/package.json"></template>
+    <template
+      name="fetch-url"
+      cid="fetch-01"
+      desc="请求本地文件"
+      data-url="/package.json"
+    ></template>
   </cap-request>
   <template result cid="fetch-01">
     <script type="module">
@@ -75,15 +83,15 @@ test: test/test-fetch-url.html
 </template>
 ```
 
-## 页面交互能力测试
+## 应用开发模式能力测试
 
-页面交互能力（SKILL.md 含 `page` 字段）需在模拟器中渲染，需要：
+部分能力（如 `emulator-navigate`、`emulator-console`、`emulator-inspect`、`emulator-interact` 等）只能在应用开发模式下运行，它们的 SKILL.md 描述中会标注"只有在应用开发模式下可用"。测试这类能力时需要模拟器：
 
 1. 添加 `<iframe slot="emulator">` 作为模拟器容器（`slot="emulator"` 不可省略）
 2. 使用 `emulator-navigate` 能力导航到目标页面
 
 ```html
-<test-capability label="测试页面交互能力">
+<test-capability label="测试应用开发模式能力">
   <iframe src="" frameborder="0" slot="emulator"></iframe>
   <cap-request>
     <template
@@ -98,7 +106,9 @@ test: test/test-fetch-url.html
     <script type="module">
       export default async function (result) {
         return {
-          assert: result.success && result.url.includes("/capabilities/custom-form/src/form.html"),
+          assert:
+            result.success &&
+            result.url.includes("/capabilities/custom-form/src/form.html"),
           content: result,
         };
       }
@@ -113,5 +123,5 @@ test: test/test-fetch-url.html
 
 - 每个 `<template>` 的 `cid` 必须唯一，用于关联调用与断言
 - `<cap-request>` 内的多个 `<template>` 按顺序执行
-- 测试页面交互能力时，`<iframe slot="emulator">` 必须放在 `<cap-request>` 之前
-- 纯脚本能力和页面交互能力可在同一个 `<test-capability>` 中混合测试
+- 测试应用开发模式能力时，`<iframe slot="emulator">` 必须放在 `<cap-request>` 之前
+- 普通能力和应用开发模式能力可在同一个 `<test-capability>` 中混合测试
