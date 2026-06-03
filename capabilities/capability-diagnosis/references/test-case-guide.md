@@ -119,9 +119,78 @@ test: test/test-fetch-url.html
 
 `emulator-navigate` 的 `go` 操作返回 `{ success: boolean, url: string }`。
 
+## 页面交互能力测试
+
+页面类型能力（SKILL.md 含 `page` 字段）会渲染 UI 组件并等待用户交互（如提交表单、点击按钮等）。测试时需要通过 `<template interaction>` 编程式驱动交互，否则测试将因等待用户操作而卡住。
+
+### interaction 模板
+
+`<template interaction>` 在页面 `init` 完成后自动执行，用于模拟用户操作。通过 `cid` 与调用配对。
+
+| 属性           | 必需 | 说明                                         |
+| -------------- | ---- | -------------------------------------------- |
+| `interaction`  | 是   | 标记为交互脚本模板                           |
+| `cid`          | 是   | 与调用模板的 `cid` 配对                      |
+
+脚本导出的函数接收一个参数 —— ofa.js 实例化的 page 对象，可直接访问其 `data`、调用其 `proto` 方法。
+
+```html
+<capability-diagnosis label="测试 custom-form 能力">
+  <cap-request>
+    <template name="custom-form" cid="form-01" desc="测试表单提交">
+      [{"type":"text","name":"username","desc":"用户名","required":true,"placeholder":"请输入用户名"},{"type":"radio","name":"gender","desc":"性别","required":true,"options":[{"label":"男","value":"male"},{"label":"女","value":"female"}],"defaultValue":"male"},{"type":"submit","name":"提交"},{"type":"cancel","name":"取消"}]
+    </template>
+  </cap-request>
+
+  <!-- 交互脚本：在页面 init 后自动执行，模拟用户操作 -->
+  <template interaction cid="form-01">
+    <script type="module">
+      export default async function (page) {
+        // page 是 ofa.js 实例化对象，可直接操作其数据和方法
+        page.formItems[0].value = "test-user";
+        page.formItems[1].value = "male";
+        // 触发提交，使页面 emit submit 事件
+        page.submit();
+      }
+    </script>
+  </template>
+
+  <!-- 断言结果 -->
+  <template result cid="form-01">
+    <script type="module">
+      export default async function (result) {
+        return {
+          assert: result.username === "test-user" && result.gender === "male",
+          content: result,
+        };
+      }
+    </script>
+  </template>
+</capability-diagnosis>
+```
+
+### 执行流程
+
+```
+页面加载 → page.init() → 执行 interaction 脚本 → 页面 emit submit/cancel → 断言
+```
+
+### 测试取消操作
+
+```html
+<template interaction cid="form-cancel-01">
+  <script type="module">
+    export default async function (page) {
+      page.cancel();
+    }
+  </script>
+</template>
+```
+
 ## 规则
 
 - 每个 `<template>` 的 `cid` 必须唯一，用于关联调用与断言
 - `<cap-request>` 内的多个 `<template>` 按顺序执行
 - 测试应用开发模式能力时，`<iframe slot="emulator">` 必须放在 `<cap-request>` 之前
 - 普通能力和应用开发模式能力可在同一个 `<capability-diagnosis>` 中混合测试
+- 页面交互能力必须提供 `<template interaction>`，否则测试将因等待用户操作而无法完成

@@ -246,7 +246,7 @@
               item.hidePage = !item.hidePage;
             }
           },
-          runPageInit(item, fillItemEl) {
+          async runPageInit(item, fillItemEl) {
             const page = fillItemEl.$("o-page");
             const initData = {
               content: item.content,
@@ -259,6 +259,56 @@
             }
 
             page.init(initData);
+
+            // 查找并执行 interaction 脚本
+            const dialogHost = this.dialogHost;
+            const interactionTemp = dialogHost.$(
+              `template[interaction][cid="${item.cid}"]`
+            );
+            if (interactionTemp) {
+              const scriptEle = interactionTemp.$("script[type='module']");
+              if (scriptEle) {
+                try {
+                  const { createScriptWithSourceMap } = await load(
+                    "/capabilities/capability-diagnosis/src/util.js"
+                  );
+
+                  let sourceFilePath = "";
+                  if (dialogHost.host) {
+                    sourceFilePath = dialogHost.host.PATH;
+                  } else {
+                    sourceFilePath = location.origin + location.pathname;
+                  }
+                  const sourceContent = await fetch(sourceFilePath).then(
+                    (res) => res.text()
+                  );
+
+                  const scriptText = scriptEle.text;
+                  const startIndex = sourceContent.indexOf(
+                    scriptEle.ele.outerHTML
+                  );
+                  const prevContent = sourceContent.slice(0, startIndex);
+                  const targetLine = prevContent.split("\n").length - 1;
+
+                  const url = createScriptWithSourceMap(
+                    scriptText,
+                    targetLine,
+                    sourceFilePath,
+                    sourceContent
+                  );
+
+                  const module = await import(url);
+                  if (module.default) {
+                    await module.default(page);
+                  }
+                } catch (e) {
+                  console.error(
+                    `Interaction script error [${item.cid}]:`,
+                    e
+                  );
+                }
+              }
+            }
           },
           stringifyInfo(data) {
             return this.stringify(data, [
