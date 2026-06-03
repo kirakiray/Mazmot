@@ -45,6 +45,30 @@
     .fail-count {
       color: var(--md-sys-color-error);
     }
+    .iframe-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .iframe-loading-icon {
+      font-size: 48px;
+      animation: spin 1s linear infinite;
+    }
+    .iframe-loading-text {
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
   <p-dialog
     id="testDialog"
@@ -64,7 +88,18 @@
         </div>
       </div>
     </o-if>
-    <iframe class="test-dialog-iframe" attr:src="iframeSrc"></iframe>
+    <o-if :value="iframeLoading">
+      <div class="iframe-loading">
+        <n-icon class="iframe-loading-icon" icon="eos-icons:loading"></n-icon>
+        <p class="iframe-loading-text">加载中...</p>
+      </div>
+    </o-if>
+    <iframe
+      class="test-dialog-iframe"
+      attr:src="iframeSrc"
+      on:load="iframeLoading = false"
+      :style.display="iframeLoading ? 'none' : ''"
+    ></iframe>
   </p-dialog>
   <script>
     export default {
@@ -75,11 +110,13 @@
       data: {
         open: null,
         testResults: [],
+        iframeLoading: true,
       },
       watch: {
         open(newVal) {
           if (newVal) {
             this.testResults = [];
+            this.iframeLoading = true;
           }
         },
         testResults(newVal) {

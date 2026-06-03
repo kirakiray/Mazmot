@@ -56,13 +56,13 @@
     }
     .test-pass-badge {
       display: inline-block;
-      margin-left: 8px;
+      font-size: 12px;
       color: var(--md-sys-color-success);
       vertical-align: middle;
     }
     .test-fail-badge {
       display: inline-block;
-      margin-left: 8px;
+      font-size: 12px;
       color: var(--md-sys-color-error);
       vertical-align: middle;
     }
@@ -106,14 +106,20 @@
             >{{$data.name[0].toUpperCase()}}</span
           >
           <b>{{$data.name}}</b>
-          <o-if :value="$data.hasTest && !$data.testStatus">
-            <n-icon class="test-badge" icon="fluent-mdl2:test-case"></n-icon>
-          </o-if>
-          <o-if :value="$data.testStatus === 'pass'">
-            <n-icon class="test-pass-badge" icon="mdi:check-circle"></n-icon>
-          </o-if>
-          <o-if :value="$data.testStatus === 'fail'">
-            <n-icon class="test-fail-badge" icon="mdi:close-circle"></n-icon>
+          <o-if :value="$data.hasTest">
+            <n-icon
+              class:test-badge="!$data.testStatus"
+              class:test-pass-badge="$data.testStatus === 'pass'"
+              class:test-fail-badge="$data.testStatus === 'fail'"
+              icon="fluent-mdl2:test-case"
+              style="margin-left: 8px"
+            ></n-icon>
+            <o-if :value="$data.testStatus === 'pass'">
+              <span class="test-pass-badge">测试通过</span>
+            </o-if>
+            <o-if :value="$data.testStatus === 'fail'">
+              <span class="test-fail-badge">测试失败</span>
+            </o-if>
           </o-if>
           <div secondary>{{$data.desc}}</div>
           <o-if :value="$data.hasTest" slot="suffix">
@@ -166,7 +172,7 @@
             const { allPass } = event.data;
             if (this.currentTestCap) {
               const item = this.capList.find(
-                (c) => c.name === this.currentTestCap.name
+                (c) => c.name === this.currentTestCap.name,
               );
               if (item) {
                 item.testStatus = allPass ? "pass" : "fail";
