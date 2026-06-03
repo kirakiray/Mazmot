@@ -58,7 +58,7 @@ export default async function emulatorNavigate({
       await loadPromise;
       return {
         success: true,
-        url,
+        url: iframe.src,
       };
     } catch (err) {
       return {
