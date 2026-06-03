@@ -15,7 +15,7 @@
 
   <body>
     <test-capability label="测试test-cap能力是否可用">
-      <iframe src="" frameborder="0"></iframe>
+      <iframe src="" frameborder="0" slot="emulator"></iframe>
       <cap-request>
         <template
           name="fetch-url"
@@ -70,7 +70,11 @@
         <script type="module">
           export default async function (result) {
             return {
-              assert: result.success,
+              assert:
+                result.success &&
+                result.url.includes(
+                  "/capabilities/test-capability/test/test-page.html",
+                ),
               content: result,
             };
           }
