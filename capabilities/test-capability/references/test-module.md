@@ -123,6 +123,122 @@ test: test/test-fetch-url.html
 - 每个 `<template result>` 通过 `cid` 与对应的调用 `<template>` 匹配。
 - 所有断言均为 `true` 时测试通过，任一为 `false` 则测试失败。
 
+## 测试页面交互能力
+
+能力分为**纯脚本能力**（SKILL.md 中包含 `method` 字段）和**页面交互能力**（SKILL.md 中包含 `page` 字段）。前面介绍的 `fetch-url`、`run-js` 属于纯脚本能力，而 `custom-form`、`preview-web` 等属于页面交互能力。
+
+页面交互能力会在模拟器中渲染可视化界面，因此测试时需要：
+
+1. 在 `<test-capability>` 内添加一个 `<iframe slot="emulator">` 作为模拟器容器
+2. 使用 `emulator-navigate` 能力控制模拟器导航，触发页面交互能力的加载
+
+### 添加模拟器 iframe
+
+在 `<test-capability>` 内部、`<cap-request>` 之前添加一个空的 iframe，并设置 `slot="emulator"`：
+
+```html
+<test-capability label="测试页面交互能力">
+  <iframe src="" frameborder="0" slot="emulator"></iframe>
+  <cap-request>
+    ...
+  </cap-request>
+</test-capability>
+```
+
+### 使用 emulator-navigate 导航
+
+`emulator-navigate` 是一个纯脚本能力，用于控制模拟器的页面导航。测试页面交互能力时，通过 `data-action="go"` 和 `data-url` 将模拟器导航到目标页面：
+
+```html
+<cap-request>
+  <template
+    name="emulator-navigate"
+    data-action="go"
+    data-url="/capabilities/custom-form/src/form.html"
+    cid="emulator-navigate-01"
+    desc="导航到 custom-form 页面"
+  >
+  </template>
+</cap-request>
+```
+
+### 断言导航结果
+
+`emulator-navigate` 的 `go` 操作返回一个包含 `success` 和 `url` 属性的对象。在 `<template result>` 中通过检查这两个属性来验证页面是否成功加载：
+
+```html
+<template result cid="emulator-navigate-01">
+  <script type="module">
+    export default async function (result) {
+      return {
+        assert:
+          result.success &&
+          result.url.includes("/capabilities/custom-form/src/form.html"),
+        content: result,
+      };
+    }
+  </script>
+</template>
+```
+
+### 代码说明
+
+- **`<iframe slot="emulator">`**：为 `<test-capability>` 组件提供模拟器容器，页面交互能力将在此 iframe 中渲染。`slot="emulator"` 是固定写法，不可省略。
+- **`emulator-navigate`**：通过 `data-action="go"` 跳转到指定 URL，`data-url` 指定目标页面地址。导航成功后返回 `{ success: true, url: "..." }`，失败时返回错误响应。
+- **断言逻辑**：同时检查 `result.success` 为 `true` 且 `result.url` 包含目标路径，确保页面确实导航到了预期地址。
+
+### 混合测试示例
+
+以下示例同时测试纯脚本能力和页面交互能力：
+
+```html
+<test-capability label="测试多个能力">
+  <iframe src="" frameborder="0" slot="emulator"></iframe>
+  <cap-request>
+    <template
+      name="fetch-url"
+      cid="fetch-01"
+      desc="请求 package.json 文件内容"
+      data-url="/package.json"
+    >
+    </template>
+    <template
+      name="emulator-navigate"
+      data-action="go"
+      data-url="/capabilities/custom-form/src/form.html"
+      cid="emulator-navigate-01"
+      desc="导航到 custom-form 页面"
+    >
+    </template>
+  </cap-request>
+  <template result cid="fetch-01">
+    <script type="module">
+      export default async function (result) {
+        const data = await fetch("/package.json");
+        const jsonText = await data.text();
+
+        return {
+          assert: jsonText === result,
+          content: "获取成功",
+        };
+      }
+    </script>
+  </template>
+  <template result cid="emulator-navigate-01">
+    <script type="module">
+      export default async function (result) {
+        return {
+          assert:
+            result.success &&
+            result.url.includes("/capabilities/custom-form/src/form.html"),
+          content: result,
+        };
+      }
+    </script>
+  </template>
+</test-capability>
+```
+
 ## 完整代码
 
 ```html
