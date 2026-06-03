@@ -63,11 +63,9 @@
         },
         proto: {
           startDrag(e) {
-            const host = this.shadow.host;
-            const rect = host.getBoundingClientRect();
-            const parentRect = host.parentElement.getBoundingClientRect();
-            const startLeft = rect.left - parentRect.left;
-            const startTop = rect.top - parentRect.top;
+            const host = this.ele;
+            const startLeft = host.offsetLeft;
+            const startTop = host.offsetTop;
 
             // 切换为 left/top 定位
             host.style.left = startLeft + "px";
@@ -88,7 +86,7 @@
           this._onMouseMove = (e) => {
             if (!this._dragState) return;
             const { startX, startY, startLeft, startTop } = this._dragState;
-            const host = this.shadow.host;
+            const host = this.shadow.host.ele;
             host.style.left = startLeft + (e.clientX - startX) + "px";
             host.style.top = startTop + (e.clientY - startY) + "px";
           };
