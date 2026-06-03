@@ -186,7 +186,6 @@
     .test-result[status="error"] .message {
       color: var(--md-sys-color-on-neutral-container);
     }
-
   </style>
   <div>
     <h3>{{ label }}</h3>
@@ -233,7 +232,7 @@
       </div>
     </o-fill>
   </div>
-  <o-page src="./float-container.html">
+  <o-page src="./float-container.html" id="emulator-page">
     <slot name="emulator"></slot>
   </o-page>
   <slot></slot>
@@ -429,6 +428,12 @@
           }
 
           window.__testCapManager.register();
+        },
+        attached() {
+          const hasEmulator = !!this.$('iframe[slot="emulator"]');
+          if (!hasEmulator) {
+            this.shadow.$("#emulator-page").style.display = "none";
+          }
         },
       };
     };
