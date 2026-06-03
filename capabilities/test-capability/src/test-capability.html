@@ -255,7 +255,8 @@
               payload: this.allResults,
             };
             const targetOrigin = window.location.origin;
-            window.parent.postMessage(message, targetOrigin);
+            window.parent !== window &&
+              window.parent.postMessage(message, targetOrigin);
           }
           this.reset();
         }
@@ -292,6 +293,9 @@
             // 返回模拟的
             return {
               iframe: iframe.ele,
+              set iframeUrl(url) {
+                iframe.ele.src = url;
+              },
             };
           },
           async handleCapabilityResults(results) {

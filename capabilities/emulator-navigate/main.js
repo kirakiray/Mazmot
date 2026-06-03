@@ -5,8 +5,6 @@ export default async function emulatorNavigate({
 }) {
   const { action, url } = data;
 
-  debugger
-
   if (action === "current-info") {
     const iframe = emulator.iframe;
     return {
