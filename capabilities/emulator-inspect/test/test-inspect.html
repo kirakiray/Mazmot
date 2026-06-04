@@ -141,5 +141,36 @@
         </script>
       </template>
     </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（maxSize 限制）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-04"
+          data-xpath="/html/body"
+          data-depth="3"
+          data-max-size="100"
+          desc="获取模拟器内的 body 下的元素（深度 3，限制 100 字节）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-04">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回错误信息
+            const isError =
+              result.error && result.error.includes("返回数据大小超过最大限制");
+
+            return {
+              assert: isError,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
   </body>
 </html>
