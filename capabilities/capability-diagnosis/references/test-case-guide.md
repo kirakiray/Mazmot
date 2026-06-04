@@ -177,9 +177,9 @@ test: test/test-fetch-url.html
 页面加载 → page.init() → 执行 interaction 脚本 → 页面 emit submit/cancel → 断言
 ```
 
-### result 参数说明
+### 参数说明
 
-**重要**：断言函数的 `result` 参数对应页面 `emit("submit", {data})` 中传入的 `data` 字段值。
+**重要**：断言函数的 `data` 参数对应页面 `emit("submit", {data})` 中传入的 `data` 字段值。
 
 ```javascript
 // 页面代码中的 emit
@@ -190,19 +190,16 @@ this.emit("submit", {
   },
 });
 
-// 测试断言中的 result 就是 data 字段的值
-export default async function (result) {
-  // result === { username: "test-user", gender: "male" }
-  // 正确：直接访问 result.username
-  // 错误：不要写成 result.data.username
+export default async function (data) {
+  // data === { username: "test-user", gender: "male" }
   return {
-    assert: result.username === "test-user",
-    content: result,
+    assert: data.username === "test-user",
+    content: data,
   };
 }
 ```
 
-**常见错误**：误以为 `result` 是整个 emit 参数对象。实际上 `result` 只取 `data` 字段的值。
+> **注意**：示例中参数名使用 `data` 是为了方便理解对应关系。在实际测试代码中，通常使用 `result` 作为参数名，两者是等价的。
 
 ### 测试取消操作
 
