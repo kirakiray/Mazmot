@@ -18,6 +18,9 @@ test: test/test-inspect.html
 ### 参数说明
 
 - `data-xpath` (必需): XPath 表达式，指定要检查的元素路径
+- `data-depth` (可选): 获取子元素的深度，默认为 1
+
+⚠️ **警告**: 请谨慎使用 `data-depth` 参数。深度过大会导致返回数据量爆炸式增长，大幅消耗 AI 的 token 额度。建议仅在必要时使用，且深度不超过 3。
 
 ### 返回值
 
@@ -55,4 +58,10 @@ test: test/test-inspect.html
 
 <cap-request>
   <template name="emulator-inspect" cid="inspect-02" data-xpath="/html/body/div[@id='app']" desc="获取 ID 为 app 的 div 元素"></template>
+</cap-request>
+
+获取元素及其子元素的子元素（深度为 2）：
+
+<cap-request>
+  <template name="emulator-inspect" cid="inspect-03" data-xpath="/html/body" data-depth="2" desc="获取 body 元素及其两层子元素"></template>
 </cap-request>
