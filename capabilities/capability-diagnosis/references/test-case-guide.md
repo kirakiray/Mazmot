@@ -27,7 +27,9 @@ test: test/test-fetch-url.html
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
     />
-    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
     <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
   <body>
@@ -38,9 +40,9 @@ test: test/test-fetch-url.html
 
 ## 核心标签
 
-| 标签                                  | 作用                                                                            |
-| ------------------------------------- | ------------------------------------------------------------------------------- |
-| `<capability-diagnosis>`             | 测试容器，`label` 属性设置标题                                                  |
+| 标签                             | 作用                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `<capability-diagnosis>`         | 测试容器，`label` 属性设置标题                                                  |
 | `<cap-request>`                  | 包裹所有能力调用                                                                |
 | `<template>` (在 cap-request 内) | 发起能力调用，`name` 指定能力名，`cid` 唯一标识，`desc` 描述，`data-*` 传递参数 |
 | `<template result>`              | 断言结果，通过 `cid` 与调用配对                                                 |
@@ -127,10 +129,10 @@ test: test/test-fetch-url.html
 
 `<template interaction>` 在页面 `init` 完成后自动执行，用于模拟用户操作。通过 `cid` 与调用配对。
 
-| 属性           | 必需 | 说明                                         |
-| -------------- | ---- | -------------------------------------------- |
-| `interaction`  | 是   | 标记为交互脚本模板                           |
-| `cid`          | 是   | 与调用模板的 `cid` 配对                      |
+| 属性          | 必需 | 说明                    |
+| ------------- | ---- | ----------------------- |
+| `interaction` | 是   | 标记为交互脚本模板      |
+| `cid`         | 是   | 与调用模板的 `cid` 配对 |
 
 脚本导出的函数接收一个参数 —— ofa.js 实例化的 page 对象，可直接访问其 `data`、调用其 `proto` 方法。
 
@@ -174,6 +176,33 @@ test: test/test-fetch-url.html
 ```
 页面加载 → page.init() → 执行 interaction 脚本 → 页面 emit submit/cancel → 断言
 ```
+
+### result 参数说明
+
+**重要**：断言函数的 `result` 参数对应页面 `emit("submit", {data})` 中传入的 `data` 字段值。
+
+```javascript
+// 页面代码中的 emit
+this.emit("submit", {
+  data: {
+    username: "test-user",
+    gender: "male",
+  },
+});
+
+// 测试断言中的 result 就是 data 字段的值
+export default async function (result) {
+  // result === { username: "test-user", gender: "male" }
+  // 正确：直接访问 result.username
+  // 错误：不要写成 result.data.username
+  return {
+    assert: result.username === "test-user",
+    content: result,
+  };
+}
+```
+
+**常见错误**：误以为 `result` 是整个 emit 参数对象。实际上 `result` 只取 `data` 字段的值。
 
 ### 测试取消操作
 
