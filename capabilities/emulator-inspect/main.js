@@ -1,5 +1,5 @@
 export default async function inspect({ data = {}, content, emulator }) {
-  const { xpath, depth = 1 } = data;
+  const { xpath, depth = 1, maxSize = 1024 * 32 } = data;
 
   if (!xpath) {
     throw new Error("xpath 参数是必需的");
@@ -34,7 +34,13 @@ export default async function inspect({ data = {}, content, emulator }) {
   }
 
   // 提取元素信息
-  return getElementInfo(element, depth);
+  const info = getElementInfo(element, depth);
+
+  if (JSON.stringify(info).length > maxSize) {
+    throw new Error("返回数据大小超过最大限制");
+  }
+
+  return info;
 }
 
 /**
