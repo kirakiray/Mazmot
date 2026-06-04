@@ -216,6 +216,7 @@ export default async function (data) {
 ## 规则
 
 - 每个 `<template>` 的 `cid` 必须唯一，用于关联调用与断言
+- **每个 `<template>` 调用都必须有一个对应的 `<template result>`，通过 `cid` 一一配对**
 - `<cap-request>` 内的多个 `<template>` 按顺序执行
 - 测试应用开发模式能力时，`<iframe slot="emulator">` 必须放在 `<cap-request>` 之前
 - 普通能力和应用开发模式能力可在同一个 `<capability-diagnosis>` 中混合测试
