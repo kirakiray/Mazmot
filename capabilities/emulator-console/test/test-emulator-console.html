@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 emulator-console 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+  <body>
+    <!-- 测试获取控制台日志 -->
+    <capability-diagnosis label="测试获取控制台日志">
+      <iframe src="/capabilities/emulator-console/test/test-page.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-console"
+          cid="get-logs-01"
+          desc="获取模拟器控制台日志"
+          data-action="get"
+        ></template>
+      </cap-request>
+      <template result cid="get-logs-01">
+        <script type="module">
+          export default async function (result) {
+            // 验证返回结果格式
+            if (!result || !result.success) {
+              return { 
+                assert: false, 
+                content: "获取日志失败：" + (result?.error || "未知错误") 
+              };
+            }
+            
+            // 验证返回的 logs 是数组
+            if (!Array.isArray(result.logs)) {
+              return { 
+                assert: false, 
+                content: "返回的 logs 不是数组" 
+              };
+            }
+            
+            // 验证日志格式
+            if (result.logs.length > 0) {
+              const log = result.logs[0];
+              if (!log.key || !Array.isArray(log.args)) {
+                return { 
+                  assert: false, 
+                  content: "日志格式不正确，缺少 key 或 args 字段" 
+                };
+              }
+            }
+            
+            return { 
+              assert: true, 
+              content: "成功获取控制台日志，共 " + result.logs.length + " 条记录" 
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <!-- 测试清空控制台日志 -->
+    <capability-diagnosis label="测试清空控制台日志">
+      <iframe src="/capabilities/emulator-console/test/test-page.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-console"
+          cid="clear-logs-01"
+          desc="清空模拟器控制台日志"
+          data-action="clear"
+        ></template>
+      </cap-request>
+      <template result cid="clear-logs-01">
+        <script type="module">
+          export default async function (result) {
+            // 验证返回结果格式
+            if (!result || !result.success) {
+              return { 
+                assert: false, 
+                content: "清空日志失败：" + (result?.error || "未知错误") 
+              };
+            }
+            
+            return { 
+              assert: true, 
+              content: "成功清空控制台日志" 
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <!-- 测试清空后再获取 -->
+    <capability-diagnosis label="测试清空后再获取日志">
+      <iframe src="/capabilities/emulator-console/test/test-page.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-console"
+          cid="clear-then-get-01"
+          desc="先清空日志"
+          data-action="clear"
+        ></template>
+        <template
+          name="emulator-console"
+          cid="clear-then-get-02"
+          desc="再获取日志验证已清空"
+          data-action="get"
+        ></template>
+      </cap-request>
+      <template result cid="clear-then-get-01">
+        <script type="module">
+          export default async function (result) {
+            // 验证清空操作成功
+            if (!result || !result.success) {
+              return { 
+                assert: false, 
+                content: "清空日志失败：" + (result?.error || "未知错误") 
+              };
+            }
+            
+            return { 
+              assert: true, 
+              content: "清空操作成功" 
+            };
+          }
+        </script>
+      </template>
+      <template result cid="clear-then-get-02">
+        <script type="module">
+          export default async function (result) {
+            // 验证清空后日志数组应为空
+            if (!result || !result.success) {
+              return { 
+                assert: false, 
+                content: "获取日志失败：" + (result?.error || "未知错误") 
+              };
+            }
+            
+            if (!Array.isArray(result.logs)) {
+              return { 
+                assert: false, 
+                content: "返回的 logs 不是数组" 
+              };
+            }
+            
+            if (result.logs.length !== 0) {
+              return { 
+                assert: false, 
+                content: "清空后日志数组不为空，仍有 " + result.logs.length + " 条记录" 
+              };
+            }
+            
+            return { 
+              assert: true, 
+              content: "清空后日志数组为空，验证通过" 
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>
