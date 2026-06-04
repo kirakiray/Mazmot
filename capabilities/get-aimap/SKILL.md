@@ -2,6 +2,7 @@
 name: get-aimap
 description: 获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构。
 method: main.js
+test: test/test-get-aimap.html
 ---
 
 # 获取项目 aimap 索引

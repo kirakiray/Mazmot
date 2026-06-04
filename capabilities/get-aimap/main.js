@@ -12,9 +12,7 @@ export default async ({ data = {}, content }) => {
   const aimapList = await collectAimapFiles(projectDir, projectPath);
 
   return {
-    data: {
-      aimaps: aimapList,
-    },
+    aimaps: aimapList,
   };
 };
 

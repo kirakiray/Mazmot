@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 get-aimap 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+    <script type="module">
+      import { init, get } from "/nos/fs/main.js";
+      import { initCode } from "/pages/create-app/util/init-code.js";
+
+      // 在页面加载时预先创建测试数据
+      window.prepareTestData = async () => {
+        try {
+          // 只初始化一个根目录
+          await init("temp-test-aimap");
+
+          // 创建空项目子目录
+          await get("temp-test-aimap/empty-project", { create: "dir" });
+
+          // 创建包含 aimap 的项目
+          await initCode("temp-test-aimap/full-project");
+
+          // 创建用于验证数据结构的项目
+          const testFile = await get("temp-test-aimap/structure-project/test.js", { create: "file" });
+          await testFile.write("console.log('test');");
+          const aimapDir = await get("temp-test-aimap/structure-project/.aimap", { create: "dir" });
+          const aimapFile = await get("temp-test-aimap/structure-project/.aimap/test.js.md", { create: "file" });
+          await aimapFile.write("测试文件描述");
+
+          console.log("Test data prepared successfully");
+        } catch (e) {
+          console.error("Failed to prepare test data:", e);
+        }
+      };
+
+      // 清理测试数据
+      window.cleanupTestData = async () => {
+        try {
+          const dir = await get("temp-test-aimap");
+          await dir.remove({ recursive: true });
+          console.log("Test data cleaned up successfully");
+        } catch (e) {
+          console.error("Failed to cleanup test data:", e);
+        }
+      };
+
+      // 页面加载时准备数据
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+          window.prepareTestData();
+        });
+      } else {
+        window.prepareTestData();
+      }
+    </script>
+  </head>
+
+  <body>
+    <!-- 测试1: 获取空项目的 aimap -->
+    <!-- <capability-diagnosis label="测试 get-aimap 能力 - 获取空项目的 aimap">
+      <cap-request>
+        <template
+          name="get-aimap"
+          cid="aimap-01"
+          desc="获取没有 aimap 文件的项目"
+          data-project-path="temp-test-aimap/empty-project"
+        >
+        </template>
+      </cap-request>
+      <template result cid="aimap-01">
+        <script type="module">
+          export default async function (result) {
+            // 空项目应该返回空数组
+            return {
+              assert: result && result.aimaps && Array.isArray(result.aimaps) && result.aimaps.length === 0,
+              content: `返回 ${result?.aimaps?.length || 0} 个 aimap 文件`,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis> -->
+
+    <!-- 测试2: 获取包含 aimap 的项目 -->
+    <capability-diagnosis label="测试 get-aimap 能力 - 获取包含 aimap 的项目">
+      <cap-request>
+        <template
+          name="get-aimap"
+          cid="aimap-02"
+          desc="获取包含 aimap 文件的项目"
+          data-project-path="temp-test-aimap/full-project"
+        >
+        </template>
+      </cap-request>
+      <template result cid="aimap-02">
+        <script type="module">
+          export default async function (result) {
+            // 验证结果
+            const hasAimaps = result && result.aimaps && Array.isArray(result.aimaps) && result.aimaps.length > 0;
+
+            // 检查是否包含 index.html 的 aimap
+            const hasIndexAimap = result.aimaps.some(
+              aimap => aimap.path === "index.html" && aimap.content.includes("HTML 入口文件")
+            );
+
+            // 检查是否包含 pages/home.html 的 aimap
+            const hasHomeAimap = result.aimaps.some(
+              aimap => aimap.path === "pages/home.html" && aimap.content.includes("首页")
+            );
+
+            // 检查是否包含 pages/layout.html 的 aimap
+            const hasLayoutAimap = result.aimaps.some(
+              aimap => aimap.path === "pages/layout.html" && aimap.content.includes("Layout 模板")
+            );
+
+            return {
+              assert: hasAimaps && hasIndexAimap && hasHomeAimap && hasLayoutAimap,
+              content: hasAimaps ? `找到 ${result.aimaps.length} 个 aimap 文件: ${result.aimaps.map(a => a.path).join(", ")}` : "测试失败",
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <!-- 测试3: 验证返回数据结构 -->
+    <!-- <capability-diagnosis label="测试 get-aimap 能力 - 验证返回数据结构">
+      <cap-request>
+        <template
+          name="get-aimap"
+          cid="aimap-03"
+          desc="验证返回数据结构"
+          data-project-path="temp-test-aimap/structure-project"
+        >
+        </template>
+      </cap-request>
+      <template result cid="aimap-03">
+        <script type="module">
+          export default async function (result) {
+            // 验证返回的数据结构
+            const hasCorrectStructure = result &&
+              result.aimaps &&
+              Array.isArray(result.aimaps) &&
+              result.aimaps.length === 1;
+
+            const aimap = hasCorrectStructure ? result.aimaps[0] : null;
+
+            // 检查每个 aimap 对象是否包含必要的字段
+            const hasRequiredFields = aimap &&
+              typeof aimap.path === "string" &&
+              typeof aimap.aimapPath === "string" &&
+              typeof aimap.content === "string";
+
+            // 验证字段值
+            const correctValues = hasRequiredFields &&
+              aimap.path === "test.js" &&
+              aimap.aimapPath === ".aimap/test.js.md" &&
+              aimap.content === "测试文件描述";
+
+            return {
+              assert: hasCorrectStructure && hasRequiredFields && correctValues,
+              content: hasCorrectStructure ? `数据结构正确: ${JSON.stringify(result.aimaps[0])}` : "数据结构错误",
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis> -->
+
+    <!-- 测试完成后清理数据 -->
+    <script type="module">
+      import { get } from "/nos/fs/main.js";
+
+      // 监听测试完成事件
+      window.addEventListener("message", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "test-cap-results") {
+            // 测试完成，清理数据
+            setTimeout(async () => {
+              try {
+                const dir = await get("temp-test-aimap");
+                await dir.remove({ recursive: true });
+                console.log("Test data cleaned up after tests completed");
+              } catch (e) {
+                // 目录可能不存在，忽略错误
+              }
+            }, 1000);
+          }
+        } catch (e) {
+          // 忽略非 JSON 消息
+        }
+      });
+    </script>
+  </body>
+</html>
