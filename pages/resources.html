@@ -52,16 +52,18 @@
       <span>技能</span>
     </p-nav-item>
   </p-nav-bar>
-  <p-button
-    class="reset-btn"
-    on:click="resetData"
-    type="primary"
-    attr:disabled="resetting"
-    size="small"
-  >
-    <n-icon icon="at-icons:recover" slot="prefix"></n-icon>
-    还原
-  </p-button>
+  <o-if :value="showResetBtn">
+    <p-button
+      class="reset-btn"
+      on:click="resetData"
+      type="primary"
+      attr:disabled="resetting"
+      size="small"
+    >
+      <n-icon icon="at-icons:recover" slot="prefix"></n-icon>
+      还原
+    </p-button>
+  </o-if>
   <div class="resources-container">
     <slot></slot>
   </div>
@@ -71,7 +73,7 @@
     export default async ({ load }) => {
       const { get } = await load("/nos/fs/main.js");
       const { writeJsonToNos } = await load("../util/init.js");
-      const { toast } = await load(
+      const { toast, confirm } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
       );
 
@@ -87,6 +89,9 @@
           this.refreshActive();
         },
         proto: {
+          get showResetBtn() {
+            return this.currentTab === 'capabilities' || this.currentTab === 'skills';
+          },
           refreshActive() {
             const { current } = this.app;
             const path = new URL(current.src).pathname;
@@ -100,6 +105,15 @@
           },
           async resetData() {
             if (this.resetting) return;
+
+            const result = await confirm({
+              title: '还原确认',
+              message: '确定要还原所有数据吗？这将重置能力和技能数据。',
+              yes: '还原',
+              cancel: '取消'
+            });
+
+            if (!result) return;
 
             this.resetting = true;
             try {
