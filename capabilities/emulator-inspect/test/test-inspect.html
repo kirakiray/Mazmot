@@ -15,7 +15,7 @@
     <l-m src="/comps/cap-request/cap-request.html"></l-m>
   </head>
   <body>
-    <capability-diagnosis label="测试 emulator-inspect 能力">
+    <capability-diagnosis label="测试 emulator-inspect 能力（默认深度）">
       <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
       <cap-request>
         <template
@@ -53,6 +53,88 @@
             return {
               assert:
                 hasRequiredFields && hasCorrectChild && childrenLengthCorrect,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（深度为 2）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-02"
+          data-xpath="/html/body"
+          data-depth="2"
+          desc="获取模拟器内的 body 下的元素（深度 2）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-02">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              typeof result.childrenLength === "number" &&
+              Array.isArray(result.childs) &&
+              result.styles &&
+              result.rect;
+
+            // 验证子元素有 childs 属性（深度 2 应包含子元素的子元素）
+            const elementChilds = result.childs.filter(
+              (child) => child.tag === "div",
+            );
+            const hasDeepChilds =
+              elementChilds.length > 0 &&
+              elementChilds[0].childs &&
+              Array.isArray(elementChilds[0].childs);
+
+            return {
+              assert: hasRequiredFields && hasDeepChilds,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（深度为 0）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-03"
+          data-xpath="/html/body"
+          data-depth="0"
+          desc="获取模拟器内的 body 下的元素（深度 0）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-03">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              typeof result.childrenLength === "number" &&
+              result.styles &&
+              result.rect;
+
+            // 验证 childs 为空数组（深度 0 不获取子元素）
+            const childsIsEmpty =
+              Array.isArray(result.childs) && result.childs.length === 0;
+
+            return {
+              assert: hasRequiredFields && childsIsEmpty,
               content: result,
             };
           }
