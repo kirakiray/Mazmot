@@ -172,5 +172,44 @@
         </script>
       </template>
     </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（额外样式）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-05"
+          data-xpath="/html/body/div"
+          data-extra-styles="z-index, opacity, border-radius"
+          desc="获取 div 元素及其额外样式"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-05">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              result.styles &&
+              result.rect;
+
+            // 验证额外样式属性存在
+            const hasExtraStyles =
+              "z-index" in result.styles &&
+              "opacity" in result.styles &&
+              "border-radius" in result.styles;
+
+            return {
+              assert: hasRequiredFields && hasExtraStyles,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
   </body>
 </html>

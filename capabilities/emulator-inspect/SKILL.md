@@ -19,7 +19,8 @@ test: test/test-inspect.html
 
 - `data-xpath` (必需): XPath 表达式，指定要检查的元素路径
 - `data-depth` (可选): 获取子元素的深度，默认为 1
-- `data-maxSize` (可选): 返回数据的最大大小（字节），默认为 32KB (1024 * 32)。超过此限制将抛出错误
+- `data-max-size` (可选): 返回数据的最大大小（字节），默认为 32KB (1024 * 32)。超过此限制将抛出错误
+- `data-extra-styles` (可选): 额外需要获取的 CSS 样式属性，逗号分隔格式。例如：`data-extra-styles="z-index, opacity, box-shadow"`
 
 ⚠️ **警告**: 请谨慎使用 `data-depth` 参数。深度过大会导致返回数据量爆炸式增长，大幅消耗 AI 的 token 额度。建议仅在必要时使用，且深度不超过 3。
 
@@ -70,5 +71,11 @@ test: test/test-inspect.html
 限制返回数据大小为 16KB：
 
 <cap-request>
-  <template name="emulator-inspect" cid="inspect-04" data-xpath="/html/body" data-maxSize="16384" desc="获取 body 元素信息（限制 16KB）"></template>
+  <template name="emulator-inspect" cid="inspect-04" data-xpath="/html/body" data-max-size="16384" desc="获取 body 元素信息（限制 16KB）"></template>
+</cap-request>
+
+获取额外的 CSS 样式属性：
+
+<cap-request>
+  <template name="emulator-inspect" cid="inspect-05" data-xpath="/html/body/div" data-extra-styles="z-index, opacity, box-shadow, transform" desc="获取 div 元素及其额外样式"></template>
 </cap-request>
