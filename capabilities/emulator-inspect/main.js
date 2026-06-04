@@ -57,19 +57,34 @@ function getElementInfo(element, depth = 1) {
     }
   }
 
-  // 获取子元素信息
-  if (element.children && element.children.length > 0 && depth > 0) {
-    info.childs = Array.from(element.children).map((child) =>
-      getElementInfo(child, depth - 1),
-    );
+  // 获取子节点信息（包括元素节点和文本节点，保持原始顺序）
+  if (depth > 0) {
+    info.childs = Array.from(element.childNodes)
+      .filter((node) => {
+        // 只保留元素节点和非空文本节点
+        if (node.nodeType === Node.ELEMENT_NODE) return true;
+        if (node.nodeType === Node.TEXT_NODE) {
+          return node.textContent.trim().length > 0;
+        }
+        return false;
+      })
+      .map((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          // 文本节点
+          return {
+            type: "text",
+            text: node.textContent.trim(),
+          };
+        } else {
+          // 元素节点
+          return getElementInfo(node, depth - 1);
+        }
+      });
   }
 
-  // 获取文本内容（只获取直接文本节点）
-  const textNodes = Array.from(element.childNodes).filter(
-    (node) => node.nodeType === Node.TEXT_NODE,
-  );
-
-  info.text = textNodes
+  // 获取所有文本内容（用于快速访问）
+  info.text = Array.from(element.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
     .map((node) => node.textContent.trim())
     .filter((t) => t)
     .join(" ");

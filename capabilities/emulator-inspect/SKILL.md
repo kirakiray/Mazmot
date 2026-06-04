@@ -27,8 +27,11 @@ test: test/test-inspect.html
 {
   tag: "div",           // 元素标签名
   attrs: {},            // 元素属性对象
-  childs: [],           // 子元素数组
-  text: "",             // 文本内容
+  childs: [             // 子节点数组（保持原始顺序）
+    { type: "text", text: "文本内容" },  // 文本节点
+    { tag: "span", attrs: {}, childs: [], ... }  // 元素节点
+  ],
+  text: "",             // 所有文本内容的合并（用于快速访问）
   styles: {},           // 计算样式
   rect: {               // 元素位置和尺寸
     x: 0,
