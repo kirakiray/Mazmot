@@ -27,6 +27,7 @@ test: test/test-inspect.html
 {
   tag: "div",           // 元素标签名
   attrs: {},            // 元素属性对象
+  childrenLength: 2,    // 子元素数量（不包括文本节点）
   childs: [             // 子节点数组（保持原始顺序）
     { type: "text", text: "文本内容" },  // 文本节点
     { tag: "span", attrs: {}, childs: [], ... }  // 元素节点

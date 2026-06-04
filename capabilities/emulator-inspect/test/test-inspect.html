@@ -33,18 +33,24 @@
             const hasRequiredFields =
               result.tag &&
               result.attrs &&
+              typeof result.childrenLength === "number" &&
               Array.isArray(result.childs) &&
               result.styles &&
               result.rect;
 
             // 验证 body 元素有一个 div 子元素
             const elementChilds = result.childs.filter(
-              (child) => child.tag === "div"
+              (child) => child.tag === "div",
             );
             const hasCorrectChild = elementChilds.length === 1;
 
+            // 验证 childrenLength 与实际子元素数量一致
+            const childrenLengthCorrect =
+              result.childrenLength === elementChilds.length;
+
             return {
-              assert: hasRequiredFields && hasCorrectChild,
+              assert:
+                hasRequiredFields && hasCorrectChild && childrenLengthCorrect,
               content: result,
             };
           }
