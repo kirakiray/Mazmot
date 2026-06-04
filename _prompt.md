@@ -1,0 +1,1 @@
+根据 util/system-prompt.md 和 capabilities/capability-diagnosis/SKILL.md 和 capabilities/capability-diagnosis/references/test-case-guide.md

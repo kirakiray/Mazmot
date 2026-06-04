@@ -2,6 +2,7 @@
 name: preview-web
 description: 可以预览本地网页文件的内容
 page: src/preview.html
+test: test/test-preview-web.html
 ---
 
 # Preview Web

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 preview-web 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+  <body>
+    <capability-diagnosis label="测试 preview-web 能力">
+      <cap-request>
+        <template
+          name="preview-web"
+          cid="preview-01"
+          desc="预览本地网页文件"
+          data-url="/capabilities/preview-web/demo/preview-demo.html"
+          data-title="示例网页预览"
+        ></template>
+      </cap-request>
+
+      <template result cid="preview-01">
+        <script type="module">
+          export default async function (result) {
+            const expectedUrl = "/capabilities/preview-web/demo/preview-demo.html";
+            
+            debugger
+
+            return {
+              assert:
+                result &&
+                result.data &&
+                result.data.preview === true &&
+                result.data.url === expectedUrl,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 preview-web 能力 - 无标题参数">
+      <cap-request>
+        <template
+          name="preview-web"
+          cid="preview-02"
+          desc="预览网页（不指定标题）"
+          data-url="/capabilities/preview-web/demo/req-test.html"
+        ></template>
+      </cap-request>
+
+      <template result cid="preview-02">
+        <script type="module">
+          export default async function (result) {
+            const expectedUrl = "/capabilities/preview-web/demo/req-test.html";
+
+            debugger
+            
+            return {
+              assert:
+                result &&
+                result.data &&
+                result.data.preview === true &&
+                result.data.url === expectedUrl,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>
