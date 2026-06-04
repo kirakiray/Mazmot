@@ -11,7 +11,9 @@
     />
   </head>
   <body>
-    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
 
     <capability-diagnosis label="测试 inspect 能力">
       <iframe src="./test-cv.html" frameborder="0"></iframe>
@@ -20,17 +22,17 @@
           name="emulator-inspect"
           cid="inspect-01"
           data-xpath="/html/body"
-          desc="获取模拟器内的元素"
+          desc="获取模拟器内的 body 下的元素"
         >
         </template>
       </cap-request>
       <template result cid="inspect-01">
         <script type="module">
           export default async function (result) {
-            debugger;
             // 直接获取内容
             return {
-              assert: result === 6,
+              assert:
+                result.childs.length === 1 && result.childs[0].tag === "div",
               content: result,
             };
           }
