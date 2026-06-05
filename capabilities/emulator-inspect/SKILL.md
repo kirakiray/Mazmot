@@ -21,6 +21,7 @@ test: test/test-inspect.html
 - `data-depth` (可选): 获取子元素的深度，默认为 1
 - `data-max-size` (可选): 返回数据的最大大小（字节），默认为 32KB (1024 * 32)。超过此限制将抛出错误
 - `data-styles` (可选): 需要获取的 CSS 样式属性，逗号分隔格式。例如：`data-styles="display, position, width"`。不传则不返回样式信息
+- `data-rect` (可选): 是否返回元素位置信息，默认为 true。传 `false` 可关闭位置信息返回以节省空间
 
 ⚠️ **警告**: 请谨慎使用 `data-depth` 参数。深度过大会导致返回数据量爆炸式增长，大幅消耗 AI 的 token 颞度。建议仅在必要时使用，且深度不超过 3。
 
@@ -71,7 +72,7 @@ test: test/test-inspect.html
 - `childs` 字段只在 depth > 0 时才返回
 - `childsLength` 和 `childrenLength` 只在 depth = 0 时才返回
 - `shadowRoot` 字段只有元素有 Shadow DOM 时才返回
-- `rect` 字段对于 `style` 和 `script` 标签不会返回
+- `rect` 字段默认返回，可通过 `data-rect="false"` 关闭；对于 `style` 和 `script` 标签不会返回
 - `text` 字段对于 `style` 和 `script` 标签不会返回内容
 
 ### Shadow DOM 支持

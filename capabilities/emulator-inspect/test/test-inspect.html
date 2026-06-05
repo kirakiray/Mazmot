@@ -235,6 +235,38 @@
       </template>
     </capability-diagnosis>
 
+    <capability-diagnosis label="测试 emulator-inspect 能力（关闭 rect）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-08"
+          data-xpath="/html/body/div"
+          data-rect="false"
+          desc="获取 div 元素（关闭 rect）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-08">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields = result.tag && result.attrs;
+
+            // 验证没有 rect 字段
+            const noRect = !result.rect;
+
+            return {
+              assert: hasRequiredFields && noRect,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
     <capability-diagnosis label="测试 emulator-inspect 能力（Shadow DOM）">
       <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
       <cap-request>

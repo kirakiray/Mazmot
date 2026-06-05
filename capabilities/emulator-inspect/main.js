@@ -3,6 +3,8 @@ export default async function inspect({ data = {}, content, emulator }) {
   const xpath = data.xpath;
   const depth = data.depth !== undefined ? Number(data.depth) : 1;
   const maxSize = data.maxSize !== undefined ? Number(data.maxSize) : 1024 * 32;
+  // rect 默认开启，只有明确传 false 或 "false" 才关闭
+  const includeRect = data.rect !== false && data.rect !== "false";
 
   // 解析 styles 参数：逗号分隔字符串
   let styles = data.styles || "";
@@ -48,7 +50,7 @@ export default async function inspect({ data = {}, content, emulator }) {
   }
 
   // 提取元素信息
-  const info = getElementInfo(element, depth, styles);
+  const info = getElementInfo(element, depth, styles, includeRect);
 
   if (JSON.stringify(info).length > maxSize) {
     throw new Error("返回数据大小超过最大限制");
@@ -60,7 +62,7 @@ export default async function inspect({ data = {}, content, emulator }) {
 /**
  * 获取元素的详细信息
  */
-function getElementInfo(element, depth = 1, styles = []) {
+function getElementInfo(element, depth = 1, styles = [], includeRect = true) {
   const tag = element.tagName.toLowerCase();
 
   // style 和 script 元素不获取子文本节点内容
@@ -81,8 +83,7 @@ function getElementInfo(element, depth = 1, styles = []) {
   const info = {
     tag,
     attrs: {},
-    // text: "",
-    // rect: {},
+    text: "",
   };
 
   // 只有传入 styles 参数才获取样式
@@ -115,7 +116,7 @@ function getElementInfo(element, depth = 1, styles = []) {
       childs:
         depth > 0
           ? shadowChildren.map((node) =>
-              getElementInfo(node, depth - 1, styles),
+              getElementInfo(node, depth - 1, styles, includeRect),
             )
           : [],
     };
@@ -130,7 +131,7 @@ function getElementInfo(element, depth = 1, styles = []) {
           text: node.textContent.trim(),
         };
       } else {
-        return getElementInfo(node, depth - 1, styles);
+        return getElementInfo(node, depth - 1, styles, includeRect);
       }
     });
   }
@@ -156,8 +157,8 @@ function getElementInfo(element, depth = 1, styles = []) {
     }
   }
 
-  // style 和 script 元素不需要 rect 信息
-  if (!skipTextContent) {
+  // style 和 script 元素不需要 rect 信息，其他元素根据 includeRect 参数决定
+  if (!skipTextContent && includeRect) {
     // 获取元素位置和尺寸
     try {
       const rect = element.getBoundingClientRect();
