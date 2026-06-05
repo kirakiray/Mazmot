@@ -37,7 +37,6 @@
               result.attrs &&
               typeof result.childrenLength === "number" &&
               Array.isArray(result.childs) &&
-              result.styles &&
               result.rect;
 
             // 验证 body 元素有一个 div 子元素
@@ -83,7 +82,6 @@
               result.attrs &&
               typeof result.childrenLength === "number" &&
               Array.isArray(result.childs) &&
-              result.styles &&
               result.rect;
 
             // 验证子元素有 childs 属性（深度 2 应包含子元素的子元素）
@@ -126,7 +124,6 @@
               result.tag &&
               result.attrs &&
               typeof result.childrenLength === "number" &&
-              result.styles &&
               result.rect;
 
             // 验证 childs 为空数组（深度 0 不获取子元素）
@@ -173,15 +170,15 @@
       </template>
     </capability-diagnosis>
 
-    <capability-diagnosis label="测试 emulator-inspect 能力（额外样式）">
+    <capability-diagnosis label="测试 emulator-inspect 能力（样式获取）">
       <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
       <cap-request>
         <template
           name="emulator-inspect"
           cid="inspect-05"
           data-xpath="/html/body/div"
-          data-extra-styles="z-index, opacity, border-radius"
-          desc="获取 div 元素及其额外样式"
+          data-styles="display, position, width, height, z-index"
+          desc="获取 div 元素及其样式"
         >
         </template>
       </cap-request>
@@ -194,17 +191,53 @@
             const hasRequiredFields =
               result.tag &&
               result.attrs &&
-              result.styles &&
               result.rect;
 
-            // 验证额外样式属性存在
-            const hasExtraStyles =
-              "z-index" in result.styles &&
-              "opacity" in result.styles &&
-              "border-radius" in result.styles;
+            // 验证样式属性存在
+            const hasStyles =
+              result.styles &&
+              "display" in result.styles &&
+              "position" in result.styles &&
+              "width" in result.styles &&
+              "height" in result.styles &&
+              "z-index" in result.styles;
 
             return {
-              assert: hasRequiredFields && hasExtraStyles,
+              assert: hasRequiredFields && hasStyles,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（默认不带样式）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-07"
+          data-xpath="/html/body/div"
+          desc="获取 div 元素（不传 styles 参数）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-07">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              result.rect;
+
+            // 验证没有 styles 字段
+            const noStyles = !result.styles;
+
+            return {
+              assert: hasRequiredFields && noStyles,
               content: result,
             };
           }
@@ -233,7 +266,6 @@
             const hasRequiredFields =
               result.tag === "skill-card" &&
               result.attrs &&
-              result.styles &&
               result.rect;
 
             // 验证 Shadow DOM 信息存在

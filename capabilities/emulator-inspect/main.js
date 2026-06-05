@@ -1,13 +1,11 @@
 export default async function inspect({ data = {}, content, emulator }) {
   const { xpath, depth = 1, maxSize = 1024 * 32 } = data;
-  // 支持 extraStyles 或 extra-styles（HTML 属性会自动转为 camelCase）
-  let extraStyles = data.extraStyles || "";
-
-  // 解析 extraStyles：逗号分隔字符串
-  if (typeof extraStyles === "string" && extraStyles.trim()) {
-    extraStyles = extraStyles.split(",").map((s) => s.trim()).filter(Boolean);
-  } else if (!Array.isArray(extraStyles)) {
-    extraStyles = [];
+  // 解析 styles 参数：逗号分隔字符串
+  let styles = data.styles || "";
+  if (typeof styles === "string" && styles.trim()) {
+    styles = styles.split(",").map((s) => s.trim()).filter(Boolean);
+  } else if (!Array.isArray(styles)) {
+    styles = [];
   }
 
   if (!xpath) {
@@ -43,7 +41,7 @@ export default async function inspect({ data = {}, content, emulator }) {
   }
 
   // 提取元素信息
-  const info = getElementInfo(element, depth, extraStyles);
+  const info = getElementInfo(element, depth, styles);
 
   if (JSON.stringify(info).length > maxSize) {
     throw new Error("返回数据大小超过最大限制");
@@ -55,7 +53,7 @@ export default async function inspect({ data = {}, content, emulator }) {
 /**
  * 获取元素的详细信息
  */
-function getElementInfo(element, depth = 1, extraStyles = []) {
+function getElementInfo(element, depth = 1, styles = []) {
   const tag = element.tagName.toLowerCase();
   
   // style 和 script 元素不获取子文本节点内容
@@ -80,10 +78,14 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
     childsLength: nonEmptyChildNodes.length,
     childrenLength: element.children ? element.children.length : 0,
     text: "",
-    styles: {},
     rect: {},
     shadowRoot: null, // Shadow DOM 信息
   };
+
+  // 只有传入 styles 参数才获取样式
+  if (styles.length > 0) {
+    info.styles = {};
+  }
 
   // 获取属性
   if (element.attributes) {
@@ -103,7 +105,7 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
       childs:
         depth > 0
           ? shadowChildren.map((node) =>
-              getElementInfo(node, depth - 1, extraStyles)
+              getElementInfo(node, depth - 1, styles)
             )
           : [],
     };
@@ -118,7 +120,7 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
           text: node.textContent.trim(),
         };
       } else {
-        return getElementInfo(node, depth - 1, extraStyles);
+        return getElementInfo(node, depth - 1, styles);
       }
     });
   }
@@ -132,29 +134,16 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
       .join(" ");
   }
 
-  // 获取计算样式
-  try {
-    const computedStyles = window.getComputedStyle(element);
-    const defaultStyles = [
-      "display",
-      "position",
-      "width",
-      "height",
-      "margin",
-      "padding",
-      "border",
-      "background-color",
-      "color",
-      "font-size",
-      "font-weight",
-    ];
-    // 合并默认样式和额外样式
-    const allStyles = [...defaultStyles, ...extraStyles];
-    allStyles.forEach((style) => {
-      info.styles[style] = computedStyles.getPropertyValue(style);
-    });
-  } catch (e) {
-    // 如果无法获取样式，忽略错误
+  // 只有传入 styles 参数才获取计算样式
+  if (styles.length > 0) {
+    try {
+      const computedStyles = window.getComputedStyle(element);
+      styles.forEach((style) => {
+        info.styles[style] = computedStyles.getPropertyValue(style);
+      });
+    } catch (e) {
+      // 如果无法获取样式，忽略错误
+    }
   }
 
   // 获取元素位置和尺寸
