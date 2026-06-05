@@ -17,3 +17,7 @@ test: test/test-get-aimap.html
 </cap-request>
 
 工具将返回项目中所有文件的 aimap 索引信息，包括文件路径、aimap 文件路径和索引描述内容。
+
+## 相关文档
+
+- [什么是 aimap？](./references/what-is-aimap.md) - 了解 aimap 的概念、结构和使用方法

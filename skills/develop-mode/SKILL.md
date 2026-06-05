@@ -1,7 +1,6 @@
 ---
 name: develop-mode
 description: 帮助AI在应用开发助手模式下的使用技巧和工作流程
-method: main.js
 ---
 
 # 应用开发助手模式工作流程
