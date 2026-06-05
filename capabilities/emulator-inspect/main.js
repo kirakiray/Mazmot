@@ -56,6 +56,8 @@ export default async function inspect({ data = {}, content, emulator }) {
  * 获取元素的详细信息
  */
 function getElementInfo(element, depth = 1, extraStyles = []) {
+  const tag = element.tagName.toLowerCase();
+  
   // 过滤非空白子节点（元素节点 + 非空文本节点）
   const nonEmptyChildNodes = Array.from(element.childNodes).filter((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -65,7 +67,7 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
   });
 
   const info = {
-    tag: element.tagName.toLowerCase(),
+    tag,
     attrs: {},
     childs: [],
     childsLength: nonEmptyChildNodes.length,
@@ -73,6 +75,7 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
     text: "",
     styles: {},
     rect: {},
+    shadowRoot: null, // Shadow DOM 信息
   };
 
   // 获取属性
@@ -80,6 +83,23 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
     for (const attr of element.attributes) {
       info.attrs[attr.name] = attr.value;
     }
+  }
+
+  // 获取 Shadow DOM 信息
+  if (element.shadowRoot) {
+    const shadowChildren = Array.from(element.shadowRoot.children).filter(
+      (node) => node.nodeType === Node.ELEMENT_NODE
+    );
+    info.shadowRoot = {
+      mode: element.shadowRoot.mode || "open",
+      childsLength: shadowChildren.length,
+      childs:
+        depth > 0
+          ? shadowChildren.map((node) =>
+              getElementInfo(node, depth - 1, extraStyles)
+            )
+          : [],
+    };
   }
 
   // 获取子节点信息（包括元素节点和文本节点，保持原始顺序）
@@ -96,11 +116,14 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
     });
   }
 
-  // 获取所有文本内容（用于快速访问）
-  info.text = nonEmptyChildNodes
-    .filter((node) => node.nodeType === Node.TEXT_NODE)
-    .map((node) => node.textContent.trim())
-    .join(" ");
+  // style 和 script 元素不获取 text 内容（避免返回大量无用信息）
+  if (tag !== "style" && tag !== "script") {
+    // 获取所有文本内容（用于快速访问）
+    info.text = nonEmptyChildNodes
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent.trim())
+      .join(" ");
+  }
 
   // 获取计算样式
   try {

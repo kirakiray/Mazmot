@@ -211,5 +211,53 @@
         </script>
       </template>
     </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（Shadow DOM）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-06"
+          data-xpath="//skill-card"
+          data-depth="1"
+          desc="获取 skill-card 组件及其 Shadow DOM"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-06">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag === "skill-card" &&
+              result.attrs &&
+              result.styles &&
+              result.rect;
+
+            // 验证 Shadow DOM 信息存在
+            const hasShadowRoot =
+              result.shadowRoot !== null &&
+              result.shadowRoot.mode === "open" &&
+              typeof result.shadowRoot.childsLength === "number" &&
+              Array.isArray(result.shadowRoot.childs);
+
+            // 验证 Shadow DOM 内有 style 和 div 元素
+            const shadowChildTags = result.shadowRoot.childs.map(
+              (child) => child.tag
+            );
+            const hasExpectedChildren =
+              shadowChildTags.includes("style") &&
+              shadowChildTags.includes("div");
+
+            return {
+              assert: hasRequiredFields && hasShadowRoot && hasExpectedChildren,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
   </body>
 </html>

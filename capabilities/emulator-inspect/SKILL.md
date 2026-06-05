@@ -44,9 +44,29 @@ test: test/test-inspect.html
     y: 0,
     width: 100,
     height: 50
+  },
+  shadowRoot: null      // Shadow DOM 信息（如果元素有 shadowRoot）
+}
+```
+
+### Shadow DOM 支持
+
+当元素包含 Shadow DOM 时，`shadowRoot` 字段会返回 Shadow DOM 内部结构：
+
+```javascript
+{
+  shadowRoot: {
+    mode: "open",       // Shadow DOM 模式（"open" 或 "closed"）
+    childsLength: 2,    // Shadow DOM 内子元素数量
+    childs: [           // Shadow DOM 内子元素数组
+      { tag: "style", ... },
+      { tag: "div", attrs: {}, childs: [], ... }
+    ]
   }
 }
 ```
+
+**注意**：XPath 无法穿透 Shadow DOM 边界。要获取 Shadow DOM 内的元素，需要先获取宿主元素，然后通过 `shadowRoot` 字段查看内部结构。
 
 ### 使用示例
 
