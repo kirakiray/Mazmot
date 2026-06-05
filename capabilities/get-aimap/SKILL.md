@@ -1,6 +1,6 @@
 ---
 name: get-aimap
-description: 获取项目的所有文件 aimap 索引信息，帮助了解项目的整体结构。
+description: 获取指定项目（通过 data-project-path 参数）中所有文件的 aimap 索引信息，帮助用户快速了解项目整体结构。
 method: main.js
 test: test/test-get-aimap.html
 ---
