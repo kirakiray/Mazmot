@@ -28,14 +28,34 @@ test: test/test-inspect.html
 
 返回指定元素的信息对象：
 
+**当 depth > 0 时（有子元素信息）：**
+
 ```javascript
 {
   tag: "div",           // 元素标签名
   attrs: {},            // 元素属性对象
   childs: [             // 子节点数组（保持原始顺序）
     { type: "text", text: "文本内容" },  // 文本节点
-    { tag: "span", attrs: {}, childs: [], ... }  // 元素节点
+    { tag: "span", attrs: {}, ... }  // 元素节点
   ],
+  text: "",             // 所有文本内容的合并（用于快速访问）
+  rect: {               // 元素位置和尺寸
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 50
+  }
+}
+```
+
+**当 depth = 0 时（最后一层，无子元素信息）：**
+
+```javascript
+{
+  tag: "div",           // 元素标签名
+  attrs: {},            // 元素属性对象
+  childsLength: 2,      // 子节点数量（包括文本节点）
+  childrenLength: 1,    // 子元素数量（不包括文本节点）
   text: "",             // 所有文本内容的合并（用于快速访问）
   rect: {               // 元素位置和尺寸
     x: 0,
@@ -48,7 +68,8 @@ test: test/test-inspect.html
 
 **注意**：
 - `styles` 字段只有传入 `data-styles` 参数时才会返回
-- `childsLength` 和 `childrenLength` 只在最后一层（depth=0）时才返回
+- `childs` 字段只在 depth > 0 时才返回
+- `childsLength` 和 `childrenLength` 只在 depth = 0 时才返回
 - `shadowRoot` 字段只有元素有 Shadow DOM 时才返回
 
 ### Shadow DOM 支持
