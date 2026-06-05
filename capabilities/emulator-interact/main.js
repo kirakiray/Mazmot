@@ -273,13 +273,21 @@ function selectElement(element, value, options = {}) {
   if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
     if (value) {
       // 选择指定范围的文本
-      const [start, end] = Array.isArray(value) ? value : [0, element.value.length];
+      const [start, end] = Array.isArray(value)
+        ? value
+        : [0, element.value.length];
       element.setSelectionRange(start, end);
     } else {
       // 选择全部文本
       element.select();
     }
-    return { message: "已选择文本", selectedText: element.value.substring(element.selectionStart, element.selectionEnd) };
+    return {
+      message: "已选择文本",
+      selectedText: element.value.substring(
+        element.selectionStart,
+        element.selectionEnd,
+      ),
+    };
   } else {
     // 对于其他元素，尝试选择其文本内容
     const selection = window.getSelection();
@@ -358,7 +366,9 @@ function getAttribute(element, attributeName) {
  */
 function setValue(element, value) {
   if (!value || typeof value !== "object") {
-    throw new Error("setValue 操作需要提供 value 参数（对象格式：{ name: '属性名', value: '属性值' }）");
+    throw new Error(
+      "setValue 操作需要提供 value 参数（对象格式：{ name: '属性名', value: '属性值' }）",
+    );
   }
 
   const { name, value: attrValue } = value;
