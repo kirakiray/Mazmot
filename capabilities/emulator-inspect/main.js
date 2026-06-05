@@ -79,7 +79,6 @@ function getElementInfo(element, depth = 1, styles = []) {
     childrenLength: element.children ? element.children.length : 0,
     text: "",
     rect: {},
-    shadowRoot: null, // Shadow DOM 信息
   };
 
   // 只有传入 styles 参数才获取样式
@@ -94,7 +93,7 @@ function getElementInfo(element, depth = 1, styles = []) {
     }
   }
 
-  // 获取 Shadow DOM 信息
+  // 获取 Shadow DOM 信息（只有存在时才添加字段）
   if (element.shadowRoot) {
     const shadowChildren = Array.from(element.shadowRoot.children).filter(
       (node) => node.nodeType === Node.ELEMENT_NODE
