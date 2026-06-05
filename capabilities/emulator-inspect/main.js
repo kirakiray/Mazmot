@@ -81,8 +81,8 @@ function getElementInfo(element, depth = 1, styles = []) {
   const info = {
     tag,
     attrs: {},
-    text: "",
-    rect: {},
+    // text: "",
+    // rect: {},
   };
 
   // 只有传入 styles 参数才获取样式
@@ -91,7 +91,8 @@ function getElementInfo(element, depth = 1, styles = []) {
   }
 
   // 只在最后一层（depth=0）才添加 childsLength 和 childrenLength
-  if (depth === 0) {
+  // style 和 script 元素不需要这些字段
+  if (depth === 0 && !skipTextContent) {
     info.childsLength = nonEmptyChildNodes.length;
     info.childrenLength = element.children ? element.children.length : 0;
   }
@@ -155,21 +156,24 @@ function getElementInfo(element, depth = 1, styles = []) {
     }
   }
 
-  // 获取元素位置和尺寸
-  try {
-    const rect = element.getBoundingClientRect();
-    info.rect = {
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      top: rect.top,
-      left: rect.left,
-      right: rect.right,
-      bottom: rect.bottom,
-    };
-  } catch (e) {
-    // 如果无法获取位置，忽略错误
+  // style 和 script 元素不需要 rect 信息
+  if (!skipTextContent) {
+    // 获取元素位置和尺寸
+    try {
+      const rect = element.getBoundingClientRect();
+      info.rect = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+      };
+    } catch (e) {
+      // 如果无法获取位置，忽略错误
+    }
   }
 
   return info;

@@ -71,6 +71,8 @@ test: test/test-inspect.html
 - `childs` 字段只在 depth > 0 时才返回
 - `childsLength` 和 `childrenLength` 只在 depth = 0 时才返回
 - `shadowRoot` 字段只有元素有 Shadow DOM 时才返回
+- `rect` 字段对于 `style` 和 `script` 标签不会返回
+- `text` 字段对于 `style` 和 `script` 标签不会返回内容
 
 ### Shadow DOM 支持
 
