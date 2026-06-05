@@ -1,5 +1,9 @@
 export default async function inspect({ data = {}, content, emulator }) {
-  const { xpath, depth = 1, maxSize = 1024 * 32 } = data;
+  // 将参数转换为正确的类型
+  const xpath = data.xpath;
+  const depth = data.depth !== undefined ? Number(data.depth) : 1;
+  const maxSize = data.maxSize !== undefined ? Number(data.maxSize) : 1024 * 32;
+  
   // 解析 styles 参数：逗号分隔字符串
   let styles = data.styles || "";
   if (typeof styles === "string" && styles.trim()) {
