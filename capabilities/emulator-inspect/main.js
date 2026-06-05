@@ -3,11 +3,14 @@ export default async function inspect({ data = {}, content, emulator }) {
   const xpath = data.xpath;
   const depth = data.depth !== undefined ? Number(data.depth) : 1;
   const maxSize = data.maxSize !== undefined ? Number(data.maxSize) : 1024 * 32;
-  
+
   // 解析 styles 参数：逗号分隔字符串
   let styles = data.styles || "";
   if (typeof styles === "string" && styles.trim()) {
-    styles = styles.split(",").map((s) => s.trim()).filter(Boolean);
+    styles = styles
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   } else if (!Array.isArray(styles)) {
     styles = [];
   }
@@ -59,10 +62,10 @@ export default async function inspect({ data = {}, content, emulator }) {
  */
 function getElementInfo(element, depth = 1, styles = []) {
   const tag = element.tagName.toLowerCase();
-  
+
   // style 和 script 元素不获取子文本节点内容
   const skipTextContent = tag === "style" || tag === "script";
-  
+
   // 过滤非空白子节点（元素节点 + 非空文本节点）
   const nonEmptyChildNodes = Array.from(element.childNodes).filter((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -78,7 +81,6 @@ function getElementInfo(element, depth = 1, styles = []) {
   const info = {
     tag,
     attrs: {},
-    childs: [],
     text: "",
     rect: {},
   };
@@ -104,7 +106,7 @@ function getElementInfo(element, depth = 1, styles = []) {
   // 获取 Shadow DOM 信息（只有存在时才添加字段）
   if (element.shadowRoot) {
     const shadowChildren = Array.from(element.shadowRoot.children).filter(
-      (node) => node.nodeType === Node.ELEMENT_NODE
+      (node) => node.nodeType === Node.ELEMENT_NODE,
     );
     info.shadowRoot = {
       mode: element.shadowRoot.mode || "open",
@@ -112,7 +114,7 @@ function getElementInfo(element, depth = 1, styles = []) {
       childs:
         depth > 0
           ? shadowChildren.map((node) =>
-              getElementInfo(node, depth - 1, styles)
+              getElementInfo(node, depth - 1, styles),
             )
           : [],
     };
