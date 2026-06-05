@@ -32,7 +32,6 @@ test: test/test-inspect.html
 {
   tag: "div",           // 元素标签名
   attrs: {},            // 元素属性对象
-  childrenLength: 2,    // 子元素数量（不包括文本节点）
   childs: [             // 子节点数组（保持原始顺序）
     { type: "text", text: "文本内容" },  // 文本节点
     { tag: "span", attrs: {}, childs: [], ... }  // 元素节点
@@ -43,12 +42,14 @@ test: test/test-inspect.html
     y: 0,
     width: 100,
     height: 50
-  },
-  shadowRoot: null      // Shadow DOM 信息（如果元素有 shadowRoot）
+  }
 }
 ```
 
-**注意**：`styles` 字段只有传入 `data-styles` 参数时才会返回。
+**注意**：
+- `styles` 字段只有传入 `data-styles` 参数时才会返回
+- `childsLength` 和 `childrenLength` 只在最后一层（depth=0）时才返回
+- `shadowRoot` 字段只有元素有 Shadow DOM 时才返回
 
 ### Shadow DOM 支持
 

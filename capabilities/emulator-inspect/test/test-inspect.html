@@ -35,7 +35,6 @@
             const hasRequiredFields =
               result.tag &&
               result.attrs &&
-              typeof result.childrenLength === "number" &&
               Array.isArray(result.childs) &&
               result.rect;
 
@@ -45,13 +44,8 @@
             );
             const hasCorrectChild = elementChilds.length >= 2;
 
-            // 验证 childrenLength 与实际子元素数量一致
-            const childrenLengthCorrect =
-              result.childrenLength === elementChilds.length;
-
             return {
-              assert:
-                hasRequiredFields && hasCorrectChild && childrenLengthCorrect,
+              assert: hasRequiredFields && hasCorrectChild,
               content: result,
             };
           }
@@ -80,7 +74,6 @@
             const hasRequiredFields =
               result.tag &&
               result.attrs &&
-              typeof result.childrenLength === "number" &&
               Array.isArray(result.childs) &&
               result.rect;
 
@@ -130,8 +123,12 @@
             const childsIsEmpty =
               Array.isArray(result.childs) && result.childs.length === 0;
 
+            // 验证 childrenLength 为 0
+            const childrenLengthCorrect = result.childrenLength === 0;
+
             return {
-              assert: hasRequiredFields && childsIsEmpty,
+              assert:
+                hasRequiredFields && childsIsEmpty && childrenLengthCorrect,
               content: result,
             };
           }
@@ -258,13 +255,11 @@
 
             // 验证返回结果是 skills-grid div
             const hasRequiredFields =
-              result.tag === "div" &&
-              result.attrs &&
-              result.rect;
+              result.tag === "div" && result.attrs && result.rect;
 
             // 验证有 skill-card 子元素
             const skillCards = result.childs.filter(
-              (child) => child.tag === "skill-card"
+              (child) => child.tag === "skill-card",
             );
             const hasSkillCards = skillCards.length >= 1;
 
@@ -277,14 +272,18 @@
 
             // 验证 Shadow DOM 内有 style 和 div 元素
             const shadowChildTags = skillCards[0].shadowRoot.childs.map(
-              (child) => child.tag
+              (child) => child.tag,
             );
             const hasExpectedChildren =
               shadowChildTags.includes("style") &&
               shadowChildTags.includes("div");
 
             return {
-              assert: hasRequiredFields && hasSkillCards && hasShadowRoot && hasExpectedChildren,
+              assert:
+                hasRequiredFields &&
+                hasSkillCards &&
+                hasShadowRoot &&
+                hasExpectedChildren,
               content: result,
             };
           }

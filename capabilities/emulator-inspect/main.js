@@ -75,8 +75,6 @@ function getElementInfo(element, depth = 1, styles = []) {
     tag,
     attrs: {},
     childs: [],
-    childsLength: nonEmptyChildNodes.length,
-    childrenLength: element.children ? element.children.length : 0,
     text: "",
     rect: {},
   };
@@ -84,6 +82,12 @@ function getElementInfo(element, depth = 1, styles = []) {
   // 只有传入 styles 参数才获取样式
   if (styles.length > 0) {
     info.styles = {};
+  }
+
+  // 只在最后一层（depth=0）才添加 childsLength 和 childrenLength
+  if (depth === 0) {
+    info.childsLength = nonEmptyChildNodes.length;
+    info.childrenLength = element.children ? element.children.length : 0;
   }
 
   // 获取属性
