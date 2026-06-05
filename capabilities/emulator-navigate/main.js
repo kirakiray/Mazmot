@@ -46,13 +46,19 @@ export default async function emulatorNavigate({
 
       if (iframe) {
         // iframe 已存在，先注册监听器再更新 URL
-        loadPromise = listenIframeLoad(iframe);
         if (emulator.iframeUrl === url) {
-          // 需要中断一下再设置
+          // 需要中断一下再设置，但 o-if 会导致 iframe 被销毁重建
+          // 所以必须先清空，等新 iframe 创建后再注册监听
           emulator.iframeUrl = "";
           await new Promise((resolve) => setTimeout(resolve, 100));
+          emulator.iframeUrl = url;
+          // 旧 iframe 已被 o-if 销毁，需要等待新 iframe 创建
+          iframe = await pollIframe(emulator);
+          loadPromise = listenIframeLoad(iframe);
+        } else {
+          loadPromise = listenIframeLoad(iframe);
+          emulator.iframeUrl = url;
         }
-        emulator.iframeUrl = url;
       } else {
         // iframe 不存在，先设置 URL 触发创建，再等待并监听
         emulator.iframeUrl = url;

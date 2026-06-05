@@ -27,7 +27,9 @@ test: test/test-inspect.html
 - `data-styles` (可选): 需要获取的 CSS 样式属性，逗号分隔格式。例如：`data-styles="display, position, width"`。不传则不返回样式信息
 - `data-rect` (可选): 是否返回元素位置信息，默认为 true。传 `false` 可关闭位置信息返回以节省空间
 
-⚠️ **警告**: 请谨慎使用 `data-depth` 参数。深度过大会导致返回数据量爆炸式增长，大幅消耗 AI 的 token 颞度。建议仅在必要时使用，且深度不超过 3。
+⚠️ **警告**: 请谨慎使用 `data-depth` 参数。深度过大会导致返回数据量爆炸式增长，大幅消耗 AI 的 token 额度。建议仅在必要时使用，且深度不超过 3。
+
+💡 **提示**: 如果只需要获取元素结构而不需要位置信息，可以设置 `data-rect="false"` 关闭 `rect` 字段返回，以减少 token 消耗。
 
 ### 返回值
 
