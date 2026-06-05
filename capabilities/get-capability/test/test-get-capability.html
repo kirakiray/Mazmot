@@ -11,7 +11,9 @@
     />
   </head>
   <body>
-    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
 
     <capability-diagnosis label="测试获取所有能力列表">
       <cap-request>
@@ -19,7 +21,7 @@
           name="get-capability"
           cid="get-cap-01"
           desc="获取所有能力列表"
-          data-all="true" 
+          data-all="true"
         >
         </template>
       </cap-request>
@@ -52,6 +54,34 @@
             return {
               assert: hasContent,
               content: hasContent ? "成功获取能力详情" : "获取失败",
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试获取能力目录下的特定文件">
+      <cap-request>
+        <template
+          name="get-capability"
+          cid="get-cap-03"
+          desc="获取 fs 能力的 main.js 文件"
+          data-name="fs"
+          data-file="main.js"
+        >
+        </template>
+      </cap-request>
+      <template result cid="get-cap-03">
+        <script type="module">
+          export default async function (result) {
+            const hasContent =
+              result.name === "fs" &&
+              result.file === "main.js" &&
+              result.content;
+
+            return {
+              assert: hasContent,
+              content: hasContent ? "成功获取能力文件内容" : "获取失败",
             };
           }
         </script>
