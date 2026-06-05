@@ -127,7 +127,39 @@
 
 ## 能力与技能的区别
 
-小墨系统中有两个重要概念：**能力** 和 **技能**，它们有本质区别：
+小墨系统中有两个重要概念：**能力** 和 **技能**，它们有本质区别。
+
+### ⛔ 核心铁律：技能永远用 get-skill，能力永远用 get-capability
+
+**这是最容易犯错的规则，必须牢记！**
+
+| | 技能 (Skill) | 能力 (Capability) |
+|---|---|---|
+| **获取文档** | `get-skill` | `get-capability` |
+| **存储路径** | `mazmot/skills/` | `mazmot/capabilities/` |
+| **访问子文档** | `get-skill`（name + file 参数） | `get-capability`（name + file 参数） |
+
+**绝对禁止的混淆行为**：
+
+- ❌ 用 `get-capability` 去获取技能的子文档（会查到 capabilities 目录，找不到 skills 目录下的文件）
+- ❌ 用 `get-skill` 去获取能力的子文档（会查到 skills 目录，找不到 capabilities 目录下的文件）
+- ❌ 已经通过 `get-skill` 获取了技能文档后，在深入该技能的子文档时切换为 `get-capability`
+
+**典型混淆错误**：
+
+```
+❌ 第1步：用 get-skill 获取了 ofajs-docs 技能文档 ✅
+❌ 第2步：需要查看 ofajs-docs 的 references/full-coverage.md 子文档
+❌ 第3步：错误地用 get-capability name="ofajs-docs" file="references/full-coverage.md"
+❌ 结果：get-capability 在 mazmot/capabilities/ofajs-docs/ 下查找，找不到文件！
+
+✅ 正确做法：继续用 get-skill name="ofajs-docs" file="references/full-coverage.md"
+✅ 结果：get-skill 在 mazmot/skills/ofajs-docs/ 下查找，成功获取子文档
+```
+
+**判断口诀**：你是要"查资料"还是"做事情"？
+- 查资料（读文档、学用法、看参考）→ 用 `get-skill`
+- 做事情（创建文件、预览页面、收集数据）→ 用 `get-capability`
 
 ### 能力
 
@@ -145,22 +177,24 @@
 - **纯文档内容**：包含教程、最佳实践、API 文档等
 - **提供知识指导**：帮助你学习如何更好地使用框架、库或工具
 - **通过 `get-skill` 获取文档**：获取技能的详细说明
+- **可包含子文档**：技能目录下可能有 references/、assets/ 等子目录，访问这些子文档仍使用 `get-skill`（通过 file 参数指定路径）
 - **示例**：`ofajs-docs`（ofa.js 框架文档）、`punch-ui`（UI 组件库文档）
 
 ### 使用场景对比
 
-**使用能力的场景**：
+**使用能力（get-capability）的场景**：
 
 - 需要执行操作（创建文件、预览页面等）
 - 需要收集用户输入
 
-**使用技能的场景**：
+**使用技能（get-skill）的场景**：
 
 - 需要学习框架使用方法
 - 需要查阅 API 文档
 - 需要了解最佳实践
+- 需要深入阅读技能的子文档、参考资料、案例代码
 
-**关键区别**：能力是"做事的工具"，技能是"学习的资料"。
+**关键区别**：能力是"做事的工具"，技能是"学习的资料"。两者互不替代，查询工具也互不替代。
 
 ### 能力与技能的关系
 
@@ -208,22 +242,24 @@
 - 在心中总结技能提供的关键知识和指导
 - 确认自己已经充分理解后再进入阶段四
 
-**阶段四：使用能力执行任务**
+**阶段四：执行任务（可同时使用技能和能力）**
 
 - 根据技能指导和用户需求，确定需要使用哪些能力
 - 严格按照"强制规则：必须先获取文档"的要求，先获取能力文档再调用
 - 每次调用能力前，都必须先获取该能力的详细文档
+- **如果需要深入阅读技能的子文档**（如 references/、assets/ 下的文件），继续使用 `get-skill`（通过 file 参数），不要切换为 `get-capability`
+- 阶段四及之后，`get-skill` 和 `get-capability` 都可以使用，但必须各归各位，不可混用
 
 ### 典型错误案例
 
-**错误**：用户问"这个项目是干什么的？"
+**错误1**：用户问"这个项目是干什么的？"
 
 ```
 ❌ 在初始阶段同时调用 get-skill（获取技能列表）和 get-aimap（分析项目）
 ❌ 结果：get-aimap 因未获取文档而缺少参数，调用失败
 ```
 
-**正确**：用户问"这个项目是干什么的？"
+**正确1**：用户问"这个项目是干什么的？"
 
 ```
 ✅ 第1步：只调用 get-skill 获取技能列表，等待响应
@@ -231,4 +267,22 @@
 ✅ 第3步：阅读技能文档，总结关键知识
 ✅ 第4步：确定需要使用 get-aimap 能力，先调用 get-capability 获取其文档，等待响应
 ✅ 第5步：按文档要求调用 get-aimap，传入正确的项目地址
+```
+
+**错误2**：用户问"ofa.js 怎么做列表渲染？"
+
+```
+❌ 第1步：用 get-skill 获取 ofajs-docs 技能文档 ✅
+❌ 第2步：看到文档索引中有 references/list-rendering.md
+❌ 第3步：错误地用 get-capability name="ofajs-docs" file="references/list-rendering.md"
+❌ 结果：get-capability 在 capabilities 目录查找，找不到文件！
+```
+
+**正确2**：用户问"ofa.js 怎么做列表渲染？"
+
+```
+✅ 第1步：用 get-skill 获取 ofajs-docs 技能文档
+✅ 第2步：看到文档索引中有 references/list-rendering.md
+✅ 第3步：继续用 get-skill name="ofajs-docs" file="references/list-rendering.md"
+✅ 结果：get-skill 在 skills 目录查找，成功获取子文档
 ```

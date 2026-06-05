@@ -57,9 +57,12 @@ export default async function getCapability({ data = {}, content }) {
         ? `mazmot/capabilities/${name}/${file}`
         : `mazmot/capabilities/${name}/SKILL.md`;
 
-      const fileHandle = await get(filePath, { create: false });
+      const fileHandle = await get(filePath);
 
       if (!fileHandle) {
+        if (file) {
+          throw new Error(`File "${file}" not found in capability "${name}"`);
+        }
         return {
           name: name,
           file: file || "SKILL.md",
@@ -70,6 +73,9 @@ export default async function getCapability({ data = {}, content }) {
       const fileContent = await fileHandle.text();
 
       if (!fileContent.trim()) {
+        if (file) {
+          throw new Error(`File "${file}" in capability "${name}" is empty`);
+        }
         return {
           name: name,
           file: file || "SKILL.md",
@@ -83,6 +89,12 @@ export default async function getCapability({ data = {}, content }) {
         content: fileContent,
       };
     } catch (error) {
+      if (
+        error.message.includes("not found") ||
+        error.message.includes("empty")
+      ) {
+        throw error;
+      }
       return {
         name: name,
         file: file || "SKILL.md",
