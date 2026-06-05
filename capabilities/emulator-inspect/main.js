@@ -58,9 +58,16 @@ export default async function inspect({ data = {}, content, emulator }) {
 function getElementInfo(element, depth = 1, extraStyles = []) {
   const tag = element.tagName.toLowerCase();
   
+  // style 和 script 元素不获取子文本节点内容
+  const skipTextContent = tag === "style" || tag === "script";
+  
   // 过滤非空白子节点（元素节点 + 非空文本节点）
   const nonEmptyChildNodes = Array.from(element.childNodes).filter((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
+      // style/script 元素跳过文本节点
+      if (skipTextContent) {
+        return false;
+      }
       return node.textContent.trim().length > 0;
     }
     return node.nodeType === Node.ELEMENT_NODE;
@@ -117,7 +124,7 @@ function getElementInfo(element, depth = 1, extraStyles = []) {
   }
 
   // style 和 script 元素不获取 text 内容（避免返回大量无用信息）
-  if (tag !== "style" && tag !== "script") {
+  if (!skipTextContent) {
     // 获取所有文本内容（用于快速访问）
     info.text = nonEmptyChildNodes
       .filter((node) => node.nodeType === Node.TEXT_NODE)
