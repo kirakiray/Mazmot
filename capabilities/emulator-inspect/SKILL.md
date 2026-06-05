@@ -9,6 +9,10 @@ test: test/test-inspect.html
 
 用于获取模拟器内指定元素的信息，包括元素标签、属性、子元素、样式等。类似于浏览器开发者工具的元素检查功能。
 
+## 前置要求
+
+此能力需要模拟器页面注入 `/pages/create-app/util/emulator-binding.js` 脚本才能正常工作。该脚本会监听 `inspect-element` 类型的消息并处理元素检查请求。
+
 ## 使用方法
 
 <cap-request>
