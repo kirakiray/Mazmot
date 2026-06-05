@@ -1,4 +1,4 @@
-export default function emulatorTap() {
+export default function emulatorInteract() {
   debugger;
-  console.log("emulatorTap");
+  console.log("emulatorInteract");
 }
