@@ -2,7 +2,7 @@ import yaml from "/npm/js-yaml@4.1.1/dist/js-yaml.min.mjs";
 import { get } from "/nos/fs/main.js";
 
 export default async function getCapability({ data = {}, content }) {
-  const { all, name } = data;
+  const { all, name, file } = data;
 
   await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -53,33 +53,39 @@ export default async function getCapability({ data = {}, content }) {
 
   if (name) {
     try {
-      const skillFile = await get(`mazmot/capabilities/${name}/SKILL.md`, {
-        create: false,
-      });
+      const filePath = file
+        ? `mazmot/capabilities/${name}/${file}`
+        : `mazmot/capabilities/${name}/SKILL.md`;
 
-      if (!skillFile) {
+      const fileHandle = await get(filePath, { create: false });
+
+      if (!fileHandle) {
         return {
           name: name,
+          file: file || "SKILL.md",
           error: "Capability not found",
         };
       }
 
-      const capabilityMd = await skillFile.text();
+      const fileContent = await fileHandle.text();
 
-      if (!capabilityMd.trim()) {
+      if (!fileContent.trim()) {
         return {
           name: name,
-          error: "Capability not found",
+          file: file || "SKILL.md",
+          error: "File is empty",
         };
       }
 
       return {
         name: name,
-        content: capabilityMd,
+        file: file || "SKILL.md",
+        content: fileContent,
       };
     } catch (error) {
       return {
         name: name,
+        file: file || "SKILL.md",
         error: "Capability not found",
       };
     }
