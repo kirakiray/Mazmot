@@ -47,6 +47,11 @@ export default async function emulatorNavigate({
       if (iframe) {
         // iframe 已存在，先注册监听器再更新 URL
         loadPromise = listenIframeLoad(iframe);
+        if (emulator.iframeUrl === url) {
+          // 需要中断一下再设置
+          emulator.iframeUrl = "";
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
         emulator.iframeUrl = url;
       } else {
         // iframe 不存在，先设置 URL 触发创建，再等待并监听

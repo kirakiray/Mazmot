@@ -84,17 +84,20 @@ export const pageAnime = {
   },
 };`,
     },
-    "pages/layout.html": {
-      aimap: `文件类型: ofa.js 页面模块 (Layout 模板)
-主要功能: 应用通用布局模板，提供页面骨架结构
-布局结构:
+    "pages/home.html": {
+      aimap: `文件类型: ofa.js 页面模块 (首页)
+主要功能: 应用首页，展示欢迎信息和入门指南
+页面结构:
   - header: 顶部导航栏，显示应用标题 "My App"
-  - main: 内容区域，使用 <slot> 插槽承载子页面内容
+  - main: 内容区域
+    - 欢迎区域 (.welcome): 居中显示标题和简介
+    - 卡片区域 (.card): 展示快速入门指南
+      - 列出关键文件说明 (app-config.js, home.html)
 样式特点:
   - 使用 CSS Flexbox 垂直布局
-  - header 使用主题色背景 (var(--md-sys-color-primary))
-  - main 区域可滚动，使用表面背景色
-用途: 作为其他页面的父级布局模板，通过 parent 属性引用`,
+  - 使用 Material Design 配色变量
+  - 卡片使用圆角边框和表面变体背景
+用途: 作为应用默认首页，引导用户了解项目结构`,
       code: `<template page>
   <style>
     :host {
@@ -117,45 +120,6 @@ export const pageAnime = {
       overflow: auto;
       padding: 20px;
       background: var(--md-sys-color-surface);
-    }
-  </style>
-  <div class="layout">
-    <header>
-      <h2>My App</h2>
-    </header>
-    <main>
-      <slot></slot>
-    </main>
-  </div>
-  <script>
-    export default async () => {
-      return {
-        data: {},
-        attached() {
-          console.log('[Layout] Layout component attached');
-        }
-      };
-    };
-  </script>
-</template>`,
-    },
-    "pages/home.html": {
-      aimap: `文件类型: ofa.js 页面模块 (首页)
-主要功能: 应用首页，展示欢迎信息和入门指南
-页面结构:
-  - 欢迎区域 (.welcome): 居中显示标题和简介
-  - 卡片区域 (.card): 展示快速入门指南
-    - 列出关键文件说明 (app-config.js, home.html, layout.html)
-模块配置:
-  - parent: ./layout.html (继承布局模板)
-样式特点:
-  - 使用 Material Design 配色变量
-  - 卡片使用圆角边框和表面变体背景
-用途: 作为应用默认首页，引导用户了解项目结构`,
-      code: `<template page>
-  <style>
-    :host {
-      display: block;
     }
     .welcome {
       text-align: center;
@@ -189,21 +153,26 @@ export const pageAnime = {
       font-family: monospace;
     }
   </style>
-  <div class="welcome">
-    <h1>Welcome to My App</h1>
-    <p>This is a simple ofa.js application created with NoneOS Core.</p>
-  </div>
-  <div class="card">
-    <h3>Getting Started</h3>
-    <p>Edit the files in the project to customize your application.</p>
-    <ul>
-      <li><code>app-config.js</code> - Application configuration</li>
-      <li><code>pages/home.html</code> - Home page</li>
-      <li><code>pages/layout.html</code> - Layout template</li>
-    </ul>
+  <div class="layout">
+    <header>
+      <h2>My App</h2>
+    </header>
+    <main>
+      <div class="welcome">
+        <h1>Welcome to My App</h1>
+        <p>This is a simple ofa.js application created with NoneOS Core.</p>
+      </div>
+      <div class="card">
+        <h3>Getting Started</h3>
+        <p>Edit the files in the project to customize your application.</p>
+        <ul>
+          <li><code>app-config.js</code> - Application configuration</li>
+          <li><code>pages/home.html</code> - Home page</li>
+        </ul>
+      </div>
+    </main>
   </div>
   <script>
-    export const parent = "./layout.html";
     export default async () => {
       return {
         data: {},
