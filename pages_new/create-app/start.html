@@ -3,88 +3,145 @@
     :host {
       display: flex;
       flex-direction: column;
+      align-items: center;
+      justify-content: center;
       height: 100%;
-      padding: 24px;
+      user-select: none;
+      padding: 20px;
       box-sizing: border-box;
     }
 
-    .title {
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--md-sys-color-on-surface);
-      margin-bottom: 8px;
+    .mascot-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
     }
 
-    .description {
-      font-size: 14px;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-bottom: 32px;
-      line-height: 1.6;
-    }
-
-    .options {
+    .speech-wrapper {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      max-width: 500px;
+      align-items: center;
+      gap: 12px;
     }
 
-    .option-card {
-      padding: 20px;
-      border: 1px solid var(--md-sys-color-outline-variant);
+    .speech-text {
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface);
+      text-align: center;
+      padding: 12px 24px;
+      background-color: var(--md-sys-color-surface-variant);
       border-radius: 12px;
-      background: var(--md-sys-color-surface-container);
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      border: 2px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .speech-text.has-options {
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px 24px;
+      cursor: default;
+    }
+
+    .speech-text.has-form {
+      padding: 0;
+      cursor: default;
+      background-color: transparent;
+      box-shadow: none;
+    }
+
+    .speech-text.exit {
+      animation: slideDown 0.2s ease-in forwards;
+    }
+
+    .speech-text.enter {
+      animation: slideUp 0.2s ease-out forwards;
+    }
+
+    @keyframes slideDown {
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+    }
+
+    @keyframes slideUp {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .option-btn {
+      padding: 12px 20px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
       cursor: pointer;
       transition: all 0.2s ease;
+      width: 100%;
+      text-align: center;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
     }
 
-    .option-card:hover:not(.disabled) {
+    .option-btn:hover:not(.disabled) {
       border-color: var(--md-sys-color-primary);
       background: var(--md-sys-color-primary-container);
     }
 
-    .option-card.disabled {
+    .option-btn.disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    .option-title {
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--md-sys-color-on-surface);
-      margin-bottom: 8px;
-    }
-
-    .option-desc {
-      font-size: 13px;
-      color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.5;
+    .option-btn.selected {
+      border-color: var(--md-sys-color-primary);
+      background: var(--md-sys-color-primary-container);
     }
 
     .warning {
       font-size: 12px;
       color: var(--md-sys-color-error);
-      margin-top: 8px;
+      margin-top: 4px;
     }
 
-    .input-section {
-      margin-top: 24px;
-      max-width: 500px;
+    .click-hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
     }
 
-    .input-label {
+    .form-content {
+      width: 100%;
+      padding: 16px;
+      background: var(--md-sys-color-surface-variant);
+      border-radius: 12px;
+    }
+
+    .form-label {
       font-size: 14px;
       color: var(--md-sys-color-on-surface);
       margin-bottom: 8px;
       display: block;
     }
 
-    .actions {
-      margin-top: auto;
-      padding-top: 24px;
+    .form-actions {
       display: flex;
-      justify-content: flex-end;
+      justify-content: center;
       gap: 12px;
+      margin-top: 16px;
     }
   </style>
   <link
@@ -93,76 +150,67 @@
   />
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="../../comps/mascot/mascot.html"></l-m>
 
-  <div class="title">创建应用</div>
-  <div class="description">
-    选择应用创建的位置，可以选择虚拟系统或本地文件夹。
+  <div class="mascot-wrapper">
+    <m-mascot attr:state="mascotState" style="--mascot-size: 100px"></m-mascot>
   </div>
 
-  <div class="options">
-    <div
-      class="option-card"
-      on:click="selectVirtual"
-      attr:class="virtualSelected ? 'selected' : ''"
-    >
-      <div class="option-title">
-        <n-icon icon="mdi:folder-outline" style="margin-right: 8px"></n-icon>
-        虚拟系统
-      </div>
-      <div class="option-desc">
-        创建到浏览器虚拟文件系统，数据存储在浏览器中，适合快速开发和测试。
-      </div>
-    </div>
-
-    <div
-      class="option-card"
-      on:click="selectLocal"
-      attr:class="localSelected ? 'selected' : (supportLocal ? '' : 'disabled')"
-    >
-      <div class="option-title">
-        <n-icon
-          icon="mdi:folder-open-outline"
-          style="margin-right: 8px"
-        ></n-icon>
-        本地文件夹
-      </div>
-      <div class="option-desc">
-        选择本地文件夹，文件直接保存到您的电脑上，可以离线使用。
-      </div>
-      <o-if :value="!supportLocal">
-        <div class="warning">当前浏览器不支持选择本地文件目录</div>
+  <div class="speech-wrapper" on:click="handleClick">
+    <div class="speech-text" id="speechText" sync:class="speechClass">
+      <o-if :value="typeof currentSpeech === 'string'">
+        {{ currentSpeech }}
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'options'">
+        <div style="width: 100%">
+          <div style="margin-bottom: 12px">{{ currentSpeech.question }}</div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <o-fill :value="currentSpeech.options">
+              <div
+                class="option-btn"
+                attr:class="$data.disabled ? 'disabled' : (selectedOption === $data.value ? 'selected' : '')"
+                on:click="selectOption($data)"
+              >
+                {{ $data.label }}
+                <o-if :value="$data.disabled && $data.warning">
+                  <div class="warning">{{ $data.warning }}</div>
+                </o-if>
+              </div>
+            </o-fill>
+          </div>
+        </div>
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'form'">
+        <div class="form-content">
+          <label class="form-label">{{ currentSpeech.label }}</label>
+          <p-input
+            sync:value="formValue"
+            :placeholder="currentSpeech.placeholder"
+            style="width: 100%"
+          ></p-input>
+          <div class="form-actions">
+            <p-button
+              color="primary"
+              attr:disabled="!formValue.trim()"
+              on:click="confirmForm"
+              >确认</p-button
+            >
+          </div>
+        </div>
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'confirm'">
+        <div style="width: 100%; text-align: center">
+          <div style="margin-bottom: 16px">{{ currentSpeech.message }}</div>
+          <div style="display: flex; justify-content: center; gap: 12px">
+            <p-button variant="outlined" on:click="goBack">返回修改</p-button>
+            <p-button color="primary" on:click="confirmCreate"
+              >开始创建</p-button
+            >
+          </div>
+        </div>
       </o-if>
     </div>
-  </div>
-
-  <o-if :value="virtualSelected">
-    <div class="input-section">
-      <label class="input-label">应用名称</label>
-      <p-input
-        sync:value="appName"
-        placeholder="请输入应用名称"
-        style="width: 100%"
-      ></p-input>
-    </div>
-  </o-if>
-
-  <o-if :value="localSelected">
-    <div class="input-section">
-      <label class="input-label">已选择文件夹</label>
-      <p-input
-        sync:value="localPath"
-        attr:disabled="true"
-        style="width: 100%"
-      ></p-input>
-    </div>
-  </o-if>
-
-  <div class="actions">
-    <p-button variant="text" on:click="cancel">取消</p-button>
-    <p-button color="primary" attr:disabled="!canCreate" on:click="createApp"
-      >创建</p-button
-    >
+    <div class="click-hint">{{ currentHint }}</div>
   </div>
 
   <script>
@@ -172,53 +220,165 @@
 
       return {
         data: {
-          supportLocal: "showDirectoryPicker" in window,
-          virtualSelected: true,
-          localSelected: false,
+          mascotState: "",
+          currentIndex: 0,
+          isAnimating: false,
+          selectedOption: null,
+          formValue: "",
           appName: "",
-          localPath: "",
           localHandle: null,
+          supportLocal: "showDirectoryPicker" in window,
+          speeches: [
+            "你好！我来帮你创建一个AI应用。",
+            {
+              type: "options",
+              question: "请选择应用创建的位置：",
+              options: [
+                { label: "虚拟系统（浏览器存储）", value: "virtual" },
+                {
+                  label: "本地文件夹（直接保存到电脑）",
+                  value: "local",
+                  disabled: !("showDirectoryPicker" in window),
+                  warning: !("showDirectoryPicker" in window)
+                    ? "当前浏览器不支持选择本地文件目录"
+                    : null,
+                },
+              ],
+              hint: "请选择一个选项",
+            },
+          ],
         },
         proto: {
-          get canCreate() {
-            if (this.virtualSelected) {
-              return this.appName.trim().length > 0;
+          get currentSpeech() {
+            // 动态生成后续对话内容
+            if (this.currentIndex < this.speeches.length) {
+              return this.speeches[this.currentIndex];
             }
-            if (this.localSelected) {
-              return this.localHandle !== null;
+
+            // 根据选择动态添加对话
+            if (
+              this.selectedOption === "virtual" &&
+              this.currentIndex === this.speeches.length
+            ) {
+              return {
+                type: "form",
+                label: "应用名称",
+                placeholder: "请输入应用名称",
+                hint: "输入应用名称后点击确认",
+              };
             }
-            return false;
+
+            if (
+              this.selectedOption === "virtual" &&
+              this.currentIndex === this.speeches.length + 1
+            ) {
+              return {
+                type: "confirm",
+                message: `确认创建应用「${this.appName}」到虚拟系统？`,
+                hint: "确认后开始创建应用",
+              };
+            }
+
+            if (
+              this.selectedOption === "local" &&
+              this.currentIndex === this.speeches.length
+            ) {
+              return "正在打开文件夹选择器...";
+            }
+
+            if (
+              this.selectedOption === "local" &&
+              this.currentIndex === this.speeches.length + 1
+            ) {
+              return {
+                type: "confirm",
+                message: `确认在「${this.localHandle?.name || "未知"}」文件夹中创建应用？`,
+                hint: "确认后开始创建应用",
+              };
+            }
+
+            return "创建完成！";
           },
-          selectVirtual() {
-            this.virtualSelected = true;
-            this.localSelected = false;
+          get speechClass() {
+            if (
+              this.currentSpeech &&
+              (this.currentSpeech.type === "options" ||
+                this.currentSpeech.type === "form" ||
+                this.currentSpeech.type === "confirm")
+            ) {
+              return "speech-text has-options";
+            }
+            return "speech-text";
           },
-          async selectLocal() {
-            if (!this.supportLocal) {
+          get currentHint() {
+            if (this.currentSpeech && this.currentSpeech.hint) {
+              return this.currentSpeech.hint;
+            }
+            if (this.currentSpeech && this.currentSpeech.type) {
+              return "";
+            }
+            return "点击继续";
+          },
+          handleClick() {
+            // 如果是选项、表单或确认类型，不能通过点击跳过
+            if (this.currentSpeech && this.currentSpeech.type) {
               return;
             }
-            try {
-              const handle = await open();
-              this.localHandle = handle;
-              this.localPath = handle.name;
-              this.virtualSelected = false;
-              this.localSelected = true;
-            } catch (e) {
-              console.error("选择文件夹失败:", e);
-            }
+
+            this.nextSpeech();
           },
-          async createApp() {
-            if (!this.canCreate) {
+          async selectOption(opt) {
+            if (opt.disabled) {
               return;
             }
+
+            this.selectedOption = opt.value;
+
+            if (opt.value === "local") {
+              // 选择本地文件夹
+              try {
+                this.nextSpeech(); // 显示"正在打开..."
+                const handle = await open();
+                this.localHandle = handle;
+                this.mascotState = "happy";
+                this.nextSpeech(); // 显示确认
+              } catch (e) {
+                console.error("选择文件夹失败:", e);
+                this.mascotState = "angry";
+                // 返回选择页面
+                this.currentIndex = 1;
+              }
+            } else {
+              // 选择虚拟系统
+              this.nextSpeech();
+            }
+          },
+          confirmForm() {
+            if (!this.formValue.trim()) {
+              return;
+            }
+            this.appName = this.formValue.trim();
+            this.mascotState = "happy";
+            this.nextSpeech();
+          },
+          goBack() {
+            // 返回到选择页面
+            this.currentIndex = 1;
+            this.selectedOption = null;
+            this.formValue = "";
+            this.appName = "";
+            this.localHandle = null;
+            this.mascotState = "";
+          },
+          async confirmCreate() {
+            this.mascotState = "happy";
 
             let projectPath;
 
-            if (this.virtualSelected) {
-              const appName = this.appName.trim();
-              projectPath = appName;
+            if (this.selectedOption === "virtual") {
+              projectPath = this.appName;
               await init(projectPath);
-            } else if (this.localSelected && this.localHandle) {
+            } else if (this.selectedOption === "local" && this.localHandle) {
               await mount(this.localHandle);
               projectPath = this.localHandle.path;
             }
@@ -228,8 +388,29 @@
             // 跳转到创建页面
             location.hash = "#/create-app/create";
           },
-          cancel() {
-            history.back();
+          nextSpeech() {
+            if (this.isAnimating) {
+              return;
+            }
+
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              this.isAnimating = true;
+              speechText.classList.add("exit");
+
+              setTimeout(() => {
+                this.currentIndex++;
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 200);
+              }, 200);
+            } else {
+              this.currentIndex++;
+            }
           },
         },
       };
