@@ -1,9 +1,238 @@
 <template page>
   <style>
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       height: 100%;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 8px;
+    }
+
+    .description {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .options {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 500px;
+    }
+
+    .option-card {
+      padding: 20px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+      background: var(--md-sys-color-surface-container);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .option-card:hover:not(.disabled) {
+      border-color: var(--md-sys-color-primary);
+      background: var(--md-sys-color-primary-container);
+    }
+
+    .option-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .option-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 8px;
+    }
+
+    .option-desc {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.5;
+    }
+
+    .warning {
+      font-size: 12px;
+      color: var(--md-sys-color-error);
+      margin-top: 8px;
+    }
+
+    .input-section {
+      margin-top: 24px;
+      max-width: 500px;
+    }
+
+    .input-label {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .actions {
+      margin-top: auto;
+      padding-top: 24px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
     }
   </style>
-  创建应用的开始
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="title">创建应用</div>
+  <div class="description">
+    选择应用创建的位置，可以选择虚拟系统或本地文件夹。
+  </div>
+
+  <div class="options">
+    <div
+      class="option-card"
+      on:click="selectVirtual"
+      attr:class="virtualSelected ? 'selected' : ''"
+    >
+      <div class="option-title">
+        <n-icon icon="mdi:folder-outline" style="margin-right: 8px"></n-icon>
+        虚拟系统
+      </div>
+      <div class="option-desc">
+        创建到浏览器虚拟文件系统，数据存储在浏览器中，适合快速开发和测试。
+      </div>
+    </div>
+
+    <div
+      class="option-card"
+      on:click="selectLocal"
+      attr:class="localSelected ? 'selected' : (supportLocal ? '' : 'disabled')"
+    >
+      <div class="option-title">
+        <n-icon
+          icon="mdi:folder-open-outline"
+          style="margin-right: 8px"
+        ></n-icon>
+        本地文件夹
+      </div>
+      <div class="option-desc">
+        选择本地文件夹，文件直接保存到您的电脑上，可以离线使用。
+      </div>
+      <o-if :value="!supportLocal">
+        <div class="warning">当前浏览器不支持选择本地文件目录</div>
+      </o-if>
+    </div>
+  </div>
+
+  <o-if :value="virtualSelected">
+    <div class="input-section">
+      <label class="input-label">应用名称</label>
+      <p-input
+        sync:value="appName"
+        placeholder="请输入应用名称"
+        style="width: 100%"
+      ></p-input>
+    </div>
+  </o-if>
+
+  <o-if :value="localSelected">
+    <div class="input-section">
+      <label class="input-label">已选择文件夹</label>
+      <p-input
+        sync:value="localPath"
+        attr:disabled="true"
+        style="width: 100%"
+      ></p-input>
+    </div>
+  </o-if>
+
+  <div class="actions">
+    <p-button variant="text" on:click="cancel">取消</p-button>
+    <p-button color="primary" attr:disabled="!canCreate" on:click="createApp"
+      >创建</p-button
+    >
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const { init, open, mount } = await load("/nos/fs/main.js");
+      const { initCode } = await load("/pages/create-app/util/init-code.js");
+
+      return {
+        data: {
+          supportLocal: "showDirectoryPicker" in window,
+          virtualSelected: true,
+          localSelected: false,
+          appName: "",
+          localPath: "",
+          localHandle: null,
+        },
+        proto: {
+          get canCreate() {
+            if (this.virtualSelected) {
+              return this.appName.trim().length > 0;
+            }
+            if (this.localSelected) {
+              return this.localHandle !== null;
+            }
+            return false;
+          },
+          selectVirtual() {
+            this.virtualSelected = true;
+            this.localSelected = false;
+          },
+          async selectLocal() {
+            if (!this.supportLocal) {
+              return;
+            }
+            try {
+              const handle = await open();
+              this.localHandle = handle;
+              this.localPath = handle.name;
+              this.virtualSelected = false;
+              this.localSelected = true;
+            } catch (e) {
+              console.error("选择文件夹失败:", e);
+            }
+          },
+          async createApp() {
+            if (!this.canCreate) {
+              return;
+            }
+
+            let projectPath;
+
+            if (this.virtualSelected) {
+              const appName = this.appName.trim();
+              projectPath = appName;
+              await init(projectPath);
+            } else if (this.localSelected && this.localHandle) {
+              await mount(this.localHandle);
+              projectPath = this.localHandle.path;
+            }
+
+            await initCode(projectPath);
+
+            // 跳转到创建页面
+            location.hash = "#/create-app/create";
+          },
+          cancel() {
+            history.back();
+          },
+        },
+      };
+    };
+  </script>
 </template>

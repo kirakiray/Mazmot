@@ -5,3 +5,12 @@ pages_new/create-app/start.html 创建应用的页面模块，我也不知道怎
 - 判断系统是否支持 open，有个api判断的，你查看一下 nonos-core 的文档。如果不支持open，则将选择本地目录的按钮 disabled，并且小文字提醒当前浏览器不支持选择本地文件目录。
 - 选择完后，使用 pages/create-app/util/init-code.js 初始化应用代码。
 - 初始化完成后，跳到 pages_new/create-app/create.html
+
+
+改一下，改成 comps/mascot 组件在中间，像聊天一样；参考 pages_new/start/start.html 中的代码；显示顺序为：
+- 先问用户创建到哪里；
+- 让用户选择创建到虚拟系统内，还是选择真的系统的文件夹
+    - 如果选择了创建到虚拟系统内，让用户填写应用名
+        - 让用户确认最终的应用名，确认后开始创建应用代码
+    - 如果选择了选择真的系统的文件夹，就调用open让用户选择，选择成功后下一步
+        - 让用户确认最终的文件夹路径，确认后开始创建应用代码
