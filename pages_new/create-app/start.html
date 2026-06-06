@@ -84,34 +84,6 @@
       }
     }
 
-    .option-btn {
-      padding: 12px 20px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      border-radius: 8px;
-      background: var(--md-sys-color-surface);
-      cursor: pointer;
-      transition: all 0.2s ease;
-      width: 100%;
-      text-align: center;
-      font-size: 14px;
-      color: var(--md-sys-color-on-surface);
-    }
-
-    .option-btn:hover:not(.disabled) {
-      border-color: var(--md-sys-color-primary);
-      background: var(--md-sys-color-primary-container);
-    }
-
-    .option-btn.disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .option-btn.selected {
-      border-color: var(--md-sys-color-primary);
-      background: var(--md-sys-color-primary-container);
-    }
-
     .warning {
       font-size: 12px;
       color: var(--md-sys-color-error);
@@ -166,18 +138,26 @@
           <div style="margin-bottom: 12px">{{ currentSpeech.question }}</div>
           <div style="display: flex; flex-direction: column; gap: 8px">
             <o-fill :value="currentSpeech.options">
-              <div
-                class="option-btn"
-                attr:class="$host.getOptionClass($data)"
+              <p-button
+                variant="outlined"
+                attr:disabled="$data.disabled"
                 on:click="$host.selectOption($data)"
+                style="width: 100%"
               >
                 {{ $data.label }}
                 <o-if :value="$data.disabled && $data.warning">
                   <div class="warning">{{ $data.warning }}</div>
                 </o-if>
-              </div>
+              </p-button>
             </o-fill>
           </div>
+          <o-if :value="currentIndex > 1">
+            <div style="margin-top: 12px">
+              <p-button variant="text" size="s" on:click="prevSpeech"
+                >返回上一步</p-button
+              >
+            </div>
+          </o-if>
         </div>
       </o-if>
       <o-if :value="currentSpeech && currentSpeech.type === 'form'">
@@ -189,6 +169,7 @@
             style="width: 100%"
           ></p-input>
           <div class="form-actions">
+            <p-button variant="text" on:click="prevSpeech">返回</p-button>
             <p-button
               color="primary"
               attr:disabled="!formValue.trim()"
@@ -226,7 +207,7 @@
           selectedOption: null,
           formValue: "",
           appName: "",
-          localHandle: null,
+          _localHandle: null,
           supportLocal: "showDirectoryPicker" in window,
           speeches: [
             "你好！我来帮你创建一个AI应用。",
@@ -292,7 +273,7 @@
             ) {
               return {
                 type: "confirm",
-                message: `确认在「${this.localHandle?.name || "未知"}」文件夹中创建应用？`,
+                message: `确认在「${this._localHandle?.name || "未知"}」文件夹中创建应用？`,
                 hint: "确认后开始创建应用",
               };
             }
@@ -319,15 +300,6 @@
             }
             return "点击继续";
           },
-          getOptionClass(opt) {
-            if (opt.disabled) {
-              return "disabled";
-            }
-            if (this.selectedOption === opt.value) {
-              return "selected";
-            }
-            return "";
-          },
           handleClick() {
             // 如果是选项、表单或确认类型，不能通过点击跳过
             if (this.currentSpeech && this.currentSpeech.type) {
@@ -348,13 +320,11 @@
               try {
                 this.nextSpeech(); // 显示"正在打开..."
                 const handle = await open();
-                this.localHandle = handle;
+                this._localHandle = handle;
                 this.mascotState = "happy";
                 this.nextSpeech(); // 显示确认
               } catch (e) {
-                console.error("选择文件夹失败:", e);
-                this.mascotState = "angry";
-                // 返回选择页面
+                // 用户取消选择，返回选择页面
                 this.currentIndex = 1;
               }
             } else {
@@ -376,7 +346,7 @@
             this.selectedOption = null;
             this.formValue = "";
             this.appName = "";
-            this.localHandle = null;
+            this._localHandle = null;
             this.mascotState = "";
           },
           async confirmCreate() {
@@ -387,9 +357,9 @@
             if (this.selectedOption === "virtual") {
               projectPath = this.appName;
               await init(projectPath);
-            } else if (this.selectedOption === "local" && this.localHandle) {
-              await mount(this.localHandle);
-              projectPath = this.localHandle.path;
+            } else if (this.selectedOption === "local" && this._localHandle) {
+              await mount(this._localHandle);
+              projectPath = this._localHandle.path;
             }
 
             await initCode(projectPath);
@@ -419,6 +389,47 @@
               }, 200);
             } else {
               this.currentIndex++;
+            }
+          },
+          prevSpeech() {
+            if (this.isAnimating || this.currentIndex <= 0) {
+              return;
+            }
+
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              this.isAnimating = true;
+              speechText.classList.add("exit");
+
+              setTimeout(() => {
+                this.currentIndex--;
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                // 返回到选择页面时，重置选择状态
+                if (this.currentIndex === 1) {
+                  this.selectedOption = null;
+                  this.formValue = "";
+                  this.appName = "";
+                  this._localHandle = null;
+                  this.mascotState = "";
+                }
+
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 200);
+              }, 200);
+            } else {
+              this.currentIndex--;
+              // 返回到选择页面时，重置选择状态
+              if (this.currentIndex === 1) {
+                this.selectedOption = null;
+                this.formValue = "";
+                this.appName = "";
+                this._localHandle = null;
+                this.mascotState = "";
+              }
             }
           },
         },
