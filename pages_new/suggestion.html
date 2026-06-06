@@ -14,7 +14,7 @@
       font-size: 14px;
       color: var(--md-sys-color-on-surface-variant);
       text-align: center;
-      padding: 8px 16px;
+      padding: 4px 16px;
       background-color: var(--md-sys-color-surface-variant);
       border-radius: 8px;
       max-width: 350px;
@@ -65,7 +65,11 @@
     href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
   />
   <div class="suggestion-wrapper">
-    <div class="suggestion-text" id="suggestionText" sync:class="suggestionClass">
+    <div
+      class="suggestion-text"
+      id="suggestionText"
+      sync:class="suggestionClass"
+    >
       {{ currentSuggestion }}
     </div>
   </div>
@@ -88,7 +92,9 @@
         },
         ready() {
           // 随机选择一个初始建议
-          this.currentIndex = Math.floor(Math.random() * this.suggestions.length);
+          this.currentIndex = Math.floor(
+            Math.random() * this.suggestions.length,
+          );
           // 启动定时切换
           this.startAutoSwitch();
         },
@@ -103,14 +109,16 @@
             return this.suggestions[this.currentIndex];
           },
           get suggestionClass() {
-            return this.isAnimating ? "suggestion-text exit" : "suggestion-text";
+            return this.isAnimating
+              ? "suggestion-text exit"
+              : "suggestion-text";
           },
           startAutoSwitch() {
             this.timer = setInterval(() => {
               this.nextSuggestion();
             }, 5000);
           },
-          nextSuggestion() {
+          async nextSuggestion() {
             if (this.isAnimating) {
               return;
             }
@@ -122,13 +130,20 @@
               // 第一步：当前建议淡出
               suggestionText.classList.add("exit");
 
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+
               setTimeout(() => {
                 // 随机选择下一个建议（避免重复）
                 let newIndex;
                 do {
-                  newIndex = Math.floor(Math.random() * this.suggestions.length);
-                } while (newIndex === this.currentIndex && this.suggestions.length > 1);
-                
+                  newIndex = Math.floor(
+                    Math.random() * this.suggestions.length,
+                  );
+                } while (
+                  newIndex === this.currentIndex &&
+                  this.suggestions.length > 1
+                );
+
                 this.currentIndex = newIndex;
 
                 // 移除 exit 类，添加 enter 类
@@ -145,8 +160,11 @@
               let newIndex;
               do {
                 newIndex = Math.floor(Math.random() * this.suggestions.length);
-              } while (newIndex === this.currentIndex && this.suggestions.length > 1);
-              
+              } while (
+                newIndex === this.currentIndex &&
+                this.suggestions.length > 1
+              );
+
               this.currentIndex = newIndex;
             }
           },
