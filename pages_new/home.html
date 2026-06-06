@@ -35,9 +35,18 @@
       align-items: center;
       justify-content: center;
       box-shadow: 0 2px 8px rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      border: 2px solid transparent;
       transition: all 0.3s ease;
       position: relative;
       overflow: hidden;
+    }
+    .speech-text.has-form {
+      max-width: 450px;
+      min-height: auto;
+      padding: 0;
+      cursor: default;
+      background-color: transparent;
+      box-shadow: none;
     }
     .speech-text.exit {
       animation: slideDown 0.1s ease-in forwards;
@@ -71,6 +80,11 @@
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgb(from var(--md-sys-color-primary) r g b / 0.2);
     }
+    .speech-text.has-form:hover {
+      transform: none;
+      background-color: transparent;
+      color: var(--md-sys-color-on-surface);
+    }
     .speech-text.exit:hover,
     .speech-text.enter:hover {
       transform: none;
@@ -85,15 +99,25 @@
     rel="stylesheet"
     href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
   />
-  <div class="container" on:click="nextSpeech">
+  <div class="container" on:click="handleClick">
     <l-m src="../comps/mascot/mascot.html"></l-m>
     <div class="mascot-wrapper">
       <m-mascot
         style="--mascot-size: 100px"
         sync:state="mascotState"
       ></m-mascot>
-      <div class="speech-text" id="speechText">{{ currentSpeech }}</div>
-      <div class="click-hint">点击鼠标继续对话</div>
+      <div class="speech-text" id="speechText" sync:class="speechClass">
+        <o-if :value="currentIndex < speeches.length - 1">
+          {{ currentSpeech }}
+        </o-if>
+        <o-if :value="currentIndex === speeches.length - 1">
+          <o-page src="./input-apikey.html" style="width: 100%; height: auto;"></o-page>
+        </o-if>
+      </div>
+      <div class="click-hint">
+        <o-if :value="currentIndex < speeches.length - 1">点击鼠标继续对话</o-if>
+        <o-if :value="currentIndex === speeches.length - 1">请配置 API Key</o-if>
+      </div>
     </div>
   </div>
   <script>
@@ -103,7 +127,8 @@
           speeches: [
             "你好，我是小墨，我是你的AI应用助手！",
             "你可以借助我用来创建或启动AI应用",
-            "现在的我只是一个具空壳，需要你为我注入灵魂",
+            "现在的我只是一个具空壳，需要你为我注入灵魂，才能正常工作",
+            "准备好了吗？让我们一起开始注入灵魂之旅！",
           ],
           currentIndex: 0,
           mascotState: "soulless",
@@ -113,9 +138,30 @@
           get currentSpeech() {
             return this.speeches[this.currentIndex];
           },
+          get speechClass() {
+            return this.currentIndex === this.speeches.length - 1
+              ? "speech-text has-form"
+              : "speech-text";
+          },
+          handleClick() {
+            // 只在前面的步骤时响应点击
+            if (this.currentIndex < this.speeches.length - 1) {
+              this.nextSpeech();
+            }
+          },
+          navigateToInputPage() {
+            // 跳转到 API Key 输入页面
+            // TODO: 根据实际的路由配置调整跳转方式
+            console.log("跳转到输入页面");
+            // 示例：使用 ofa.js 的路由方式
+            // this.nav.to("/pages_new/input-apikey.html");
+          },
           nextSpeech() {
             // 如果正在动画中或已经是最后一句，不响应点击
-            if (this.isAnimating || this.currentIndex >= this.speeches.length - 1) {
+            if (
+              this.isAnimating ||
+              this.currentIndex >= this.speeches.length - 1
+            ) {
               return;
             }
 
