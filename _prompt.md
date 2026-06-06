@@ -1,1 +1,2 @@
-根据 util/system-prompt.md 和 capabilities/capability-diagnosis/SKILL.md 和 capabilities/capability-diagnosis/references/test-case-guide.md
+这个  pages2/home.html 现在是一个ai项目的首页，是 ofa.js 的页面模块。
+
