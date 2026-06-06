@@ -3,6 +3,7 @@
     :host {
       display: block;
       height: 100%;
+      user-select: none;
     }
     .container {
       display: flex;
@@ -39,10 +40,10 @@
       overflow: hidden;
     }
     .speech-text.exit {
-      animation: slideDown 0.3s ease-in forwards;
+      animation: slideDown 0.1s ease-in forwards;
     }
     .speech-text.enter {
-      animation: slideUp 0.3s ease-out forwards;
+      animation: slideUp 0.1s ease-out forwards;
     }
     @keyframes slideDown {
       0% {
@@ -100,50 +101,49 @@
       return {
         data: {
           speeches: [
-            "你好！欢迎来到 AI 项目！",
-            "我是这里的吉祥物，很高兴见到你！",
-            "这是一个基于 ofa.js 构建的项目。",
-            "有什么我可以帮助你的吗？",
-            "让我们一起探索这个项目吧！",
+            "你好，我是小墨，我是你的AI应用助手！",
+            "你可以借助我用来创建或启动AI应用",
+            "现在的我只是一个具空壳，需要你为我注入灵魂",
           ],
           currentIndex: 0,
           mascotState: "soulless",
+          isAnimating: false,
         },
         proto: {
           get currentSpeech() {
             return this.speeches[this.currentIndex];
           },
           nextSpeech() {
+            // 如果正在动画中或已经是最后一句，不响应点击
+            if (this.isAnimating || this.currentIndex >= this.speeches.length - 1) {
+              return;
+            }
+
             const speechText = this.shadow.$("#speechText");
             if (speechText) {
+              // 开始动画，设置状态
+              this.isAnimating = true;
+
               // 第一步：当前对话框向下消失
               speechText.classList.add("exit");
 
-              // 300ms后切换内容并从下方滑入
+              // 100ms后切换内容并从下方滑入
               setTimeout(() => {
-                this.currentIndex =
-                  (this.currentIndex + 1) % this.speeches.length;
-                // 第三句（索引为2）开始有灵魂
-                if (this.currentIndex >= 2) {
-                  this.mascotState = "";
-                }
+                this.currentIndex = this.currentIndex + 1;
 
                 // 移除 exit 类，添加 enter 类
                 speechText.classList.remove("exit");
                 speechText.classList.add("enter");
 
-                // 动画结束后移除 enter 类
+                // 动画结束后移除 enter 类并重置动画状态
                 setTimeout(() => {
                   speechText.classList.remove("enter");
-                }, 300);
-              }, 300);
+                  this.isAnimating = false;
+                }, 100);
+              }, 100);
             } else {
               // 如果找不到元素，直接切换
-              this.currentIndex =
-                (this.currentIndex + 1) % this.speeches.length;
-              if (this.currentIndex >= 2) {
-                this.mascotState = "";
-              }
+              this.currentIndex = this.currentIndex + 1;
             }
           },
         },
