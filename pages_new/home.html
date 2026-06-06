@@ -55,7 +55,7 @@
   <div class="container" on:click="nextSpeech">
     <l-m src="../comps/mascot/mascot.html"></l-m>
     <div class="mascot-wrapper">
-      <m-mascot style="--mascot-size: 100px"></m-mascot>
+      <m-mascot style="--mascot-size: 100px" sync:state="mascotState"></m-mascot>
       <div class="speech-text">{{ currentSpeech }}</div>
       <div class="click-hint">点击鼠标继续对话</div>
     </div>
@@ -72,6 +72,7 @@
             "让我们一起探索这个项目吧！",
           ],
           currentIndex: 0,
+          mascotState: "soulless",
         },
         proto: {
           get currentSpeech() {
@@ -79,6 +80,10 @@
           },
           nextSpeech() {
             this.currentIndex = (this.currentIndex + 1) % this.speeches.length;
+            // 第三句（索引为2）开始有灵魂
+            if (this.currentIndex >= 2) {
+              this.mascotState = "";
+            }
           },
         },
       };
