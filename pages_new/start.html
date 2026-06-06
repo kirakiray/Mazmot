@@ -1,1 +1,212 @@
-<template page></template>
+<template page>
+  <style>
+    :host {
+      display: block;
+      user-select: none;
+    }
+    .speech-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .speech-text {
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface);
+      text-align: center;
+      cursor: pointer;
+      padding: 10px 20px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      max-width: 300px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      border: 2px solid transparent;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .speech-text.has-form {
+      max-width: 450px;
+      min-height: auto;
+      padding: 0;
+      cursor: default;
+      background-color: transparent;
+      box-shadow: none;
+    }
+    .speech-text.exit {
+      animation: slideDown 0.1s ease-in forwards;
+    }
+    .speech-text.enter {
+      animation: slideUp 0.1s ease-out forwards;
+    }
+    @keyframes slideDown {
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+    }
+    @keyframes slideUp {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+    .speech-text:hover {
+      border-color: var(--md-sys-color-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgb(from var(--md-sys-color-primary) r g b / 0.2);
+    }
+    .speech-text.has-form:hover {
+      transform: none;
+      border-color: transparent;
+    }
+    .speech-text.exit:hover,
+    .speech-text.enter:hover {
+      transform: none;
+      border-color: transparent;
+    }
+    .click-hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 5px;
+    }
+  </style>
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <div class="speech-wrapper" on:click="handleClick">
+    <div class="speech-text" id="speechText" sync:class="speechClass">
+      <o-if :value="typeof currentSpeech === 'string'">
+        {{ currentSpeech }}
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.page">
+        <o-page
+          :src="currentSpeech.page"
+          style="width: 100%; height: auto"
+          on:success="handleSuccess"
+        ></o-page>
+      </o-if>
+    </div>
+    <div class="click-hint">{{ currentHint }}</div>
+  </div>
+  <script>
+    export default async ({ load }) => {
+      const { apiKeys } = await load("../ai/main.js");
+
+      return {
+        data: {
+          speeches: [
+            "你好！我是小墨，你的AI应用助手。",
+            "我可以帮你使用或制作各种AI应用。",
+            "不过现在的我还只是一具空壳，需要你为我注入灵魂才能开始工作。",
+            {
+              page: "/pages_new/input-apikey.html",
+              hint: "请配置 API Key",
+            },
+            "太棒了，灵魂注入成功！准备好了吗？让我们一起开启AI应用之旅吧！",
+          ],
+          currentIndex: 0,
+          isAnimating: false,
+        },
+        ready() {
+          // 检查本地是否有可用的 API key
+          if (apiKeys.length > 0) {
+            // 有 API key，设置有灵魂状态
+            this.mascotState = "";
+            // 跳过第三步（index 3）的配置 key
+            this.currentIndex = 4;
+          }
+        },
+        proto: {
+          get currentSpeech() {
+            return this.speeches[this.currentIndex];
+          },
+          get speechClass() {
+            return this.currentSpeech && this.currentSpeech.page
+              ? "speech-text has-form"
+              : "speech-text";
+          },
+          get currentHint() {
+            if (this.currentSpeech && this.currentSpeech.hint) {
+              return this.currentSpeech.hint;
+            }
+            return "点击鼠标继续对话";
+          },
+          handleClick(e) {
+            e.stopPropagation();
+            
+            // 如果当前是对象类型（有 page），不能通过点击跳过
+            if (this.currentSpeech && this.currentSpeech.page) {
+              return;
+            }
+            // 只在前面的步骤时响应点击
+            if (this.currentIndex < this.speeches.length - 1) {
+              this.nextSpeech();
+            }
+          },
+          handleSuccess() {
+            this.mascotState = "happy";
+            // 页面操作成功，进入下一步
+            this.nextSpeech();
+          },
+          navigateToInputPage() {
+            // 跳转到 API Key 输入页面
+            // TODO: 根据实际的路由配置调整跳转方式
+            console.log("跳转到输入页面");
+            // 示例：使用 ofa.js 的路由方式
+            // this.nav.to("/pages_new/input-apikey.html");
+          },
+          nextSpeech() {
+            // 如果正在动画中或已经是最后一句，不响应点击
+            if (
+              this.isAnimating ||
+              this.currentIndex >= this.speeches.length - 1
+            ) {
+              return;
+            }
+
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              // 开始动画，设置状态
+              this.isAnimating = true;
+
+              // 第一步：当前对话框向下消失
+              speechText.classList.add("exit");
+
+              // 100ms后切换内容并从下方滑入
+              setTimeout(() => {
+                this.currentIndex = this.currentIndex + 1;
+
+                // 移除 exit 类，添加 enter 类
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                // 动画结束后移除 enter 类并重置动画状态
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 100);
+              }, 100);
+            } else {
+              // 如果找不到元素，直接切换
+              this.currentIndex = this.currentIndex + 1;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>
