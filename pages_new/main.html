@@ -1,0 +1,85 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      min-height: 30vh;
+    }
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 450px;
+      width: 100%;
+    }
+    .chat-input-wrapper {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .chat-input {
+      flex: 1;
+    }
+  </style>
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
+  ></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+
+  <div class="chat-container">
+    <div class="chat-input-wrapper">
+      <p-textarea
+        class="chat-input"
+        sync:value="inputText"
+        placeholder="输入你想说的话..."
+        rows="3"
+        attr:disabled="sending"
+      ></p-textarea>
+      <p-button
+        color="primary"
+        on:click="sendMessage"
+        attr:disabled="!inputText.trim() || sending"
+        size="s"
+      >
+        <o-if :value="sending">发送中...</o-if>
+        <o-if :value="!sending">发送</o-if>
+      </p-button>
+    </div>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      return {
+        data: {
+          inputText: "",
+          sending: false,
+        },
+        proto: {
+          async sendMessage() {
+            const text = this.inputText.trim();
+            if (!text) {
+              return;
+            }
+
+            this.sending = true;
+
+            try {
+              // TODO: 发送消息到 AI
+              console.log("发送消息:", text);
+              this.inputText = "";
+            } catch (error) {
+              console.error("发送失败:", error);
+            } finally {
+              this.sending = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

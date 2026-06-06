@@ -12,21 +12,38 @@
       height: 100%;
       padding-top: 15vh;
     }
+
+    .page {
+      margin-top: 16px;
+    }
   </style>
   <div class="mascot-container">
     <l-m src="../comps/mascot/mascot.html"></l-m>
     <m-mascot style="--mascot-size: 100px" sync:state="mascotState"></m-mascot>
-    <o-page
-      src="./start.html"
-      style="width: 100%; height: auto; margin-top: 16px"
-      sync:mascot-state="mascotState"
-    ></o-page>
+    <o-if :value="!showMain">
+      <o-page
+        src="./start.html"
+        class="page"
+        style="width: 100%"
+        sync:mascot-state="mascotState"
+        on:completed="handleCompleted"
+      ></o-page>
+    </o-if>
+    <o-if :value="showMain">
+      <o-page src="./main.html" class="page" style="width: 100%"></o-page>
+    </o-if>
   </div>
   <script>
     export default async ({ load }) => {
       return {
         data: {
           mascotState: "soulless",
+          showMain: false,
+        },
+        proto: {
+          handleCompleted() {
+            this.showMain = true;
+          },
         },
       };
     };

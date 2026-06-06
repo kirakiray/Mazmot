@@ -147,15 +147,20 @@
           },
           handleClick(e) {
             e.stopPropagation();
-            
+
             // 如果当前是对象类型（有 page），不能通过点击跳过
             if (this.currentSpeech && this.currentSpeech.page) {
               return;
             }
-            // 只在前面的步骤时响应点击
-            if (this.currentIndex < this.speeches.length - 1) {
-              this.nextSpeech();
+
+            // 如果已经是最后一句，点击后触发完成事件
+            if (this.currentIndex >= this.speeches.length - 1) {
+              this.emit("completed");
+              return;
             }
+
+            // 否则进入下一句
+            this.nextSpeech();
           },
           handleSuccess() {
             this.mascotState = "happy";
@@ -170,11 +175,8 @@
             // this.nav.to("/pages_new/input-apikey.html");
           },
           nextSpeech() {
-            // 如果正在动画中或已经是最后一句，不响应点击
-            if (
-              this.isAnimating ||
-              this.currentIndex >= this.speeches.length - 1
-            ) {
+            // 如果正在动画中，不响应点击
+            if (this.isAnimating) {
               return;
             }
 
