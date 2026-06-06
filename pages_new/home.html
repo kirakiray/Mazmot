@@ -106,17 +106,18 @@
         sync:state="mascotState"
       ></m-mascot>
       <div class="speech-text" id="speechText" sync:class="speechClass">
-        <o-if :value="currentIndex < speeches.length - 1">
+        <o-if :value="typeof currentSpeech === 'string'">
           {{ currentSpeech }}
         </o-if>
-        <o-if :value="currentIndex === speeches.length - 1">
-          <o-page src="./input-apikey.html" style="width: 100%; height: auto;"></o-page>
+        <o-if :value="currentSpeech && currentSpeech.page">
+          <o-page
+            :src="currentSpeech.page"
+            style="width: 100%; height: auto"
+            on:success="handleSuccess"
+          ></o-page>
         </o-if>
       </div>
-      <div class="click-hint">
-        <o-if :value="currentIndex < speeches.length - 1">点击鼠标继续对话</o-if>
-        <o-if :value="currentIndex === speeches.length - 1">请配置 API Key</o-if>
-      </div>
+      <div class="click-hint">{{ currentHint }}</div>
     </div>
   </div>
   <script>
@@ -127,6 +128,10 @@
             "你好，我是小墨，我是你的AI应用助手！",
             "你可以借助我用来创建或启动AI应用",
             "现在的我只是一个具空壳，需要你为我注入灵魂，才能正常工作",
+            {
+              page: "/pages_new/input-apikey.html",
+              hint: "请配置 API Key",
+            },
             "准备好了吗？让我们一起开始注入灵魂之旅！",
           ],
           currentIndex: 0,
@@ -138,15 +143,29 @@
             return this.speeches[this.currentIndex];
           },
           get speechClass() {
-            return this.currentIndex === this.speeches.length - 1
+            return this.currentSpeech && this.currentSpeech.page
               ? "speech-text has-form"
               : "speech-text";
           },
+          get currentHint() {
+            if (this.currentSpeech && this.currentSpeech.hint) {
+              return this.currentSpeech.hint;
+            }
+            return "点击鼠标继续对话";
+          },
           handleClick() {
+            // 如果当前是对象类型（有 page），不能通过点击跳过
+            if (this.currentSpeech && this.currentSpeech.page) {
+              return;
+            }
             // 只在前面的步骤时响应点击
             if (this.currentIndex < this.speeches.length - 1) {
               this.nextSpeech();
             }
+          },
+          handleSuccess() {
+            // 页面操作成功，进入下一步
+            this.nextSpeech();
           },
           navigateToInputPage() {
             // 跳转到 API Key 输入页面

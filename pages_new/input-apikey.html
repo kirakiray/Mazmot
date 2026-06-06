@@ -90,6 +90,9 @@
   <script>
     export default async ({ load, url }) => {
       const { saveKey, testApiKey } = await load("../ai/main.js");
+      const { toast } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util/toast.js",
+      );
 
       return {
         data: {
@@ -101,7 +104,7 @@
           async saveApiKey() {
             const apiKey = this.apiKey.trim();
             if (!apiKey) {
-              alert("请输入 API Key");
+              toast({ message: "请输入 API Key", color: "error" });
               return;
             }
 
@@ -116,7 +119,10 @@
               );
 
               if (!testResult.valid) {
-                alert("API Key 验证失败：" + testResult.message);
+                toast({
+                  message: "API Key 验证失败：" + testResult.message,
+                  color: "error",
+                });
                 this.testing = false;
                 return;
               }
@@ -124,12 +130,13 @@
               // 验证成功，保存 API Key
               await saveKey(apiKey, this.selectedProvider);
               this.apiKey = "";
-              alert("API Key 保存成功！");
 
-              // TODO: 跳转到主应用页面或触发吉祥物获得灵魂
-              // 这里可以添加成功后的逻辑
+              // 触发事件通知父页面
+              this.emit("success", {
+                provider: this.selectedProvider,
+              });
             } catch (error) {
-              alert("操作失败：" + error.message);
+              toast({ message: "操作失败：" + error.message, color: "error" });
             } finally {
               this.testing = false;
             }
