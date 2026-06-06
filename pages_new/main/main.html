@@ -24,6 +24,7 @@
     src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
   ></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <div class="chat-container">
@@ -34,7 +35,11 @@
       attr:disabled="sending"
     ></p-textarea>
     <div style="display: flex; justify-content: space-between; gap: 10px">
-      <p-button color="primary" variant="outlined" size="s"
+      <p-button
+        color="primary"
+        variant="outlined"
+        size="s"
+        on:click="appDialogOpen = true"
         ><n-icon icon="tdesign:app" slot="prefix"></n-icon>应用</p-button
       >
       <p-button
@@ -49,12 +54,17 @@
     </div>
   </div>
 
+  <p-dialog auto-close sync:open="appDialogOpen">
+    <o-page src="./apps.html" style="width: 80vw; height: 70vh"></o-page>
+  </p-dialog>
+
   <script>
     export default async ({ load }) => {
       return {
         data: {
           inputText: "",
           sending: false,
+          appDialogOpen: false,
         },
         proto: {
           async sendMessage() {
