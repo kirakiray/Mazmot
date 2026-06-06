@@ -55,6 +55,16 @@
   </div>
 
   <p-dialog auto-close sync:open="appDialogOpen">
+    <div
+      slot="title"
+      style="display: flex; justify-content: flex-end; width: 100%"
+    >
+      <n-icon
+        icon="mdi:close"
+        style="cursor: pointer"
+        on:click="appDialogOpen = false"
+      ></n-icon>
+    </div>
     <o-page src="./apps.html" style="width: 80vw; height: 70vh"></o-page>
   </p-dialog>
 
@@ -64,7 +74,12 @@
         data: {
           inputText: "",
           sending: false,
-          appDialogOpen: false,
+          appDialogOpen: sessionStorage.getItem("appDialogOpen") === "true",
+        },
+        watch: {
+          appDialogOpen(val) {
+            sessionStorage.setItem("appDialogOpen", val);
+          },
         },
         proto: {
           async sendMessage() {
