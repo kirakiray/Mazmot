@@ -35,10 +35,20 @@
   </div>
   <script>
     export default async ({ load }) => {
+      const { apiKeys } = await load("../ai/main.js");
+
       return {
         data: {
           mascotState: "soulless",
           showMain: false,
+        },
+        ready() {
+          // 检查本地是否有可用的 API key
+          if (apiKeys.length > 0) {
+            // 有 API key，直接显示主界面
+            this.showMain = true;
+            this.mascotState = "";
+          }
         },
         proto: {
           handleCompleted() {
