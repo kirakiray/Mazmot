@@ -52,11 +52,7 @@
 
     <div class="form-group">
       <label>选择 AI 提供商</label>
-      <p-select
-        id="providerSelect"
-        placeholder="请选择提供商"
-        sync:value="selectedProvider"
-      >
+      <p-select placeholder="请选择提供商" sync:value="selectedProvider">
         <p-option value="deepseek">DeepSeek</p-option>
         <p-option value="gemini">Google Gemini</p-option>
       </p-select>
@@ -64,7 +60,7 @@
 
     <div class="form-group">
       <p-textarea
-        id="apiKeyInput"
+        sync:value="apiKey"
         placeholder="请输入 API Key"
         style="width: 100%"
         rows="3"
@@ -79,7 +75,14 @@
     </div>
 
     <div class="button-group">
-      <p-button color="primary" on:click="saveApiKey" size="s"> 保存并启动 </p-button>
+      <p-button
+        color="primary"
+        on:click="saveApiKey"
+        attr:disabled="!apiKey.trim()"
+        size="s"
+      >
+        保存并启动
+      </p-button>
     </div>
 
     <div class="hint-text">API Key 将安全存储在本地，仅用于与 AI 服务通信</div>
@@ -89,28 +92,28 @@
       return {
         data: {
           selectedProvider: "deepseek",
+          apiKey: "",
         },
         proto: {
           saveApiKey() {
-            const apiKeyInput = this.shadow.$("#apiKeyInput");
-            const providerSelect = this.shadow.$("#providerSelect");
+            if (this.apiKey && this.selectedProvider) {
+              // 保存 API key 和提供商到 localStorage
+              localStorage.setItem("ai_provider", this.selectedProvider);
+              localStorage.setItem(
+                `${this.selectedProvider}_api_key`,
+                this.apiKey,
+              );
 
-            if (apiKeyInput && providerSelect) {
-              const apiKey = apiKeyInput.value;
-              const provider = providerSelect.value;
+              console.log(
+                "API Key 已保存:",
+                this.selectedProvider,
+                this.apiKey,
+              );
 
-              if (apiKey && provider) {
-                // 保存 API key 和提供商到 localStorage
-                localStorage.setItem("ai_provider", provider);
-                localStorage.setItem(`${provider}_api_key`, apiKey);
-
-                console.log("API Key 已保存:", provider, apiKey);
-
-                // TODO: 跳转到主应用页面或显示成功提示
-                // 这里可以添加成功提示或跳转逻辑
-              } else {
-                alert("请选择提供商并输入 API Key");
-              }
+              // TODO: 跳转到主应用页面或显示成功提示
+              // 这里可以添加成功提示或跳转逻辑
+            } else {
+              alert("请选择提供商并输入 API Key");
             }
           },
         },
