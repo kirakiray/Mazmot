@@ -9,7 +9,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      min-height: 100%;
+      height: 100%;
       padding: 20px;
       padding-top: 15vh;
       background-color: var(--md-sys-color-surface);
@@ -35,12 +35,44 @@
       justify-content: center;
       box-shadow: 0 2px 8px rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
       transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .speech-text.exit {
+      animation: slideDown 0.3s ease-in forwards;
+    }
+    .speech-text.enter {
+      animation: slideUp 0.3s ease-out forwards;
+    }
+    @keyframes slideDown {
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+    }
+    @keyframes slideUp {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
     .speech-text:hover {
       background-color: var(--md-sys-color-primary-container);
       color: var(--md-sys-color-on-primary-container);
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgb(from var(--md-sys-color-primary) r g b / 0.2);
+    }
+    .speech-text.exit:hover,
+    .speech-text.enter:hover {
+      transform: none;
     }
     .click-hint {
       font-size: 12px;
@@ -55,8 +87,11 @@
   <div class="container" on:click="nextSpeech">
     <l-m src="../comps/mascot/mascot.html"></l-m>
     <div class="mascot-wrapper">
-      <m-mascot style="--mascot-size: 100px" sync:state="mascotState"></m-mascot>
-      <div class="speech-text">{{ currentSpeech }}</div>
+      <m-mascot
+        style="--mascot-size: 100px"
+        sync:state="mascotState"
+      ></m-mascot>
+      <div class="speech-text" id="speechText">{{ currentSpeech }}</div>
       <div class="click-hint">点击鼠标继续对话</div>
     </div>
   </div>
@@ -79,10 +114,36 @@
             return this.speeches[this.currentIndex];
           },
           nextSpeech() {
-            this.currentIndex = (this.currentIndex + 1) % this.speeches.length;
-            // 第三句（索引为2）开始有灵魂
-            if (this.currentIndex >= 2) {
-              this.mascotState = "";
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              // 第一步：当前对话框向下消失
+              speechText.classList.add("exit");
+
+              // 300ms后切换内容并从下方滑入
+              setTimeout(() => {
+                this.currentIndex =
+                  (this.currentIndex + 1) % this.speeches.length;
+                // 第三句（索引为2）开始有灵魂
+                if (this.currentIndex >= 2) {
+                  this.mascotState = "";
+                }
+
+                // 移除 exit 类，添加 enter 类
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                // 动画结束后移除 enter 类
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                }, 300);
+              }, 300);
+            } else {
+              // 如果找不到元素，直接切换
+              this.currentIndex =
+                (this.currentIndex + 1) % this.speeches.length;
+              if (this.currentIndex >= 2) {
+                this.mascotState = "";
+              }
             }
           },
         },
