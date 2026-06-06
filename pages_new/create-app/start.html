@@ -168,7 +168,7 @@
             <o-fill :value="currentSpeech.options">
               <div
                 class="option-btn"
-                attr:class="$data.disabled ? 'disabled' : (selectedOption === $data.value ? 'selected' : '')"
+                attr:class="$host.getOptionClass($data)"
                 on:click="selectOption($data)"
               >
                 {{ $data.label }}
@@ -318,6 +318,15 @@
               return "";
             }
             return "点击继续";
+          },
+          getOptionClass(opt) {
+            if (opt.disabled) {
+              return "disabled";
+            }
+            if (this.selectedOption === opt.value) {
+              return "selected";
+            }
+            return "";
           },
           handleClick() {
             // 如果是选项、表单或确认类型，不能通过点击跳过
