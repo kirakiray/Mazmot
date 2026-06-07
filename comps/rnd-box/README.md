@@ -4,13 +4,9 @@
 
 ## 组件说明
 
-### m-rnd-area
-
-拖拽容器组件，作为 `m-rnd-box` 的父容器，提供相对定位上下文。
-
 ### m-rnd-box
 
-可拖拽/缩放的盒子组件，支持在 `m-rnd-area` 内自由定位。
+可拖拽/缩放的盒子组件，支持在父容器内自由定位。
 
 ## 引入方式
 
@@ -24,7 +20,6 @@
   href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
 />
 
-<l-m src="./rnd-area.html"></l-m>
 <l-m src="./rnd-box.html"></l-m>
 ```
 
@@ -33,29 +28,27 @@
 ### 基础用法
 
 ```html
-<m-rnd-area>
-  <m-rnd-box
-    style="border: red solid 1px"
-    x="100"
-    y="100"
-    width="200"
-    height="200"
-    movable
-  >
-    box 1
-  </m-rnd-box>
-  <m-rnd-box
-    style="border: blue solid 1px"
-    x="300"
-    y="300"
-    width="200"
-    height="200"
-    resizable
-    movable
-  >
-    box 2
-  </m-rnd-box>
-</m-rnd-area>
+<m-rnd-box
+  style="border: red solid 1px"
+  x="100"
+  y="100"
+  width="200"
+  height="200"
+  movable
+>
+  box 1
+</m-rnd-box>
+<m-rnd-box
+  style="border: blue solid 1px"
+  x="300"
+  y="300"
+  width="200"
+  height="200"
+  resizable
+  movable
+>
+  box 2
+</m-rnd-box>
 ```
 
 ## API
@@ -74,7 +67,3 @@
 | resizable| boolean  | —      | 是否可调整大小          |
 
 > 注：`movable` 和 `resizable` 为布尔属性，无需赋值，存在即生效。
-
-### m-rnd-area
-
-当前为容器组件，无额外属性配置。
