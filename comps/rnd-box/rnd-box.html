@@ -310,15 +310,17 @@
           setFocus() {
             const parent = this.ele.offsetParent || this.ele.parentElement;
             if (parent) {
-              parent.querySelectorAll("m-rnd-box[rnd-focus]").forEach((el) => {
-                if (el === this.ele) return;
-                el.removeAttribute("rnd-focus");
-                el.dispatchEvent(
-                  new CustomEvent("rnd-blur", { bubbles: false }),
-                );
-              });
+              $(parent)
+                .all("m-rnd-box[rnd-focus]")
+                .forEach((el) => {
+                  if (el === this) {
+                    return;
+                  }
+                  el.attr("rnd-focus", null);
+                  el.emit("rnd-blur");
+                });
             }
-            this.ele.setAttribute("rnd-focus", "");
+            this.attr("rnd-focus", "");
             this.saveState();
           },
           getStorageKey() {

@@ -90,3 +90,17 @@
 | auto-save-id  | string   | —      | 存在时自动将定位与尺寸保存到 ever-cache，刷新后按该 id 恢复位置      |
 
 > 注：`movable` 和 `resizable` 为布尔属性，无需赋值，存在即生效。
+
+#### 事件
+
+| 事件名     | 触发时机                                                          | event.detail |
+| ---------- | ----------------------------------------------------------------- | ------------ |
+| rnd-blur   | 当前 box 持有的 `rnd-focus` 被同 offsetParent 内的其他 box 抢占时 | —            |
+
+示例：监听 `rnd-blur` 以在被抢焦时执行自定义逻辑：
+
+```js
+$("m-rnd-box").on("rnd-blur", () => {
+  console.log("本 box 失去 focus");
+});
+```
