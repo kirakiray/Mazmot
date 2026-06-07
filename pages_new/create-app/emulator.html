@@ -1,0 +1,143 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      box-sizing: border-box;
+      height: 100%;
+    }
+    .emulator-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .toolbar {
+      padding: 8px 12px;
+      background: var(--md-sys-color-surface-variant);
+      border-bottom: 1px solid
+        rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .toolbar-title {
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+    .toolbar-url {
+      flex: 1;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-family: monospace;
+      background: var(--md-sys-color-surface);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.2);
+    }
+    .open-btn {
+      padding: 4px 12px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.2s;
+    }
+    .open-btn:hover {
+      background: rgb(
+        from var(--md-sys-color-primary) calc(r - 10) calc(g - 10) calc(b - 10)
+      );
+    }
+    .open-btn:disabled {
+      background: var(--md-sys-color-neutral-container);
+      color: var(--md-sys-color-on-neutral);
+      cursor: not-allowed;
+    }
+    .iframe-wrapper {
+      flex: 1;
+      position: relative;
+      background: var(--md-sys-color-surface);
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .hide {
+      display: none;
+    }
+  </style>
+  <div class="emulator-container">
+    <div class="toolbar">
+      <span class="toolbar-title">Preview</span>
+      <div class="toolbar-url">{{iframeUrl}}</div>
+      <button class="open-btn" on:click="openInNewTab" :disabled="!iframeUrl">
+        <iconify-icon icon="lucide:external-link" width="14"></iconify-icon>
+        Open
+      </button>
+    </div>
+    <div class="iframe-wrapper">
+      <o-if :value="!iframeLoaded">
+        <div class="loading">Loading...</div>
+      </o-if>
+      <iframe
+        class:hide="!iframeUrl"
+        attr:src="iframeUrl"
+        on:load="handleLoad"
+        on:error="handleError"
+      ></iframe>
+    </div>
+  </div>
+  <o-consumer name="app-builder" watch:project-path="projectPath"> </o-consumer>
+  <script>
+    export default async () => {
+      return {
+        data: {
+          projectPath: "",
+          iframeLoaded: false,
+          iframeUrl: "",
+        },
+        proto: {
+          get iframe() {
+            return this.shadow.$("iframe") && this.shadow.$("iframe").ele;
+          },
+          handleLoad() {
+            this.iframeLoaded = true;
+          },
+          handleError() {
+            this.iframeLoaded = true;
+          },
+          openInNewTab() {
+            if (this.iframeUrl) {
+              window.open(this.iframeUrl, "_blank");
+            }
+          },
+        },
+        watch: {
+          projectPath() {
+            if (!this.projectPath) {
+              this.iframeLoaded = false;
+              this.iframeUrl = "";
+              return;
+            }
+            // 如果 projectPath 已经是 $ 开头，直接使用；否则添加 $ 前缀
+            const pathPrefix = this.projectPath.startsWith("$") ? "" : "$";
+            this.iframeUrl = `/${pathPrefix}${this.projectPath}/project/index.html`;
+          },
+        },
+      };
+    };
+  </script>
+</template>

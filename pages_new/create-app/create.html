@@ -4,15 +4,47 @@
       display: block;
       height: 100%;
     }
+    .container {
+      display: flex;
+      position: relative;
+      height: 100%;
+    }
+    .left,
+    .right {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .left {
+      border-right: rgba(128, 128, 128, 0.2) solid 1px;
+    }
   </style>
-  开始创建应用
+  <o-provider name="app-builder" :project-path="projectPath">
+    <div class="container">
+      <div class="left">
+        <o-page src="./builder-assistant.html"></o-page>
+      </div>
+      <div class="right">
+        <o-page src="./emulator.html" id="emulator"></o-page>
+      </div>
+    </div>
+    <o-page
+      src="./chat-inputer.html"
+      style="
+        position: absolute;
+        left: 50%;
+        bottom: 30%;
+        transform: translateX(-50%);
+      "
+    ></o-page>
+  </o-provider>
   <script>
-    export default async ({ load, query }) => {
+    export default async ({ query }) => {
       const projectPath = query.projectPath;
-      
+
       return {
         data: {
-          mascotState: "",
+          projectPath: projectPath,
         },
       };
     };
