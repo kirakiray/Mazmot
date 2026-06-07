@@ -1,0 +1,54 @@
+<template component>
+  <style>
+    :host {
+      display: block;
+      position: absolute;
+      z-index: 2;
+    }
+  </style>
+  <slot></slot>
+  <script>
+    export default async () => {
+      return {
+        tag: "m-rnd-box",
+        data: {
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+        },
+        attrs: {
+          resizable: null,
+        },
+        watch: {
+          "x,y,width,height": function ([x, y, width, height]) {
+            this.style.left = `${x}px`;
+            this.style.top = `${y}px`;
+            this.style.width = `${width}px`;
+            this.style.height = `${height}px`;
+          },
+        },
+        proto: {},
+        attached() {
+          if (this.attr("x")) {
+            this.x = Number(this.attr("x"));
+          }
+          if (this.attr("y")) {
+            this.y = Number(this.attr("y"));
+          }
+          if (this.attr("width")) {
+            this.width = Number(this.attr("width"));
+          }
+          if (this.attr("height")) {
+            this.height = Number(this.attr("height"));
+          }
+
+          this.attr("x", null);
+          this.attr("y", null);
+          this.attr("width", null);
+          this.attr("height", null);
+        },
+      };
+    };
+  </script>
+</template>
