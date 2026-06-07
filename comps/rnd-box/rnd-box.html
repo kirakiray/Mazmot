@@ -4,9 +4,38 @@
       display: block;
       position: absolute;
       z-index: 2;
+      box-sizing: border-box;
     }
+    
+    .resize-handle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background-color: #fff;
+      border: 1px solid #333;
+      z-index: 3;
+    }
+
+    .handle-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+    .handle-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+    .handle-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+    .handle-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+    .handle-n { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .handle-s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .handle-w { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
+    .handle-e { top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize; }
   </style>
   <slot></slot>
+  <o-if :value="resizable !== null">
+    <div class="resize-handle handle-nw" data-dir="nw" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-ne" data-dir="ne" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-sw" data-dir="sw" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-se" data-dir="se" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-n" data-dir="n" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-s" data-dir="s" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-w" data-dir="w" on:mousedown="startResize"></div>
+    <div class="resize-handle handle-e" data-dir="e" on:mousedown="startResize"></div>
+  </o-if>
   <script>
     export default async () => {
       return {
@@ -29,7 +58,106 @@
             this.style.height = `${height}px`;
           },
         },
-        proto: {},
+        proto: {
+          startDrag(e) {
+            if (this.movable === null) return;
+            e.stopPropagation();
+            
+            this.isDragging = true;
+            this.startX = e.clientX;
+            this.startY = e.clientY;
+            this.startBoxX = this.x;
+            this.startBoxY = this.y;
+
+            this.moveHandler = (ev) => this.onDrag(ev);
+            this.upHandler = () => this.stopDrag();
+
+            document.addEventListener('mousemove', this.moveHandler);
+            document.addEventListener('mouseup', this.upHandler);
+          },
+          onDrag(e) {
+            if (!this.isDragging) return;
+            const dx = e.clientX - this.startX;
+            const dy = e.clientY - this.startY;
+            
+            this.x = this.startBoxX + dx;
+            this.y = this.startBoxY + dy;
+          },
+          stopDrag() {
+            this.isDragging = false;
+            document.removeEventListener('mousemove', this.moveHandler);
+            document.removeEventListener('mouseup', this.upHandler);
+          },
+          startResize(e) {
+            if (this.resizable === null) return;
+            e.stopPropagation();
+            
+            this.isResizing = true;
+            this.resizeDir = e.target.dataset.dir;
+            this.startX = e.clientX;
+            this.startY = e.clientY;
+            this.startBoxX = this.x;
+            this.startBoxY = this.y;
+            this.startBoxW = this.width;
+            this.startBoxH = this.height;
+
+            this.resizeMoveHandler = (ev) => this.onResize(ev);
+            this.resizeUpHandler = () => this.stopResize();
+
+            document.addEventListener('mousemove', this.resizeMoveHandler);
+            document.addEventListener('mouseup', this.resizeUpHandler);
+          },
+          onResize(e) {
+            if (!this.isResizing) return;
+            const dx = e.clientX - this.startX;
+            const dy = e.clientY - this.startY;
+            
+            let newX = this.startBoxX;
+            let newY = this.startBoxY;
+            let newW = this.startBoxW;
+            let newH = this.startBoxH;
+
+            if (this.resizeDir.includes('e')) {
+              newW = this.startBoxW + dx;
+            }
+            if (this.resizeDir.includes('s')) {
+              newH = this.startBoxH + dy;
+            }
+            if (this.resizeDir.includes('w')) {
+              newW = this.startBoxW - dx;
+              newX = this.startBoxX + dx;
+            }
+            if (this.resizeDir.includes('n')) {
+              newH = this.startBoxH - dy;
+              newY = this.startBoxY + dy;
+            }
+
+            const minW = 20;
+            const minH = 20;
+            if (newW < minW) {
+              if (this.resizeDir.includes('w')) {
+                newX = newX - (minW - newW);
+              }
+              newW = minW;
+            }
+            if (newH < minH) {
+              if (this.resizeDir.includes('n')) {
+                newY = newY - (minH - newH);
+              }
+              newH = minH;
+            }
+
+            this.x = newX;
+            this.y = newY;
+            this.width = newW;
+            this.height = newH;
+          },
+          stopResize() {
+            this.isResizing = false;
+            document.removeEventListener('mousemove', this.resizeMoveHandler);
+            document.removeEventListener('mouseup', this.resizeUpHandler);
+          }
+        },
         attached() {
           if (this.attr("x")) {
             this.x = Number(this.attr("x"));
@@ -49,6 +177,19 @@
           this.attr("width", null);
           this.attr("height", null);
         },
+        detached() {
+          if (this.isDragging) {
+            this.stopDrag();
+          }
+          if (this.isResizing) {
+            this.stopResize();
+          }
+        },
+        ready() {
+          this.on('mousedown', (e) => {
+            this.startDrag(e);
+          });
+        }
       };
     };
   </script>
