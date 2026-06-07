@@ -170,6 +170,8 @@
             this.startBoxX = this.x;
             this.startBoxY = this.y;
 
+            this.style.zIndex = "5";
+
             this.moveHandler = (ev) => this.onDrag(ev);
             this.upHandler = () => this.stopDrag();
 
@@ -219,6 +221,8 @@
             this.startBoxY = this.y;
             this.startBoxW = this.width;
             this.startBoxH = this.height;
+
+            this.style.zIndex = "5";
 
             this.resizeMoveHandler = (ev) => this.onResize(ev);
             this.resizeUpHandler = () => this.stopResize();
@@ -291,11 +295,16 @@
           },
           stopResize() {
             this.isResizing = false;
+            this.style.zIndex = "";
             document.removeEventListener("mousemove", this.resizeMoveHandler);
             document.removeEventListener("mouseup", this.resizeUpHandler);
           },
         },
         attached() {
+          this.on("mousedown", (e) => {
+            this.startDrag(e);
+          });
+
           if (this.attr("x")) {
             this.x = Number(this.attr("x"));
           }
@@ -321,11 +330,6 @@
           if (this.isResizing) {
             this.stopResize();
           }
-        },
-        ready() {
-          this.on("mousedown", (e) => {
-            this.startDrag(e);
-          });
         },
       };
     };
