@@ -327,8 +327,18 @@
           getStorageKey() {
             return `mazmot:rnd-box:${this.autoSaveId}`;
           },
+          getParentSize() {
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            return {
+              parent,
+              width: parent ? parent.clientWidth : null,
+              height: parent ? parent.clientHeight : null,
+            };
+          },
           async saveState() {
             if (!this.autoSaveId) return;
+            const { width: parentWidth, height: parentHeight } =
+              this.getParentSize();
             try {
               await storage.setItem(this.getStorageKey(), {
                 x: this.x,
@@ -336,6 +346,8 @@
                 width: this.width,
                 height: this.height,
                 focus: this.ele.hasAttribute("rnd-focus"),
+                parentWidth,
+                parentHeight,
               });
             } catch (err) {
               console.warn("[m-rnd-box] failed to save state", err);
@@ -360,6 +372,14 @@
                 width: data.width,
                 height: data.height,
                 focus: data.focus === true,
+                parentWidth:
+                  typeof data.parentWidth === "number"
+                    ? data.parentWidth
+                    : null,
+                parentHeight:
+                  typeof data.parentHeight === "number"
+                    ? data.parentHeight
+                    : null,
               };
             } catch (err) {
               console.warn("[m-rnd-box] failed to load state", err);
@@ -377,10 +397,36 @@
           const saved = await this.loadState();
 
           if (saved) {
-            this.x = saved.x;
-            this.y = saved.y;
-            this.width = saved.width;
-            this.height = saved.height;
+            const { width: parentW, height: parentH } = this.getParentSize();
+            let x = saved.x;
+            let y = saved.y;
+            let w = saved.width;
+            let h = saved.height;
+
+            if (saved.parentWidth && parentW) {
+              const sx = parentW / saved.parentWidth;
+              x = x * sx;
+              w = w * sx;
+            }
+            if (saved.parentHeight && parentH) {
+              const sy = parentH / saved.parentHeight;
+              y = y * sy;
+              h = h * sy;
+            }
+
+            if (parentW) {
+              if (x < 0) x = 0;
+              if (x + w > parentW) x = Math.max(0, parentW - w);
+            }
+            if (parentH) {
+              if (y < 0) y = 0;
+              if (y + h > parentH) y = Math.max(0, parentH - h);
+            }
+
+            this.x = x;
+            this.y = y;
+            this.width = w;
+            this.height = h;
             if (saved.focus) {
               this.setFocus();
             }

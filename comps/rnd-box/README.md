@@ -53,7 +53,9 @@
 
 ### 自动保存定位与尺寸
 
-设置 `auto-save-id` 后，每次拖拽或缩放结束都会把当前的位置、尺寸以及 focus 状态写入 ever-cache；下次刷新页面时若存在对应记录，会自动恢复定位、尺寸和 focus（此时会忽略属性上的 `x` / `y` / `width` / `height`）。
+设置 `auto-save-id` 后，每次拖拽或缩放结束都会把当前的位置、尺寸、focus 状态以及 offsetParent 当时的尺寸写入 ever-cache；下次刷新页面时若存在对应记录，会自动恢复定位、尺寸和 focus（此时会忽略属性上的 `x` / `y` / `width` / `height`）。
+
+如果刷新时 offsetParent 的尺寸与存档不一致，会按比例缩放 `x` / `y` / `width` / `height`，确保 box 在新尺寸的父元素中保持相对位置和大小；缩放后会再做一次边界裁剪，防止越界。
 
 ```html
 <m-rnd-box
@@ -95,11 +97,15 @@
 
 | 事件名     | 触发时机                                                          | event.detail |
 | ---------- | ----------------------------------------------------------------- | ------------ |
+| rnd-focus  | 当前 box 获得 `rnd-focus`（自身被点击/拖动/缩放，或从存档恢复）时  | —            |
 | rnd-blur   | 当前 box 持有的 `rnd-focus` 被同 offsetParent 内的其他 box 抢占时 | —            |
 
-示例：监听 `rnd-blur` 以在被抢焦时执行自定义逻辑：
+示例：监听 `rnd-focus` / `rnd-blur` 以跟踪当前活动 box：
 
 ```js
+$("m-rnd-box").on("rnd-focus", () => {
+  console.log("本 box 获得 focus");
+});
 $("m-rnd-box").on("rnd-blur", () => {
   console.log("本 box 失去 focus");
 });
