@@ -143,9 +143,10 @@
   </o-if>
   <script>
     export default async ({ load }) => {
-      const { storage } = await load(
+      const { EverCache } = await load(
         "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
       );
+      const rndBoxCache = new EverCache("mazmot-rnd-box");
 
       return {
         tag: "m-rnd-box",
@@ -340,7 +341,7 @@
             const { width: parentWidth, height: parentHeight } =
               this.getParentSize();
             try {
-              await storage.setItem(this.getStorageKey(), {
+              await rndBoxCache.setItem(this.getStorageKey(), {
                 x: this.x,
                 y: this.y,
                 width: this.width,
@@ -348,6 +349,7 @@
                 focus: this.ele.hasAttribute("rnd-focus"),
                 parentWidth,
                 parentHeight,
+                savedAt: Date.now(),
               });
             } catch (err) {
               console.warn("[m-rnd-box] failed to save state", err);
@@ -356,7 +358,7 @@
           async loadState() {
             if (!this.autoSaveId) return null;
             try {
-              const data = await storage.getItem(this.getStorageKey());
+              const data = await rndBoxCache.getItem(this.getStorageKey());
               if (!data) return null;
               if (
                 typeof data.x !== "number" ||
@@ -380,6 +382,7 @@
                   typeof data.parentHeight === "number"
                     ? data.parentHeight
                     : null,
+                savedAt: typeof data.savedAt === "number" ? data.savedAt : null,
               };
             } catch (err) {
               console.warn("[m-rnd-box] failed to load state", err);

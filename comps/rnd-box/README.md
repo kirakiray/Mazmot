@@ -72,8 +72,8 @@
 </m-rnd-box>
 ```
 
-> 存储 key 规则：`mazmot:rnd-box:${autoSaveId}`，使用 [`ever-cache`](https://github.com/kirakiray/ever-cache) 作为存储后端。
-> 同一 offsetParent 内最多只有一个 box 持有 `rnd-focus` 属性（表现为 `z-index: 5`）。
+> 存储 key 规则：`mazmot:rnd-box:${autoSaveId}`，使用独立的 [`ever-cache`](https://github.com/kirakiray/ever-cache) 实例（`new EverCache("mazmot-rnd-box")`）作为存储后端，与全局 `storage` 隔离。
+> 每条记录都带有 `savedAt` 时间戳（`Date.now()`），可通过监听 `loadState` 后的返回对象读取；同一 offsetParent 内最多只有一个 box 持有 `rnd-focus` 属性（表现为 `z-index: 5`）。
 
 ## API
 
