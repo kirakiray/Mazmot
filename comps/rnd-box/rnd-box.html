@@ -93,6 +93,10 @@
     .handle-e {
       opacity: 0;
     }
+
+    :host([rnd-focus]) {
+      z-index: 5;
+    }
   </style>
   <slot></slot>
   <o-if :value="resizable !== null">
@@ -138,7 +142,11 @@
     ></div>
   </o-if>
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { storage } = await load(
+        "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+      );
+
       return {
         tag: "m-rnd-box",
         data: {
@@ -171,7 +179,7 @@
             this.startBoxX = this.x;
             this.startBoxY = this.y;
 
-            this.style.zIndex = "5";
+            this.setFocus();
 
             this.moveHandler = (ev) => this.onDrag(ev);
             this.upHandler = () => this.stopDrag();
@@ -192,8 +200,6 @@
             if (parent) {
               const maxW = parent.clientWidth;
               const maxH = parent.clientHeight;
-
-              console.log(maxW, maxH);
 
               if (newX < 0) newX = 0;
               else if (newX + this.width > maxW) newX = maxW - this.width;
@@ -224,7 +230,7 @@
             this.startBoxW = this.width;
             this.startBoxH = this.height;
 
-            this.style.zIndex = "5";
+            this.setFocus();
 
             this.resizeMoveHandler = (ev) => this.onResize(ev);
             this.resizeUpHandler = () => this.stopResize();
@@ -297,36 +303,46 @@
           },
           stopResize() {
             this.isResizing = false;
-            this.style.zIndex = "";
             document.removeEventListener("mousemove", this.resizeMoveHandler);
             document.removeEventListener("mouseup", this.resizeUpHandler);
+            this.saveState();
+          },
+          setFocus() {
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            if (parent) {
+              parent.querySelectorAll("m-rnd-box[rnd-focus]").forEach((el) => {
+                if (el === this.ele) return;
+                el.removeAttribute("rnd-focus");
+                el.dispatchEvent(
+                  new CustomEvent("rnd-blur", { bubbles: false }),
+                );
+              });
+            }
+            this.ele.setAttribute("rnd-focus", "");
             this.saveState();
           },
           getStorageKey() {
             return `mazmot:rnd-box:${this.autoSaveId}`;
           },
-          saveState() {
+          async saveState() {
             if (!this.autoSaveId) return;
             try {
-              localStorage.setItem(
-                this.getStorageKey(),
-                JSON.stringify({
-                  x: this.x,
-                  y: this.y,
-                  width: this.width,
-                  height: this.height,
-                }),
-              );
+              await storage.setItem(this.getStorageKey(), {
+                x: this.x,
+                y: this.y,
+                width: this.width,
+                height: this.height,
+                focus: this.ele.hasAttribute("rnd-focus"),
+              });
             } catch (err) {
               console.warn("[m-rnd-box] failed to save state", err);
             }
           },
-          loadState() {
+          async loadState() {
             if (!this.autoSaveId) return null;
             try {
-              const raw = localStorage.getItem(this.getStorageKey());
-              if (!raw) return null;
-              const data = JSON.parse(raw);
+              const data = await storage.getItem(this.getStorageKey());
+              if (!data) return null;
               if (
                 typeof data.x !== "number" ||
                 typeof data.y !== "number" ||
@@ -335,25 +351,36 @@
               ) {
                 return null;
               }
-              return data;
+              return {
+                x: data.x,
+                y: data.y,
+                width: data.width,
+                height: data.height,
+                focus: data.focus === true,
+              };
             } catch (err) {
               console.warn("[m-rnd-box] failed to load state", err);
               return null;
             }
           },
         },
-        attached() {
+        async attached() {
           this.on("mousedown", (e) => {
             this.startDrag(e);
           });
 
-          const saved = this.loadState();
+          this.on("rnd-blur", () => this.saveState());
+
+          const saved = await this.loadState();
 
           if (saved) {
             this.x = saved.x;
             this.y = saved.y;
             this.width = saved.width;
             this.height = saved.height;
+            if (saved.focus) {
+              this.setFocus();
+            }
           } else {
             if (this.attr("x")) {
               this.x = Number(this.attr("x"));
