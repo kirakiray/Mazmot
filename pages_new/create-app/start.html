@@ -237,6 +237,9 @@
     export default async ({ load }) => {
       const { init, open, mount } = await load("/nos/fs/main.js");
       const { initCode } = await load("/pages/create-app/util/init-code.js");
+      const { storage } = await load(
+        "/gh/kirakiray/ever-cache/src/main.min.js",
+      );
 
       return {
         data: {
@@ -427,12 +430,25 @@
                 this.createProgress = progress;
               });
 
+              // 保存应用到 ever-cache
+              const apps = (await storage.apps) || [];
+              const newApp = {
+                id: Date.now().toString(),
+                name:
+                  this.selectedOption === "virtual"
+                    ? this.appName
+                    : this._localHandle?.name || "未命名应用",
+                path: projectPath,
+                type: this.selectedOption,
+                createdAt: new Date().toISOString(),
+              };
+              apps.push(newApp);
+              await (storage.apps = apps);
+
               // 跳转到创建页面
               this.goto(`./create.html?projectPath=${projectPath}`);
             } catch (e) {
               console.error("初始化应用失败:", e);
-              this.isCreating = false;
-              console.error("创建应用失败:", e);
               this.isCreating = false;
               this.createProgress = null;
               this.mascotState = "sad";
