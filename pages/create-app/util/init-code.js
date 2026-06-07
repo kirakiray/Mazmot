@@ -17,7 +17,7 @@ async function writeFileIfEmpty(path, content) {
   }
 }
 
-export async function initCode(projectPath) {
+export async function initCode(projectPath, onProgress) {
   const files = {
     "index.html": {
       aimap: `文件类型: HTML 入口文件
@@ -186,7 +186,21 @@ export const pageAnime = {
     },
   };
 
-  for (const [filePath, { code, aimap }] of Object.entries(files)) {
+  const entries = Object.entries(files);
+  const total = entries.length;
+
+  for (let i = 0; i < entries.length; i++) {
+    const [filePath, { code, aimap }] = entries[i];
+
+    if (onProgress) {
+      onProgress({
+        current: i + 1,
+        total,
+        file: filePath,
+        message: `正在创建 ${filePath}...`,
+      });
+    }
+
     const fullPath = `${projectPath}/${filePath}`;
     await writeFileIfEmpty(fullPath, code);
 
@@ -197,5 +211,14 @@ export const pageAnime = {
       const aimapPath = `${projectPath}/${aimapDir}.aimap/${fileName}.md`;
       await writeFileIfEmpty(aimapPath, aimap);
     }
+  }
+
+  if (onProgress) {
+    onProgress({
+      current: total,
+      total,
+      file: null,
+      message: "创建完成！",
+    });
   }
 }
