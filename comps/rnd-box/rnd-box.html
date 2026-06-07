@@ -6,7 +6,7 @@
       z-index: 2;
       box-sizing: border-box;
     }
-    
+
     .resize-handle {
       position: absolute;
       width: 10px;
@@ -16,14 +16,57 @@
       z-index: 3;
     }
 
-    .handle-nw { top: -5px; left: -5px; cursor: nwse-resize; }
-    .handle-ne { top: -5px; right: -5px; cursor: nesw-resize; }
-    .handle-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
-    .handle-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
-    .handle-n { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-    .handle-s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-    .handle-w { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
-    .handle-e { top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize; }
+    .handle-nw {
+      top: -5px;
+      left: -5px;
+      cursor: nwse-resize;
+    }
+
+    .handle-ne {
+      top: -5px;
+      right: -5px;
+      cursor: nesw-resize;
+    }
+
+    .handle-sw {
+      bottom: -5px;
+      left: -5px;
+      cursor: nesw-resize;
+    }
+
+    .handle-se {
+      bottom: -5px;
+      right: -5px;
+      cursor: nwse-resize;
+    }
+
+    .handle-n {
+      top: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: ns-resize;
+    }
+
+    .handle-s {
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: ns-resize;
+    }
+
+    .handle-w {
+      top: 50%;
+      left: -5px;
+      transform: translateY(-50%);
+      cursor: ew-resize;
+    }
+
+    .handle-e {
+      top: 50%;
+      right: -5px;
+      transform: translateY(-50%);
+      cursor: ew-resize;
+    }
   </style>
   <slot></slot>
   <o-if :value="resizable !== null">
@@ -62,7 +105,7 @@
           startDrag(e) {
             if (this.movable === null) return;
             e.stopPropagation();
-            
+
             this.isDragging = true;
             this.startX = e.clientX;
             this.startY = e.clientY;
@@ -79,9 +122,28 @@
             if (!this.isDragging) return;
             const dx = e.clientX - this.startX;
             const dy = e.clientY - this.startY;
-            
-            this.x = this.startBoxX + dx;
-            this.y = this.startBoxY + dy;
+
+            let newX = this.startBoxX + dx;
+            let newY = this.startBoxY + dy;
+
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+
+
+            if (parent) {
+              const maxW = parent.clientWidth;
+              const maxH = parent.clientHeight;
+
+              console.log(maxW, maxH);
+
+              if (newX < 0) newX = 0;
+              else if (newX + this.width > maxW) newX = maxW - this.width;
+
+              if (newY < 0) newY = 0;
+              else if (newY + this.height > maxH) newY = maxH - this.height;
+            }
+
+            this.x = newX;
+            this.y = newY;
           },
           stopDrag() {
             this.isDragging = false;
@@ -91,7 +153,7 @@
           startResize(e) {
             if (this.resizable === null) return;
             e.stopPropagation();
-            
+
             this.isResizing = true;
             this.resizeDir = e.target.dataset.dir;
             this.startX = e.clientX;
@@ -111,25 +173,43 @@
             if (!this.isResizing) return;
             const dx = e.clientX - this.startX;
             const dy = e.clientY - this.startY;
-            
+
             let newX = this.startBoxX;
             let newY = this.startBoxY;
             let newW = this.startBoxW;
             let newH = this.startBoxH;
 
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            const parentW = parent ? parent.clientWidth : Infinity;
+            const parentH = parent ? parent.clientHeight : Infinity;
+
             if (this.resizeDir.includes('e')) {
               newW = this.startBoxW + dx;
+              if (newX + newW > parentW) {
+                newW = parentW - newX;
+              }
             }
             if (this.resizeDir.includes('s')) {
               newH = this.startBoxH + dy;
+              if (newY + newH > parentH) {
+                newH = parentH - newY;
+              }
             }
             if (this.resizeDir.includes('w')) {
               newW = this.startBoxW - dx;
               newX = this.startBoxX + dx;
+              if (newX < 0) {
+                newW = newW + newX;
+                newX = 0;
+              }
             }
             if (this.resizeDir.includes('n')) {
               newH = this.startBoxH - dy;
               newY = this.startBoxY + dy;
+              if (newY < 0) {
+                newH = newH + newY;
+                newY = 0;
+              }
             }
 
             const minW = 20;
