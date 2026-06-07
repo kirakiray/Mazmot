@@ -1,4 +1,4 @@
-import getCapability from "../../capabilities/get-capability/main.js";
+import getCapability from "../../../capabilities/get-capability/main.js";
 
 export async function getAppPrompt({ projectPath }) {
   if (!projectPath) {
