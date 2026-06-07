@@ -150,6 +150,7 @@
         attrs: {
           resizable: null,
           movable: null,
+          autoSaveId: null,
         },
         watch: {
           "x,y,width,height": function ([x, y, width, height]) {
@@ -208,6 +209,7 @@
             this.isDragging = false;
             document.removeEventListener("mousemove", this.moveHandler);
             document.removeEventListener("mouseup", this.upHandler);
+            this.saveState();
           },
           startResize(e) {
             if (this.resizable === null) return;
@@ -298,6 +300,46 @@
             this.style.zIndex = "";
             document.removeEventListener("mousemove", this.resizeMoveHandler);
             document.removeEventListener("mouseup", this.resizeUpHandler);
+            this.saveState();
+          },
+          getStorageKey() {
+            return `mazmot:rnd-box:${this.autoSaveId}`;
+          },
+          saveState() {
+            if (!this.autoSaveId) return;
+            try {
+              localStorage.setItem(
+                this.getStorageKey(),
+                JSON.stringify({
+                  x: this.x,
+                  y: this.y,
+                  width: this.width,
+                  height: this.height,
+                }),
+              );
+            } catch (err) {
+              console.warn("[m-rnd-box] failed to save state", err);
+            }
+          },
+          loadState() {
+            if (!this.autoSaveId) return null;
+            try {
+              const raw = localStorage.getItem(this.getStorageKey());
+              if (!raw) return null;
+              const data = JSON.parse(raw);
+              if (
+                typeof data.x !== "number" ||
+                typeof data.y !== "number" ||
+                typeof data.width !== "number" ||
+                typeof data.height !== "number"
+              ) {
+                return null;
+              }
+              return data;
+            } catch (err) {
+              console.warn("[m-rnd-box] failed to load state", err);
+              return null;
+            }
           },
         },
         attached() {
@@ -305,17 +347,26 @@
             this.startDrag(e);
           });
 
-          if (this.attr("x")) {
-            this.x = Number(this.attr("x"));
-          }
-          if (this.attr("y")) {
-            this.y = Number(this.attr("y"));
-          }
-          if (this.attr("width")) {
-            this.width = Number(this.attr("width"));
-          }
-          if (this.attr("height")) {
-            this.height = Number(this.attr("height"));
+          const saved = this.loadState();
+
+          if (saved) {
+            this.x = saved.x;
+            this.y = saved.y;
+            this.width = saved.width;
+            this.height = saved.height;
+          } else {
+            if (this.attr("x")) {
+              this.x = Number(this.attr("x"));
+            }
+            if (this.attr("y")) {
+              this.y = Number(this.attr("y"));
+            }
+            if (this.attr("width")) {
+              this.width = Number(this.attr("width"));
+            }
+            if (this.attr("height")) {
+              this.height = Number(this.attr("height"));
+            }
           }
 
           this.attr("x", null);
