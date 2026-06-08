@@ -107,8 +107,13 @@
             }, 500);
           },
           reconnectWindow() {
+            if (!this.iframeUrl) return;
             const win = window.open("", PREVIEW_WINDOW_NAME);
-            if (win && !win.closed) {
+            if (win) {
+              if (win.closed || win.location.href === "about:blank") {
+                win.close();
+                return;
+              }
               this.previewWindow = win;
               this.startWindowCheck();
             }
@@ -122,10 +127,8 @@
             }
             const pathPrefix = this.projectPath.startsWith("$") ? "" : "$";
             this.iframeUrl = `/${pathPrefix}${this.projectPath}/project/index.html`;
+            this.reconnectWindow();
           },
-        },
-        attached() {
-          this.reconnectWindow();
         },
         detached() {
           if (this._checkInterval) {
