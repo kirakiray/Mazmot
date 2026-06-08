@@ -18,17 +18,16 @@ async function writeFileIfEmpty(path, content) {
 }
 
 export async function initCode(projectPath, onProgress) {
-  const files = {
-    "index.html": await fetch(
-      import.meta.resolve("./temp-file/index.html"),
-    ).then((res) => res.text()),
-    "app-config.js": await fetch(
-      import.meta.resolve("./temp-file/app-config.js"),
-    ).then((res) => res.text()),
-    "pages/home.html": await fetch(
-      import.meta.resolve("./temp-file/pages/home.html"),
-    ).then((res) => res.text()),
-  };
+  const fileList = await fetch(
+    import.meta.resolve("./temp-file/__files.json"),
+  ).then((res) => res.json());
+
+  const files = {};
+  for (const filePath of fileList) {
+    files[filePath] = await fetch(
+      import.meta.resolve(`./temp-file/${filePath}`),
+    ).then((res) => res.text());
+  }
 
   const entries = Object.entries(files);
   const total = entries.length;
