@@ -1,4 +1,4 @@
-import { storage } from "/gh/kirakiray/ever-cache/src/main.js";
+import { storage } from "/gh/kirakiray/ever-cache/src/main.min.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
