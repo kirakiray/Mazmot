@@ -3,27 +3,25 @@ name: rotate-logo
 description: 基于 ofa.js 的 3D 旋转 Logo 组件，提供带透视效果的旋转动画；这是一个示范案例组件；
 ---
 
-# Rotate Logo 组件开发指南
+# Rotate Logo 组件
 
-## 组件概述
+## 用途
 
-`rotate-logo` 是一个基于 ofa.js 框架开发的3D旋转Logo组件，主要用于展示带有透视效果的旋转动画。
+用于在页面中展示带有 3D 透视旋转效果的 Logo 动画。
 
-## 技术实现
+## 使用方法
 
-- 使用 ofa.js 组件框架
-- CSS3 3D transforms 实现旋转效果
-- CSS perspective 实现透视效果
+在页面或其他组件的模板中，通过 `<l-m>` 标签引入后使用：
 
-## 开发注意事项
+```html
+<!-- 引入组件 -->
+<l-m src="./comps/rotate-logo/rotate-logo.html"></l-m>
 
-1. **透视效果配置**：`perspective` 属性必须在 `:host` 上设置，建议值 500px - 1200px
-2. **动画参数**：必须指定持续时间，缓动函数只使用一个，避免冲突
-3. **性能优化**：使用 `transform` 进行动画，避免 `box-shadow` 等高消耗属性
-4. **响应式**：组件默认宽度 100px，可通过 CSS 覆盖
+<!-- 使用组件 -->
+<rotate-logo></rotate-logo>
+```
 
-## 常见问题
+## 注意事项
 
-- **动画不显示**：检查 animation 属性是否包含持续时间，浏览器是否支持 CSS3 3D transforms
-- **透视效果不明显**：调整 `perspective` 值，增大减弱效果，减小增强效果
-- **组件加载失败**：确保正确引入 ofa.js 库，`<l-m>` 标签的 `src` 路径正确
+- 组件默认宽度为 `100px`，可通过 CSS 覆盖调整大小
+- 确保正确引入 ofa.js 库，且 `<l-m>` 标签的 `src` 路径正确
