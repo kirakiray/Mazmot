@@ -11,7 +11,7 @@ test: test/test-inspect.html
 
 ## 前置要求
 
-此能力需要模拟器页面注入 `/pages/create-app/util/emulator-binding.js` 脚本才能正常工作。该脚本会监听 `inspect-element` 类型的消息并处理元素检查请求。
+此能力需要模拟器页面注入 `/util/emulator-binding.js` 脚本才能正常工作。该脚本会监听 `inspect-element` 类型的消息并处理元素检查请求。
 
 ## 使用方法
 
