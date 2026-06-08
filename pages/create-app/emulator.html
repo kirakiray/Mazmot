@@ -70,6 +70,8 @@
   <o-consumer name="app-builder" watch:project-path="projectPath"> </o-consumer>
   <script>
     export default async () => {
+      const PREVIEW_WINDOW_NAME = "mazmot-preview";
+
       return {
         data: {
           projectPath: "",
@@ -81,7 +83,7 @@
             if (this.iframeUrl) {
               this.previewWindow = window.open(
                 this.iframeUrl,
-                "mazmot-preview",
+                PREVIEW_WINDOW_NAME,
                 "width=800,height=600"
               );
               this.startWindowCheck();
@@ -104,6 +106,13 @@
               }
             }, 500);
           },
+          reconnectWindow() {
+            const win = window.open("", PREVIEW_WINDOW_NAME);
+            if (win && !win.closed) {
+              this.previewWindow = win;
+              this.startWindowCheck();
+            }
+          },
         },
         watch: {
           projectPath() {
@@ -114,6 +123,9 @@
             const pathPrefix = this.projectPath.startsWith("$") ? "" : "$";
             this.iframeUrl = `/${pathPrefix}${this.projectPath}/project/index.html`;
           },
+        },
+        attached() {
+          this.reconnectWindow();
         },
         detached() {
           if (this._checkInterval) {
