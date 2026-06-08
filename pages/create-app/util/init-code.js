@@ -18,7 +18,7 @@ async function writeFileIfEmpty(path, content) {
 }
 
 export async function initCode(projectPath, onProgress) {
-  const fileList = await fetch(
+  const { files: fileList } = await fetch(
     import.meta.resolve("./temp-file/__files.json"),
   ).then((res) => res.json());
 
