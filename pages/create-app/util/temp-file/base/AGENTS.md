@@ -5,6 +5,7 @@
 - 本项目基于 **ofa.js** 框架开发，开发前请务必查阅 ofa.js 的 skill 或官方文档
 - 如本地未安装 ofa.js skill，可从 [ofajs-docs.zip](https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip) 下载
 - 项目通常已在运行环境中，无需额外启动静态服务器
+- 若项目性质发生较大变更，需同步更新项目根目录下的 `README.md` 文件。
 
 ## 项目结构
 
