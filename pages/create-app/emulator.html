@@ -10,6 +10,8 @@
       height: 100%;
       display: flex;
       flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     .toolbar {
       padding: 8px 12px;
@@ -58,46 +60,35 @@
       color: var(--md-sys-color-on-neutral);
       cursor: not-allowed;
     }
-    .iframe-wrapper {
-      flex: 1;
-      position: relative;
-      background: var(--md-sys-color-surface);
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+    .preview-info {
+      text-align: center;
       color: var(--md-sys-color-on-surface-variant);
     }
-    .hide {
-      display: none;
+    .preview-info p {
+      margin: 8px 0;
+    }
+    .window-status {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 16px;
     }
   </style>
   <div class="emulator-container">
-    <div class="toolbar">
-      <span class="toolbar-title">Preview</span>
-      <div class="toolbar-url">{{iframeUrl}}</div>
-      <button class="open-btn" on:click="openInNewTab" :disabled="!iframeUrl">
-        <iconify-icon icon="lucide:external-link" width="14"></iconify-icon>
-        Open
-      </button>
-    </div>
-    <div class="iframe-wrapper">
-      <o-if :value="!iframeLoaded">
-        <div class="loading">Loading...</div>
+    <div class="preview-info">
+      <p>Preview Window</p>
+      <o-if :value="!previewWindow">
+        <button class="open-btn" on:click="openPreview" :disabled="!iframeUrl">
+          <iconify-icon icon="lucide:external-link" width="14"></iconify-icon>
+          Open Preview
+        </button>
       </o-if>
-      <iframe
-        class:hide="!iframeUrl"
-        attr:src="iframeUrl"
-        on:load="handleLoad"
-        on:error="handleError"
-      ></iframe>
+      <o-if :value="previewWindow">
+        <p class="window-status">Preview window is open</p>
+        <button class="open-btn" on:click="focusPreview">
+          <iconify-icon icon="lucide:eye" width="14"></iconify-icon>
+          Focus Window
+        </button>
+      </o-if>
     </div>
   </div>
   <o-consumer name="app-builder" watch:project-path="projectPath"> </o-consumer>
@@ -106,36 +97,52 @@
       return {
         data: {
           projectPath: "",
-          iframeLoaded: false,
           iframeUrl: "",
+          previewWindow: null,
         },
         proto: {
-          get iframe() {
-            return this.shadow.$("iframe") && this.shadow.$("iframe").ele;
-          },
-          handleLoad() {
-            this.iframeLoaded = true;
-          },
-          handleError() {
-            this.iframeLoaded = true;
-          },
-          openInNewTab() {
+          openPreview() {
             if (this.iframeUrl) {
-              window.open(this.iframeUrl, "_blank");
+              this.previewWindow = window.open(
+                this.iframeUrl,
+                "mazmot-preview",
+                "width=800,height=600"
+              );
+              this.startWindowCheck();
             }
+          },
+          focusPreview() {
+            if (this.previewWindow && !this.previewWindow.closed) {
+              this.previewWindow.focus();
+            }
+          },
+          startWindowCheck() {
+            if (this._checkInterval) {
+              clearInterval(this._checkInterval);
+            }
+            this._checkInterval = setInterval(() => {
+              if (this.previewWindow && this.previewWindow.closed) {
+                this.previewWindow = null;
+                clearInterval(this._checkInterval);
+                this._checkInterval = null;
+              }
+            }, 500);
           },
         },
         watch: {
           projectPath() {
             if (!this.projectPath) {
-              this.iframeLoaded = false;
               this.iframeUrl = "";
               return;
             }
-            // 如果 projectPath 已经是 $ 开头，直接使用；否则添加 $ 前缀
             const pathPrefix = this.projectPath.startsWith("$") ? "" : "$";
             this.iframeUrl = `/${pathPrefix}${this.projectPath}/project/index.html`;
           },
+        },
+        detached() {
+          if (this._checkInterval) {
+            clearInterval(this._checkInterval);
+          }
         },
       };
     };
