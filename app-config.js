@@ -1,7 +1,7 @@
 import { init } from "/nos/fs/main.js";
 await init("mazmot");
 
-export const home = "./pages_new/home.html";
+export const home = "./pages/home.html";
 
 export const pageAnime = {
   current: {
