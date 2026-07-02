@@ -31,10 +31,19 @@
     }
   </style>
 
-  <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+
+  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 800px">
+    <span slot="title">添加应用</span>
+    <o-page src="./main/add-app.html" style="width: 100%;"></o-page>
+  </p-dialog>
 
   <div class="container">
     <div class="header">
@@ -47,31 +56,13 @@
 
     <div class="list-wrapper">
       <p-list>
-        <p-list-item class="app-item" button>
-          <span slot="prefix" style="font-size: 24px">📝</span>
-          记事本
-          <div secondary>轻量级文本笔记工具</div>
-        </p-list-item>
-        <p-list-item class="app-item" button>
-          <span slot="prefix" style="font-size: 24px">📅</span>
-          日历
-          <div secondary>日程管理与提醒</div>
-        </p-list-item>
-        <p-list-item class="app-item" button>
-          <span slot="prefix" style="font-size: 24px">📊</span>
-          数据看板
-          <div secondary>可视化数据分析面板</div>
-        </p-list-item>
-        <p-list-item class="app-item" button>
-          <span slot="prefix" style="font-size: 24px">💬</span>
-          聊天助手
-          <div secondary>AI 智能对话助手</div>
-        </p-list-item>
-        <p-list-item class="app-item" button>
-          <span slot="prefix" style="font-size: 24px">⚙️</span>
-          系统设置
-          <div secondary>应用配置与偏好管理</div>
-        </p-list-item>
+        <o-fill :value="appList">
+          <p-list-item class="app-item" button>
+            <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
+            {{$data.name}}
+            <div secondary>{{$data.desc}}</div>
+          </p-list-item>
+        </o-fill>
       </p-list>
     </div>
   </div>
@@ -79,10 +70,19 @@
   <script>
     export default async () => {
       return {
-        data: {},
+        data: {
+          dialogOpen: false,
+          appList: [
+            { icon: "📝", name: "记事本", desc: "轻量级文本笔记工具" },
+            { icon: "📅", name: "日历", desc: "日程管理与提醒" },
+            { icon: "📊", name: "数据看板", desc: "可视化数据分析面板" },
+            { icon: "💬", name: "聊天助手", desc: "AI 智能对话助手" },
+            { icon: "⚙️", name: "系统设置", desc: "应用配置与偏好管理" },
+          ],
+        },
         proto: {
           handleAdd() {
-            // TODO: 添加应用逻辑
+            this.dialogOpen = true;
           },
         },
       };
