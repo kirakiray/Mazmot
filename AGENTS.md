@@ -35,6 +35,10 @@
 - **noneos-core-docs**
   - [GitHub 在线源码](https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs)
   - [ZIP 离线包下载](https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/skills/noneos-core-docs.zip)
+- **ever-cache**
+  - 涉及存储数据（如 localStorage）时，应优先使用 EverCache 替代原生存储方案。
+  - 使用前请检查本地是否有 ever-cache Skill，若无则需导入。
+  - [Skill 在线文件](https://github.com/kirakiray/ever-cache/blob/main/skills/ever-cache/SKILL.md)
 
 ### ⚠️ 导入注意事项
 
