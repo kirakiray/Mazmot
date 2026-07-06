@@ -57,6 +57,31 @@
     .open-badge iconify-icon {
       font-size: 12px;
     }
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      white-space: nowrap;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      background-color: var(--md-sys-color-surface);
+    }
+    .source-badge[data-source="local"] {
+      border-color: var(--md-sys-color-tertiary);
+      color: var(--md-sys-color-tertiary);
+    }
+    .source-badge[data-source="virtual"] {
+      border-color: var(--md-sys-color-secondary);
+      color: var(--md-sys-color-secondary);
+    }
+    .source-badge iconify-icon {
+      font-size: 12px;
+    }
 
     .icon-btn {
       z-index: 3;
@@ -112,6 +137,21 @@
               <div secondary>{{$data.desc}}</div>
 
               <div slot="suffix" class="item-suffix">
+                <span
+                  class="source-badge"
+                  attr:data-source="$data.source"
+                  title="应用来源"
+                >
+                  <o-if :value="$data.source === 'local'">
+                    <iconify-icon icon="mdi:folder-outline"></iconify-icon>
+                    本地目录
+                  </o-if>
+                  <o-if :value="$data.source === 'virtual'">
+                    <iconify-icon icon="mdi:database-outline"></iconify-icon>
+                    虚拟目录
+                  </o-if>
+                </span>
+
                 <o-if :value="$data.opened">
                   <span class="open-badge" title="点击可切换到已打开的窗口">
                     <iconify-icon icon="mdi:circle-medium"></iconify-icon>
@@ -168,6 +208,21 @@
 
     // 记录当前页面打开的应用窗口引用：key = app.path
     const openedWindows = new Map();
+    // 通过 BroadcastChannel 探测到的存活应用路径集合（可跨主页面刷新恢复状态）
+    const openedNames = new Set();
+
+    const BROADCAST_NAME = "mazmot-app-status";
+    let broadcastChannel = null;
+    function getBroadcast() {
+      if (broadcastChannel) return broadcastChannel;
+      try {
+        broadcastChannel = new BroadcastChannel(BROADCAST_NAME);
+      } catch (err) {
+        console.warn("当前浏览器不支持 BroadcastChannel", err);
+        broadcastChannel = null;
+      }
+      return broadcastChannel;
+    }
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -193,6 +248,7 @@
               app.dirName ||
               "",
             path: app.path,
+            source: app.source || "local",
             _recordName: app.name,
             opened: isWindowAlive(app.path),
           };
@@ -202,17 +258,18 @@
     }
 
     function isWindowAlive(path) {
+      // 优先看本页面维护的窗口引用
       const win = openedWindows.get(path);
-      if (!win) return false;
-      try {
-        if (win.closed) {
+      if (win) {
+        try {
+          if (!win.closed) return true;
           openedWindows.delete(path);
-          return false;
+        } catch (err) {
+          // 跨源窗口，无法判断，交给 openedNames 兜底
         }
-        return true;
-      } catch (err) {
-        return false;
       }
+      // 若通过 BroadcastChannel 收到过应答，则认为仍存活
+      return openedNames.has(path);
     }
 
     export default async () => {
@@ -224,25 +281,63 @@
           appList: initialApps,
         },
         attached() {
-          // 定时检查窗口是否被用户关闭，更新 opened 状态
-          this._openedTimer = setInterval(() => {
-            let changed = false;
-            this.appList.forEach((app) => {
-              const alive = isWindowAlive(app.path);
-              if (app.opened !== alive) {
-                app.opened = alive;
-                changed = true;
+          // 监听子应用的 BroadcastChannel 应答
+          const bc = getBroadcast();
+          if (bc) {
+            this._bcHandler = (event) => {
+              const msg = event && event.data;
+              if (!msg || !msg.type || !msg.path) return;
+              if (msg.type === "alive" || msg.type === "pong") {
+                openedNames.add(msg.path);
+                const target = this.appList.find((a) => a.path === msg.path);
+                if (target && !target.opened) target.opened = true;
+              } else if (msg.type === "bye") {
+                openedNames.delete(msg.path);
+                const target = this.appList.find((a) => a.path === msg.path);
+                if (target && target.opened) target.opened = false;
               }
+            };
+            bc.addEventListener("message", this._bcHandler);
+            // 初次探测：清空后广播 ping，等待存活应用应答
+            openedNames.clear();
+            try {
+              bc.postMessage({ type: "ping" });
+            } catch (e) {}
+          }
+
+          // 定时检查窗口是否被用户关闭 / 定期 ping 子应用
+          this._openedTimer = setInterval(() => {
+            // 每次探测前清空快照，收到 pong/alive 会重新填入
+            const prev = new Set(openedNames);
+            openedNames.clear();
+            try {
+              if (bc) bc.postMessage({ type: "ping" });
+            } catch (e) {}
+
+            // 给子应用一小段时间应答，然后同步 UI 状态
+            setTimeout(() => {
+              this.appList.forEach((app) => {
+                const alive = isWindowAlive(app.path);
+                if (app.opened !== alive) app.opened = alive;
+              });
+            }, 300);
+
+            // 顺带清理已关闭的窗口引用
+            openedWindows.forEach((win, path) => {
+              try {
+                if (win.closed) openedWindows.delete(path);
+              } catch (err) {}
             });
-            if (changed) {
-              // 触发一次重新渲染（对基础值变化不必操作）
-            }
-          }, 1000);
+          }, 2000);
         },
         detached() {
           if (this._openedTimer) {
             clearInterval(this._openedTimer);
             this._openedTimer = null;
+          }
+          if (broadcastChannel && this._bcHandler) {
+            broadcastChannel.removeEventListener("message", this._bcHandler);
+            this._bcHandler = null;
           }
         },
         proto: {

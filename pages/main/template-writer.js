@@ -34,6 +34,30 @@ export function buildTemplateFiles({ name, desc }) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${name}</title>
+    <script>
+      // Mazmot 应用存活探测：向主页面广播存活状态
+      (function () {
+        try {
+          var bc = new BroadcastChannel("mazmot-app-status");
+          var path = location.pathname
+            .replace(/^\\//, "")
+            .replace(/\\/index\\.html$/, "");
+          var send = function (type) {
+            try {
+              bc.postMessage({ type: type, path: path });
+            } catch (e) {}
+          };
+          bc.addEventListener("message", function (event) {
+            var msg = event && event.data;
+            if (msg && msg.type === "ping") send("pong");
+          });
+          send("alive");
+          window.addEventListener("pagehide", function () {
+            send("bye");
+          });
+        } catch (e) {}
+      })();
+    <\/script>
     <script
       src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs"
       type="module"
