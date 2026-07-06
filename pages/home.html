@@ -111,7 +111,7 @@
     on:close-dialog="handleDialogClose"
   >
     <span slot="title">添加应用</span>
-    <o-page src="./main/add-app.html" style="width: 100%;"></o-page>
+    <o-page src="./home/add-app.html" style="width: 100%;"></o-page>
   </p-dialog>
 
   <div class="container">
@@ -205,53 +205,15 @@
       toast,
       confirm,
     } from "https://punch-ui-v2.pages.dev/packages/util.js";
-
-    // 记录当前页面打开的应用窗口引用：key = app.path
-    const openedWindows = new Map();
-    // 通过 BroadcastChannel 探测到的存活应用路径集合（可跨主页面刷新恢复状态）
-    const openedNames = new Set();
-
-    const BROADCAST_NAME = "mazmot-app-status";
-    const LS_OPENED_KEY = "mazmot-opened-apps";
-    let broadcastChannel = null;
-    function getBroadcast() {
-      if (broadcastChannel) return broadcastChannel;
-      try {
-        broadcastChannel = new BroadcastChannel(BROADCAST_NAME);
-      } catch (err) {
-        console.warn("当前浏览器不支持 BroadcastChannel", err);
-        broadcastChannel = null;
-      }
-      return broadcastChannel;
-    }
-
-    // localStorage 持久化"已打开"路径集合，用于跨主页面刷新恢复 UI 状态
-    function readOpenedFromLS() {
-      try {
-        const raw = localStorage.getItem(LS_OPENED_KEY);
-        if (!raw) return [];
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr : [];
-      } catch (err) {
-        return [];
-      }
-    }
-    function writeOpenedToLS(paths) {
-      try {
-        localStorage.setItem(LS_OPENED_KEY, JSON.stringify(paths));
-      } catch (err) {}
-    }
-    function addOpenedPath(path) {
-      const list = readOpenedFromLS();
-      if (!list.includes(path)) {
-        list.push(path);
-        writeOpenedToLS(list);
-      }
-    }
-    function removeOpenedPath(path) {
-      const list = readOpenedFromLS().filter((p) => p !== path);
-      writeOpenedToLS(list);
-    }
+    import {
+      openedWindows,
+      readOpenedFromLS,
+      isWindowAlive,
+      startAppStatusWatcher,
+      markOpened,
+      clearOpened,
+      focusIfOpened,
+    } from "./home/app-status.js";
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -288,21 +250,6 @@
       return results;
     }
 
-    function isWindowAlive(path) {
-      // 优先看本页面维护的窗口引用
-      const win = openedWindows.get(path);
-      if (win) {
-        try {
-          if (!win.closed) return true;
-          openedWindows.delete(path);
-        } catch (err) {
-          // 跨源窗口，无法判断，交给 openedNames 兜底
-        }
-      }
-      // 若通过 BroadcastChannel 收到过应答，则认为仍存活
-      return openedNames.has(path);
-    }
-
     export default async () => {
       const initialApps = await loadApps();
 
@@ -312,73 +259,28 @@
           appList: initialApps,
         },
         attached() {
-          // 监听子应用的 BroadcastChannel 应答
-          const bc = getBroadcast();
-          if (bc) {
-            this._bcHandler = (event) => {
-              const msg = event && event.data;
-              if (!msg || !msg.type || !msg.path) return;
-              if (msg.type === "alive" || msg.type === "pong") {
-                openedNames.add(msg.path);
-                addOpenedPath(msg.path);
-                const target = this.appList.find((a) => a.path === msg.path);
-                if (target && !target.opened) target.opened = true;
-              } else if (msg.type === "bye") {
-                openedNames.delete(msg.path);
-                removeOpenedPath(msg.path);
-                const target = this.appList.find((a) => a.path === msg.path);
-                if (target && target.opened) target.opened = false;
-              }
-            };
-            bc.addEventListener("message", this._bcHandler);
-            // 初次探测：清空后广播 ping，等待存活应用应答
-            openedNames.clear();
-            try {
-              bc.postMessage({ type: "ping" });
-            } catch (e) {}
-          }
-
-          // 定时检查窗口是否被用户关闭 / 定期 ping 子应用
-          this._openedTimer = setInterval(() => {
-            // 每次探测前清空快照，收到 pong/alive 会重新填入
-            openedNames.clear();
-            try {
-              if (bc) bc.postMessage({ type: "ping" });
-            } catch (e) {}
-
-            // 给子应用一小段时间应答，然后同步 UI 状态 + LS
-            setTimeout(() => {
-              // 用广播存活集合 + 本页窗口引用重建 LS
-              const alivePaths = new Set(openedNames);
-              openedWindows.forEach((win, path) => {
-                try {
-                  if (!win.closed) alivePaths.add(path);
-                } catch (err) {}
-              });
-              writeOpenedToLS(Array.from(alivePaths));
-
+          // 启动广播监听 + 定时探测
+          this._stopWatcher = startAppStatusWatcher({
+            onAlive: (path) => {
+              const target = this.appList.find((a) => a.path === path);
+              if (target && !target.opened) target.opened = true;
+            },
+            onBye: (path) => {
+              const target = this.appList.find((a) => a.path === path);
+              if (target && target.opened) target.opened = false;
+            },
+            onTick: (alivePaths) => {
               this.appList.forEach((app) => {
                 const alive = alivePaths.has(app.path);
                 if (app.opened !== alive) app.opened = alive;
               });
-            }, 500);
-
-            // 顺带清理已关闭的窗口引用
-            openedWindows.forEach((win, path) => {
-              try {
-                if (win.closed) openedWindows.delete(path);
-              } catch (err) {}
-            });
-          }, 2000);
+            },
+          });
         },
         detached() {
-          if (this._openedTimer) {
-            clearInterval(this._openedTimer);
-            this._openedTimer = null;
-          }
-          if (broadcastChannel && this._bcHandler) {
-            broadcastChannel.removeEventListener("message", this._bcHandler);
-            this._bcHandler = null;
+          if (this._stopWatcher) {
+            this._stopWatcher();
+            this._stopWatcher = null;
           }
         },
         proto: {
@@ -386,26 +288,8 @@
             this.dialogOpen = true;
           },
 
-          // 检查一个 app 当前是否已经有存活的窗口/标签，如果有则聚焦
-          _focusIfOpened(app) {
-            const win = openedWindows.get(app.path);
-            if (win) {
-              try {
-                if (!win.closed) {
-                  win.focus();
-                  return true;
-                }
-                openedWindows.delete(app.path);
-              } catch (err) {
-                openedWindows.delete(app.path);
-              }
-            }
-            return false;
-          },
-
           _markOpened(app, win) {
-            openedWindows.set(app.path, win);
-            addOpenedPath(app.path);
+            markOpened(app.path, win);
             const target = this.appList.find((a) => a.path === app.path);
             if (target) target.opened = true;
           },
@@ -416,7 +300,7 @@
               toast({ content: "无法打开：缺少应用路径", color: "error" });
               return;
             }
-            if (this._focusIfOpened(app)) return;
+            if (focusIfOpened(app.path)) return;
 
             const url = `/${app.path}/index.html`;
             const win = window.open(url, `mazmot-app-${app.path}`);
@@ -433,7 +317,7 @@
               toast({ content: "无法打开：缺少应用路径", color: "error" });
               return;
             }
-            if (this._focusIfOpened(app)) return;
+            if (focusIfOpened(app.path)) return;
 
             const url = `/${app.path}/index.html`;
             // 类原生应用窗口：无地址栏/工具栏/菜单栏；居中显示
@@ -501,18 +385,8 @@
             if (!ok) return;
 
             try {
-              // 关闭对应打开的窗口（如果存在）
-              const win = openedWindows.get(app.path);
-              if (win) {
-                try {
-                  if (!win.closed) win.close();
-                } catch (e) {
-                  // 无权限关闭时忽略
-                }
-                openedWindows.delete(app.path);
-              }
-              openedNames.delete(app.path);
-              removeOpenedPath(app.path);
+              // 关闭对应打开的窗口 + 清理状态
+              clearOpened(app.path);
 
               if (app.path) {
                 try {
