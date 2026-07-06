@@ -212,6 +212,7 @@
     const openedNames = new Set();
 
     const BROADCAST_NAME = "mazmot-app-status";
+    const LS_OPENED_KEY = "mazmot-opened-apps";
     let broadcastChannel = null;
     function getBroadcast() {
       if (broadcastChannel) return broadcastChannel;
@@ -224,8 +225,38 @@
       return broadcastChannel;
     }
 
+    // localStorage 持久化"已打开"路径集合，用于跨主页面刷新恢复 UI 状态
+    function readOpenedFromLS() {
+      try {
+        const raw = localStorage.getItem(LS_OPENED_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+      } catch (err) {
+        return [];
+      }
+    }
+    function writeOpenedToLS(paths) {
+      try {
+        localStorage.setItem(LS_OPENED_KEY, JSON.stringify(paths));
+      } catch (err) {}
+    }
+    function addOpenedPath(path) {
+      const list = readOpenedFromLS();
+      if (!list.includes(path)) {
+        list.push(path);
+        writeOpenedToLS(list);
+      }
+    }
+    function removeOpenedPath(path) {
+      const list = readOpenedFromLS().filter((p) => p !== path);
+      writeOpenedToLS(list);
+    }
+
     async function loadApps() {
       const apps = (await storage.apps) || [];
+      // 从 localStorage 恢复已打开路径快照
+      const lsOpened = new Set(readOpenedFromLS());
       const results = await Promise.all(
         apps.map(async (app) => {
           let manifest = null;
@@ -250,7 +281,7 @@
             path: app.path,
             source: app.source || "local",
             _recordName: app.name,
-            opened: isWindowAlive(app.path),
+            opened: isWindowAlive(app.path) || lsOpened.has(app.path),
           };
         })
       );
@@ -289,10 +320,12 @@
               if (!msg || !msg.type || !msg.path) return;
               if (msg.type === "alive" || msg.type === "pong") {
                 openedNames.add(msg.path);
+                addOpenedPath(msg.path);
                 const target = this.appList.find((a) => a.path === msg.path);
                 if (target && !target.opened) target.opened = true;
               } else if (msg.type === "bye") {
                 openedNames.delete(msg.path);
+                removeOpenedPath(msg.path);
                 const target = this.appList.find((a) => a.path === msg.path);
                 if (target && target.opened) target.opened = false;
               }
@@ -308,19 +341,27 @@
           // 定时检查窗口是否被用户关闭 / 定期 ping 子应用
           this._openedTimer = setInterval(() => {
             // 每次探测前清空快照，收到 pong/alive 会重新填入
-            const prev = new Set(openedNames);
             openedNames.clear();
             try {
               if (bc) bc.postMessage({ type: "ping" });
             } catch (e) {}
 
-            // 给子应用一小段时间应答，然后同步 UI 状态
+            // 给子应用一小段时间应答，然后同步 UI 状态 + LS
             setTimeout(() => {
+              // 用广播存活集合 + 本页窗口引用重建 LS
+              const alivePaths = new Set(openedNames);
+              openedWindows.forEach((win, path) => {
+                try {
+                  if (!win.closed) alivePaths.add(path);
+                } catch (err) {}
+              });
+              writeOpenedToLS(Array.from(alivePaths));
+
               this.appList.forEach((app) => {
-                const alive = isWindowAlive(app.path);
+                const alive = alivePaths.has(app.path);
                 if (app.opened !== alive) app.opened = alive;
               });
-            }, 300);
+            }, 500);
 
             // 顺带清理已关闭的窗口引用
             openedWindows.forEach((win, path) => {
@@ -364,6 +405,7 @@
 
           _markOpened(app, win) {
             openedWindows.set(app.path, win);
+            addOpenedPath(app.path);
             const target = this.appList.find((a) => a.path === app.path);
             if (target) target.opened = true;
           },
@@ -469,6 +511,8 @@
                 }
                 openedWindows.delete(app.path);
               }
+              openedNames.delete(app.path);
+              removeOpenedPath(app.path);
 
               if (app.path) {
                 try {
