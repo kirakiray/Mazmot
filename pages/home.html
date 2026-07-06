@@ -35,9 +35,35 @@
       color: var(--md-sys-color-on-surface-variant);
       opacity: 0.7;
     }
-    .delete-btn {
+
+    .item-suffix {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .open-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .open-badge iconify-icon {
+      font-size: 12px;
+    }
+
+    .icon-btn {
       z-index: 3;
       --icon-color: var(--md-sys-color-on-surface-variant);
+    }
+    .window-btn:hover {
+      --icon-color: var(--md-sys-color-primary);
     }
     .delete-btn:hover {
       --icon-color: var(--md-sys-color-error);
@@ -84,18 +110,42 @@
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
               <div secondary>{{$data.desc}}</div>
-              <p-button
-                slot="suffix"
-                class="delete-btn"
-                variant="text"
-                color="error"
-                icon
-                size="s"
-                on:click="$host.handleDelete($event, $data)"
-                title="删除应用"
-              >
-                <iconify-icon icon="mdi:delete-outline"></iconify-icon>
-              </p-button>
+
+              <div slot="suffix" class="item-suffix">
+                <o-if :value="$data.opened">
+                  <span class="open-badge" title="点击可切换到已打开的窗口">
+                    <iconify-icon icon="mdi:circle-medium"></iconify-icon>
+                    已打开
+                  </span>
+                </o-if>
+
+                <p-button
+                  class="icon-btn window-btn"
+                  variant="text"
+                  color="primary"
+                  icon
+                  size="s"
+                  on:click="$host.handleOpenWindow($event, $data)"
+                  title="在小窗口中打开（类原生应用）"
+                >
+                  <iconify-icon
+                    icon="mdi:open-in-new"
+                    style="transform: rotate(0deg)"
+                  ></iconify-icon>
+                </p-button>
+
+                <p-button
+                  class="icon-btn delete-btn"
+                  variant="text"
+                  color="error"
+                  icon
+                  size="s"
+                  on:click="$host.handleDelete($event, $data)"
+                  title="删除应用"
+                >
+                  <iconify-icon icon="mdi:delete-outline"></iconify-icon>
+                </p-button>
+              </div>
             </p-list-item>
           </o-fill>
         </p-list>
@@ -116,13 +166,15 @@
       confirm,
     } from "https://punch-ui-v2.pages.dev/packages/util.js";
 
+    // 记录当前页面打开的应用窗口引用：key = app.path
+    const openedWindows = new Map();
+
     async function loadApps() {
       const apps = (await storage.apps) || [];
       const results = await Promise.all(
         apps.map(async (app) => {
           let manifest = null;
           try {
-            // 从挂载目录读取 app.json 获取真实的应用信息
             const jsonFile = await get(`${app.path}/app.json`);
             if (jsonFile) {
               manifest = await jsonFile.json();
@@ -141,12 +193,26 @@
               app.dirName ||
               "",
             path: app.path,
-            // 记录索引用信息（删除时用于精确匹配 ever-cache 记录）
             _recordName: app.name,
+            opened: isWindowAlive(app.path),
           };
         })
       );
       return results;
+    }
+
+    function isWindowAlive(path) {
+      const win = openedWindows.get(path);
+      if (!win) return false;
+      try {
+        if (win.closed) {
+          openedWindows.delete(path);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        return false;
+      }
     }
 
     export default async () => {
@@ -157,19 +223,123 @@
           dialogOpen: false,
           appList: initialApps,
         },
+        attached() {
+          // 定时检查窗口是否被用户关闭，更新 opened 状态
+          this._openedTimer = setInterval(() => {
+            let changed = false;
+            this.appList.forEach((app) => {
+              const alive = isWindowAlive(app.path);
+              if (app.opened !== alive) {
+                app.opened = alive;
+                changed = true;
+              }
+            });
+            if (changed) {
+              // 触发一次重新渲染（对基础值变化不必操作）
+            }
+          }, 1000);
+        },
+        detached() {
+          if (this._openedTimer) {
+            clearInterval(this._openedTimer);
+            this._openedTimer = null;
+          }
+        },
         proto: {
           handleAdd() {
             this.dialogOpen = true;
           },
+
+          // 检查一个 app 当前是否已经有存活的窗口/标签，如果有则聚焦
+          _focusIfOpened(app) {
+            const win = openedWindows.get(app.path);
+            if (win) {
+              try {
+                if (!win.closed) {
+                  win.focus();
+                  return true;
+                }
+                openedWindows.delete(app.path);
+              } catch (err) {
+                openedWindows.delete(app.path);
+              }
+            }
+            return false;
+          },
+
+          _markOpened(app, win) {
+            openedWindows.set(app.path, win);
+            const target = this.appList.find((a) => a.path === app.path);
+            if (target) target.opened = true;
+          },
+
+          // 新标签页打开
           handleOpen(app) {
             if (!app || !app.path) {
               toast({ content: "无法打开：缺少应用路径", color: "error" });
               return;
             }
-            // 挂载目录通过 /$mount-xxx/ 路径由 Service Worker 提供 HTTP 访问
+            if (this._focusIfOpened(app)) return;
+
             const url = `/${app.path}/index.html`;
-            window.open(url, "_blank");
+            const win = window.open(url, `mazmot-app-${app.path}`);
+            if (win) this._markOpened(app, win);
           },
+
+          // 小窗口打开（尽量像原生应用）
+          handleOpenWindow(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app.path) {
+              toast({ content: "无法打开：缺少应用路径", color: "error" });
+              return;
+            }
+            if (this._focusIfOpened(app)) return;
+
+            const url = `/${app.path}/index.html`;
+            // 类原生应用窗口：无地址栏/工具栏/菜单栏；居中显示
+            const width = 1024;
+            const height = 720;
+            const left = Math.max(
+              0,
+              Math.round((screen.availWidth - width) / 2)
+            );
+            const top = Math.max(
+              0,
+              Math.round((screen.availHeight - height) / 2)
+            );
+            const features = [
+              `width=${width}`,
+              `height=${height}`,
+              `left=${left}`,
+              `top=${top}`,
+              "popup=yes",
+              "resizable=yes",
+              "scrollbars=yes",
+              "toolbar=no",
+              "menubar=no",
+              "location=no",
+              "status=no",
+              "titlebar=no",
+            ].join(",");
+
+            const win = window.open(
+              url,
+              `mazmot-app-${app.path}`,
+              features
+            );
+            if (!win) {
+              toast({
+                content: "窗口被浏览器拦截，请允许弹出窗口",
+                color: "error",
+              });
+              return;
+            }
+            this._markOpened(app, win);
+          },
+
           async handleDialogClose() {
             this.dialogOpen = false;
             await this.refreshApps();
@@ -180,7 +350,6 @@
             apps.forEach((app) => this.appList.push(app));
           },
           async handleDelete(event, app) {
-            // 阻止冒泡，避免触发列表项的点击
             if (event) {
               event.stopPropagation();
               if (event.preventDefault) event.preventDefault();
@@ -195,7 +364,17 @@
             if (!ok) return;
 
             try {
-              // 尝试卸载对应的挂载目录
+              // 关闭对应打开的窗口（如果存在）
+              const win = openedWindows.get(app.path);
+              if (win) {
+                try {
+                  if (!win.closed) win.close();
+                } catch (e) {
+                  // 无权限关闭时忽略
+                }
+                openedWindows.delete(app.path);
+              }
+
               if (app.path) {
                 try {
                   const mounted = await get(app.path);
@@ -207,12 +386,13 @@
                 }
               }
 
-              // 从 ever-cache 中移除
               const apps = (await storage.apps) || [];
               const next = apps.filter(
                 (a) =>
-                  !(a.name === (app._recordName || app.name) &&
-                    a.path === app.path)
+                  !(
+                    a.name === (app._recordName || app.name) &&
+                    a.path === app.path
+                  )
               );
               await storage.setItem("apps", next);
 
