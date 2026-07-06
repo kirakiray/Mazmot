@@ -35,6 +35,13 @@
       color: var(--md-sys-color-on-surface-variant);
       opacity: 0.7;
     }
+    .delete-btn {
+      z-index: 3;
+      --icon-color: var(--md-sys-color-on-surface-variant);
+    }
+    .delete-btn:hover {
+      --icon-color: var(--md-sys-color-error);
+    }
   </style>
 
   <link
@@ -73,6 +80,18 @@
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
               <div secondary>{{$data.desc}}</div>
+              <p-button
+                slot="suffix"
+                class="delete-btn"
+                variant="text"
+                color="error"
+                icon
+                size="s"
+                on:click="$host.handleDelete($event, $data)"
+                title="删除应用"
+              >
+                <iconify-icon icon="mdi:delete-outline"></iconify-icon>
+              </p-button>
             </p-list-item>
           </o-fill>
         </p-list>
@@ -87,6 +106,11 @@
 
   <script>
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { unmount, get } from "/nos/fs/main.js";
+    import {
+      toast,
+      confirm,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -118,6 +142,51 @@
             const apps = await loadApps();
             this.appList.length = 0;
             apps.forEach((app) => this.appList.push(app));
+          },
+          async handleDelete(event, app) {
+            // 阻止冒泡，避免触发列表项的点击
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+
+            const ok = await confirm({
+              title: "删除应用",
+              message: `确定要从列表中删除应用「${app.name}」吗？该操作只会解除挂载并从列表中移除，不会删除本地目录中的文件。`,
+              yes: "删除",
+              cancel: "取消",
+            });
+            if (!ok) return;
+
+            try {
+              // 尝试卸载对应的挂载目录
+              if (app.path) {
+                try {
+                  const mounted = await get(app.path);
+                  if (mounted) {
+                    await unmount(mounted);
+                  }
+                } catch (unmountErr) {
+                  console.warn("卸载目录失败（可忽略）：", unmountErr);
+                }
+              }
+
+              // 从 ever-cache 中移除
+              const apps = (await storage.apps) || [];
+              const next = apps.filter(
+                (a) => !(a.name === app.name && a.path === app.path)
+              );
+              await storage.setItem("apps", next);
+
+              await this.refreshApps();
+              toast({ content: "已删除", color: "success" });
+            } catch (err) {
+              console.error(err);
+              toast({
+                content: "删除失败：" + (err.message || err),
+                color: "error",
+              });
+            }
           },
         },
         watch: {
