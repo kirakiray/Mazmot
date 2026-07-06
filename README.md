@@ -1,2 +1,3 @@
-# NeonGen
-Robots developing NoneOS applications
+# Mazmot
+
+一个AI应用启动助手，让你快速的启动AI应用。无需配置，无需安装，无需学习。
