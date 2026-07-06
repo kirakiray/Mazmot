@@ -29,6 +29,12 @@
     .app-item:hover div {
       color: var(--md-sys-color-on-primary-container);
     }
+    .empty {
+      padding: 40px 16px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
   </style>
 
   <link
@@ -40,7 +46,12 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 800px">
+  <p-dialog
+    sync:open="dialogOpen"
+    auto-close
+    style="--dialog-max-width: 800px"
+    on:close-dialog="handleDialogClose"
+  >
     <span slot="title">添加应用</span>
     <o-page src="./main/add-app.html" style="width: 100%;"></o-page>
   </p-dialog>
@@ -55,34 +66,65 @@
     </div>
 
     <div class="list-wrapper">
-      <p-list>
-        <o-fill :value="appList">
-          <p-list-item class="app-item" button>
-            <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
-            {{$data.name}}
-            <div secondary>{{$data.desc}}</div>
-          </p-list-item>
-        </o-fill>
-      </p-list>
+      <o-if :value="appList.length > 0">
+        <p-list>
+          <o-fill :value="appList">
+            <p-list-item class="app-item" button>
+              <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
+              {{$data.name}}
+              <div secondary>{{$data.desc}}</div>
+            </p-list-item>
+          </o-fill>
+        </p-list>
+      </o-if>
+      <o-if :value="appList.length === 0">
+        <div class="empty">
+          还没有应用，点击右上角「添加应用」开始创建吧。
+        </div>
+      </o-if>
     </div>
   </div>
 
   <script>
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+
+    async function loadApps() {
+      const apps = (await storage.apps) || [];
+      return apps.map((app) => ({
+        icon: app.icon || "📦",
+        name: app.name,
+        desc: app.desc || app.dirName || "",
+        path: app.path,
+      }));
+    }
+
     export default async () => {
+      const initialApps = await loadApps();
+
       return {
         data: {
           dialogOpen: false,
-          appList: [
-            { icon: "📝", name: "记事本", desc: "轻量级文本笔记工具" },
-            { icon: "📅", name: "日历", desc: "日程管理与提醒" },
-            { icon: "📊", name: "数据看板", desc: "可视化数据分析面板" },
-            { icon: "💬", name: "聊天助手", desc: "AI 智能对话助手" },
-            { icon: "⚙️", name: "系统设置", desc: "应用配置与偏好管理" },
-          ],
+          appList: initialApps,
         },
         proto: {
           handleAdd() {
             this.dialogOpen = true;
+          },
+          async handleDialogClose() {
+            this.dialogOpen = false;
+            await this.refreshApps();
+          },
+          async refreshApps() {
+            const apps = await loadApps();
+            this.appList.length = 0;
+            apps.forEach((app) => this.appList.push(app));
+          },
+        },
+        watch: {
+          async dialogOpen(val) {
+            if (!val) {
+              await this.refreshApps();
+            }
           },
         },
       };

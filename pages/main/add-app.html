@@ -30,63 +30,650 @@
       gap: 12px;
       flex-wrap: wrap;
     }
+
+    /* 步骤导航条 */
+    .steps {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 24px 24px;
+      margin-bottom: 8px;
+    }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.6;
+    }
+    .step[active] {
+      color: var(--md-sys-color-primary);
+      opacity: 1;
+    }
+    .step[done] {
+      color: var(--md-sys-color-primary);
+      opacity: 1;
+    }
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .step[active] .step-circle {
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    .step[done] .step-circle {
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    .step-label {
+      font-size: 12px;
+      margin-top: 6px;
+      white-space: nowrap;
+    }
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background-color: var(--md-sys-color-surface-variant);
+      margin: 0 8px;
+      position: relative;
+      top: -10px;
+    }
+    .step-line[done] {
+      background-color: var(--md-sys-color-primary);
+    }
+
+    /* 表单 */
+    .form-field {
+      margin-bottom: 16px;
+    }
+    .form-field p-input,
+    .form-field p-textarea {
+      width: 100%;
+    }
+    .field-error {
+      color: var(--md-sys-color-error);
+      font-size: 12px;
+      margin-top: 6px;
+      min-height: 16px;
+    }
+    .selected-info {
+      padding: 12px 16px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 16px;
+      word-break: break-all;
+    }
+    .footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px;
+      border-top: 1px solid var(--md-sys-color-surface-variant);
+      margin-top: 12px;
+    }
+
+    /* 写入进度条 */
+    .progress-wrap {
+      padding: 8px 0 16px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .file-list {
+      margin-top: 16px;
+      max-height: 200px;
+      overflow-y: auto;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .file-item {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: monospace;
+    }
+    .file-item[status="done"] {
+      color: var(--md-sys-color-primary);
+    }
+    .success-block {
+      text-align: center;
+      padding: 16px;
+      color: var(--md-sys-color-primary);
+    }
+    .success-block iconify-icon {
+      font-size: 48px;
+    }
   </style>
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <!-- <l-m src="http://localhost:5002/packages/input/input.html"></l-m> -->
+  <l-m src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
 
-  <!-- 开发应用 -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-title">开发应用</div>
+  <!-- 步骤导航条 -->
+  <div class="steps">
+    <div class="step" attr:active="step === 1" attr:done="step > 1">
+      <div class="step-circle">
+        <x-if :value="step > 1">
+          <iconify-icon icon="mdi:check"></iconify-icon>
+        </x-if>
+        <x-if :value="step <= 1">1</x-if>
+      </div>
+      <div class="step-label">选择目录</div>
     </div>
-    <div class="btn-group">
-      <p-button color="primary" variant="outlined">虚拟目录</p-button>
-      <p-button color="primary" variant="outlined">本地目录</p-button>
+    <div class="step-line" attr:done="step > 1"></div>
+    <div class="step" attr:active="step === 2" attr:done="step > 2">
+      <div class="step-circle">
+        <x-if :value="step > 2">
+          <iconify-icon icon="mdi:check"></iconify-icon>
+        </x-if>
+        <x-if :value="step <= 2">2</x-if>
+      </div>
+      <div class="step-label">应用信息</div>
     </div>
-    <div class="section-desc">
-      虚拟目录基于 NoneOS
-      虚拟文件系统，数据存储在浏览器内；本地目录则挂载你电脑上的真实文件夹。
+    <div class="step-line" attr:done="step > 2"></div>
+    <div class="step" attr:active="step === 3">
+      <div class="step-circle">3</div>
+      <div class="step-label">初始化文件</div>
     </div>
   </div>
 
-  <!-- 应用市场 -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-title">应用市场</div>
-    </div>
-    <p-button color="primary" variant="outlined" disabled>浏览市场</p-button>
-    <div class="section-desc">浏览官方收录的应用，一键安装。</div>
-  </div>
-
-  <!-- 外源下载 -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-title">外源下载</div>
-    </div>
-    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
-      <p-input
-        placeholder="https://example.com/app.zip"
-        disabled
-        style="flex: 1 0 320px"
-      >
-        <span slot="label">应用包地址</span>
-        <p-button
-          slot="suffix"
-          color="primary"
-          variant="text"
-          size="s"
-          style="margin-left: 16px"
-        >
-          安装
+  <!-- Step 1: 选择应用来源 -->
+  <o-if :value="step === 1">
+    <!-- 开发应用 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">开发应用</div>
+      </div>
+      <div class="btn-group">
+        <p-button color="primary" variant="outlined" disabled>虚拟目录</p-button>
+        <p-button color="primary" variant="outlined" on:click="chooseLocal">
+          本地目录
         </p-button>
-      </p-input>
-      <p-button color="primary" variant="outlined" disabled>
-        选择安装包
+      </div>
+      <div class="section-desc">
+        虚拟目录基于 NoneOS
+        虚拟文件系统，数据存储在浏览器内；本地目录则挂载你电脑上的真实文件夹。
+      </div>
+    </div>
+
+    <!-- 应用市场 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">应用市场</div>
+      </div>
+      <p-button color="primary" variant="outlined" disabled>浏览市场</p-button>
+      <div class="section-desc">浏览官方收录的应用，一键安装。</div>
+    </div>
+
+    <!-- 外源下载 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">外源下载</div>
+      </div>
+      <div
+        style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap"
+      >
+        <p-input
+          placeholder="https://example.com/app.zip"
+          disabled
+          style="flex: 1 0 320px"
+        >
+          <span slot="label">应用包地址</span>
+          <p-button
+            slot="suffix"
+            color="primary"
+            variant="text"
+            size="s"
+            style="margin-left: 16px"
+          >
+            安装
+          </p-button>
+        </p-input>
+        <p-button color="primary" variant="outlined" disabled>
+          选择安装包
+        </p-button>
+      </div>
+      <div class="section-desc">
+        通过外部 URL 自动下载安装，或选择本地开发的 ZIP 安装包。
+      </div>
+    </div>
+  </o-if>
+
+  <!-- Step 2: 应用名称与描述 -->
+  <o-if :value="step === 2">
+    <div class="section">
+      <div class="selected-info">
+        <div>已选择本地目录：<strong>{{selectedDirName}}</strong></div>
+      </div>
+
+      <div class="form-field">
+        <p-input
+          sync:value="appName"
+          placeholder="例如：my-app"
+          hang-label
+          on:input="onNameInput"
+        >
+          <span slot="label">应用名称 *</span>
+        </p-input>
+        <div class="field-error">{{nameError}}</div>
+      </div>
+
+      <div class="form-field">
+        <p-textarea
+          sync:value="appDesc"
+          placeholder="简单描述你的应用（可选）"
+          hang-label
+          rows="3"
+        >
+          <span slot="label">应用描述</span>
+        </p-textarea>
+      </div>
+
+      <div class="section-desc">
+        应用名称只能包含字母、数字、下划线（_）和连字符（-），不能包含空格或特殊字符，且不能与已有的应用重复。
+      </div>
+    </div>
+
+    <div class="footer">
+      <p-button variant="text" on:click="backToStep1">上一步</p-button>
+      <p-button color="primary" on:click="confirmAppInfo">确认</p-button>
+    </div>
+  </o-if>
+
+  <!-- Step 3: 写入文件 -->
+  <o-if :value="step === 3">
+    <div class="section">
+      <div class="selected-info">
+        <div>应用名称：<strong>{{appName}}</strong></div>
+        <o-if :value="appDesc">
+          <div style="margin-top: 4px">描述：{{appDesc}}</div>
+        </o-if>
+        <div style="margin-top: 4px">目标目录：{{selectedDirName}}</div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-bar">
+          <div class="progress-fill" :style.width="progress + '%'"></div>
+        </div>
+        <div class="progress-text">
+          <span>{{progressText}}</span>
+          <span>{{progress}}%</span>
+        </div>
+
+        <div class="file-list">
+          <o-fill :value="fileLogs">
+            <div class="file-item" attr:status="$data.status">
+              <iconify-icon
+                icon="mdi:check-circle"
+                x-if="$data.status === 'done'"
+              ></iconify-icon>
+              <iconify-icon
+                icon="mdi:progress-clock"
+                x-if="$data.status === 'writing'"
+              ></iconify-icon>
+              <span>{{$data.path}}</span>
+            </div>
+          </o-fill>
+        </div>
+      </div>
+
+      <o-if :value="finished">
+        <div class="success-block">
+          <iconify-icon icon="mdi:check-circle"></iconify-icon>
+          <div style="margin-top: 8px; font-size: 14px">应用创建完成！</div>
+        </div>
+      </o-if>
+    </div>
+
+    <div class="footer">
+      <p-button
+        color="primary"
+        on:click="closeDialog"
+        attr:disabled="!finished"
+      >
+        完成
       </p-button>
     </div>
-    <div class="section-desc">
-      通过外部 URL 自动下载安装，或选择本地开发的 ZIP 安装包。
-    </div>
+  </o-if>
+
+  <script>
+    import { open, mount, get } from "/nos/fs/main.js";
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
+
+    // ofa.js Hello World 模板文件生成器
+    function buildTemplateFiles({ name, desc }) {
+      const appJson = JSON.stringify(
+        {
+          name,
+          displayName: name,
+          version: "0.1.0",
+          description: desc || "",
+          author: "",
+          icon: "",
+          entry: "./index.html",
+          appConfig: "./app-config.js",
+          permissions: [],
+          capabilities: [],
+          createdAt: Date.now(),
+          mazmot: {
+            source: "self-created",
+          },
+        },
+        null,
+        2
+      );
+
+      const indexHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${name}</title>
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs"
+      type="module"
+    ><\/script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
+      type="module"
+    ><\/script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <style>
+      html,
+      body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <o-router fix-body>
+      <o-app src="./app-config.js"></o-app>
+    </o-router>
+  </body>
+</html>
+`;
+
+      const appConfigJs = `export const home = "./pages/home.html";
+
+export const pageAnime = {
+  current: {
+    opacity: 1,
+    transform: "translate(0, 0)",
+  },
+  next: {
+    opacity: 0,
+    transform: "translate(30px, 0)",
+  },
+  previous: {
+    opacity: 0,
+    transform: "translate(-30px, 0)",
+  },
+};
+`;
+
+      const homeHtml = `<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: var(--md-sys-color-primary);
+      margin-bottom: 12px;
+    }
+    p {
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+  </style>
+  <div class="welcome">
+    <h1>Hello, ${name}!</h1>
+    <p>${desc || "Welcome to your new ofa.js application."}</p>
   </div>
+  <script>
+    export default async () => {
+      return {
+        data: {},
+      };
+    };
+  <\/script>
+</template>
+`;
+
+      return [
+        { path: "app.json", content: appJson },
+        { path: "index.html", content: indexHtml },
+        { path: "app-config.js", content: appConfigJs },
+        { path: "pages/home.html", content: homeHtml },
+      ];
+    }
+
+    export default async () => {
+      return {
+        data: {
+          step: 1,
+          _selectedHandle: null, // 用户选择的本地目录句柄（_ 前缀避免响应式代理复杂对象）
+          _mountedHandle: null, // mount 后的句柄
+          selectedDirName: "",
+          appName: "",
+          appDesc: "",
+          nameError: "",
+          progress: 0,
+          progressText: "准备中...",
+          fileLogs: [],
+          finished: false,
+        },
+        proto: {
+          // Step 1: 选择本地目录
+          async chooseLocal() {
+            try {
+              const handle = await open();
+              if (!handle) return;
+              this._selectedHandle = handle;
+              this.selectedDirName = handle.name || "已选择的目录";
+              this.step = 2;
+            } catch (err) {
+              console.error(err);
+              if (err && err.name !== "AbortError") {
+                toast({
+                  content: "选择目录失败：" + (err.message || err),
+                  type: "error",
+                });
+              }
+            }
+          },
+
+          // Step 2: 校验输入
+          onNameInput() {
+            if (this.nameError) {
+              this.nameError = "";
+            }
+          },
+
+          async validateName() {
+            const name = (this.appName || "").trim();
+            if (!name) {
+              this.nameError = "应用名称不能为空";
+              return false;
+            }
+            if (/\s/.test(name)) {
+              this.nameError = "应用名称不能包含空格";
+              return false;
+            }
+            if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+              this.nameError =
+                "应用名称只能包含字母、数字、下划线和连字符";
+              return false;
+            }
+            // 检查重复
+            const apps = (await storage.apps) || [];
+            if (apps.some((app) => app.name === name)) {
+              this.nameError = "该应用名称已存在";
+              return false;
+            }
+            return true;
+          },
+
+          backToStep1() {
+            this.step = 1;
+            this.nameError = "";
+          },
+
+          async confirmAppInfo() {
+            const ok = await this.validateName();
+            if (!ok) return;
+
+            try {
+              // 挂载所选目录
+              const mountedHandle = await mount(this._selectedHandle);
+              this._mountedHandle = mountedHandle;
+
+              // 保存到 ever-cache
+              const apps = (await storage.apps) || [];
+              apps.push({
+                name: this.appName.trim(),
+                desc: (this.appDesc || "").trim(),
+                path: mountedHandle.path,
+                dirName: this.selectedDirName,
+                createdAt: Date.now(),
+              });
+              await storage.setItem("apps", apps);
+
+              this.step = 3;
+              // 进入 step3 后立即开始写文件
+              this.startWriteFiles();
+            } catch (err) {
+              console.error(err);
+              alert({
+                content: "挂载目录失败：" + (err.message || err),
+              });
+            }
+          },
+
+          // Step 3: 写入文件
+          async startWriteFiles() {
+            this.progress = 0;
+            this.progressText = "准备写入...";
+            this.fileLogs.length = 0;
+            this.finished = false;
+
+            const files = buildTemplateFiles({
+              name: this.appName.trim(),
+              desc: (this.appDesc || "").trim(),
+            });
+
+            // 初始化日志
+            files.forEach((f) => {
+              this.fileLogs.push({ path: f.path, status: "pending" });
+            });
+
+            const total = files.length;
+            const dirHandle = this._selectedHandle;
+
+            try {
+              for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                this.fileLogs[i].status = "writing";
+                this.progressText = `正在写入 ${f.path} ...`;
+
+                // 使用父目录相对路径创建文件
+                const fileHandle = await dirHandle.get(f.path, {
+                  create: "file",
+                });
+                await fileHandle.write(f.content);
+
+                this.fileLogs[i].status = "done";
+                this.progress = Math.round(((i + 1) / total) * 100);
+
+                // 让 UI 有机会更新
+                await new Promise((r) => setTimeout(r, 120));
+              }
+
+              this.progressText = "全部文件写入完成";
+              this.finished = true;
+              toast({ content: "应用创建成功", type: "success" });
+            } catch (err) {
+              console.error(err);
+              this.progressText = "写入失败：" + (err.message || err);
+              alert({
+                content: "写入文件失败：" + (err.message || err),
+              });
+            }
+          },
+
+          closeDialog() {
+            // 触发自定义事件，由外层页面 (home.html) 关闭弹窗并刷新列表
+            this.emit("close-dialog", { bubbles: true, composed: true });
+            this.resetState();
+          },
+
+          resetState() {
+            this.step = 1;
+            this._selectedHandle = null;
+            this._mountedHandle = null;
+            this.selectedDirName = "";
+            this.appName = "";
+            this.appDesc = "";
+            this.nameError = "";
+            this.progress = 0;
+            this.progressText = "准备中...";
+            this.fileLogs.length = 0;
+            this.finished = false;
+          },
+        },
+      };
+    };
+  </script>
 </template>
