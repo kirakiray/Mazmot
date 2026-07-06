@@ -114,12 +114,35 @@
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
-      return apps.map((app) => ({
-        icon: app.icon || "📦",
-        name: app.name,
-        desc: app.desc || app.dirName || "",
-        path: app.path,
-      }));
+      const results = await Promise.all(
+        apps.map(async (app) => {
+          let manifest = null;
+          try {
+            // 从挂载目录读取 app.json 获取真实的应用信息
+            const jsonFile = await get(`${app.path}/app.json`);
+            if (jsonFile) {
+              manifest = await jsonFile.json();
+            }
+          } catch (err) {
+            console.warn(`读取 ${app.path}/app.json 失败：`, err);
+          }
+
+          return {
+            icon: (manifest && manifest.icon) || "📦",
+            name:
+              (manifest && (manifest.displayName || manifest.name)) ||
+              app.name,
+            desc:
+              (manifest && manifest.description) ||
+              app.dirName ||
+              "",
+            path: app.path,
+            // 记录索引用信息（删除时用于精确匹配 ever-cache 记录）
+            _recordName: app.name,
+          };
+        })
+      );
+      return results;
     }
 
     export default async () => {
@@ -174,7 +197,9 @@
               // 从 ever-cache 中移除
               const apps = (await storage.apps) || [];
               const next = apps.filter(
-                (a) => !(a.name === app.name && a.path === app.path)
+                (a) =>
+                  !(a.name === (app._recordName || app.name) &&
+                    a.path === app.path)
               );
               await storage.setItem("apps", next);
 
