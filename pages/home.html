@@ -76,7 +76,11 @@
       <o-if :value="appList.length > 0">
         <p-list>
           <o-fill :value="appList">
-            <p-list-item class="app-item" button>
+            <p-list-item
+              class="app-item"
+              button
+              on:click="$host.handleOpen($data)"
+            >
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
               <div secondary>{{$data.desc}}</div>
@@ -156,6 +160,15 @@
         proto: {
           handleAdd() {
             this.dialogOpen = true;
+          },
+          handleOpen(app) {
+            if (!app || !app.path) {
+              toast({ content: "无法打开：缺少应用路径", color: "error" });
+              return;
+            }
+            // 挂载目录通过 /$mount-xxx/ 路径由 Service Worker 提供 HTTP 访问
+            const url = `/${app.path}/index.html`;
+            window.open(url, "_blank");
           },
           async handleDialogClose() {
             this.dialogOpen = false;
