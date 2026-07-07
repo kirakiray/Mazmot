@@ -54,9 +54,6 @@
       line-height: 1.2;
       white-space: nowrap;
     }
-    .open-badge iconify-icon {
-      font-size: 12px;
-    }
     .source-badge {
       display: inline-flex;
       align-items: center;
@@ -79,9 +76,6 @@
       border-color: var(--md-sys-color-secondary);
       color: var(--md-sys-color-secondary);
     }
-    .source-badge iconify-icon {
-      font-size: 12px;
-    }
     .container-badge {
       display: inline-flex;
       align-items: center;
@@ -97,8 +91,28 @@
       background-color: var(--md-sys-color-primary-container);
       font-family: monospace;
     }
-    .container-badge iconify-icon {
+    .sub-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 8px;
       font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .sub-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sub-info-label {
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      min-width: 72px;
+    }
+    .sub-info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
     }
 
     .icon-btn {
@@ -121,6 +135,7 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <p-dialog
     sync:open="dialogOpen"
@@ -129,7 +144,7 @@
     on:close-dialog="handleDialogClose"
   >
     <span slot="title">添加应用</span>
-    <o-page src="./home/add-app.html" style="width: 100%;"></o-page>
+    <o-page src="./home/add-app.html" style="width: 100%"></o-page>
   </p-dialog>
 
   <div class="container">
@@ -145,44 +160,30 @@
       <o-if :value="appList.length > 0">
         <p-list>
           <o-fill :value="appList">
-            <p-list-item
-              class="app-item"
-              button
-              on:click="$host.handleOpen($data)"
-            >
+            <p-list-item class="app-item" collapsible button>
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
               <div secondary>{{$data.desc}}</div>
 
               <div slot="suffix" class="item-suffix">
-                <span
-                  class="source-badge"
-                  attr:data-source="$data.source"
-                  title="应用来源"
-                >
-                  <o-if :value="$data.source === 'local'">
-                    <iconify-icon icon="mdi:folder-outline"></iconify-icon>
-                    本地目录
-                  </o-if>
-                  <o-if :value="$data.source === 'virtual'">
-                    <iconify-icon icon="mdi:database-outline"></iconify-icon>
-                    虚拟目录
-                  </o-if>
-                </span>
-
-                <o-if :value="$data.containerUrl">
-                  <span class="container-badge" title="应用运行的容器地址">
-                    <iconify-icon icon="mdi:docker"></iconify-icon>
-                    {{$data.containerUrl}}
-                  </span>
-                </o-if>
-
                 <o-if :value="$data.opened">
                   <span class="open-badge" title="点击可切换到已打开的窗口">
-                    <iconify-icon icon="mdi:circle-medium"></iconify-icon>
+                    <n-icon icon="mdi:circle-medium"></n-icon>
                     已打开
                   </span>
                 </o-if>
+
+                <p-button
+                  class="icon-btn tab-btn"
+                  variant="text"
+                  color="primary"
+                  icon
+                  size="s"
+                  on:click="$host.handleOpenTab($event, $data)"
+                  title="在新标签页中打开"
+                >
+                  <n-icon icon="mdi:tab-plus"></n-icon>
+                </p-button>
 
                 <p-button
                   class="icon-btn window-btn"
@@ -193,32 +194,73 @@
                   on:click="$host.handleOpenWindow($event, $data)"
                   title="在小窗口中打开（类原生应用）"
                 >
-                  <iconify-icon
-                    icon="mdi:open-in-new"
-                    style="transform: rotate(0deg)"
-                  ></iconify-icon>
-                </p-button>
-
-                <p-button
-                  class="icon-btn delete-btn"
-                  variant="text"
-                  color="error"
-                  icon
-                  size="s"
-                  on:click="$host.handleDelete($event, $data)"
-                  title="删除应用"
-                >
-                  <iconify-icon icon="mdi:delete-outline"></iconify-icon>
+                  <n-icon icon="mdi:open-in-new"></n-icon>
                 </p-button>
               </div>
+
+              <p-list slot="sublist">
+                <p-list-item>
+                  <div class="sub-info">
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">应用来源：</span>
+                      <span
+                        class="source-badge"
+                        attr:data-source="$data.source"
+                        title="应用来源"
+                      >
+                        <o-if :value="$data.source === 'local'">
+                          <n-icon icon="mdi:folder-outline"></n-icon>
+                          本地目录
+                        </o-if>
+                        <o-if :value="$data.source === 'virtual'">
+                          <n-icon icon="mdi:database-outline"></n-icon>
+                          虚拟目录
+                        </o-if>
+                      </span>
+                    </div>
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">容器地址：</span>
+                      <o-if :value="$data.containerUrl">
+                        <span
+                          class="container-badge"
+                          title="应用运行的容器地址"
+                        >
+                          <n-icon icon="mdi:docker"></n-icon>
+                          {{$data.containerUrl}}
+                        </span>
+                      </o-if>
+                      <o-if :value="!$data.containerUrl">
+                        <span class="sub-info-value">未分配</span>
+                      </o-if>
+                    </div>
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">挂载路径：</span>
+                      <span class="sub-info-value">{{$data.path}}</span>
+                    </div>
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">操作：</span>
+                      <p-button
+                        variant="outlined"
+                        color="error"
+                        size="s"
+                        on:click="$host.handleDelete($event, $data)"
+                      >
+                        <n-icon
+                          icon="mdi:delete-outline"
+                          slot="prefix"
+                        ></n-icon>
+                        删除应用
+                      </p-button>
+                    </div>
+                  </div>
+                </p-list-item>
+              </p-list>
             </p-list-item>
           </o-fill>
         </p-list>
       </o-if>
       <o-if :value="appList.length === 0">
-        <div class="empty">
-          还没有应用，点击右上角「添加应用」开始创建吧。
-        </div>
+        <div class="empty">还没有应用，点击右上角「添加应用」开始创建吧。</div>
       </o-if>
     </div>
   </div>
@@ -266,19 +308,15 @@
           return {
             icon: (manifest && manifest.icon) || "📦",
             name:
-              (manifest && (manifest.displayName || manifest.name)) ||
-              app.name,
-            desc:
-              (manifest && manifest.description) ||
-              app.dirName ||
-              "",
+              (manifest && (manifest.displayName || manifest.name)) || app.name,
+            desc: (manifest && manifest.description) || app.dirName || "",
             path: app.path,
             source: app.source || "local",
             containerUrl: app.containerUrl || "",
             _recordName: app.name,
             opened: isWindowAlive(app.path) || lsOpened.has(app.path),
           };
-        })
+        }),
       );
       return results;
     }
@@ -325,6 +363,15 @@
             markOpened(app.path, win);
             const target = this.appList.find((a) => a.path === app.path);
             if (target) target.opened = true;
+          },
+
+          // 新标签页打开（点击按钮版本，阻止冒泡）
+          handleOpenTab(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            return this.handleOpen(app);
           },
 
           // 新标签页打开
@@ -397,11 +444,11 @@
             const height = 720;
             const left = Math.max(
               0,
-              Math.round((screen.availWidth - width) / 2)
+              Math.round((screen.availWidth - width) / 2),
             );
             const top = Math.max(
               0,
-              Math.round((screen.availHeight - height) / 2)
+              Math.round((screen.availHeight - height) / 2),
             );
             const features = [
               `width=${width}`,
@@ -418,11 +465,7 @@
               "titlebar=no",
             ].join(",");
 
-            const win = window.open(
-              url,
-              `mazmot-app-${app.path}`,
-              features
-            );
+            const win = window.open(url, `mazmot-app-${app.path}`, features);
             if (!win) {
               toast({
                 content: "窗口被浏览器拦截，请允许弹出窗口",
@@ -489,7 +532,7 @@
                   !(
                     a.name === (app._recordName || app.name) &&
                     a.path === app.path
-                  )
+                  ),
               );
               await storage.setItem("apps", next);
 
