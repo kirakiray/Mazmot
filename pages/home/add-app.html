@@ -373,6 +373,11 @@
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles } from "./template-writer.js";
+    import {
+      getAvailablePort,
+      getContainerUrl,
+      pushFilesToContainer,
+    } from "./container-mgr.js";
 
     export default async () => {
       return {
@@ -380,6 +385,7 @@
           step: 1,
           _selectedHandle: null, // 用户选择的本地目录句柄（_ 前缀避免响应式代理复杂对象）
           _mountedHandle: null, // mount 后的句柄
+          _containerPort: null, // 分配的容器端口
           selectedDirName: "",
           appName: "",
           appDesc: "",
@@ -450,18 +456,28 @@
             if (!ok) return;
 
             try {
+              // 检查可用容器
+              const apps = (await storage.apps) || [];
+              const port = getAvailablePort(apps);
+              if (!port) {
+                this.nameError = "已无可用容器（共 5 个），请先删除不需要的应用释放容器";
+                return;
+              }
+              this._containerPort = port;
+
               // 挂载所选目录
               const mountedHandle = await mount(this._selectedHandle);
               this._mountedHandle = mountedHandle;
 
-              // 保存到 ever-cache
-              const apps = (await storage.apps) || [];
+              // 保存到 ever-cache（包含容器地址）
+              const containerUrl = getContainerUrl(port);
               apps.push({
                 name: this.appName.trim(),
                 desc: (this.appDesc || "").trim(),
                 path: mountedHandle.path,
                 dirName: this.selectedDirName,
                 source: "local",
+                containerUrl,
                 createdAt: Date.now(),
               });
               await storage.setItem("apps", apps);
@@ -488,7 +504,7 @@
             const desc = (this.appDesc || "").trim();
 
             try {
-              await writeTemplateFiles({
+              const files = await writeTemplateFiles({
                 dirHandle: this._selectedHandle,
                 name,
                 desc,
@@ -507,7 +523,17 @@
                 },
               });
 
-              this.progressText = "全部文件写入完成";
+              // 推送文件到独立容器
+              this.progressText = `正在推送文件到容器 ${getContainerUrl(this._containerPort)} ...`;
+              this.progress = 100;
+              try {
+                await pushFilesToContainer(this._containerPort, files);
+                this.progressText = "全部文件写入完成，已推送至容器";
+              } catch (pushErr) {
+                console.warn("推送文件到容器失败（不影响本地文件，启动应用时会重新推送）：", pushErr);
+                this.progressText = "本地文件已写入，容器推送失败（启动时会重试）";
+              }
+
               this.finished = true;
               toast({ content: "应用创建成功", type: "success" });
             } catch (err) {
@@ -529,6 +555,7 @@
             this.step = 1;
             this._selectedHandle = null;
             this._mountedHandle = null;
+            this._containerPort = null;
             this.selectedDirName = "";
             this.appName = "";
             this.appDesc = "";
