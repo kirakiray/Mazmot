@@ -1,6 +1,6 @@
-# Mazmot 项目开发指引
+# Mazmot 项目 Context
 
-> 这份指引提供项目全局视图，帮助 AI 快速掌握项目结构、技术栈和关键设计。阅读后再针对具体任务查看相关文件即可。
+> 这份 Context 提供项目全局视图，帮助 AI 快速掌握项目结构、技术栈和关键设计。阅读后再针对具体任务查看相关文件即可。
 
 ## 项目定位
 
@@ -27,6 +27,7 @@ Mazmot/
 ├── app-config.js             # ofa.js 主应用配置（init "mazmot" 命名空间）
 ├── sw.js                     # NoneOS Core Service Worker
 ├── AGENTS.md                 # AI 开发规范（必读）
+├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 只提供 static 脚本：node scripts/static.js
 │
 ├── container/                # 独立容器目录（40031-40035 端口分别托管此目录）
@@ -79,7 +80,7 @@ mount 本地目录 → 存入 ever-cache 的 apps[]（含 containerUrl）
    ↓
 writeTemplateFiles 写入 4 个模板文件到本地目录
    ↓
-pushFilesToContainer(port, files) 通过隐藏 iframe + postMessage 推送到容器
+pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推送到容器
 ```
 
 #### 2. 启动应用（`pages/home.html`）
@@ -89,7 +90,7 @@ handleOpen / handleOpenWindow / handleOpenTab
    ↓
 readAppFiles(mountPath) 读取本地最新文件（用 dir.flat() + text()）
    ↓
-pushFilesToContainer(port, files) 推送到容器（覆盖）
+pushFilesToContainer(port, files, appName) 推送到容器（校验占用情况）
    ↓
 window.open(getRunUrl(containerUrl))
    → 容器 _install.html?mode=run 加载
@@ -167,7 +168,7 @@ unmount(mountedHandle) → 卸载本地目录
 
 ### 状态追踪（`app-status.js`）
 
-用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重跟踪应用窗口。**注意**：跨域后 BroadcastChannel 无法工作，主要依靠 `openedWindows` Map 中的 window 引用（`win.closed`）判断。
+用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。**注意**：跨域后 BroadcastChannel 无法工作，主要依靠 `openedWindows` Map 中的 window 引用（`win.closed`）判断。
 
 ## 开发/调试
 
@@ -193,7 +194,7 @@ npm run static
 1. 点击"添加应用" → 选择本地目录（Chrome 才支持）
 2. 输入名称 → 系统分配容器端口 → 写入 4 个模板文件到本地目录 → 推送到容器
 3. 应用列表出现新项，容器地址徽章显示 `http://localhost:40031`
-4. 点击应用行或 `tab-plus` / `open-in-new` 按钮启动
+4. 点击应用行或 `tab-plus` / `open-in-new` / `handleOpenWindow` 按钮启动
 
 ## 关键陷阱
 
@@ -203,6 +204,7 @@ npm run static
 4. **改造前**创建的应用没有 `containerUrl`，无法打开，需删除后重新创建
 5. **图标只用 `n-icon`**（`<l-m src="/nos/n-icon/n-icon.html"></l-m>` 引入）—— 项目已从 `iconify-icon` 全部迁移
 6. **添加 UI 前必读 SKILL 文档**：`ofajs-docs`、`punch-ui`、`noneos-core-docs`、`ever-cache`
+7. **容器占用自动避让**：`findTrulyAvailablePort` 会实时探测物理容器。如果容器已被其他域名（Origin）的应用占用，系统会自动跳过并尝试下一个可用端口。
 
 ## Skill 资源
 

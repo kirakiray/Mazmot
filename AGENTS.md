@@ -19,7 +19,8 @@
 
 1. **先读 Skill**：在编写代码或提供建议前，必须先检索并阅读上述对应的 Skill 文档。
 2. **遵循模式**：优先采用框架推荐的最佳实践，确保与现有代码库的风格一致。
-3. **架构对齐**：所有改动需符合 `noneos-core` 与 `ofa.js` 的设计哲学。
+3. **架构对齐**：所有改动需符合 `noneos-core` 与 `ofa.js` 的设计哲学。更多项目细节请参考 [CONTEXT.md](file:///Users/yao/Documents/GitHub/Mazmot/CONTEXT.md)。
+4. **同步更新 Context**：如果你的改动涉及系统架构、流程或重要逻辑，务必同步更新 [CONTEXT.md](file:///Users/yao/Documents/GitHub/Mazmot/CONTEXT.md)，以便后续的 AI 代理能够快速掌握项目现状。
 
 
 ## 技能资源与导入 (Skill Resources)
