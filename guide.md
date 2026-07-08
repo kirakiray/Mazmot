@@ -73,7 +73,7 @@ Mazmot/
 ```
 选择本地目录 (open) → 输入应用名 → 校验唯一性
    ↓
-分配可用容器端口 (getAvailablePort，5 个全占则报错)
+分配可用容器端口 (findTrulyAvailablePort，自动跳过被占用的物理容器，5 个全占则报错)
    ↓
 mount 本地目录 → 存入 ever-cache 的 apps[]（含 containerUrl）
    ↓

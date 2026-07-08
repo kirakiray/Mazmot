@@ -374,9 +374,10 @@
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles } from "./template-writer.js";
     import {
-      getAvailablePort,
+      findTrulyAvailablePort,
       getContainerUrl,
       pushFilesToContainer,
+      checkContainerOccupancy,
     } from "./container-mgr.js";
 
     export default async () => {
@@ -456,11 +457,11 @@
             if (!ok) return;
 
             try {
-              // 检查可用容器
+              // 检查可用容器（自动跳过已被占用的）
               const apps = (await storage.apps) || [];
-              const port = getAvailablePort(apps);
+              const port = await findTrulyAvailablePort(apps);
               if (!port) {
-                this.nameError = "已无可用容器（共 5 个），请先删除不需要的应用释放容器";
+                this.nameError = "当前所有物理容器均已被占用或不可用，请先释放容器";
                 return;
               }
               this._containerPort = port;

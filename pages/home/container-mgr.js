@@ -28,19 +28,36 @@ export function extractPort(url) {
 }
 
 /**
- * 获取可用的容器端口
- * @param {Array} apps - 当前已注册的应用列表（来自 ever-cache）
- * @returns {number|null} 可用端口号，null 表示无可用容器
+ * 寻找真正可用的容器端口（自动跳过本地已用和被其他域名占用的容器）
+ * @param {Array} apps - 当前本地已有的应用列表
+ * @returns {Promise<number|null>}
  */
-export function getAvailablePort(apps) {
-  const usedPorts = new Set(
+export async function findTrulyAvailablePort(apps) {
+  const localUsedPorts = new Set(
     apps
       .map((app) => extractPort(app.containerUrl))
       .filter((p) => p !== null),
   );
+
   for (const port of CONTAINER_PORTS) {
-    if (!usedPorts.has(port)) return port;
+    // 1. 首先跳过本地数据库已经记录使用的端口
+    if (localUsedPorts.has(port)) continue;
+
+    // 2. 对物理容器进行“打招呼”探测
+    try {
+      const occupier = await checkContainerOccupancy(port);
+      if (!occupier) {
+        // 只有真正闲置的容器才返回
+        return port;
+      }
+      // 如果被占用（无论是不是自己域名），因为 localUsedPorts 没记，说明本地状态不一致或被其他系统占用，跳过
+      console.warn(`容器端口 ${port} 物理状态已被占用，尝试下一个...`);
+    } catch (err) {
+      // 探测失败（如容器服务未启动）也跳过
+      console.error(`探测容器端口 ${port} 失败：`, err);
+    }
   }
+
   return null;
 }
 
@@ -122,6 +139,24 @@ export function pushFilesToContainer(
       if (!msg || !msg.type) return;
 
       if (msg.type === "ready") {
+        // 校验占用逻辑
+        if (msg.occupier) {
+          const currentOrigin = window.location.origin;
+          if (
+            msg.occupier.parentOrigin !== currentOrigin ||
+            msg.occupier.name !== appName
+          ) {
+            settled = true;
+            cleanup();
+            reject(
+              new Error(
+                `容器已被来自 "${msg.occupier.parentOrigin}" 的应用 "${msg.occupier.name}" 占用`,
+              ),
+            );
+            return;
+          }
+        }
+
         // 容器就绪，发送文件
         try {
           iframe.contentWindow.postMessage(
@@ -223,4 +258,56 @@ export function clearContainer(port, timeout = 30000) {
  */
 export function getRunUrl(containerUrl) {
   return `${containerUrl}/_install.html?mode=run`;
+}
+
+/**
+ * 主动检查容器的占用情况（打招呼）
+ * @param {number} port
+ * @param {number} [timeout=10000]
+ * @returns {Promise<{ name: string, parentOrigin: string, time: number }|null>} 返回占用者信息，null 表示闲置
+ */
+export function checkContainerOccupancy(port, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const containerUrl = getContainerUrl(port);
+    const { iframe, destroy } = createContainerIframe(port);
+
+    let timer = null;
+    let settled = false;
+
+    function cleanup() {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("message", handler);
+      destroy();
+    }
+
+    function handler(event) {
+      if (event.origin !== containerUrl) return;
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+
+      if (msg.type === "ready") {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          resolve(msg.occupier || null);
+        }
+      } else if (msg.type === "error") {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(new Error(msg.message || "容器检查失败"));
+        }
+      }
+    }
+
+    window.addEventListener("message", handler);
+
+    timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("容器连接超时"));
+      }
+    }, timeout);
+  });
 }
