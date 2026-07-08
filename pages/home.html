@@ -268,6 +268,7 @@
   <script>
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
     import { get } from "/nos/fs/main.js";
+    import { DirHandle } from "/nos/fs/handle/dir.js";
     import {
       toast,
       confirm,
@@ -296,14 +297,15 @@
       const results = await Promise.all(
         apps.map(async (app) => {
           let manifest = null;
+          const handle = new DirHandle(app.handle);
           try {
             // 优先尝试从 client/app.json 获取，如果不存在则尝试根目录（兼容旧应用）
             let jsonFile = null;
             try {
-              const clientDir = await app.handle.get("client");
+              const clientDir = await handle.get("client");
               jsonFile = await clientDir.get("app.json");
             } catch (e) {
-              jsonFile = await app.handle.get("app.json");
+              jsonFile = await handle.get("app.json");
             }
 
             if (jsonFile) {
@@ -318,7 +320,7 @@
             name:
               (manifest && (manifest.displayName || manifest.name)) || app.name,
             desc: (manifest && manifest.description) || app.dirName || "",
-            handle: app.handle,
+            _handle: handle,
             source: app.source || "local",
             containerUrl: app.containerUrl || "",
             _recordName: app.name,
@@ -369,7 +371,9 @@
 
           _markOpened(app, win) {
             markOpened(app._recordName, win);
-            const target = this.appList.find((a) => a._recordName === app._recordName);
+            const target = this.appList.find(
+              (a) => a._recordName === app._recordName,
+            );
             if (target) target.opened = true;
           },
 
@@ -481,7 +485,11 @@
               "titlebar=no",
             ].join(",");
 
-            const win = window.open(url, `mazmot-app-${app._recordName}`, features);
+            const win = window.open(
+              url,
+              `mazmot-app-${app._recordName}`,
+              features,
+            );
             if (!win) {
               toast({
                 content: "窗口被浏览器拦截，请允许弹出窗口",
@@ -533,10 +541,7 @@
 
               const apps = (await storage.apps) || [];
               const next = apps.filter(
-                (a) =>
-                  !(
-                    a.name === (app._recordName || app.name)
-                  ),
+                (a) => !(a.name === (app._recordName || app.name)),
               );
               await storage.setItem("apps", next);
 
