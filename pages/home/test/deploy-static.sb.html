@@ -12,25 +12,23 @@
     <h1>静态 HTML 部署集成测试</h1>
     <p>
       通过 <code>pushFilesToContainer</code> 部署一个含 <code>index.html</code>
-      的应用到最后一个容器端口（<code>CONTAINER_PORTS</code>
-      末尾，默认 40035），然后以 <code>?mode=run</code>
-      加载该容器，验证部署的 <code>index.html</code>
-      被浏览器执行并通过 postMessage 回发 token。
+      的应用到最后一个容器（<code>CONTAINER_URLS</code> 末尾），然后以
+      <code>?mode=run</code> 加载该容器，验证部署的
+      <code>index.html</code> 被浏览器执行并通过 postMessage 回发 token。
     </p>
 
     <sb-test name="部署 index.html 后应能通过 run 模式打开并收到脚本回执">
       <template>
         <script type="module">
           import {
-            CONTAINER_PORTS,
-            getContainerUrl,
+            CONTAINER_URLS,
             getRunUrl,
             pushFilesToContainer,
             clearContainer,
           } from "../container-mgr.js";
           {
-            const port = CONTAINER_PORTS[CONTAINER_PORTS.length - 1];
-            const containerUrl = getContainerUrl(port);
+            const containerUrl =
+              CONTAINER_URLS[CONTAINER_URLS.length - 1];
             const appName = "sibyl-deploy-test";
             // 每次运行生成唯一 token，避免消息串扰
             const token = "deploy-token-" + Math.random().toString(36).slice(2);
@@ -54,11 +52,11 @@
 </html>`;
 
             // 1. 先清空容器，释放可能存在的旧占用者
-            await clearContainer(port);
+            await clearContainer(containerUrl);
 
             // 2. 部署 index.html 到容器
             const installed = await pushFilesToContainer(
-              port,
+              containerUrl,
               [{ path: "index.html", content: indexHtml }],
               appName,
             );
@@ -95,12 +93,12 @@
 
             // 4. 清理：移除 iframe 并清空容器，方便下次测试
             if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-            await clearContainer(port);
+            await clearContainer(containerUrl);
 
             return {
               assert: installed === true && gotToken === token,
               content: {
-                port,
+                containerUrl,
                 runUrl,
                 installed,
                 expectedToken: token,
@@ -116,15 +114,14 @@
       <template>
         <script type="module">
           import {
-            CONTAINER_PORTS,
-            getContainerUrl,
+            CONTAINER_URLS,
             getRunUrl,
             pushFilesToContainer,
             clearContainer,
           } from "../container-mgr.js";
           {
-            const port = CONTAINER_PORTS[CONTAINER_PORTS.length - 1];
-            const containerUrl = getContainerUrl(port);
+            const containerUrl =
+              CONTAINER_URLS[CONTAINER_URLS.length - 1];
             const appName = "sibyl-deploy-test-overwrite";
 
             // 构造带 version 标记的 index.html
@@ -190,12 +187,12 @@
             }
 
             // 0. 先清空容器，避免旧占用者残留
-            await clearContainer(port);
+            await clearContainer(containerUrl);
 
             // 1. 首次部署 v1
             const tokenV1 = "v1-" + Math.random().toString(36).slice(2);
             const installedV1 = await pushFilesToContainer(
-              port,
+              containerUrl,
               [{ path: "index.html", content: makeIndex("1", tokenV1) }],
               appName,
             );
@@ -204,14 +201,14 @@
             // 2. 修改同名 index.html 并再次部署（覆盖 v1）
             const tokenV2 = "v2-" + Math.random().toString(36).slice(2);
             const installedV2 = await pushFilesToContainer(
-              port,
+              containerUrl,
               [{ path: "index.html", content: makeIndex("2", tokenV2) }],
               appName,
             );
             const secondResp = await waitForReady(tokenV2);
 
             // 3. 清理
-            await clearContainer(port);
+            await clearContainer(containerUrl);
 
             const firstOk =
               installedV1 === true &&
@@ -227,7 +224,7 @@
             return {
               assert: firstOk && secondOk,
               content: {
-                port,
+                containerUrl,
                 installedV1,
                 installedV2,
                 firstResp,

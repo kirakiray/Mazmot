@@ -11,145 +11,53 @@
   <body>
     <h1>container-mgr 单元测试</h1>
 
-    <!-- ================= CONTAINER_PORTS ================= -->
-    <sb-test name="CONTAINER_PORTS 应为固定的 5 个端口">
+    <!-- ================= CONTAINER_URLS ================= -->
+    <sb-test name="CONTAINER_URLS 应为固定的 5 个容器地址">
       <template>
         <script type="module">
-          import { CONTAINER_PORTS } from "../container-mgr.js";
+          import { CONTAINER_URLS } from "../container-mgr.js";
           {
-            const expected = [40031, 40032, 40033, 40034, 40035];
+            const expected = [
+              "http://localhost:40031",
+              "http://localhost:40032",
+              "http://localhost:40033",
+              "http://localhost:40034",
+              "http://localhost:40035",
+            ];
             const isSame =
-              Array.isArray(CONTAINER_PORTS) &&
-              CONTAINER_PORTS.length === expected.length &&
-              CONTAINER_PORTS.every((p, i) => p === expected[i]);
+              Array.isArray(CONTAINER_URLS) &&
+              CONTAINER_URLS.length === expected.length &&
+              CONTAINER_URLS.every((u, i) => u === expected[i]);
             return {
               assert: isSame,
-              content: { CONTAINER_PORTS, expected },
+              content: { CONTAINER_URLS, expected },
             };
           }
         </script>
       </template>
     </sb-test>
 
-    <!-- ================= getContainerUrl ================= -->
-    <sb-test name="getContainerUrl 应基于 localhost 拼接端口">
+    <sb-test name="CONTAINER_URLS 中每个元素应为合法且唯一的 http URL">
       <template>
         <script type="module">
-          import { getContainerUrl } from "../container-mgr.js";
+          import { CONTAINER_URLS } from "../container-mgr.js";
           {
-            const url = getContainerUrl(40031);
+            const unique = new Set(CONTAINER_URLS);
+            const allValid = CONTAINER_URLS.every((u) => {
+              try {
+                const parsed = new URL(u);
+                return (
+                  parsed.protocol === "http:" &&
+                  parsed.hostname === "localhost" &&
+                  !!parsed.port
+                );
+              } catch (e) {
+                return false;
+              }
+            });
             return {
-              assert: url === "http://localhost:40031",
-              content: { url },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="getContainerUrl 对不同端口应返回不同 URL">
-      <template>
-        <script type="module">
-          import { getContainerUrl, CONTAINER_PORTS } from "../container-mgr.js";
-          {
-            const urls = CONTAINER_PORTS.map((p) => getContainerUrl(p));
-            const unique = new Set(urls);
-            const allMatch = urls.every(
-              (u, i) => u === `http://localhost:${CONTAINER_PORTS[i]}`,
-            );
-            return {
-              assert: unique.size === CONTAINER_PORTS.length && allMatch,
-              content: { urls },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <!-- ================= extractPort ================= -->
-    <sb-test name="extractPort 应能从标准容器 URL 提取端口">
-      <template>
-        <script type="module">
-          import { extractPort } from "../container-mgr.js";
-          {
-            const port = extractPort("http://localhost:40031");
-            return {
-              assert: port === 40031 && typeof port === "number",
-              content: { port },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="extractPort 应能处理 URL 末尾带 / 的情况">
-      <template>
-        <script type="module">
-          import { extractPort } from "../container-mgr.js";
-          {
-            const port = extractPort("http://localhost:40032/");
-            return {
-              assert: port === 40032,
-              content: { port },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="extractPort 对空值应返回 null">
-      <template>
-        <script type="module">
-          import { extractPort } from "../container-mgr.js";
-          {
-            const r1 = extractPort(null);
-            const r2 = extractPort(undefined);
-            const r3 = extractPort("");
-            return {
-              assert: r1 === null && r2 === null && r3 === null,
-              content: { r1, r2, r3 },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="extractPort 对无端口 URL 应返回 null">
-      <template>
-        <script type="module">
-          import { extractPort } from "../container-mgr.js";
-          {
-            const port = extractPort("http://localhost/");
-            return {
-              assert: port === null,
-              content: { port },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="extractPort 与 getContainerUrl 应互为逆运算">
-      <template>
-        <script type="module">
-          import {
-            extractPort,
-            getContainerUrl,
-            CONTAINER_PORTS,
-          } from "../container-mgr.js";
-          {
-            const roundTrip = CONTAINER_PORTS.every(
-              (p) => extractPort(getContainerUrl(p)) === p,
-            );
-            return {
-              assert: roundTrip,
-              content: {
-                samples: CONTAINER_PORTS.map((p) => ({
-                  port: p,
-                  url: getContainerUrl(p),
-                  extracted: extractPort(getContainerUrl(p)),
-                })),
-              },
+              assert: unique.size === CONTAINER_URLS.length && allValid,
+              content: { CONTAINER_URLS },
             };
           }
         </script>
@@ -160,10 +68,9 @@
     <sb-test name="getRunUrl 应在 containerUrl 后拼接 /_install.html?mode=run">
       <template>
         <script type="module">
-          import { getRunUrl, getContainerUrl } from "../container-mgr.js";
+          import { getRunUrl, CONTAINER_URLS } from "../container-mgr.js";
           {
-            const containerUrl = getContainerUrl(40033);
-            const runUrl = getRunUrl(containerUrl);
+            const runUrl = getRunUrl(CONTAINER_URLS[2]);
             return {
               assert:
                 runUrl === "http://localhost:40033/_install.html?mode=run",
@@ -174,26 +81,47 @@
       </template>
     </sb-test>
 
-    <!-- ================= findTrulyAvailablePort ================= -->
-    <sb-test name="findTrulyAvailablePort 当所有端口本地都被占用时应返回 null">
+    <sb-test name="getRunUrl 对每个 CONTAINER_URLS 元素都应生成对应的 run URL">
+      <template>
+        <script type="module">
+          import { getRunUrl, CONTAINER_URLS } from "../container-mgr.js";
+          {
+            const allMatch = CONTAINER_URLS.every(
+              (u) => getRunUrl(u) === `${u}/_install.html?mode=run`,
+            );
+            return {
+              assert: allMatch,
+              content: {
+                samples: CONTAINER_URLS.map((u) => ({
+                  containerUrl: u,
+                  runUrl: getRunUrl(u),
+                })),
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= findTrulyAvailableUrl ================= -->
+    <sb-test name="findTrulyAvailableUrl 当所有容器都被本地占用时应返回 null">
       <template>
         <script type="module">
           import {
-            findTrulyAvailablePort,
-            CONTAINER_PORTS,
-            getContainerUrl,
+            findTrulyAvailableUrl,
+            CONTAINER_URLS,
           } from "../container-mgr.js";
           {
-            // 构造所有本地端口均已使用的 apps，findTrulyAvailablePort 会
-            // 在读到 localUsedPorts 全占用时不发起任何物理探测，直接返回 null
-            const apps = CONTAINER_PORTS.map((p, i) => ({
+            // 构造所有容器均已使用的 apps，函数应在读到 localUsedUrls 全占用时
+            // 不发起任何物理探测，直接返回 null
+            const apps = CONTAINER_URLS.map((u, i) => ({
               name: "app-" + i,
-              containerUrl: getContainerUrl(p),
+              containerUrl: u,
             }));
-            const port = await findTrulyAvailablePort(apps);
+            const result = await findTrulyAvailableUrl(apps);
             return {
-              assert: port === null,
-              content: { port, apps },
+              assert: result === null,
+              content: { result, apps },
             };
           }
         </script>

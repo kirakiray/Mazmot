@@ -374,8 +374,7 @@
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles } from "./template-writer.js";
     import {
-      findTrulyAvailablePort,
-      getContainerUrl,
+      findTrulyAvailableUrl,
       pushFilesToContainer,
       checkContainerOccupancy,
     } from "./container-mgr.js";
@@ -385,7 +384,7 @@
         data: {
           step: 1,
           _selectedHandle: null, // 用户选择的本地目录句柄（_ 前缀避免响应式代理复杂对象）
-          _containerPort: null, // 分配的容器端口
+          _containerUrl: null, // 分配的容器 URL
           selectedDirName: "",
           appName: "",
           appDesc: "",
@@ -458,15 +457,14 @@
             try {
               // 检查可用容器（自动跳过已被占用的）
               const apps = (await storage.apps) || [];
-              const port = await findTrulyAvailablePort(apps);
-              if (!port) {
+              const containerUrl = await findTrulyAvailableUrl(apps);
+              if (!containerUrl) {
                 this.nameError = "当前所有物理容器均已被占用或不可用，请先释放容器";
                 return;
               }
-              this._containerPort = port;
+              this._containerUrl = containerUrl;
 
               // 保存到 ever-cache（包含容器地址）
-              const containerUrl = getContainerUrl(port);
               apps.push({
                 name: this.appName.trim(),
                 desc: (this.appDesc || "").trim(),
@@ -520,11 +518,11 @@
               });
 
               // 推送文件到独立容器
-              this.progressText = `正在推送文件到容器 ${getContainerUrl(this._containerPort)} ...`;
+              this.progressText = `正在推送文件到容器 ${this._containerUrl} ...`;
               this.progress = 100;
               try {
                 await pushFilesToContainer(
-                  this._containerPort,
+                  this._containerUrl,
                   files,
                   name,
                 );
@@ -554,7 +552,7 @@
           resetState() {
             this.step = 1;
             this._selectedHandle = null;
-            this._containerPort = null;
+            this._containerUrl = null;
             this.selectedDirName = "";
             this.appName = "";
             this.appDesc = "";

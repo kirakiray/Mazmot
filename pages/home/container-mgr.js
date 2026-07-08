@@ -1,60 +1,41 @@
 // 容器管理模块
-// 负责容器端口分配、文件读取、与容器页面的 postMessage 通信
+// 负责容器 URL 分配、文件读取、与容器页面的 postMessage 通信
 
-// 5 个独立容器端口（对应 scripts/static.js 中的配置）
-export const CONTAINER_PORTS = [40031, 40032, 40033, 40034, 40035];
-
-// 容器主机地址（开发环境固定为 localhost）
-const CONTAINER_HOST = "localhost";
-
-/**
- * 根据端口号获取容器 URL
- * @param {number} port
- * @returns {string}
- */
-export function getContainerUrl(port) {
-  return `http://${CONTAINER_HOST}:${port}`;
-}
+// 5 个独立容器 URL（对应 scripts/static.js 中的配置）
+export const CONTAINER_URLS = [
+  "http://localhost:40031",
+  "http://localhost:40032",
+  "http://localhost:40033",
+  "http://localhost:40034",
+  "http://localhost:40035",
+];
 
 /**
- * 从容器 URL 中提取端口号
- * @param {string} url
- * @returns {number|null}
- */
-export function extractPort(url) {
-  if (!url) return null;
-  const match = url.match(/:(\d+)\/?$/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-/**
- * 寻找真正可用的容器端口（自动跳过本地已用和被其他域名占用的容器）
+ * 寻找真正可用的容器 URL（自动跳过本地已用和被其他域名占用的容器）
  * @param {Array} apps - 当前本地已有的应用列表
- * @returns {Promise<number|null>}
+ * @returns {Promise<string|null>}
  */
-export async function findTrulyAvailablePort(apps) {
-  const localUsedPorts = new Set(
-    apps
-      .map((app) => extractPort(app.containerUrl))
-      .filter((p) => p !== null),
+export async function findTrulyAvailableUrl(apps) {
+  const localUsedUrls = new Set(
+    apps.map((app) => app.containerUrl).filter((u) => !!u),
   );
 
-  for (const port of CONTAINER_PORTS) {
-    // 1. 首先跳过本地数据库已经记录使用的端口
-    if (localUsedPorts.has(port)) continue;
+  for (const containerUrl of CONTAINER_URLS) {
+    // 1. 首先跳过本地数据库已经记录使用的容器
+    if (localUsedUrls.has(containerUrl)) continue;
 
     // 2. 对物理容器进行“打招呼”探测
     try {
-      const occupier = await checkContainerOccupancy(port);
+      const occupier = await checkContainerOccupancy(containerUrl);
       if (!occupier) {
         // 只有真正闲置的容器才返回
-        return port;
+        return containerUrl;
       }
-      // 如果被占用（无论是不是自己域名），因为 localUsedPorts 没记，说明本地状态不一致或被其他系统占用，跳过
-      console.warn(`容器端口 ${port} 物理状态已被占用，尝试下一个...`);
+      // 如果被占用（无论是不是自己域名），因为 localUsedUrls 没记，说明本地状态不一致或被其他系统占用，跳过
+      console.warn(`容器 ${containerUrl} 物理状态已被占用，尝试下一个...`);
     } catch (err) {
       // 探测失败（如容器服务未启动）也跳过
-      console.error(`探测容器端口 ${port} 失败：`, err);
+      console.error(`探测容器 ${containerUrl} 失败：`, err);
     }
   }
 
@@ -101,11 +82,10 @@ export async function readAppFiles(handle) {
 
 /**
  * 创建隐藏 iframe 与容器通信
- * @param {number} port
+ * @param {string} containerUrl
  * @returns {{ iframe: HTMLIFrameElement, destroy: () => void }}
  */
-function createContainerIframe(port) {
-  const containerUrl = getContainerUrl(port);
+function createContainerIframe(containerUrl) {
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
   iframe.src = `${containerUrl}/_install.html`;
@@ -123,21 +103,20 @@ function createContainerIframe(port) {
 
 /**
  * 通过隐藏 iframe 向容器推送文件
- * @param {number} port - 容器端口
+ * @param {string} containerUrl - 容器 URL
  * @param {Array<{ path: string, content: string }>} files - 文件列表
  * @param {string} appName - 占用的应用名称
  * @param {number} [timeout=60000] - 超时时间（ms），首次安装需要较长时间
  * @returns {Promise<boolean>}
  */
 export function pushFilesToContainer(
-  port,
+  containerUrl,
   files,
   appName,
   timeout = 60000,
 ) {
   return new Promise((resolve, reject) => {
-    const containerUrl = getContainerUrl(port);
-    const { iframe, destroy } = createContainerIframe(port);
+    const { iframe, destroy } = createContainerIframe(containerUrl);
 
     let timer = null;
     let settled = false;
@@ -218,14 +197,13 @@ export function pushFilesToContainer(
 
 /**
  * 清空容器中的所有文件（用于删除应用时释放容器）
- * @param {number} port
+ * @param {string} containerUrl
  * @param {number} [timeout=30000]
  * @returns {Promise<boolean>}
  */
-export function clearContainer(port, timeout = 30000) {
+export function clearContainer(containerUrl, timeout = 30000) {
   return new Promise((resolve) => {
-    const containerUrl = getContainerUrl(port);
-    const { iframe, destroy } = createContainerIframe(port);
+    const { iframe, destroy } = createContainerIframe(containerUrl);
 
     let timer = null;
     let settled = false;
@@ -277,14 +255,13 @@ export function getRunUrl(containerUrl) {
 
 /**
  * 主动检查容器的占用情况（打招呼）
- * @param {number} port
+ * @param {string} containerUrl
  * @param {number} [timeout=10000]
  * @returns {Promise<{ name: string, parentOrigin: string, time: number }|null>} 返回占用者信息，null 表示闲置
  */
-export function checkContainerOccupancy(port, timeout = 10000) {
+export function checkContainerOccupancy(containerUrl, timeout = 10000) {
   return new Promise((resolve, reject) => {
-    const containerUrl = getContainerUrl(port);
-    const { iframe, destroy } = createContainerIframe(port);
+    const { destroy } = createContainerIframe(containerUrl);
 
     let timer = null;
     let settled = false;
