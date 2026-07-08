@@ -93,10 +93,16 @@ function createContainerIframe(port) {
  * 通过隐藏 iframe 向容器推送文件
  * @param {number} port - 容器端口
  * @param {Array<{ path: string, content: string }>} files - 文件列表
+ * @param {string} appName - 占用的应用名称
  * @param {number} [timeout=60000] - 超时时间（ms），首次安装需要较长时间
  * @returns {Promise<boolean>}
  */
-export function pushFilesToContainer(port, files, timeout = 60000) {
+export function pushFilesToContainer(
+  port,
+  files,
+  appName,
+  timeout = 60000,
+) {
   return new Promise((resolve, reject) => {
     const containerUrl = getContainerUrl(port);
     const { iframe, destroy } = createContainerIframe(port);
@@ -119,7 +125,7 @@ export function pushFilesToContainer(port, files, timeout = 60000) {
         // 容器就绪，发送文件
         try {
           iframe.contentWindow.postMessage(
-            { type: "install", files },
+            { type: "install", files, appName },
             containerUrl,
           );
         } catch (e) {

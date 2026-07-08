@@ -230,6 +230,11 @@
         const subtitle = document.getElementById("subtitle");
 
         try {
+          const { storage } = await import(
+            "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js"
+          );
+          const occupier = await storage.getItem("occupier");
+
           const { getUser } = await import("/nos/user/main.js");
           const user = await getUser(NAMESPACE);
 
@@ -290,6 +295,24 @@
             : "";
 
           content.innerHTML = `
+            <div class="card">
+              <div class="card-title">
+                <n-icon icon="mdi:domain"></n-icon>
+                容器占用信息
+              </div>
+              ${
+                occupier
+                  ? `
+                ${renderRow("占用应用", `<span>${escapeHtml(occupier.name)}</span>`, { plain: true })}
+                ${renderRow("父层来源", `<span>${escapeHtml(occupier.parentOrigin)}</span>`, { plain: true })}
+                ${renderRow("占用时间", `<span>${escapeHtml(formatTime(occupier.time))}</span>`, { plain: true })}
+              `
+                  : renderRow("状态", `<span class="badge">闲置中</span>`, {
+                      plain: true,
+                    })
+              }
+            </div>
+
             <div class="card">
               <div class="card-title">
                 <n-icon icon="mdi:card-account-details-outline"></n-icon>

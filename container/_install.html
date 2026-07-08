@@ -57,6 +57,8 @@
     </div>
 
     <script type="module">
+      import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+
       const NAMESPACE = "mazmot-app";
       let fsReady = false;
 
@@ -75,9 +77,12 @@
           // 隐藏安装遮罩
           $("#mask").style.display = "none";
 
+          // 获取当前占用的应用信息
+          const occupier = await storage.getItem("occupier");
+
           // 通知父页面容器已就绪
           if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ type: "ready" }, "*");
+            window.parent.postMessage({ type: "ready", occupier }, "*");
           }
 
           // 检查是否为运行模式
@@ -145,6 +150,27 @@
           const rootDir = await get(NAMESPACE);
 
           if (msg.type === "install") {
+            // 检查占用逻辑
+            const currentOccupier = await storage.getItem("occupier");
+            if (
+              currentOccupier &&
+              msg.appName &&
+              currentOccupier.name !== msg.appName
+            ) {
+              throw new Error(
+                `容器已被应用 "${currentOccupier.name}" 占用，无法由 "${msg.appName}" 使用`,
+              );
+            }
+
+            // 记录占用者信息
+            if (msg.appName) {
+              await storage.setItem("occupier", {
+                name: msg.appName,
+                parentOrigin: event.origin, // 记录父层域名/来源
+                time: Date.now(),
+              });
+            }
+
             // 写入所有文件到虚拟文件系统
             for (const file of msg.files) {
               const fileHandle = await rootDir.get(file.path, {
@@ -157,6 +183,9 @@
               event.origin,
             );
           } else if (msg.type === "clear") {
+            // 清空占用者信息
+            await storage.removeItem("occupier");
+
             // 清空虚拟文件系统中的所有文件
             if (rootDir) {
               for await (const [name, handle] of rootDir.entries()) {

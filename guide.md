@@ -46,7 +46,6 @@ Mazmot/
 │   ├── static.js             # 启动 6 个 http-server：Main(30031) + 5 个容器(40031-40035)
 │   └── ...                   # generate-capabilities / update-skill / update-files-json
 │
-├── common/                   # 已废弃：跨域后无法用 /common/binding.js
 ├── comps/                    # 通用组件（chatbox、o-md、rnd-box、mascot 等）
 ├── ai/                       # AI 相关：deepseek、kimi、assistant
 └── old/                      # v1/v2/v3 历史版本（不参与新逻辑）
@@ -119,8 +118,8 @@ unmount(mountedHandle) → 卸载本地目录
 
 | 方向 | type | 说明 |
 | ---- | ---- | ---- |
-| 容器 → 父 | `ready` | 容器 NoneOS 初始化完成 |
-| 父 → 容器 | `install` | `{ files: [{path, content}] }` 批量写入 |
+| 容器 → 父 | `ready` | 容器 NoneOS 初始化完成，带上 `{ occupier: {name, parentOrigin, time} }` |
+| 父 → 容器 | `install` | `{ files: [{path, content}], appName }` 批量写入并锁定应用名 |
 | 容器 → 父 | `install-done` | 写入完成 |
 | 父 → 容器 | `clear` | 清空容器虚拟文件 |
 | 容器 → 父 | `clear-done` | 清空完成 |
@@ -153,7 +152,7 @@ unmount(mountedHandle) → 卸载本地目录
 - `app-config.js` — 定义 `home` 页面路径和过渡动画
 - `pages/home.html` — Hello World 页面模块
 
-> ⚠️ 已移除 `/common/binding.js` 引用（跨域后不可用）。
+> ⚠️ 已删除 `/common` 目录（跨域后不可用）。
 
 ## UI 关键组件（`pages/home.html`）
 
