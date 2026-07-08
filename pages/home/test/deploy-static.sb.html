@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>container-mgr 静态部署集成测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>静态 HTML 部署集成测试</h1>
+    <p>
+      通过 <code>pushFilesToContainer</code> 部署一个含 <code>index.html</code>
+      的应用到容器端口 40031，然后以 <code>?mode=run</code>
+      加载该容器，验证部署的 <code>index.html</code>
+      被浏览器执行并通过 postMessage 回发 token。
+    </p>
+
+    <sb-test name="部署 index.html 后应能通过 run 模式打开并收到脚本回执">
+      <template>
+        <script type="module">
+          import {
+            CONTAINER_PORTS,
+            getContainerUrl,
+            getRunUrl,
+            pushFilesToContainer,
+            clearContainer,
+          } from "../container-mgr.js";
+          {
+            const port = CONTAINER_PORTS[0];
+            const containerUrl = getContainerUrl(port);
+            const appName = "sibyl-deploy-test";
+            // 每次运行生成唯一 token，避免消息串扰
+            const token = "deploy-token-" + Math.random().toString(36).slice(2);
+
+            // 待部署的 index.html：加载后向 window.parent 报告 token
+            const indexHtml = `<!doctype html>
+<html>
+  <head><meta charset="UTF-8"><title>deploy-test</title></head>
+  <body>
+    <h1 id="hello">deploy ok</h1>
+    <script>
+      // 部署生效标志：主动向父层广播携带 token 的消息
+      try {
+        window.parent.postMessage(
+          { type: "deploy-test-ready", token: ${JSON.stringify(token)} },
+          "*"
+        );
+      } catch (e) {}
+    <\/script>
+  </body>
+</html>`;
+
+            // 1. 先清空容器，释放可能存在的旧占用者
+            await clearContainer(port);
+
+            // 2. 部署 index.html 到容器
+            const installed = await pushFilesToContainer(
+              port,
+              [{ path: "index.html", content: indexHtml }],
+              appName,
+            );
+
+            // 3. 打开 run 模式 iframe，等待 index.html 中的脚本回发 token
+            const runUrl = getRunUrl(containerUrl);
+            const iframe = document.createElement("iframe");
+            iframe.style.display = "none";
+            iframe.src = runUrl;
+            document.body.appendChild(iframe);
+
+            const gotToken = await new Promise((resolve) => {
+              let done = false;
+              const timer = setTimeout(() => {
+                if (done) return;
+                done = true;
+                window.removeEventListener("message", onMsg);
+                resolve(null);
+              }, 30000);
+
+              function onMsg(event) {
+                // 只接收来自目标容器的消息
+                if (event.origin !== containerUrl) return;
+                const data = event.data;
+                if (!data || data.type !== "deploy-test-ready") return;
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                window.removeEventListener("message", onMsg);
+                resolve(data.token);
+              }
+              window.addEventListener("message", onMsg);
+            });
+
+            // 4. 清理：移除 iframe 并清空容器，方便下次测试
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            await clearContainer(port);
+
+            return {
+              assert: installed === true && gotToken === token,
+              content: {
+                port,
+                runUrl,
+                installed,
+                expectedToken: token,
+                receivedToken: gotToken,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
