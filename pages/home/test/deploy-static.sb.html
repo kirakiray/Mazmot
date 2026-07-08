@@ -12,7 +12,8 @@
     <h1>静态 HTML 部署集成测试</h1>
     <p>
       通过 <code>pushFilesToContainer</code> 部署一个含 <code>index.html</code>
-      的应用到容器端口 40031，然后以 <code>?mode=run</code>
+      的应用到最后一个容器端口（<code>CONTAINER_PORTS</code>
+      末尾，默认 40035），然后以 <code>?mode=run</code>
       加载该容器，验证部署的 <code>index.html</code>
       被浏览器执行并通过 postMessage 回发 token。
     </p>
@@ -28,7 +29,7 @@
             clearContainer,
           } from "../container-mgr.js";
           {
-            const port = CONTAINER_PORTS[0];
+            const port = CONTAINER_PORTS[CONTAINER_PORTS.length - 1];
             const containerUrl = getContainerUrl(port);
             const appName = "sibyl-deploy-test";
             // 每次运行生成唯一 token，避免消息串扰
@@ -122,7 +123,7 @@
             clearContainer,
           } from "../container-mgr.js";
           {
-            const port = CONTAINER_PORTS[0];
+            const port = CONTAINER_PORTS[CONTAINER_PORTS.length - 1];
             const containerUrl = getContainerUrl(port);
             const appName = "sibyl-deploy-test-overwrite";
 
