@@ -369,7 +369,7 @@
   </o-if>
 
   <script>
-    import { open, mount, get } from "/nos/fs/main.js";
+    import { open, get } from "/nos/fs/main.js";
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles } from "./template-writer.js";
@@ -385,7 +385,6 @@
         data: {
           step: 1,
           _selectedHandle: null, // 用户选择的本地目录句柄（_ 前缀避免响应式代理复杂对象）
-          _mountedHandle: null, // mount 后的句柄
           _containerPort: null, // 分配的容器端口
           selectedDirName: "",
           appName: "",
@@ -466,16 +465,12 @@
               }
               this._containerPort = port;
 
-              // 挂载所选目录
-              const mountedHandle = await mount(this._selectedHandle);
-              this._mountedHandle = mountedHandle;
-
               // 保存到 ever-cache（包含容器地址）
               const containerUrl = getContainerUrl(port);
               apps.push({
                 name: this.appName.trim(),
                 desc: (this.appDesc || "").trim(),
-                path: mountedHandle.path,
+                handle: this._selectedHandle, // 直接保存句柄
                 dirName: this.selectedDirName,
                 source: "local",
                 containerUrl,
@@ -489,7 +484,7 @@
             } catch (err) {
               console.error(err);
               alert({
-                content: "挂载目录失败：" + (err.message || err),
+                content: "准备应用失败：" + (err.message || err),
               });
             }
           },
@@ -559,7 +554,6 @@
           resetState() {
             this.step = 1;
             this._selectedHandle = null;
-            this._mountedHandle = null;
             this._containerPort = null;
             this.selectedDirName = "";
             this.appName = "";

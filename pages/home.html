@@ -219,6 +219,10 @@
                       </span>
                     </div>
                     <div class="sub-info-row">
+                      <span class="sub-info-label">目录名称：</span>
+                      <span class="sub-info-value">{{$data.desc}}</span>
+                    </div>
+                    <div class="sub-info-row">
                       <span class="sub-info-label">容器地址：</span>
                       <o-if :value="$data.containerUrl">
                         <span
@@ -232,10 +236,6 @@
                       <o-if :value="!$data.containerUrl">
                         <span class="sub-info-value">未分配</span>
                       </o-if>
-                    </div>
-                    <div class="sub-info-row">
-                      <span class="sub-info-label">挂载路径：</span>
-                      <span class="sub-info-value">{{$data.path}}</span>
                     </div>
                     <div class="sub-info-row">
                       <span class="sub-info-label">操作：</span>
@@ -267,7 +267,7 @@
 
   <script>
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
-    import { unmount, get } from "/nos/fs/main.js";
+    import { get } from "/nos/fs/main.js";
     import {
       toast,
       confirm,
@@ -297,12 +297,13 @@
         apps.map(async (app) => {
           let manifest = null;
           try {
-            const jsonFile = await get(`${app.path}/app.json`);
+            // 直接通过句柄获取 app.json
+            const jsonFile = await app.handle.get(`app.json`);
             if (jsonFile) {
               manifest = await jsonFile.json();
             }
           } catch (err) {
-            console.warn(`读取 ${app.path}/app.json 失败：`, err);
+            console.warn(`读取 ${app.name}/app.json 失败：`, err);
           }
 
           return {
@@ -310,11 +311,11 @@
             name:
               (manifest && (manifest.displayName || manifest.name)) || app.name,
             desc: (manifest && manifest.description) || app.dirName || "",
-            path: app.path,
+            handle: app.handle,
             source: app.source || "local",
             containerUrl: app.containerUrl || "",
             _recordName: app.name,
-            opened: isWindowAlive(app.path) || lsOpened.has(app.path),
+            opened: isWindowAlive(app.name) || lsOpened.has(app.name),
           };
         }),
       );
@@ -332,17 +333,17 @@
         attached() {
           // 启动广播监听 + 定时探测
           this._stopWatcher = startAppStatusWatcher({
-            onAlive: (path) => {
-              const target = this.appList.find((a) => a.path === path);
+            onAlive: (name) => {
+              const target = this.appList.find((a) => a._recordName === name);
               if (target && !target.opened) target.opened = true;
             },
-            onBye: (path) => {
-              const target = this.appList.find((a) => a.path === path);
+            onBye: (name) => {
+              const target = this.appList.find((a) => a._recordName === name);
               if (target && target.opened) target.opened = false;
             },
-            onTick: (alivePaths) => {
+            onTick: (aliveNames) => {
               this.appList.forEach((app) => {
-                const alive = alivePaths.has(app.path);
+                const alive = aliveNames.has(app._recordName);
                 if (app.opened !== alive) app.opened = alive;
               });
             },
@@ -360,8 +361,8 @@
           },
 
           _markOpened(app, win) {
-            markOpened(app.path, win);
-            const target = this.appList.find((a) => a.path === app.path);
+            markOpened(app._recordName, win);
+            const target = this.appList.find((a) => a._recordName === app._recordName);
             if (target) target.opened = true;
           },
 
@@ -376,11 +377,11 @@
 
           // 新标签页打开
           async handleOpen(app) {
-            if (!app || !app.path) {
-              toast({ content: "无法打开：缺少应用路径", color: "error" });
+            if (!app || !app.handle) {
+              toast({ content: "无法打开：缺少应用句柄", color: "error" });
               return;
             }
-            if (focusIfOpened(app.path)) return;
+            if (focusIfOpened(app._recordName)) return;
 
             if (!app.containerUrl) {
               toast({ content: "该应用未分配容器", color: "error" });
@@ -391,7 +392,7 @@
             const port = extractPort(app.containerUrl);
             try {
               toast({ content: "正在推送文件到容器...", color: "primary" });
-              const files = await readAppFiles(app.path);
+              const files = await readAppFiles(app.handle);
               await pushFilesToContainer(
                 port,
                 files,
@@ -407,7 +408,7 @@
 
             // 在容器上运行应用
             const url = getRunUrl(app.containerUrl);
-            const win = window.open(url, `mazmot-app-${app.path}`);
+            const win = window.open(url, `mazmot-app-${app._recordName}`);
             if (win) this._markOpened(app, win);
           },
 
@@ -417,11 +418,11 @@
               event.stopPropagation();
               if (event.preventDefault) event.preventDefault();
             }
-            if (!app || !app.path) {
-              toast({ content: "无法打开：缺少应用路径", color: "error" });
+            if (!app || !app.handle) {
+              toast({ content: "无法打开：缺少应用句柄", color: "error" });
               return;
             }
-            if (focusIfOpened(app.path)) return;
+            if (focusIfOpened(app._recordName)) return;
 
             if (!app.containerUrl) {
               toast({ content: "该应用未分配容器", color: "error" });
@@ -432,7 +433,7 @@
             const port = extractPort(app.containerUrl);
             try {
               toast({ content: "正在推送文件到容器...", color: "primary" });
-              const files = await readAppFiles(app.path);
+              const files = await readAppFiles(app.handle);
               await pushFilesToContainer(
                 port,
                 files,
@@ -473,7 +474,7 @@
               "titlebar=no",
             ].join(",");
 
-            const win = window.open(url, `mazmot-app-${app.path}`, features);
+            const win = window.open(url, `mazmot-app-${app._recordName}`, features);
             if (!win) {
               toast({
                 content: "窗口被浏览器拦截，请允许弹出窗口",
@@ -501,7 +502,7 @@
 
             const ok = await confirm({
               title: "删除应用",
-              message: `确定要从列表中删除应用「${app.name}」吗？该操作会释放占用的容器（${app.containerUrl || "无"}）、解除挂载并从列表中移除，不会删除本地目录中的文件。`,
+              message: `确定要从列表中删除应用「${app.name}」吗？该操作会释放占用的容器（${app.containerUrl || "无"}）并从列表中移除，不会删除本地目录中的文件。`,
               yes: "删除",
               cancel: "取消",
             });
@@ -509,7 +510,7 @@
 
             try {
               // 关闭对应打开的窗口 + 清理状态
-              clearOpened(app.path);
+              clearOpened(app._recordName);
 
               // 清空容器中的文件，释放容器
               if (app.containerUrl) {
@@ -523,23 +524,11 @@
                 }
               }
 
-              if (app.path) {
-                try {
-                  const mounted = await get(app.path);
-                  if (mounted) {
-                    await unmount(mounted);
-                  }
-                } catch (unmountErr) {
-                  console.warn("卸载目录失败（可忽略）：", unmountErr);
-                }
-              }
-
               const apps = (await storage.apps) || [];
               const next = apps.filter(
                 (a) =>
                   !(
-                    a.name === (app._recordName || app.name) &&
-                    a.path === app.path
+                    a.name === (app._recordName || app.name)
                   ),
               );
               await storage.setItem("apps", next);

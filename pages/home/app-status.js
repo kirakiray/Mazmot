@@ -5,9 +5,9 @@
 const BROADCAST_NAME = "mazmot-app-status";
 const LS_OPENED_KEY = "mazmot-opened-apps";
 
-// 记录当前页面打开的应用窗口引用：key = app.path
+// 记录当前页面打开的应用窗口引用：key = app.name
 export const openedWindows = new Map();
-// 通过 BroadcastChannel 探测到的存活应用路径集合
+// 通过 BroadcastChannel 探测到的存活应用名称集合
 export const openedNames = new Set();
 
 let broadcastChannel = null;
@@ -34,47 +34,47 @@ export function readOpenedFromLS() {
   }
 }
 
-export function writeOpenedToLS(paths) {
+export function writeOpenedToLS(names) {
   try {
-    localStorage.setItem(LS_OPENED_KEY, JSON.stringify(paths));
+    localStorage.setItem(LS_OPENED_KEY, JSON.stringify(names));
   } catch (err) {}
 }
 
-export function addOpenedPath(path) {
+export function addOpenedName(name) {
   const list = readOpenedFromLS();
-  if (!list.includes(path)) {
-    list.push(path);
+  if (!list.includes(name)) {
+    list.push(name);
     writeOpenedToLS(list);
   }
 }
 
-export function removeOpenedPath(path) {
-  const list = readOpenedFromLS().filter((p) => p !== path);
+export function removeOpenedName(name) {
+  const list = readOpenedFromLS().filter((n) => n !== name);
   writeOpenedToLS(list);
 }
 
 // ---- 状态查询 ----
-export function isWindowAlive(path) {
+export function isWindowAlive(name) {
   // 优先看本页面维护的窗口引用
-  const win = openedWindows.get(path);
+  const win = openedWindows.get(name);
   if (win) {
     try {
       if (!win.closed) return true;
-      openedWindows.delete(path);
+      openedWindows.delete(name);
     } catch (err) {
       // 跨源窗口，无法判断，交给 openedNames 兜底
     }
   }
   // 若通过 BroadcastChannel 收到过应答，则认为仍存活
-  return openedNames.has(path);
+  return openedNames.has(name);
 }
 
 /**
  * 启动广播监听与定时探测
  * @param {Object} handlers
- * @param {(path: string) => void} handlers.onAlive 收到 alive/pong 时的处理
- * @param {(path: string) => void} handlers.onBye 收到 bye 时的处理
- * @param {(alivePaths: Set<string>) => void} handlers.onTick 每次探测后回调（用于同步 UI）
+ * @param {(name: string) => void} handlers.onAlive 收到 alive/pong 时的处理
+ * @param {(name: string) => void} handlers.onBye 收到 bye 时的处理
+ * @param {(aliveNames: Set<string>) => void} handlers.onTick 每次探测后回调（用于同步 UI）
  * @param {number} [handlers.interval=2000] 探测间隔（ms）
  * @param {number} [handlers.waitAnswer=500] 每次 ping 后等待应答的时间（ms）
  * @returns {() => void} 停止函数
@@ -90,15 +90,15 @@ export function startAppStatusWatcher({
 
   const handler = (event) => {
     const msg = event && event.data;
-    if (!msg || !msg.type || !msg.path) return;
+    if (!msg || !msg.type || !msg.name) return;
     if (msg.type === "alive" || msg.type === "pong") {
-      openedNames.add(msg.path);
-      addOpenedPath(msg.path);
-      onAlive?.(msg.path);
+      openedNames.add(msg.name);
+      addOpenedName(msg.name);
+      onAlive?.(msg.name);
     } else if (msg.type === "bye") {
-      openedNames.delete(msg.path);
-      removeOpenedPath(msg.path);
-      onBye?.(msg.path);
+      openedNames.delete(msg.name);
+      removeOpenedName(msg.name);
+      onBye?.(msg.name);
     }
   };
 
@@ -120,20 +120,20 @@ export function startAppStatusWatcher({
 
     // 给子应用一小段时间应答，然后同步 UI 状态 + LS
     setTimeout(() => {
-      const alivePaths = new Set(openedNames);
-      openedWindows.forEach((win, path) => {
+      const aliveNames = new Set(openedNames);
+      openedWindows.forEach((win, name) => {
         try {
-          if (!win.closed) alivePaths.add(path);
+          if (!win.closed) aliveNames.add(name);
         } catch (err) {}
       });
-      writeOpenedToLS(Array.from(alivePaths));
-      onTick?.(alivePaths);
+      writeOpenedToLS(Array.from(aliveNames));
+      onTick?.(aliveNames);
     }, waitAnswer);
 
     // 顺带清理已关闭的窗口引用
-    openedWindows.forEach((win, path) => {
+    openedWindows.forEach((win, name) => {
       try {
-        if (win.closed) openedWindows.delete(path);
+        if (win.closed) openedWindows.delete(name);
       } catch (err) {}
     });
   }, interval);
@@ -147,40 +147,40 @@ export function startAppStatusWatcher({
 /**
  * 标记一个应用为已打开：写入窗口引用、写入 LS。
  */
-export function markOpened(path, win) {
-  if (win) openedWindows.set(path, win);
-  addOpenedPath(path);
+export function markOpened(name, win) {
+  if (win) openedWindows.set(name, win);
+  addOpenedName(name);
 }
 
 /**
  * 清理一个应用的打开状态（用于删除等场景）
  */
-export function clearOpened(path) {
-  const win = openedWindows.get(path);
+export function clearOpened(name) {
+  const win = openedWindows.get(name);
   if (win) {
     try {
       if (!win.closed) win.close();
     } catch (e) {}
-    openedWindows.delete(path);
+    openedWindows.delete(name);
   }
-  openedNames.delete(path);
-  removeOpenedPath(path);
+  openedNames.delete(name);
+  removeOpenedName(name);
 }
 
 /**
  * 尝试聚焦已打开的窗口，若成功返回 true
  */
-export function focusIfOpened(path) {
-  const win = openedWindows.get(path);
+export function focusIfOpened(name) {
+  const win = openedWindows.get(name);
   if (win) {
     try {
       if (!win.closed) {
         win.focus();
         return true;
       }
-      openedWindows.delete(path);
+      openedWindows.delete(name);
     } catch (err) {
-      openedWindows.delete(path);
+      openedWindows.delete(name);
     }
   }
   return false;

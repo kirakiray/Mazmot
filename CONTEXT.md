@@ -76,7 +76,7 @@ Mazmot/
    ↓
 分配可用容器端口 (findTrulyAvailablePort，自动跳过被占用的物理容器，5 个全占则报错)
    ↓
-mount 本地目录 → 存入 ever-cache 的 apps[]（含 containerUrl）
+存入 ever-cache 的 apps[]（直接存储 handle，含 containerUrl）
    ↓
 writeTemplateFiles 写入 4 个模板文件到本地目录
    ↓
@@ -88,7 +88,7 @@ pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推
 ```
 handleOpen / handleOpenWindow / handleOpenTab
    ↓
-readAppFiles(mountPath) 读取本地最新文件（用 dir.flat() + text()）
+readAppFiles(handle) 读取本地最新文件（用 handle.flat() + text()）
    ↓
 pushFilesToContainer(port, files, appName) 推送到容器（校验占用情况）
    ↓
@@ -103,7 +103,6 @@ window.open(getRunUrl(containerUrl))
 ```
 clearOpened → 关闭窗口
 clearContainer(port) → 清空容器虚拟文件系统（释放端口）
-unmount(mountedHandle) → 卸载本地目录
 从 ever-cache.apps 移除记录
 ```
 
@@ -136,7 +135,7 @@ unmount(mountedHandle) → 卸载本地目录
 {
   name: "my-app",           // 唯一名称（校验：字母/数字/_-，不能空格）
   desc: "描述",
-  path: "$mount-xxx-xxx",   // NoneOS mount 路径
+  handle: FileSystemDirectoryHandle, // 直接存储目录句柄
   dirName: "选择的目录名",
   source: "local" | "virtual",
   containerUrl: "http://localhost:40031",  // 分配的容器地址
@@ -168,7 +167,7 @@ unmount(mountedHandle) → 卸载本地目录
 
 ### 状态追踪（`app-status.js`）
 
-用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。**注意**：跨域后 BroadcastChannel 无法工作，主要依靠 `openedWindows` Map 中的 window 引用（`win.closed`）判断。
+用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。**注意**：跨域后 BroadcastChannel 无法工作，主要依靠 `openedWindows` Map 中的 window 引用（`win.closed`）判断。使用 `appName` 作为唯一标识符。
 
 ## 开发/调试
 

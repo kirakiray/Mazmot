@@ -62,22 +62,17 @@ export async function findTrulyAvailablePort(apps) {
 }
 
 /**
- * 读取挂载目录中的所有文件（递归扁平化）
- * @param {string} mountPath - 挂载路径（如 $mount-xxx）
+ * 读取目录中的所有文件（递归扁平化）
+ * @param {Object} handle - 目录句柄（noneos-core DirHandle 或 FileSystemDirectoryHandle）
  * @returns {Promise<Array<{ path: string, content: string }>>}
  */
-export async function readAppFiles(mountPath) {
-  const { get } = await import("/nos/fs/main.js");
-  const dir = await get(mountPath);
-  if (!dir) return [];
+export async function readAppFiles(handle) {
+  if (!handle) return [];
 
-  const allFiles = await dir.flat();
-  const prefix = mountPath + "/";
+  const allFiles = await handle.flat();
   const files = await Promise.all(
     allFiles.map(async (f) => ({
-      path: f.path.startsWith(prefix)
-        ? f.path.slice(prefix.length)
-        : f.path,
+      path: f.path,
       content: await f.text(),
     })),
   );
