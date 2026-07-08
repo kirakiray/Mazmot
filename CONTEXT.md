@@ -238,53 +238,6 @@ npm run static
 | 主 SW | `sw.js` |
 | 容器 SW | `container/sw.js` |
 
-## ofa.js 语法速查（避免常见错误）
-
-```html
-<!-- 条件渲染 -->
-<o-if :value="isShow">...</o-if>
-<o-else-if :value="cond2">...</o-else-if>
-<o-else>...</o-else>
-
-<!-- 列表渲染（$data 是必须的） -->
-<o-fill :value="list">
-  <div>{{$data.name}}</div>
-</o-fill>
-
-<!-- 事件绑定 -->
-<button on:click="handleClick">...</button>
-<button on:click="$host.doSomething($event, $data)">...</button>
-
-<!-- 双向/单向绑定 -->
-<input sync:value="text" />
-<input :value="text" />
-
-<!-- 动态样式/类 -->
-<div :style.width="pct + '%'"></div>
-<div class:active="isActive"></div>
-<div attr:type="$data.type"></div>
-
-<!-- 引入组件 -->
-<l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-
-<!-- 页面模块结构 -->
-<template page>
-  <style>...</style>
-  <div>...</div>
-  <script>
-    export default async ({ query }) => ({
-      data: { count: 0 },
-      proto: {
-        get double() { return this.count * 2; },
-        handleClick() { this.count++; }
-      },
-      attached() { /* 生命周期 */ },
-      watch: { count(v) {} }
-    });
-  </script>
-</template>
-```
-
 ## 与用户对齐的历史决策记录
 
 - **[已实现] 容器隔离**：主系统与应用运行在不同源。5 个容器端口互斥占用。
