@@ -41,7 +41,7 @@ Mazmot/
 │       ├── add-app.html      # 添加应用 3 步向导（子页面，弹窗内加载）
 │       ├── template-writer.js# Hello World 模板：app.json / index.html / app-config.js / pages/home.html
 │       ├── app-status.js     # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
-│       └── container-mgr.js  # 容器端口分配、文件读取、postMessage 通信
+│       └── container-mgr.js  # 容器 URL 分配、文件读取、postMessage 通信
 │
 ├── scripts/
 │   ├── static.js             # 启动 6 个 http-server：Main(30031) + 5 个容器(40031-40035)
@@ -74,13 +74,13 @@ Mazmot/
 ```
 选择本地目录 (open) → 输入应用名 → 校验唯一性
    ↓
-分配可用容器端口 (findTrulyAvailablePort，自动跳过被占用的物理容器，5 个全占则报错)
+分配可用容器 URL (findTrulyAvailableUrl，自动跳过被占用的物理容器，5 个全占则报错)
    ↓
 存入 ever-cache 的 apps[]（直接存储 handle，含 containerUrl）
    ↓
 writeTemplateFiles 写入 4 个模板文件到本地目录的 client/ 子目录下
    ↓
-pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推送到容器
+pushFilesToContainer(containerUrl, files, appName) 通过隐藏 iframe + postMessage 推送到容器
 ```
 
 #### 2. 启动应用（`pages/home.html`）
@@ -90,13 +90,14 @@ handleOpen / handleOpenWindow / handleOpenTab
    ↓
 loadApps 通过 new DirHandle(app.handle) 重新初始化存储的原生句柄为 noneos handle
    ↓
-readAppFiles(handle) 读取本地最新文件（优先读取 client/ 子目录，用 handle.flat() + text()）
+readAppFiles(handle) 读取本地最新文件（优先读取 client/ 子目录，用 handle.flat() + text()，
+                    并剥掉 targetHandle.path 前缀，得到相对 client 的相对路径）
    ↓
-pushFilesToContainer(port, files, appName) 推送到容器（校验占用情况）
+pushFilesToContainer(app.containerUrl, files, appName) 推送到容器（校验占用情况）
    ↓
-window.open(getRunUrl(containerUrl))
+window.open(getRunUrl(app.containerUrl))
    → 容器 _install.html?mode=run 加载
-   → mount(rootDir) 挂载虚拟目录
+   → mount(rootDir) 挂载虚拟目录（rootDir 即 main-app 命名空间）
    → location.replace(`/${mounted.path}/index.html`)
 ```
 
@@ -104,7 +105,7 @@ window.open(getRunUrl(containerUrl))
 
 ```
 clearOpened → 关闭窗口
-clearContainer(port) → 清空容器虚拟文件系统（释放端口）
+clearContainer(app.containerUrl) → 清空容器虚拟文件系统（释放容器）
 从 ever-cache.apps 移除记录
 ```
 
@@ -112,7 +113,7 @@ clearContainer(port) → 清空容器虚拟文件系统（释放端口）
 
 同一个页面根据 URL 参数区分模式：
 
-- **默认（安装/待命）**：显示遮罩安装 NoneOS Core → 初始化 `mazmot-app` 命名空间 → 向父页面 `postMessage({type:"ready"})`，然后监听 install/clear/ping 消息
+- **默认（安装/待命）**：显示遮罩安装 NoneOS Core → 初始化 `main-app` 命名空间 → 向父页面 `postMessage({type:"ready"})`，然后监听 install/clear/ping 消息
 - **`?mode=run`**：初始化完成后自动 `mount` + 跳转到 `/{mountedPath}/index.html`
 - **`?sw_retry=1`**：Service Worker 刚注册未接管页面时，自动跳一次此参数强制刷新
 
@@ -193,7 +194,7 @@ npm run static
 ### 添加第一个应用
 
 1. 点击"添加应用" → 选择本地目录（Chrome 才支持）
-2. 输入名称 → 系统分配容器端口 → 写入 4 个模板文件到本地目录 → 推送到容器
+2. 输入名称 → 系统分配容器 URL → 写入 4 个模板文件到本地目录 → 推送到容器
 3. 应用列表出现新项，容器地址徽章显示 `http://localhost:40031`
 4. 点击应用行或 `tab-plus` / `open-in-new` / `handleOpenWindow` 按钮启动
 
@@ -205,7 +206,8 @@ npm run static
 4. **改造前**创建的应用没有 `containerUrl`，无法打开，需删除后重新创建
 5. **图标只用 `n-icon`**（`<l-m src="/nos/n-icon/n-icon.html"></l-m>` 引入）—— 项目已从 `iconify-icon` 全部迁移
 6. **添加 UI 前必读 SKILL 文档**：`ofajs-docs`、`punch-ui`、`noneos-core-docs`、`ever-cache`
-7. **容器占用自动避让**：`findTrulyAvailablePort` 会实时探测物理容器。如果容器已被其他域名（Origin）的应用占用，系统会自动跳过并尝试下一个可用端口。
+7. **容器占用自动避让**：`findTrulyAvailableUrl` 会实时探测物理容器。如果容器已被其他域名（Origin）的应用占用，系统会自动跳过并尝试下一个可用容器。
+8. **`CONTAINER_URLS` 是唯一事实源**：`container-mgr.js` 导出的容器列表统一为 URL 字符串（如 `http://localhost:40031`），不再暴露 `port` / `getContainerUrl` / `extractPort`。上层拿到 `app.containerUrl` 直接传给 `pushFilesToContainer` / `clearContainer` / `checkContainerOccupancy` 即可。
 
 ## Skill 资源
 
@@ -239,11 +241,3 @@ npm run static
 | ofa.js 主配置 | `app-config.js` |
 | 主 SW | `sw.js` |
 | 容器 SW | `container/sw.js` |
-
-## 与用户对齐的历史决策记录
-
-- **[已实现] 容器隔离**：主系统与应用运行在不同源。5 个容器端口互斥占用。
-- **[已实现] 容器 URL 在应用 item 上显示**：折叠 sub-list 中显示，主行只保留操作按钮。
-- **[已实现] 图标统一 `n-icon`**：项目已完全脱离 `iconify-icon`。
-- **[已实现] 容器入口重命名**：`container/index.html` → `container/_install.html`，容器根路径不再有页面。
-- **[已实现] 容器用户信息页**：`container/_info.html` 展示 default 用户 ID / 公钥 / 个人资料 / 会话。
