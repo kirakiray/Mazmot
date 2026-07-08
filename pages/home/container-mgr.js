@@ -73,7 +73,8 @@ export async function readAppFiles(handle) {
   let targetHandle = handle;
   try {
     const clientDir = await handle.get("client");
-    if (clientDir && clientDir.kind === "directory") {
+    // noneos-core 的 DirHandle.kind 返回 "dir"，不是 "directory"
+    if (clientDir && clientDir.kind === "dir") {
       targetHandle = clientDir;
     }
   } catch (err) {
@@ -82,11 +83,18 @@ export async function readAppFiles(handle) {
   }
 
   const allFiles = await targetHandle.flat();
+  // flat() 返回的 f.path 是从 targetHandle 的 root 追溯而来的完整路径，
+  // 首段是 root.name（不一定就是 targetHandle.name），因此要用 targetHandle.path
+  // 作为前缀剥掉，让容器收到相对 targetHandle 的相对路径（如 "index.html"）。
+  const rootPrefix = targetHandle.path ? targetHandle.path + "/" : "";
   const files = await Promise.all(
-    allFiles.map(async (f) => ({
-      path: f.path,
-      content: await f.text(),
-    })),
+    allFiles.map(async (f) => {
+      let p = f.path;
+      if (rootPrefix && p.startsWith(rootPrefix)) {
+        p = p.slice(rootPrefix.length);
+      }
+      return { path: p, content: await f.text() };
+    }),
   );
   return files;
 }
