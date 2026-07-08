@@ -76,7 +76,7 @@ function createContainerIframe(port) {
   const containerUrl = getContainerUrl(port);
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
-  iframe.src = `${containerUrl}/index.html`;
+  iframe.src = `${containerUrl}/_install.html`;
   document.body.appendChild(iframe);
 
   return {
@@ -216,5 +216,5 @@ export function clearContainer(port, timeout = 30000) {
  * @returns {string}
  */
 export function getRunUrl(containerUrl) {
-  return `${containerUrl}/index.html?mode=run`;
+  return `${containerUrl}/_install.html?mode=run`;
 }
