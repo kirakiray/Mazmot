@@ -47,7 +47,7 @@ Mazmot/
 │   ├── static.js             # 启动 6 个 http-server：Main(30031) + 5 个容器(40031-40035)
 │   └── ...                   # generate-capabilities / update-skill / update-files-json
 │
-├── comps/                    # 通用组件（chatbox、o-md、rnd-box、mascot 等）
+├── comps/                    # 通用组件（现在暂时没有）
 ├── ai/                       # AI 相关：deepseek、kimi、assistant
 └── old/                      # v1/v2/v3 历史版本（不参与新逻辑）
 ```
