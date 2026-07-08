@@ -88,6 +88,8 @@ pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推
 ```
 handleOpen / handleOpenWindow / handleOpenTab
    ↓
+loadApps 通过 new DirHandle(app.handle) 重新初始化存储的原生句柄为 noneos handle
+   ↓
 readAppFiles(handle) 读取本地最新文件（优先读取 client/ 子目录，用 handle.flat() + text()）
    ↓
 pushFilesToContainer(port, files, appName) 推送到容器（校验占用情况）
@@ -135,7 +137,7 @@ clearContainer(port) → 清空容器虚拟文件系统（释放端口）
 {
   name: "my-app",           // 唯一名称（校验：字母/数字/_-，不能空格）
   desc: "描述",
-  handle: FileSystemDirectoryHandle, // 直接存储目录句柄
+  handle: FileSystemDirectoryHandle, // 存储原生句柄（noneos handle._handle），以便序列化到 IndexedDB
   dirName: "选择的目录名",
   source: "local" | "virtual",
   containerUrl: "http://localhost:40031",  // 分配的容器地址
