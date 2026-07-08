@@ -76,7 +76,7 @@
                 done = true;
                 window.removeEventListener("message", onMsg);
                 resolve(null);
-              }, 30000);
+              }, 10000);
 
               function onMsg(event) {
                 // 只接收来自目标容器的消息
@@ -104,6 +104,134 @@
                 installed,
                 expectedToken: token,
                 receivedToken: gotToken,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="修改 index.html 后重新部署，run 模式应加载覆盖后的最新版本">
+      <template>
+        <script type="module">
+          import {
+            CONTAINER_PORTS,
+            getContainerUrl,
+            getRunUrl,
+            pushFilesToContainer,
+            clearContainer,
+          } from "../container-mgr.js";
+          {
+            const port = CONTAINER_PORTS[0];
+            const containerUrl = getContainerUrl(port);
+            const appName = "sibyl-deploy-test-overwrite";
+
+            // 构造带 version 标记的 index.html
+            function makeIndex(version, token) {
+              return `<!doctype html>
+<html>
+  <head><meta charset="UTF-8"><title>deploy-overwrite-v${version}</title></head>
+  <body>
+    <h1>deploy overwrite v${version}</h1>
+    <script>
+      try {
+        window.parent.postMessage(
+          {
+            type: "deploy-overwrite-ready",
+            version: ${JSON.stringify(String(version))},
+            token: ${JSON.stringify(token)}
+          },
+          "*"
+        );
+      } catch (e) {}
+    <\/script>
+  </body>
+</html>`;
+            }
+
+            // 打开 run 模式 iframe，等待携带 token 的回执
+            function waitForReady(expectedToken, timeoutMs = 10000) {
+              const runUrl = getRunUrl(containerUrl);
+              const iframe = document.createElement("iframe");
+              iframe.style.display = "none";
+              iframe.src = runUrl;
+              document.body.appendChild(iframe);
+
+              const cleanup = () => {
+                if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+              };
+
+              return new Promise((resolve) => {
+                let done = false;
+                const timer = setTimeout(() => {
+                  if (done) return;
+                  done = true;
+                  window.removeEventListener("message", onMsg);
+                  cleanup();
+                  resolve(null);
+                }, timeoutMs);
+
+                function onMsg(event) {
+                  if (event.origin !== containerUrl) return;
+                  const data = event.data;
+                  if (!data || data.type !== "deploy-overwrite-ready") return;
+                  // 只接受目标 token，防止旧 iframe 残留消息串扰
+                  if (data.token !== expectedToken) return;
+                  if (done) return;
+                  done = true;
+                  clearTimeout(timer);
+                  window.removeEventListener("message", onMsg);
+                  cleanup();
+                  resolve(data);
+                }
+                window.addEventListener("message", onMsg);
+              });
+            }
+
+            // 0. 先清空容器，避免旧占用者残留
+            await clearContainer(port);
+
+            // 1. 首次部署 v1
+            const tokenV1 = "v1-" + Math.random().toString(36).slice(2);
+            const installedV1 = await pushFilesToContainer(
+              port,
+              [{ path: "index.html", content: makeIndex("1", tokenV1) }],
+              appName,
+            );
+            const firstResp = await waitForReady(tokenV1);
+
+            // 2. 修改同名 index.html 并再次部署（覆盖 v1）
+            const tokenV2 = "v2-" + Math.random().toString(36).slice(2);
+            const installedV2 = await pushFilesToContainer(
+              port,
+              [{ path: "index.html", content: makeIndex("2", tokenV2) }],
+              appName,
+            );
+            const secondResp = await waitForReady(tokenV2);
+
+            // 3. 清理
+            await clearContainer(port);
+
+            const firstOk =
+              installedV1 === true &&
+              firstResp &&
+              firstResp.version === "1" &&
+              firstResp.token === tokenV1;
+            const secondOk =
+              installedV2 === true &&
+              secondResp &&
+              secondResp.version === "2" &&
+              secondResp.token === tokenV2;
+
+            return {
+              assert: firstOk && secondOk,
+              content: {
+                port,
+                installedV1,
+                installedV2,
+                firstResp,
+                secondResp,
+                expected: { tokenV1, tokenV2 },
               },
             };
           }
