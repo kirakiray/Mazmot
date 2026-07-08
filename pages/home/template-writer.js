@@ -155,6 +155,9 @@ export async function writeTemplateFiles({
   const files = buildTemplateFiles({ name, desc });
   const total = files.length;
 
+  // 获取或创建 client 目录，将所有静态文件写入其中
+  const clientDir = await dirHandle.get("client", { create: "dir" });
+
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
 
@@ -168,7 +171,7 @@ export async function writeTemplateFiles({
       });
     }
 
-    const fileHandle = await dirHandle.get(f.path, { create: "file" });
+    const fileHandle = await clientDir.get(f.path, { create: "file" });
     await fileHandle.write(f.content);
 
     if (onProgress) {

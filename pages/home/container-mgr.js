@@ -69,7 +69,19 @@ export async function findTrulyAvailablePort(apps) {
 export async function readAppFiles(handle) {
   if (!handle) return [];
 
-  const allFiles = await handle.flat();
+  // 尝试获取 client 目录句柄，如果不存在则回退到根目录（兼容旧应用或非标准结构）
+  let targetHandle = handle;
+  try {
+    const clientDir = await handle.get("client");
+    if (clientDir && clientDir.kind === "directory") {
+      targetHandle = clientDir;
+    }
+  } catch (err) {
+    // client 目录不存在，继续使用原始句柄
+    console.warn("未发现 client 目录，将从根目录读取文件");
+  }
+
+  const allFiles = await targetHandle.flat();
   const files = await Promise.all(
     allFiles.map(async (f) => ({
       path: f.path,

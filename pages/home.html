@@ -297,13 +297,20 @@
         apps.map(async (app) => {
           let manifest = null;
           try {
-            // 直接通过句柄获取 app.json
-            const jsonFile = await app.handle.get(`app.json`);
+            // 优先尝试从 client/app.json 获取，如果不存在则尝试根目录（兼容旧应用）
+            let jsonFile = null;
+            try {
+              const clientDir = await app.handle.get("client");
+              jsonFile = await clientDir.get("app.json");
+            } catch (e) {
+              jsonFile = await app.handle.get("app.json");
+            }
+
             if (jsonFile) {
               manifest = await jsonFile.json();
             }
           } catch (err) {
-            console.warn(`读取 ${app.name}/app.json 失败：`, err);
+            console.warn(`读取 ${app.name} 的配置失败：`, err);
           }
 
           return {

@@ -78,7 +78,7 @@ Mazmot/
    ↓
 存入 ever-cache 的 apps[]（直接存储 handle，含 containerUrl）
    ↓
-writeTemplateFiles 写入 4 个模板文件到本地目录
+writeTemplateFiles 写入 4 个模板文件到本地目录的 client/ 子目录下
    ↓
 pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推送到容器
 ```
@@ -88,7 +88,7 @@ pushFilesToContainer(port, files, appName) 通过隐藏 iframe + postMessage 推
 ```
 handleOpen / handleOpenWindow / handleOpenTab
    ↓
-readAppFiles(handle) 读取本地最新文件（用 handle.flat() + text()）
+readAppFiles(handle) 读取本地最新文件（优先读取 client/ 子目录，用 handle.flat() + text()）
    ↓
 pushFilesToContainer(port, files, appName) 推送到容器（校验占用情况）
    ↓
@@ -145,7 +145,7 @@ clearContainer(port) → 清空容器虚拟文件系统（释放端口）
 
 ### 应用模板文件（`template-writer.js`）
 
-生成 4 个文件：
+生成 4 个文件，存放在本地目录的 `client/` 子目录下：
 
 - `app.json` — 应用元数据（name / displayName / version / icon / entry / permissions / capabilities）
 - `index.html` — 入口 HTML，加载 ofa.js + router + Punch-UI + `./app-config.js`
