@@ -1,150 +1,113 @@
-// ofa.js Hello World 应用模板生成与写入
-// 负责根据应用名和描述生成模板文件，并逐个写入到目标目录
+// ofa.js 应用模板加载与写入
+// 模板文件位于同目录下的 `templates/<id>/`，通过各模板下的 `__files.json`
+// 描述文件清单。模板源文件以 `.tpl` 结尾（避免 IDE 对占位符做 lint 校验），
+// 写入时会去除 `.tpl` 后缀，并把占位符替换为实际的应用信息。
+//
+// 支持的占位符：
+//   {{APP_NAME}}       - 应用名（原样）
+//   {{APP_DESC}}       - 应用描述（原样）
+//   {{APP_DESC_HTML}}  - 应用描述（HTML 转义）
+//   {{APP_DESC_JSON}}  - 应用描述（不带外层引号的 JSON 字符串片段，可安全嵌入 "..." 中）
+//   {{CREATED_AT}}     - 创建时间（毫秒时间戳）
+
+const TEMPLATES_ROOT = new URL("./templates/", import.meta.url);
 
 /**
- * 根据应用名和描述生成模板文件列表
- * @param {{ name: string, desc?: string }} options
- * @returns {Array<{ path: string, content: string }>}
+ * 加载模板列表清单。
+ * @returns {Promise<Array<{ id: string, name: string, desc?: string }>>}
  */
-export function buildTemplateFiles({ name, desc }) {
-  const appJson = JSON.stringify(
-    {
-      name,
-      displayName: name,
-      version: "0.1.0",
-      description: desc || "",
-      author: "",
-      icon: "",
-      entry: "./index.html",
-      appConfig: "./app-config.js",
-      permissions: [],
-      capabilities: [],
-      createdAt: Date.now(),
-      mazmot: {
-        source: "self-created",
-      },
-    },
-    null,
-    2
-  );
+export async function loadTemplates() {
+  const url = new URL("manifest.json", TEMPLATES_ROOT);
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`加载模板清单失败：${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data.templates) ? data.templates : [];
+}
 
-  const indexHtml = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${name}</title>
-    <script
-      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs"
-      type="module"
-    ><\/script>
-    <script
-      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
-      type="module"
-    ><\/script>
-    <link
-      rel="stylesheet"
-      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
-    />
-    <style>
-      html,
-      body {
-        height: 100%;
-        padding: 0;
-        margin: 0;
-        overflow: hidden;
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
-      }
-    </style>
-  </head>
-  <body>
-    <o-router fix-body>
-      <o-app src="./app-config.js"></o-app>
-    </o-router>
-  </body>
-</html>
-`;
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-  const appConfigJs = `export const home = "./pages/home.html";
+function toJsonFragment(str) {
+  // JSON.stringify 会返回带外层引号的字符串，切掉外层引号得到可直接嵌入
+  // "..." 中的转义片段。
+  const s = JSON.stringify(String(str));
+  return s.slice(1, -1);
+}
 
-export const pageAnime = {
-  current: {
-    opacity: 1,
-    transform: "translate(0, 0)",
-  },
-  next: {
-    opacity: 0,
-    transform: "translate(30px, 0)",
-  },
-  previous: {
-    opacity: 0,
-    transform: "translate(-30px, 0)",
-  },
-};
-`;
-
-  const homeHtml = `<template page>
-  <style>
-    :host {
-      display: block;
-      height: 100%;
-    }
-    .welcome {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 20px;
-      text-align: center;
-    }
-    h1 {
-      color: var(--md-sys-color-primary);
-      margin-bottom: 12px;
-    }
-    p {
-      color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.6;
-    }
-  </style>
-  <div class="welcome">
-    <h1>Hello, ${name}!</h1>
-    <p>${desc || "Welcome to your new ofa.js application."}</p>
-  </div>
-  <script>
-    export default async () => {
-      return {
-        data: {},
-      };
-    };
-  <\/script>
-</template>
-`;
-
-  return [
-    { path: "app.json", content: appJson },
-    { path: "index.html", content: indexHtml },
-    { path: "app-config.js", content: appConfigJs },
-    { path: "pages/home.html", content: homeHtml },
-  ];
+function applyPlaceholders(content, ctx) {
+  return content
+    .replace(/\{\{APP_NAME\}\}/g, ctx.name)
+    .replace(/\{\{APP_DESC_HTML\}\}/g, escapeHtml(ctx.desc))
+    .replace(/\{\{APP_DESC_JSON\}\}/g, toJsonFragment(ctx.desc))
+    .replace(/\{\{APP_DESC\}\}/g, ctx.desc)
+    .replace(/\{\{CREATED_AT\}\}/g, String(ctx.createdAt));
 }
 
 /**
- * 将模板文件写入目标目录，通过回调上报进度
+ * 根据模板 ID 与应用信息生成待写入的文件列表。
+ * @param {Object} options
+ * @param {string} options.name 应用名
+ * @param {string} [options.desc] 应用描述
+ * @param {string} [options.templateId="base"] 模板 ID
+ * @returns {Promise<Array<{ path: string, content: string }>>}
+ */
+export async function buildTemplateFiles({ name, desc, templateId = "base" }) {
+  const templateRoot = new URL(`${templateId}/`, TEMPLATES_ROOT);
+  const filesRes = await fetch(new URL("__files.json", templateRoot));
+  if (!filesRes.ok) {
+    throw new Error(`加载模板 ${templateId} 失败：${filesRes.status}`);
+  }
+  const filesJson = await filesRes.json();
+  const paths = Array.isArray(filesJson.files) ? filesJson.files : [];
+
+  const ctx = {
+    name: String(name || ""),
+    desc: String(desc || "Welcome to your new ofa.js application."),
+    createdAt: Date.now(),
+  };
+
+  const files = [];
+  for (const relPath of paths) {
+    const res = await fetch(new URL(relPath, templateRoot));
+    if (!res.ok) {
+      throw new Error(`读取模板文件 ${relPath} 失败：${res.status}`);
+    }
+    const raw = await res.text();
+    const outPath = relPath.endsWith(".tpl")
+      ? relPath.slice(0, -4)
+      : relPath;
+    files.push({
+      path: outPath,
+      content: applyPlaceholders(raw, ctx),
+    });
+  }
+  return files;
+}
+
+/**
+ * 将模板文件写入目标目录，通过回调上报进度。
  * @param {Object} options
  * @param {Object} options.dirHandle 目标目录句柄（noneos-core DirHandle）
  * @param {string} options.name 应用名称
  * @param {string} [options.desc] 应用描述
- * @param {(payload: { index: number, total: number, path: string, status: 'writing'|'done', progress: number }) => void} [options.onProgress] 进度回调
+ * @param {string} [options.templateId="base"] 模板 ID
+ * @param {(payload: { index: number, total: number, path: string, status: 'writing'|'done', progress: number }) => void} [options.onProgress]
  * @param {number} [options.stepDelay=120] 每个文件之间的等待时长（用于 UI 平滑，单位 ms）
- * @returns {Promise<Array<{ path: string, content: string }>>} 写入完成的文件列表
+ * @returns {Promise<Array<{ path: string, content: string }>>}
  */
 export async function writeTemplateFiles({
   dirHandle,
   name,
   desc,
+  templateId = "base",
   onProgress,
   stepDelay = 120,
 }) {
@@ -152,7 +115,7 @@ export async function writeTemplateFiles({
     throw new Error("缺少目标目录句柄");
   }
 
-  const files = buildTemplateFiles({ name, desc });
+  const files = await buildTemplateFiles({ name, desc, templateId });
   const total = files.length;
 
   // 获取或创建 client 目录，将所有静态文件写入其中

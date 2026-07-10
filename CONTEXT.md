@@ -41,7 +41,10 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── template-writer.js    # Hello World 模板：app.json / index.html / app-config.js / pages/home.html
+│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 目录读取 .tpl 源文件，替换占位符后写入目标 client/ 目录）
+│   │   │   ├── templates/            # 应用模板资源目录
+│   │   │   │   ├── manifest.json     # 模板清单（AI 添加新模板时需在此登记 id/name/desc）
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json 清单 + 若干 .tpl 源文件
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 install-app 反向引用
 │   │       ├── container-mgr.js      # 容器 URL 分配、文件读取、postMessage 通信
@@ -300,7 +303,7 @@ Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范
 | 修改应用列表 UI | `apps/main/home.html` |
 | 修改添加应用流程 | `apps/main/home/add-app.html` |
 | 容器分配/通信 | `apps/main/lib/container-mgr.js` |
-| 应用模板内容 | `apps/main/home/template-writer.js` |
+| 应用模板内容 | `apps/main/home/template-writer.js` + `apps/main/home/templates/` |
 | 应用打开状态 | `apps/main/home/app-status.js` |
 | 分享工具（发布/验签） | `apps/main/lib/share-mgr.js` |
 | 分享接收页 | `apps/install-app/install-app.html` |

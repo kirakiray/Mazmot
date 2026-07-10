@@ -115,6 +115,49 @@
       margin-bottom: 16px;
       word-break: break-all;
     }
+
+    /* 模板选择 */
+    .template-label {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .template-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .template-card {
+      flex: 1 1 160px;
+      min-width: 160px;
+      padding: 10px 12px;
+      border: 1px solid var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background-color: var(--md-sys-color-surface);
+    }
+    .template-card:hover {
+      border-color: var(--md-sys-color-primary);
+    }
+    .template-card[active] {
+      border-color: var(--md-sys-color-primary);
+      background-color: var(--md-sys-color-primary-container);
+    }
+    .template-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 2px;
+    }
+    .template-card[active] .template-card-name {
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .template-card-desc {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.4;
+    }
     .footer {
       display: flex;
       justify-content: flex-end;
@@ -308,6 +351,24 @@
         </p-textarea>
       </div>
 
+      <div class="form-field">
+        <div class="template-label">选择模板 *</div>
+        <div class="template-list">
+          <o-fill :value="templates">
+            <div
+              class="template-card"
+              attr:active="$data.id === $host.templateId"
+              on:click="$host.selectTemplate($data.id)"
+            >
+              <div class="template-card-name">{{$data.name}}</div>
+              <o-if :value="$data.desc">
+                <div class="template-card-desc">{{$data.desc}}</div>
+              </o-if>
+            </div>
+          </o-fill>
+        </div>
+      </div>
+
       <div class="section-desc">
         应用名称只能包含字母、数字、下划线（_）和连字符（-），不能包含空格或特殊字符，且不能与已有的应用重复。
       </div>
@@ -384,7 +445,7 @@
     import { open, get, init } from "/nos/fs/main.js";
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
-    import { writeTemplateFiles } from "./template-writer.js";
+    import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
     import {
       findTrulyAvailableUrl,
       pushFilesToContainer,
@@ -393,6 +454,15 @@
     import { generateAppId } from "../lib/share-mgr.js";
 
     export default async () => {
+      let templates = [];
+      try {
+        templates = await loadTemplates();
+      } catch (err) {
+        console.warn("加载模板列表失败：", err);
+      }
+      const defaultTemplateId =
+        templates.length > 0 ? templates[0].id : "base";
+
       return {
         data: {
           step: 1,
@@ -404,6 +474,8 @@
           appName: "",
           appDesc: "",
           nameError: "",
+          templates,
+          templateId: defaultTemplateId,
           progress: 0,
           progressText: "准备中...",
           fileLogs: [],
@@ -476,6 +548,11 @@
           backToStep1() {
             this.step = 1;
             this.nameError = "";
+          },
+
+          selectTemplate(id) {
+            if (!id) return;
+            this.templateId = id;
           },
 
           async confirmAppInfo() {
@@ -552,6 +629,7 @@
                 dirHandle: this._selectedHandle,
                 name,
                 desc,
+                templateId: this.templateId,
                 onProgress: ({ index, total, path, status, progress }) => {
                   // 首次遇到该文件时初始化日志
                   if (!this.fileLogs[index]) {
@@ -609,6 +687,8 @@
             this.appName = "";
             this.appDesc = "";
             this.nameError = "";
+            this.templateId =
+              this.templates.length > 0 ? this.templates[0].id : "base";
             this.progress = 0;
             this.progressText = "准备中...";
             this.fileLogs.length = 0;
