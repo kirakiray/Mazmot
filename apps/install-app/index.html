@@ -5,15 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot - 安装应用</title>
     <script type="module">
-      const config = await fetch("/__config")
-        .then((e) => e.json())
-        .catch(() => {
-          // 未初始化 NoneOS Core，跳根引导页；带 redirect 参数确保安装完能跳回原分享链接
-          const redirect = encodeURIComponent(
-            window.location.pathname + window.location.search,
-          );
-          window.location.href = `/?redirect=${redirect}`;
-        });
+      // 加载应用前先校验 NoneOS Core 是否已就绪且包含分享所需的全部模块。
+      // 旧版本 Core 缺少 /nos/publish/data-publisher.js 等模块时，先到根入口完成升级。
+      const redirect = encodeURIComponent(
+        window.location.pathname + window.location.search,
+      );
+      try {
+        await Promise.all([
+          import("/nos/fs/main.js"),
+          import("/nos/user/main.js"),
+          import("/nos/publish/data-publisher.js"),
+          import("/nos/crypto/crypto-verify.js"),
+        ]);
+      } catch (e) {
+        window.location.href = `/?redirect=${redirect}`;
+      }
     </script>
     <script
       src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"

@@ -35,7 +35,7 @@ Mazmot/
 │
 ├── apps/                     # 应用（monorepo 风格）
 │   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口，URL = /apps/main/
-│   │   ├── index.html        # 应用入口 HTML（装载 ./app-config.js）
+│   │   ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
 │   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间）
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
@@ -51,7 +51,7 @@ Mazmot/
 │   │       └── test/                 # sibyl-test 单元/集成测试
 │   │
 │   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
-│       ├── index.html        # 应用入口 HTML（装载 ./app-config.js）
+│       ├── index.html        # 应用入口 HTML：先校验 Core 模块（含分享必须的 data-publisher），缺失则回根入口升级；再装载 ./app-config.js
 │       ├── app-config.js     # ofa.js 应用配置
 │       └── install-app.html  # 分享安装页面模块（校验/拉取/安装/推送容器）
 │
@@ -203,8 +203,10 @@ npm run static
 ### 首次访问
 
 1. 访问 30031 根路径 → 根 `index.html` 加载 `nos-version` 自动安装/升级 NoneOS Core；完成后根据 `?redirect=` 跳转，默认进入 `/apps/main/`
-2. 进入 `apps/main/index.html` → 装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
+2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块是否存在；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
+
+> 直接打开分享链接（`/apps/install-app/?p=...`）时，`install-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；旧版本 Core 缺少任一模块都会先回根入口升级，再返回继续安装。
 
 ### 添加第一个应用
 
