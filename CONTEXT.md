@@ -22,9 +22,8 @@
 
 ```
 Mazmot/
-├── index.html                # 根转发页：跳转到 /apps/main/（NoneOS 未装则先去 _bootstrap.html）
-├── _bootstrap.html           # 首次访问时初始化 NoneOS Core（系统引导页，支持 ?redirect=）
-├── sw.js                     # NoneOS Core Service Worker（寄宿在 _bootstrap.html 上注册，scope=/）
+├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
+├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 只提供 static 脚本：node scripts/static.js
@@ -203,7 +202,7 @@ npm run static
 
 ### 首次访问
 
-1. 访问 30031 根路径 → 根 `index.html` 检测 `/__config`；若无 → 跳 `_bootstrap.html?redirect=/apps/main/` 初始化 NoneOS Core，装完自动回到 `/apps/main/`；若有则直接 `location.replace("/apps/main/")`
+1. 访问 30031 根路径 → 根 `index.html` 加载 `nos-version` 自动安装/升级 NoneOS Core；完成后根据 `?redirect=` 跳转，默认进入 `/apps/main/`
 2. 进入 `apps/main/index.html` → 装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
