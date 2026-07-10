@@ -22,10 +22,9 @@
 
 ```
 Mazmot/
-├── index.html                # 主系统入口（30031 端口，装载 apps/main/app-config.js）
-├── install-app.html          # 分享安装入口（装载 apps/install-app/app-config.js）
-├── _bootstrap.html           # 首次访问时初始化 NoneOS Core（系统引导页）
-├── sw.js                     # NoneOS Core Service Worker
+├── index.html                # 根转发页：跳转到 /apps/main/（NoneOS 未装则先去 _bootstrap.html）
+├── _bootstrap.html           # 首次访问时初始化 NoneOS Core（系统引导页，支持 ?redirect=）
+├── sw.js                     # NoneOS Core Service Worker（寄宿在 _bootstrap.html 上注册，scope=/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 只提供 static 脚本：node scripts/static.js
@@ -36,7 +35,8 @@ Mazmot/
 │   └── sw.js                 # 容器专用 SW（importScripts NoneOS Core）
 │
 ├── apps/                     # 应用（monorepo 风格）
-│   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口
+│   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口，URL = /apps/main/
+│   │   ├── index.html        # 应用入口 HTML（装载 ./app-config.js）
 │   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间）
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
@@ -48,7 +48,8 @@ Mazmot/
 │   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   │       └── test/                 # sibyl-test 单元/集成测试
 │   │
-│   └── install-app/          # 分享接收应用
+│   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
+│       ├── index.html        # 应用入口 HTML（装载 ./app-config.js）
 │       ├── app-config.js     # ofa.js 应用配置
 │       └── install-app.html  # 分享安装页面模块（校验/拉取/安装/推送容器）
 │
@@ -199,8 +200,8 @@ npm run static
 
 ### 首次访问
 
-1. 访问 30031 → `fetch("/__config")` 失败 → 跳 `_bootstrap.html` → 初始化 NoneOS Core
-2. 主系统 `apps/main/app-config.js` 用 `init("mazmot")` 初始化文件系统
+1. 访问 30031 根路径 → 根 `index.html` 检测 `/__config`；若无 → 跳 `_bootstrap.html?redirect=/apps/main/` 初始化 NoneOS Core，装完自动回到 `/apps/main/`；若有则直接 `location.replace("/apps/main/")`
+2. 进入 `apps/main/index.html` → 装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
 ### 添加第一个应用
@@ -241,10 +242,10 @@ npm run static
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
 5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
 6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名（内部 `user.sign`）。
-7. `buildShareUrl(origin, signedPayload)` → `{origin}/install-app.html?p={base64url(signedPayload)}`。
+7. `buildShareUrl(origin, signedPayload)` → `{origin}/apps/install-app/?p={base64url(signedPayload)}`。
 8. 弹窗展示只读链接 + "复制链接" 按钮；提醒用户保持页面开启（P2P 依赖发布者在线）。
 
-### 接收（`install-app.html` → `apps/install-app/install-app.html`）
+### 接收（`/apps/install-app/` → `apps/install-app/index.html` → 页面模块 `install-app.html`）
 1. `parseShareUrl(location.search)` 用 `JSON.parse` 拿到 `payload`（**必须保留字段原顺序**，不能重建对象）。
 2. `verifySharePayload(payload)` 调用 `verifyData(payload)`（`/nos/crypto/crypto-verify.js`）—— **无需构造 user 实例**。失败 → `error` 步骤，提示"签名无效"。
 3. 通过后进入 `preview` 步骤展示 icon / displayName / version / description / publisherUserId。

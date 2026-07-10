@@ -5,50 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot</title>
     <script type="module">
-      const config = await fetch("/__config")
+      // 根路径只做一件事：把用户送去主应用 apps/main/。
+      // 若 NoneOS Core 未安装，先去引导页，安装完自动重定向回 apps/main/。
+      fetch("/__config")
         .then((e) => e.json())
+        .then(() => {
+          location.replace("/apps/main/");
+        })
         .catch(() => {
-          // 没有配置文件，跳转到系统引导页
-          window.location.href = "/_bootstrap.html";
+          location.replace("/_bootstrap.html?redirect=/apps/main/");
         });
     </script>
-    <script
-      src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
-      type="module"
-    ></script>
-    <script
-      src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
-      type="module"
-    ></script>
-    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
-    <style>
-      html,
-      body {
-        height: 100%;
-        padding: 0;
-        margin: 0;
-        overflow: hidden;
-        font-family:
-          -apple-system,
-          BlinkMacSystemFont,
-          Segoe UI,
-          Microsoft Yahei,
-          Helvetica,
-          Arial,
-          sans-serif,
-          Apple Color Emoji,
-          Segoe UI Emoji;
-      }
-    </style>
-    <link
-      rel="stylesheet"
-      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
-    />
   </head>
-
-  <body>
-    <o-router fix-body>
-      <o-app src="./apps/main/app-config.js"></o-app>
-    </o-router>
-  </body>
+  <body></body>
 </html>
