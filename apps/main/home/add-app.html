@@ -376,7 +376,14 @@
 
     <div class="footer">
       <p-button variant="text" on:click="backToStep1">上一步</p-button>
-      <p-button color="primary" on:click="confirmAppInfo">确认</p-button>
+      <p-button
+            color="primary"
+            on:click="confirmAppInfo"
+            attr:loading="submitting"
+            attr:disabled="submitting"
+          >
+            确认
+          </p-button>
     </div>
   </o-if>
 
@@ -476,6 +483,7 @@
           nameError: "",
           templates,
           templateId: defaultTemplateId,
+          submitting: false,
           progress: 0,
           progressText: "准备中...",
           fileLogs: [],
@@ -556,9 +564,12 @@
           },
 
           async confirmAppInfo() {
+            if (this.submitting) return;
+
             const ok = await this.validateName();
             if (!ok) return;
 
+            this.submitting = true;
             try {
               const appName = this.appName.trim();
 
@@ -611,6 +622,8 @@
               alert({
                 content: "准备应用失败：" + (err.message || err),
               });
+            } finally {
+              this.submitting = false;
             }
           },
 
@@ -689,6 +702,7 @@
             this.nameError = "";
             this.templateId =
               this.templates.length > 0 ? this.templates[0].id : "base";
+            this.submitting = false;
             this.progress = 0;
             this.progressText = "准备中...";
             this.fileLogs.length = 0;
