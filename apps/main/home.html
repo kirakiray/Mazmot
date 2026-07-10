@@ -153,6 +153,14 @@
       color: var(--md-sys-color-on-surface);
       word-break: break-all;
     }
+    .app-id-value {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     .icon-btn {
       z-index: 3;
@@ -319,6 +327,26 @@
                         <span class="sub-info-value">未分配</span>
                       </o-if>
                     </div>
+                    <o-if :value="$data.appId">
+                      <div class="sub-info-row">
+                        <span class="sub-info-label">应用 ID：</span>
+                        <span
+                          class="sub-info-value app-id-value"
+                          attr:title="$data.appId"
+                        >{{$data.appId}}</span>
+                        <p-button
+                          class="icon-btn"
+                          variant="text"
+                          color="primary"
+                          icon
+                          size="s"
+                          on:click="$host.copyAppId($event, $data)"
+                          title="复制应用 ID"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </p-button>
+                      </div>
+                    </o-if>
                     <div class="sub-info-row">
                       <span class="sub-info-label">操作：</span>
                       <div class="action-row">
@@ -656,10 +684,10 @@
             this.shareDialogOpen = true;
 
             try {
-              // 兼容老数据：补写 appId 并持久化
+              // 兼容老数据：补写 appId 并持久化（新格式：`${userId}-${appName}`）
               let appId = app.appId;
               if (!appId) {
-                appId = generateAppId();
+                appId = await generateAppId(app._recordName);
                 const stored = (await storage.apps) || [];
                 const target = stored.find(
                   (a) => a.name === app._recordName,
@@ -724,6 +752,23 @@
               console.error("分享失败：", err);
               this.shareError = err.message || String(err);
               this.shareStep = "error";
+            }
+          },
+
+          async copyAppId(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app.appId) return;
+            try {
+              await navigator.clipboard.writeText(app.appId);
+              toast({ content: "应用 ID 已复制", color: "success" });
+            } catch (err) {
+              toast({
+                content: "复制失败，请手动复制",
+                color: "error",
+              });
             }
           },
 

@@ -8,7 +8,18 @@ import { verifyData } from "/nos/crypto/crypto-verify.js";
 export const PACKAGE_VERSION = "1.0.0";
 export const SHARE_NAMESPACE = "mazmot";
 
-let _cache = null;
+let _userCache = null;
+let _publisherCache = null;
+
+/**
+ * 获取当前用户实例（LocalUser）。同一 namespace 下 userId 稳定，
+ * 可用于生成应用 ID 或读取身份信息，不会启动 P2P 网络。
+ */
+export async function ensureUser() {
+  if (_userCache) return _userCache;
+  _userCache = await getUser(SHARE_NAMESPACE);
+  return _userCache;
+}
 
 /**
  * 确保当前用户的 DataPublisher 已初始化并启动。返回 { user, publisher } 单例。
@@ -16,20 +27,22 @@ let _cache = null;
  * `user.ready()` 会自动连接默认信令服务器。
  */
 export async function ensurePublisher() {
-  if (_cache) return _cache;
-  const user = await getUser(SHARE_NAMESPACE);
+  if (_publisherCache) return _publisherCache;
+  const user = await ensureUser();
   const publisher = new DataPublisher(user);
   publisher.start();
-  _cache = { user, publisher };
-  return _cache;
+  _publisherCache = { user, publisher };
+  return _publisherCache;
 }
 
 /**
- * 生成一个稳定的应用 ID，用于跨设备识别同一应用。
+ * 生成应用 ID：`${当前用户 userId}-${应用名}`。
+ * userId 是 LocalUser 公钥哈希（跨设备、跨 tab 稳定），配合应用名可以唯一标识一个应用。
+ * @param {string} appName - 应用名（不含空格，用于目录/展示都对得上）
  */
-export function generateAppId() {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `app_${Date.now()}_${rand}`;
+export async function generateAppId(appName) {
+  const user = await ensureUser();
+  return `${user.userId}-${appName}`;
 }
 
 /**

@@ -352,7 +352,8 @@
               }
 
               // 组装本地唯一 recordName（避免与已有应用同名冲突）
-              const suffix = payload.appId.slice(-6);
+              // appId 形如 `${publisherUserId}-${appName}`，用发布者 userId 前 6 位做后缀
+              const suffix = (payload.publisherUserId || "").slice(0, 6) || "shared";
               const uniqueRecordName =
                 pkg.meta.recordName + "-" + suffix;
 
