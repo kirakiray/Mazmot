@@ -492,15 +492,16 @@
               }
               this._containerUrl = containerUrl;
 
-              // 若为虚拟目录，此时才真正创建独立命名空间的虚拟根目录
+              // 若为虚拟目录，在共享命名空间 mazmot-apps 下建立应用子目录
               let handleForStorage;
               if (this.source === "virtual") {
-                const namespace = `mazmot-app-${appName}`;
-                const vHandle = await init(namespace);
+                const namespace = "mazmot-apps";
+                const rootDir = await init(namespace);
+                const vHandle = await rootDir.get(appName, { create: "dir" });
                 this._selectedHandle = vHandle;
                 this._virtualNamespace = namespace;
-                this.selectedDirName = namespace;
-                // 虚拟目录无原生 FileSystemHandle，直接存命名空间用于后续 init() 重建
+                this.selectedDirName = `${namespace}/${appName}`;
+                // 虚拟目录无原生 FileSystemHandle，靠 namespace + appName 重建
                 handleForStorage = null;
               } else {
                 // 本地目录：保存原生句柄以支持序列化存储

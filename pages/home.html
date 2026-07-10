@@ -302,8 +302,9 @@
           let handle = null;
           try {
             if (app.source === "virtual") {
-              const namespace = app.namespace || `mazmot-app-${app.name}`;
-              handle = await init(namespace);
+              const namespace = app.namespace || "mazmot-apps";
+              const rootDir = await init(namespace);
+              handle = await rootDir.get(app.name, { create: "dir" });
             } else if (app.handle) {
               handle = new DirHandle(app.handle);
             }
@@ -550,14 +551,10 @@
                 }
               }
 
-              // 对于虚拟目录应用，同时清空虚拟文件系统中的数据
+              // 对于虚拟目录应用，从共享命名空间中移除该应用的子目录
               if (app.source === "virtual" && app._handle) {
                 try {
-                  for await (const [, child] of app._handle.entries()) {
-                    try {
-                      await child.remove();
-                    } catch (e) {}
-                  }
+                  await app._handle.remove();
                 } catch (vErr) {
                   console.warn("清空虚拟目录失败（可忽略）：", vErr);
                 }
