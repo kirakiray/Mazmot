@@ -52,8 +52,22 @@
       const load = lm(import.meta);
 
       $("nos-version").on("installed", () => {
-        // 判断并重定向
-        location.href = "/";
+        // 若来源页带了 redirect 参数，安装完成后回到原页面（如分享链接）
+        const params = new URLSearchParams(location.search);
+        const raw = params.get("redirect");
+        let target = "/";
+        if (raw) {
+          try {
+            const decoded = decodeURIComponent(raw);
+            // 仅允许站内相对路径，避免 open redirect 风险
+            if (decoded.startsWith("/") && !decoded.startsWith("//")) {
+              target = decoded;
+            }
+          } catch (e) {
+            // 解码失败则忽略
+          }
+        }
+        location.href = target;
       });
 
       await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
