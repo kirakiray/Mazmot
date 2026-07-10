@@ -114,7 +114,7 @@ export function base64UrlDecode(b64url) {
  */
 export function buildShareUrl(origin, signedPayload) {
   const encoded = base64UrlEncode(JSON.stringify(signedPayload));
-  return `${origin}/share.html?p=${encoded}`;
+  return `${origin}/install-app.html?p=${encoded}`;
 }
 
 /**

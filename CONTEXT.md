@@ -23,9 +23,9 @@
 ```
 Mazmot/
 ├── index.html                # 主系统入口（30031 端口）
-├── share.html                # 应用分享接收页（配 share-config.js + pages/share.html）
-├── share-config.js           # 分享页 ofa.js 应用配置
-├── _install.html             # 首次访问时安装 NoneOS Core
+├── install-app.html          # 应用分享接收页（配 install-app-config.js + pages/install-app.html）
+├── install-app-config.js     # 分享安装页 ofa.js 应用配置
+├── _bootstrap.html           # 首次访问时初始化 NoneOS Core（系统引导页）
 ├── app-config.js             # ofa.js 主应用配置（init "mazmot" 命名空间）
 ├── sw.js                     # NoneOS Core Service Worker
 ├── AGENTS.md                 # AI 开发规范（必读）
@@ -39,7 +39,7 @@ Mazmot/
 │
 ├── pages/
 │   ├── home.html             # 应用列表主页（页面模块）
-│   ├── share.html            # 分享安装页面模块（校验/拉取/安装/推送容器）
+│   ├── install-app.html      # 分享安装页面模块（校验/拉取/安装/推送容器）
 │   └── home/
 │       ├── add-app.html      # 添加应用 3 步向导（子页面，弹窗内加载）
 │       ├── template-writer.js# Hello World 模板：app.json / index.html / app-config.js / pages/home.html
@@ -195,7 +195,7 @@ npm run static
 
 ### 首次访问
 
-1. 访问 30031 → `fetch("/__config")` 失败 → 跳 `_install.html` → 安装 NoneOS Core
+1. 访问 30031 → `fetch("/__config")` 失败 → 跳 `_bootstrap.html` → 初始化 NoneOS Core
 2. 主系统 `app-config.js` 用 `init("mazmot")` 初始化文件系统
 3. `pages/home.html` 加载显示应用列表（初始为空）
 
@@ -237,10 +237,10 @@ npm run static
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
 5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
 6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名（内部 `user.sign`）。
-7. `buildShareUrl(origin, signedPayload)` → `{origin}/share.html?p={base64url(signedPayload)}`。
+7. `buildShareUrl(origin, signedPayload)` → `{origin}/install-app.html?p={base64url(signedPayload)}`。
 8. 弹窗展示只读链接 + "复制链接" 按钮；提醒用户保持页面开启（P2P 依赖发布者在线）。
 
-### 接收（`share.html` → `pages/share.html`）
+### 接收（`install-app.html` → `pages/install-app.html`）
 1. `parseShareUrl(location.search)` 用 `JSON.parse` 拿到 `payload`（**必须保留字段原顺序**，不能重建对象）。
 2. `verifySharePayload(payload)` 调用 `verifyData(payload)`（`/nos/crypto/crypto-verify.js`）—— **无需构造 user 实例**。失败 → `error` 步骤，提示"签名无效"。
 3. 通过后进入 `preview` 步骤展示 icon / displayName / version / description / publisherUserId。
