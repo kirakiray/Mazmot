@@ -127,7 +127,7 @@ clearOpened → 关闭窗口
   dirName: "选择的目录名 / 虚拟命名空间",
   source: "local" | "virtual",
   namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
-  appId: "abc123def456...-my-app",  // 稳定 ID = `${LocalUser.userId}-${应用名}`，跨设备识别同一应用
+  appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
   createdAt: timestamp
 }
 ```

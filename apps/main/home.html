@@ -90,6 +90,23 @@
       font-family: monospace;
       vertical-align: middle;
     }
+    .mine-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      vertical-align: middle;
+    }
+    .mine-badge n-icon {
+      font-size: 12px;
+    }
     .action-row {
       display: flex;
       align-items: center;
@@ -257,6 +274,12 @@
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
               <span class="version-badge">v{{$data.version}}</span>
+              <o-if :value="$data.isMine">
+                <span class="mine-badge" title="由当前账号开发发布">
+                  <n-icon icon="mdi:account-hard-hat"></n-icon>
+                  我开发的
+                </span>
+              </o-if>
               <div secondary>{{$data.desc}}</div>
 
               <div slot="suffix" class="item-suffix">
@@ -400,6 +423,7 @@
     import { getRunUrl, readAppFiles } from "./lib/app-runner.js";
     import {
       ensurePublisher,
+      ensureUser,
       generateAppId,
       buildPackageFile,
       signSharePayload,
@@ -410,6 +434,14 @@
       const apps = (await storage.apps) || [];
       // 从 localStorage 恢复已打开路径快照
       const lsOpened = new Set(readOpenedFromLS());
+      // 当前用户的 userId，用于判定「自己开发的应用」
+      let currentUserId = "";
+      try {
+        const currentUser = await ensureUser();
+        currentUserId = (currentUser && currentUser.userId) || "";
+      } catch (err) {
+        console.warn("获取当前用户失败：", err);
+      }
       const results = await Promise.all(
         apps.map(async (app) => {
           let manifest = null;
@@ -465,6 +497,11 @@
             namespace: app.namespace || "",
             _recordName: app.name,
             appId: app.appId || "",
+            // 自己开发的应用：appId 后缀为当前用户的 userId
+            isMine:
+              !!currentUserId &&
+              !!app.appId &&
+              app.appId.endsWith("-" + currentUserId),
             opened: isWindowAlive(app.name) || lsOpened.has(app.name),
           };
         }),
@@ -650,7 +687,7 @@
             this.shareDialogOpen = true;
 
             try {
-              // 兼容老数据：补写 appId 并持久化（新格式：`${userId}-${appName}`）
+              // 兼容老数据：补写 appId 并持久化（新格式：`${appName}-${userId}`）
               let appId = app.appId;
               if (!appId) {
                 appId = await generateAppId(app._recordName);

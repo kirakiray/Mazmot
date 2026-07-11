@@ -367,7 +367,17 @@
             this._existingRecordName = "";
             try {
               const apps = (await storage.apps) || [];
-              const existing = apps.find((a) => a.appId === payload.appId);
+              // 目录命名规则 = `${recordName}-${publisherUserId}`，与 appId 结构一致，
+              // 兼容老数据：优先按 appId 匹配，退化时按目录名匹配。
+              const expectedDirName =
+                (payload.recordName || "") +
+                "-" +
+                (payload.publisherUserId || "");
+              const existing = apps.find(
+                (a) =>
+                  (a.appId && a.appId === payload.appId) ||
+                  (a.name && a.name === expectedDirName),
+              );
               if (!existing) return;
 
               this._existingRecordName = existing.name;
@@ -484,9 +494,9 @@
 
               // 若为覆盖升级：沿用已安装的 recordName，避免新增列表项
               // 否则：组装本地唯一 recordName（避免与已有应用同名冲突）
-              // appId 形如 `${publisherUserId}-${appName}`，用发布者 userId 前 6 位做后缀
+              // 命名规则 = `${appName}-${publisherUserId}`，与 appId 保持一致
               const isUpdate = this.installState === "update";
-              const suffix = (payload.publisherUserId || "").slice(0, 6) || "shared";
+              const suffix = payload.publisherUserId || "shared";
               const uniqueRecordName = isUpdate
                 ? this._existingRecordName
                 : pkg.meta.recordName + "-" + suffix;
@@ -523,10 +533,16 @@
               const apps = (await storage.apps) || [];
 
               if (isUpdate) {
-                // 更新已存在记录的描述等元信息，不新增列表项
-                const target = apps.find((a) => a.appId === payload.appId);
+                // 更新已存在记录：优先按 appId，退化按目录名匹配
+                const target = apps.find(
+                  (a) =>
+                    (a.appId && a.appId === payload.appId) ||
+                    (a.name && a.name === this._existingRecordName),
+                );
                 if (target) {
                   target.desc = pkg.meta.description || target.desc || "";
+                  // 补齐 appId（老数据可能缺失）
+                  if (!target.appId) target.appId = payload.appId;
                   await storage.setItem("apps", apps);
                 }
               } else {

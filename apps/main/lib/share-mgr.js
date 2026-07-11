@@ -36,13 +36,13 @@ export async function ensurePublisher() {
 }
 
 /**
- * 生成应用 ID：`${当前用户 userId}-${应用名}`。
+ * 生成应用 ID：`${应用名}-${当前用户 userId}`。
  * userId 是 LocalUser 公钥哈希（跨设备、跨 tab 稳定），配合应用名可以唯一标识一个应用。
  * @param {string} appName - 应用名（不含空格，用于目录/展示都对得上）
  */
 export async function generateAppId(appName) {
   const user = await ensureUser();
-  return `${user.userId}-${appName}`;
+  return `${appName}-${user.userId}`;
 }
 
 /**
