@@ -238,11 +238,7 @@
       ensurePublisher,
       PACKAGE_VERSION,
     } from "../main/lib/share-mgr.js";
-    import {
-      findTrulyAvailableUrl,
-      pushFilesToContainer,
-      getRunUrl,
-    } from "../main/lib/container-mgr.js";
+
 
     export default async () => {
       return {
@@ -260,7 +256,7 @@
           errorTitle: "分享链接无效",
           errorText: "",
           _payload: null,
-          _installedContainerUrl: "",
+          _installedNamespace: "",
           _installedRecordName: "",
         },
         attached() {
@@ -374,14 +370,8 @@
               }
 
               this.progress = 90;
-              this.progressText = "分配运行容器...";
+              this.progressText = "记录应用信息...";
               const apps = (await storage.apps) || [];
-              const containerUrl = await findTrulyAvailableUrl(apps);
-              if (!containerUrl) {
-                throw new Error(
-                  "当前所有物理容器均已被占用，请先在主页释放一个容器再重试。",
-                );
-              }
 
               // 记录到 apps
               apps.push({
@@ -391,21 +381,12 @@
                 dirName: `mazmot-apps/${uniqueRecordName}`,
                 source: "virtual",
                 namespace: "mazmot-apps",
-                containerUrl,
                 appId: pkg.meta.appId,
                 createdAt: Date.now(),
               });
               await storage.setItem("apps", apps);
 
-              this.progress = 95;
-              this.progressText = "推送到运行容器...";
-              await pushFilesToContainer(
-                containerUrl,
-                pkg.files,
-                uniqueRecordName,
-              );
-
-              this._installedContainerUrl = containerUrl;
+              this._installedNamespace = "mazmot-apps";
               this._installedRecordName = uniqueRecordName;
               this.progress = 100;
               this.progressText = "";
@@ -420,12 +401,9 @@
           },
 
           openInstalledApp() {
-            if (!this._installedContainerUrl) return;
-            const url = getRunUrl(this._installedContainerUrl);
-            window.open(
-              url,
-              `mazmot-app-${this._installedRecordName}`,
-            );
+            if (!this._installedNamespace || !this._installedRecordName) return;
+            const url = `/$${this._installedNamespace}/${this._installedRecordName}/client/index.html`;
+            window.open(url, `mazmot-app-${this._installedRecordName}`);
           },
 
           goHome() {

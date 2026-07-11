@@ -453,11 +453,6 @@
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
     import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
-    import {
-      findTrulyAvailableUrl,
-      pushFilesToContainer,
-      checkContainerOccupancy,
-    } from "../lib/container-mgr.js";
     import { generateAppId } from "../lib/share-mgr.js";
 
     export default async () => {
@@ -476,7 +471,6 @@
           source: "", // "local" | "virtual"
           _selectedHandle: null, // 用户选择的目录句柄（本地或虚拟，_ 前缀避免响应式代理复杂对象）
           _virtualNamespace: "", // 虚拟目录使用的命名空间
-          _containerUrl: null, // 分配的容器 URL
           selectedDirName: "",
           appName: "",
           appDesc: "",
@@ -573,15 +567,6 @@
             try {
               const appName = this.appName.trim();
 
-              // 检查可用容器（自动跳过已被占用的）
-              const apps = (await storage.apps) || [];
-              const containerUrl = await findTrulyAvailableUrl(apps);
-              if (!containerUrl) {
-                this.nameError = "当前所有物理容器均已被占用或不可用，请先释放容器";
-                return;
-              }
-              this._containerUrl = containerUrl;
-
               // 若为虚拟目录，在共享命名空间 mazmot-apps 下建立应用子目录
               let handleForStorage;
               if (this.source === "virtual") {
@@ -599,7 +584,8 @@
                   this._selectedHandle._handle || this._selectedHandle;
               }
 
-              // 保存到 ever-cache（包含容器地址）
+              // 保存到 ever-cache
+              const apps = (await storage.apps) || [];
               const appId = await generateAppId(appName);
               apps.push({
                 name: appName,
@@ -608,7 +594,6 @@
                 dirName: this.selectedDirName,
                 source: this.source || "local",
                 namespace: this._virtualNamespace || "",
-                containerUrl,
                 appId,
                 createdAt: Date.now(),
               });
@@ -658,21 +643,7 @@
                 },
               });
 
-              // 推送文件到独立容器
-              this.progressText = `正在推送文件到容器 ${this._containerUrl} ...`;
-              this.progress = 100;
-              try {
-                await pushFilesToContainer(
-                  this._containerUrl,
-                  files,
-                  name,
-                );
-                this.progressText = "全部文件写入完成，已推送至容器";
-              } catch (pushErr) {
-                console.warn("推送文件到容器失败（不影响本地文件，启动应用时会重新推送）：", pushErr);
-                this.progressText = "本地文件已写入，容器推送失败（启动时会重试）";
-              }
-
+              this.progressText = "全部文件写入完成";
               this.finished = true;
               toast({ content: "应用创建成功", type: "success" });
             } catch (err) {
@@ -695,7 +666,6 @@
             this.source = "";
             this._selectedHandle = null;
             this._virtualNamespace = "";
-            this._containerUrl = null;
             this.selectedDirName = "";
             this.appName = "";
             this.appDesc = "";

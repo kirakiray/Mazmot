@@ -32,12 +32,6 @@ function startServer(root, port, label) {
 // 启动主服务器
 startServer("./", 30031, "Main");
 
-// 启动 5 个容器服务器
-const containerPorts = [40031, 40032, 40033, 40034, 40035];
-containerPorts.forEach((port, index) => {
-  startServer("./container", port, `Container-${index + 1}`);
-});
-
 // 优雅退出处理
 const handleExit = () => {
   console.log("\n\x1b[33m[System]\x1b[0m Stopping all servers...");

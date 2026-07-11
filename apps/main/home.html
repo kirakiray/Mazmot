@@ -76,21 +76,6 @@
       border-color: var(--md-sys-color-secondary);
       color: var(--md-sys-color-secondary);
     }
-    .container-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 500;
-      line-height: 1.2;
-      white-space: nowrap;
-      border: 1px solid var(--md-sys-color-primary);
-      color: var(--md-sys-color-primary);
-      background-color: var(--md-sys-color-primary-container);
-      font-family: monospace;
-    }
     .action-row {
       display: flex;
       align-items: center;
@@ -312,21 +297,6 @@
                       <span class="sub-info-label">目录名称：</span>
                       <span class="sub-info-value">{{$data.desc}}</span>
                     </div>
-                    <div class="sub-info-row">
-                      <span class="sub-info-label">容器地址：</span>
-                      <o-if :value="$data.containerUrl">
-                        <span
-                          class="container-badge"
-                          title="应用运行的容器地址"
-                        >
-                          <n-icon icon="mdi:docker"></n-icon>
-                          {{$data.containerUrl}}
-                        </span>
-                      </o-if>
-                      <o-if :value="!$data.containerUrl">
-                        <span class="sub-info-value">未分配</span>
-                      </o-if>
-                    </div>
                     <o-if :value="$data.appId">
                       <div class="sub-info-row">
                         <span class="sub-info-label">应用 ID：</span>
@@ -406,12 +376,7 @@
       clearOpened,
       focusIfOpened,
     } from "./home/app-status.js";
-    import {
-      getRunUrl,
-      readAppFiles,
-      pushFilesToContainer,
-      clearContainer,
-    } from "./lib/container-mgr.js";
+    import { getRunUrl, readAppFiles } from "./lib/app-runner.js";
     import {
       ensurePublisher,
       generateAppId,
@@ -471,7 +436,6 @@
             _handle: handle,
             source: app.source || "local",
             namespace: app.namespace || "",
-            containerUrl: app.containerUrl || "",
             _recordName: app.name,
             appId: app.appId || "",
             opened: isWindowAlive(app.name) || lsOpened.has(app.name),
@@ -550,30 +514,17 @@
             }
             if (focusIfOpened(app._recordName)) return;
 
-            if (!app.containerUrl) {
-              toast({ content: "该应用未分配容器", color: "error" });
-              return;
-            }
-
-            // 推送最新文件到容器
+            let url;
             try {
-              toast({ content: "正在推送文件到容器...", color: "primary" });
-              const files = await readAppFiles(app._handle);
-              await pushFilesToContainer(
-                app.containerUrl,
-                files,
-                app._recordName || app.name,
-              );
+              url = await getRunUrl(app);
             } catch (err) {
               toast({
-                content: "推送文件失败：" + (err.message || err),
+                content: "无法生成运行地址：" + (err.message || err),
                 color: "error",
               });
               return;
             }
 
-            // 在容器上运行应用
-            const url = getRunUrl(app.containerUrl);
             const win = window.open(url, `mazmot-app-${app._recordName}`);
             if (win) this._markOpened(app, win);
           },
@@ -590,29 +541,17 @@
             }
             if (focusIfOpened(app._recordName)) return;
 
-            if (!app.containerUrl) {
-              toast({ content: "该应用未分配容器", color: "error" });
-              return;
-            }
-
-            // 推送最新文件到容器
+            let url;
             try {
-              toast({ content: "正在推送文件到容器...", color: "primary" });
-              const files = await readAppFiles(app._handle);
-              await pushFilesToContainer(
-                app.containerUrl,
-                files,
-                app._recordName || app.name,
-              );
+              url = await getRunUrl(app);
             } catch (err) {
               toast({
-                content: "推送文件失败：" + (err.message || err),
+                content: "无法生成运行地址：" + (err.message || err),
                 color: "error",
               });
               return;
             }
 
-            const url = getRunUrl(app.containerUrl);
             // 类原生应用窗口：无地址栏/工具栏/菜单栏；居中显示
             const width = 1024;
             const height = 720;
@@ -801,7 +740,7 @@
 
             const ok = await confirm({
               title: "删除应用",
-              message: `确定要从列表中删除应用「${app.name}」吗？该操作会释放占用的容器（${app.containerUrl || "无"}）并从列表中移除，不会删除本地目录中的文件。`,
+              message: `确定要从列表中删除应用「${app.name}」吗？该操作会从列表中移除，不会删除本地目录中的文件。`,
               yes: "删除",
               cancel: "取消",
             });
@@ -810,15 +749,6 @@
             try {
               // 关闭对应打开的窗口 + 清理状态
               clearOpened(app._recordName);
-
-              // 清空容器中的文件，释放容器
-              if (app.containerUrl) {
-                try {
-                  await clearContainer(app.containerUrl);
-                } catch (clearErr) {
-                  console.warn("清空容器失败（可忽略）：", clearErr);
-                }
-              }
 
               // 对于虚拟目录应用，从共享命名空间中移除该应用的子目录
               if (app.source === "virtual" && app._handle) {
