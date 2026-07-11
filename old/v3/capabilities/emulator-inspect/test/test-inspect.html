@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 emulator-inspect 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+  <body>
+    <capability-diagnosis label="测试 emulator-inspect 能力（默认深度）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-01"
+          data-xpath="/html/body"
+          desc="获取模拟器内的 body 下的元素"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-01">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              Array.isArray(result.childs) &&
+              result.rect;
+
+            // 验证 body 元素有 l-m 和 div 子元素
+            const elementChilds = result.childs.filter(
+              (child) => child.tag === "l-m" || child.tag === "div",
+            );
+            const hasCorrectChild = elementChilds.length >= 2;
+
+            return {
+              assert: hasRequiredFields && hasCorrectChild,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（深度为 2）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-02"
+          data-xpath="/html/body"
+          data-depth="2"
+          desc="获取模拟器内的 body 下的元素（深度 2）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-02">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              Array.isArray(result.childs) &&
+              result.rect;
+
+            // 验证子元素有 childs 属性（深度 2 应包含子元素的子元素）
+            const elementChilds = result.childs.filter(
+              (child) => child.tag === "div",
+            );
+            const hasDeepChilds =
+              elementChilds.length > 0 &&
+              elementChilds[0].childs &&
+              Array.isArray(elementChilds[0].childs);
+
+            return {
+              assert: hasRequiredFields && hasDeepChilds,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（深度为 0）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-03"
+          data-xpath="/html/body"
+          data-depth="0"
+          desc="获取模拟器内的 body 下的元素（深度 0）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-03">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields =
+              result.tag &&
+              result.attrs &&
+              typeof result.childrenLength === "number" &&
+              result.rect;
+
+            // 验证 childs 为空数组（深度 0 不获取子元素）
+            const childsIsEmpty = result.childs === undefined;
+
+            // 验证 childrenLength 为 0
+            const childrenLengthCorrect = result.childrenLength === 2;
+
+            return {
+              assert:
+                hasRequiredFields && childsIsEmpty && childrenLengthCorrect,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（maxSize 限制）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-04"
+          data-xpath="/html/body"
+          data-depth="3"
+          data-max-size="100"
+          desc="获取模拟器内的 body 下的元素（深度 3，限制 100 字节）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-04">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回错误信息
+            const isError =
+              result.error && result.error.includes("返回数据大小超过最大限制");
+
+            return {
+              assert: isError,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（样式获取）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-05"
+          data-xpath="/html/body/div"
+          data-styles="display, position, width, height, z-index"
+          desc="获取 div 元素及其样式"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-05">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields = result.tag && result.attrs && result.rect;
+
+            // 验证样式属性存在
+            const hasStyles =
+              result.styles &&
+              "display" in result.styles &&
+              "position" in result.styles &&
+              "width" in result.styles &&
+              "height" in result.styles &&
+              "z-index" in result.styles;
+
+            return {
+              assert: hasRequiredFields && hasStyles,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（默认不带样式）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-07"
+          data-xpath="/html/body/div"
+          desc="获取 div 元素（不传 styles 参数）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-07">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields = result.tag && result.attrs && result.rect;
+
+            // 验证没有 styles 字段
+            const noStyles = !result.styles;
+
+            return {
+              assert: hasRequiredFields && noStyles,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（关闭 rect）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-08"
+          data-xpath="/html/body/div"
+          data-rect="false"
+          desc="获取 div 元素（关闭 rect）"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-08">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果包含必要字段
+            const hasRequiredFields = result.tag && result.attrs;
+
+            // 验证没有 rect 字段
+            const noRect = !result.rect;
+
+            return {
+              assert: hasRequiredFields && noRect,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+
+    <capability-diagnosis label="测试 emulator-inspect 能力（Shadow DOM）">
+      <iframe src="./test-cv.html" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="emulator-inspect"
+          cid="inspect-06"
+          data-xpath="/html/body/div/div[2]/div[4]/div"
+          data-depth="2"
+          desc="获取 skills-grid 及其 skill-card 子元素"
+        >
+        </template>
+      </cap-request>
+      <template result cid="inspect-06">
+        <script type="module">
+          export default async function (result) {
+            console.log(result);
+
+            // 验证返回结果是 skills-grid div
+            const hasRequiredFields =
+              result.tag === "div" && result.attrs && result.rect;
+
+            // 验证有 skill-card 子元素
+            const skillCards = result.childs.filter(
+              (child) => child.tag === "skill-card",
+            );
+            const hasSkillCards = skillCards.length >= 1;
+
+            // 验证 skill-card 有 Shadow DOM
+            const hasShadowRoot =
+              skillCards.length > 0 &&
+              skillCards[0].shadowRoot &&
+              skillCards[0].shadowRoot.mode === "open" &&
+              Array.isArray(skillCards[0].shadowRoot.childs);
+
+            // 验证 Shadow DOM 内有 style 和 div 元素
+            const shadowChildTags = skillCards[0].shadowRoot.childs.map(
+              (child) => child.tag,
+            );
+            const hasExpectedChildren =
+              shadowChildTags.includes("style") &&
+              shadowChildTags.includes("div");
+
+            return {
+              assert:
+                hasRequiredFields &&
+                hasSkillCards &&
+                hasShadowRoot &&
+                hasExpectedChildren,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>

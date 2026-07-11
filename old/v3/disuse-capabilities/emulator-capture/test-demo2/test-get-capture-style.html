@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试 captureElementStyles</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+
+    /* iframe 区域 */
+    #source-area {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    #source-area h2 { margin-bottom: 16px; color: #333; }
+    #source-iframe {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+    }
+
+    /* 操作按钮 */
+    .actions { margin-bottom: 20px; }
+    .actions button {
+      padding: 10px 24px;
+      font-size: 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 12px;
+    }
+    #btn-capture { background: #667eea; color: #fff; }
+    #btn-restore { background: #2ecc71; color: #fff; }
+
+    /* 还原区域 */
+    #restore-area {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      position: relative;
+    }
+    #restore-area h2 { margin-bottom: 16px; color: #333; }
+    #restore-container {
+      position: relative;
+      min-height: 100px;
+    }
+
+    /* JSON 输出区域 */
+    #json-area {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      color: #d4d4d4;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      max-height: 400px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #json-area h2 { color: #fff; margin-bottom: 12px; }
+
+    /* 数据大小比率区域 */
+    #size-ratio-area {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    #size-ratio-area h2 { margin-bottom: 12px; color: #333; font-size: 18px; }
+    #size-ratio-output {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 14px;
+      line-height: 2;
+    }
+    #size-ratio-output .label { color: #666; }
+    #size-ratio-output .value { color: #333; font-weight: 600; }
+    #size-ratio-output .ratio { color: #667eea; font-weight: 700; font-size: 16px; }
+    #size-ratio-output .bar-bg {
+      display: inline-block;
+      width: 200px;
+      height: 12px;
+      background: #eee;
+      border-radius: 6px;
+      overflow: hidden;
+      vertical-align: middle;
+      margin: 0 8px;
+    }
+    #size-ratio-output .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- iframe 原始页面区域 -->
+  <div id="source-area">
+    <h2>原始页面（iframe）</h2>
+    <iframe id="source-iframe" src="jianli.html"></iframe>
+  </div>
+
+  <!-- 操作按钮 -->
+  <div class="actions">
+    <button id="btn-capture">1. 截取样式</button>
+    <button id="btn-restore">2. 还原元素</button>
+  </div>
+
+  <!-- 还原区域 -->
+  <div id="restore-area">
+    <h2>还原元素</h2>
+    <div id="restore-container"></div>
+  </div>
+
+  <!-- JSON 输出 -->
+  <div id="json-area">
+    <h2>截取数据</h2>
+    <div id="json-output">点击"截取样式"按钮开始...</div>
+  </div>
+
+  <!-- 数据大小比率 -->
+  <div id="size-ratio-area">
+    <h2>数据大小比率</h2>
+    <div id="size-ratio-output">点击"截取样式"按钮后显示...</div>
+  </div>
+
+  <script type="module">
+    import { captureElementStyles, restoreFromCapture } from './get-capture-style.js';
+
+    let capturedData = null;
+    let sourceHtmlSize = 0;
+
+    // 格式化字节大小
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // 更新大小比率显示
+    function updateSizeRatio(captureJson) {
+      const captureSize = new Blob([captureJson]).size;
+
+      const ratio = sourceHtmlSize > 0 ? (captureSize / sourceHtmlSize * 100).toFixed(1) : 0;
+      const barPercent = sourceHtmlSize > 0 ? Math.min(captureSize / sourceHtmlSize * 100, 100) : 0;
+
+      document.getElementById('size-ratio-output').innerHTML = `
+        <div><span class="label">iframe 源文件大小：</span><span class="value">${formatBytes(sourceHtmlSize)}</span></div>
+        <div><span class="label">截取数据大小：</span><span class="value">${formatBytes(captureSize)}</span>
+          <span class="bar-bg"><span class="bar-fill" style="width: ${barPercent}%"></span></span>
+        </div>
+        <div><span class="label">比率：</span><span class="ratio">${ratio}%</span> <span class="label">（截取数据 / 源文件）</span></div>
+      `;
+    }
+
+    // 绑定按钮事件
+    document.getElementById('btn-capture').addEventListener('click', async () => {
+      const iframe = document.getElementById('source-iframe');
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      const sourceEl = iframeDoc.body;
+
+      // 获取 iframe 源文件大小
+      try {
+        const resp = await fetch('jianli.html');
+        const htmlText = await resp.text();
+        sourceHtmlSize = new Blob([htmlText]).size;
+      } catch (e) {
+        // fetch 失败时用 iframe 内 HTML 估算
+        sourceHtmlSize = new Blob([iframeDoc.documentElement.outerHTML]).size;
+      }
+
+      capturedData = captureElementStyles(sourceEl);
+
+      const captureJson = JSON.stringify(capturedData, null, 2);
+      document.getElementById('json-output').textContent = captureJson;
+
+      updateSizeRatio(captureJson);
+      console.log('截取到的样式数据：', capturedData);
+    });
+
+    document.getElementById('btn-restore').addEventListener('click', () => {
+      if (!capturedData) {
+        alert('请先点击"截取样式"按钮');
+        return;
+      }
+
+      const container = document.getElementById('restore-container');
+      container.innerHTML = '';
+
+      const restoredEl = restoreFromCapture(capturedData);
+      if (restoredEl) {
+        container.appendChild(restoredEl);
+        console.log('还原成功！', restoredEl);
+      }
+    });
+  </script>
+</body>
+</html>

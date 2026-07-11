@@ -1,0 +1,147 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      min-height: 30vh;
+    }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 16px;
+      max-width: 600px;
+      width: 100%;
+    }
+  </style>
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
+  ></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="chat-container">
+    <!-- <p-textarea
+      sync:value="inputText"
+      placeholder="输入你想说的话..."
+      rows="3"
+      attr:disabled="sending"
+    ></p-textarea> -->
+    <p-textarea
+      sync:value="inputText"
+      placeholder="输入你想说的话..."
+      rows="3"
+      disabled
+    ></p-textarea>
+    <div style="display: flex; justify-content: space-between; gap: 10px">
+      <p-button
+        color="primary"
+        variant="outlined"
+        size="s"
+        on:click="appDialogOpen = true"
+        ><n-icon icon="tdesign:app" slot="prefix"></n-icon>应用</p-button
+      >
+      <p-button
+        color="primary"
+        on:click="sendMessage"
+        attr:disabled="!inputText.trim() || sending"
+        size="s"
+      >
+        <o-if :value="sending">发送中...</o-if>
+        <o-if :value="!sending">发送</o-if>
+      </p-button>
+    </div>
+  </div>
+
+  <p-dialog auto-close sync:open="appDialogOpen">
+    <div
+      slot="title"
+      style="display: flex; justify-content: flex-end; width: 100%"
+    >
+      <n-icon
+        icon="mdi:close"
+        style="cursor: pointer"
+        on:click="appDialogOpen = false"
+      ></n-icon>
+    </div>
+    <o-page
+      src="./apps.html"
+      style="width: 80vw; height: 70vh"
+      on:open-create-dialog="createDialogOpen = true"
+    ></o-page>
+  </p-dialog>
+
+  <p-dialog auto-close sync:open="createDialogOpen">
+    <div
+      slot="title"
+      style="display: flex; justify-content: flex-end; width: 100%"
+    >
+      <n-icon
+        icon="mdi:close"
+        style="cursor: pointer"
+        on:click="createDialogOpen = false"
+      ></n-icon>
+    </div>
+    <o-page
+      id="createAppPage"
+      src="../create-app/start.html"
+      style="width: 80vw; height: 80vh"
+    ></o-page>
+  </p-dialog>
+
+  <script>
+    export default async ({ load }) => {
+      return {
+        data: {
+          inputText: "",
+          sending: false,
+          appDialogOpen: sessionStorage.getItem("appDialogOpen") === "true",
+          createDialogOpen: false,
+        },
+        watch: {
+          appDialogOpen(val) {
+            sessionStorage.setItem("appDialogOpen", val);
+          },
+          createDialogOpen(val) {
+            if (val) {
+              this.appDialogOpen = false;
+            } else {
+              // 关闭时重置创建应用页面的状态
+              const page = this.shadow.$("#createAppPage");
+              if (page && page.reset) {
+                page.reset();
+              }
+            }
+          },
+        },
+        proto: {
+          async sendMessage() {
+            const text = this.inputText.trim();
+            if (!text) {
+              return;
+            }
+
+            this.sending = true;
+
+            try {
+              // TODO: 发送消息到 AI
+              console.log("发送消息:", text);
+              this.inputText = "";
+            } catch (error) {
+              console.error("发送失败:", error);
+            } finally {
+              this.sending = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

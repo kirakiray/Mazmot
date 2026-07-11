@@ -1,0 +1,52 @@
+<template page>
+  <l-m src="/comps/rnd-box/rnd-box.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .container {
+      display: flex;
+      position: relative;
+      height: 100%;
+    }
+    .left,
+    .right {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .left {
+      border-right: rgba(128, 128, 128, 0.2) solid 1px;
+    }
+  </style>
+  <o-provider name="app-builder" :project-path="projectPath">
+    <div class="container">
+      <div class="left">
+        <o-page src="./builder-assistant.html"></o-page>
+      </div>
+      <div class="right">
+        <o-page src="./emulator.html" id="emulator"></o-page>
+      </div>
+    </div>
+    <m-rnd-box
+      x="200"
+      y="200"
+      movable
+      auto-save-id="mazmot-createapp-chat-inputer"
+    >
+      <o-page src="./chat-inputer.html"></o-page>
+    </m-rnd-box>
+  </o-provider>
+  <script>
+    export default async ({ query }) => {
+      const projectPath = query.projectPath;
+
+      return {
+        data: {
+          projectPath: projectPath,
+        },
+      };
+    };
+  </script>
+</template>

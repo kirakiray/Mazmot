@@ -1,0 +1,588 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow: auto;
+    }
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+    .app-card {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      padding: 20px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container-low);
+    }
+    .app-icon {
+      font-size: 56px;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+    .app-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .app-name {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-word;
+    }
+    .app-version {
+      display: inline-block;
+      font-size: 12px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      font-family: monospace;
+      margin-bottom: 8px;
+    }
+    .app-desc {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .publisher {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+    .publisher-label {
+      opacity: 0.7;
+      margin-right: 4px;
+    }
+    .publisher-value {
+      font-family: monospace;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 32px 0 12px;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .progress-text {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 12px;
+      min-height: 18px;
+    }
+
+    .status-block {
+      padding: 24px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container-low);
+      text-align: center;
+    }
+    .status-icon {
+      font-size: 48px;
+    }
+    .status-icon[data-kind="success"] {
+      color: var(--md-sys-color-primary);
+    }
+    .status-icon[data-kind="error"] {
+      color: var(--md-sys-color-error);
+    }
+    .status-icon[data-kind="loading"] {
+      color: var(--md-sys-color-primary);
+    }
+    .status-text {
+      margin-top: 12px;
+      font-size: 15px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .error-detail {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--md-sys-color-error);
+      word-break: break-word;
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="container">
+    <!-- 验签中 -->
+    <o-if :value="step === 'verifying'">
+      <div class="status-block">
+        <div class="status-icon" data-kind="loading">
+          <n-icon icon="mdi:shield-check-outline"></n-icon>
+        </div>
+        <div class="status-text">正在验证分享链接...</div>
+      </div>
+    </o-if>
+
+    <!-- 应用预览 -->
+    <o-if :value="step === 'preview'">
+      <div class="app-card">
+        <div class="app-icon">{{meta.icon}}</div>
+        <div class="app-info">
+          <div class="app-name">{{meta.displayName}}</div>
+          <div class="app-version">v{{meta.version}}</div>
+          <div class="app-desc">
+            <o-if :value="meta.description">{{meta.description}}</o-if>
+            <o-if :value="!meta.description">
+              <span style="opacity: 0.6">（无描述）</span>
+            </o-if>
+          </div>
+          <div class="publisher">
+            <span class="publisher-label">发布者：</span>
+            <span class="publisher-value">{{meta.publisherUserId}}</span>
+          </div>
+        </div>
+      </div>
+
+      <o-if :value="isSelfShare">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-error);"
+        >
+          这个分享链接来自你自己（发布者与当前用户为同一账号），无需通过分享链接进行安装。你可以直接在主页应用列表中打开。
+        </div>
+      </o-if>
+
+      <o-if :value="!isSelfShare && installState === 'installed'">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-primary);"
+        >
+          该应用已安装（当前版本 v{{existingVersion}}），无需重复安装。
+        </div>
+      </o-if>
+      <o-if :value="!isSelfShare && installState === 'update'">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-tertiary);"
+        >
+          该应用已安装（当前版本 v{{existingVersion}}），将覆盖升级到 v{{meta.version}}，不会新增列表项。
+        </div>
+      </o-if>
+
+      <div class="actions">
+        <o-if :value="!isSelfShare && installState === 'new'">
+          <p-button color="primary" on:click="handleInstall">
+            <n-icon icon="mdi:download" slot="prefix"></n-icon>
+            安装应用
+          </p-button>
+        </o-if>
+        <o-if :value="!isSelfShare && installState === 'update'">
+          <p-button color="primary" on:click="handleInstall">
+            <n-icon icon="mdi:update" slot="prefix"></n-icon>
+            更新到 v{{meta.version}}
+          </p-button>
+        </o-if>
+        <o-if :value="!isSelfShare && installState === 'installed'">
+          <p-button color="primary" on:click="openInstalledApp">
+            <n-icon icon="mdi:rocket-launch" slot="prefix"></n-icon>
+            打开应用
+          </p-button>
+        </o-if>
+        <p-button variant="text" on:click="goHome">返回主页</p-button>
+      </div>
+    </o-if>
+
+    <!-- 安装进度 -->
+    <o-if :value="step === 'installing'">
+      <div class="app-card">
+        <div class="app-icon">{{meta.icon}}</div>
+        <div class="app-info">
+          <div class="app-name">{{meta.displayName}}</div>
+          <div class="app-version">v{{meta.version}}</div>
+        </div>
+      </div>
+      <div class="section-title">安装中</div>
+      <div class="progress-bar">
+        <div class="progress-fill" :style.width="progress + '%'"></div>
+      </div>
+      <div class="progress-text">{{progressText}}</div>
+    </o-if>
+
+    <!-- 完成 -->
+    <o-if :value="step === 'done'">
+      <div class="status-block">
+        <div class="status-icon" data-kind="success">
+          <n-icon icon="mdi:check-circle"></n-icon>
+        </div>
+        <div class="status-text">
+          <o-if :value="installState === 'update'">
+            应用「{{meta.displayName}}」已更新到 v{{meta.version}}！
+          </o-if>
+          <o-if :value="installState !== 'update'">
+            应用「{{meta.displayName}}」安装成功！
+          </o-if>
+        </div>
+      </div>
+      <div class="actions">
+        <p-button color="primary" on:click="openInstalledApp">
+          <n-icon icon="mdi:rocket-launch" slot="prefix"></n-icon>
+          打开应用
+        </p-button>
+        <p-button variant="outlined" on:click="goHome">返回主页</p-button>
+      </div>
+    </o-if>
+
+    <!-- 错误 -->
+    <o-if :value="step === 'error'">
+      <div class="status-block">
+        <div class="status-icon" data-kind="error">
+          <n-icon icon="mdi:alert-circle-outline"></n-icon>
+        </div>
+        <div class="status-text">{{errorTitle}}</div>
+        <div class="error-detail">{{errorText}}</div>
+      </div>
+      <div class="actions">
+        <p-button variant="outlined" on:click="goHome">返回主页</p-button>
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    import { init, get } from "/nos/fs/main.js";
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { toast } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import {
+      parseShareUrl,
+      verifySharePayload,
+      ensurePublisher,
+      ensureUser,
+      PACKAGE_VERSION,
+    } from "../main/lib/share-mgr.js";
+
+
+    export default async () => {
+      return {
+        data: {
+          step: "verifying", // verifying | preview | installing | done | error
+          meta: {
+            icon: "📦",
+            displayName: "",
+            version: "",
+            description: "",
+            publisherUserId: "",
+          },
+          progress: 0,
+          progressText: "",
+          errorTitle: "分享链接无效",
+          errorText: "",
+          _payload: null,
+          _installedNamespace: "",
+          _installedRecordName: "",
+          installState: "new", // new | installed | update
+          existingVersion: "",
+          _existingRecordName: "",
+          isSelfShare: false,
+        },
+        attached() {
+          this.startVerify();
+        },
+        proto: {
+          async startVerify() {
+            this.step = "verifying";
+            const payload = parseShareUrl(window.location.search);
+            if (!payload) {
+              this.errorTitle = "分享链接无效";
+              this.errorText =
+                "未在 URL 中检测到分享参数，请确认链接是否完整。";
+              this.step = "error";
+              return;
+            }
+
+            const ok = await verifySharePayload(payload);
+            if (!ok) {
+              this.errorTitle = "分享链接签名无效";
+              this.errorText =
+                "该链接的签名无法通过验证，可能已被篡改，为了安全已停止安装。";
+              this.step = "error";
+              return;
+            }
+
+            this._payload = payload;
+            this.meta.icon = payload.icon || "📦";
+            this.meta.displayName = payload.displayName || payload.recordName || "未命名应用";
+            this.meta.version = payload.version || "0.1.0";
+            this.meta.description = payload.description || "";
+            this.meta.publisherUserId = payload.publisherUserId || "";
+
+            // 若分享链接的发布者就是当前用户，禁止自我安装
+            try {
+              const currentUser = await ensureUser();
+              if (
+                currentUser &&
+                payload.publisherUserId &&
+                currentUser.userId === payload.publisherUserId
+              ) {
+                this.isSelfShare = true;
+              }
+            } catch (err) {
+              console.warn("获取当前用户失败：", err);
+            }
+
+            // 检查是否已经安装过（按 appId 判断）
+            await this.checkInstalled(payload);
+
+            this.step = "preview";
+          },
+
+          async checkInstalled(payload) {
+            this.installState = "new";
+            this.existingVersion = "";
+            this._existingRecordName = "";
+            try {
+              const apps = (await storage.apps) || [];
+              // 目录命名规则 = appId（应用稳定唯一 ID），
+              // 兼容老数据：优先按 appId 匹配，退化时按目录名匹配。
+              const existing = apps.find(
+                (a) =>
+                  (a.appId && a.appId === payload.appId) ||
+                  (a.name && a.name === payload.appId),
+              );
+              if (!existing) return;
+
+              this._existingRecordName = existing.name;
+              // 尝试读取已安装应用的版本号
+              let installedVersion = "";
+              try {
+                if (existing.source === "virtual") {
+                  const namespace = existing.namespace || "mazmot-apps";
+                  const rootDir = await init(namespace);
+                  const appDir = await rootDir.get(existing.name, {
+                    create: "dir",
+                  });
+                  let jsonFile = null;
+                  try {
+                    const clientDir = await appDir.get("client");
+                    jsonFile = await clientDir.get("app.json");
+                  } catch (e) {
+                    jsonFile = await appDir.get("app.json");
+                  }
+                  if (jsonFile) {
+                    const manifest = await jsonFile.json();
+                    installedVersion = (manifest && manifest.version) || "";
+                  }
+                }
+              } catch (err) {
+                console.warn("读取已安装应用版本失败：", err);
+              }
+              this.existingVersion = installedVersion || "未知";
+
+              const newVersion = payload.version || "";
+              if (installedVersion && newVersion && installedVersion === newVersion) {
+                this.installState = "installed";
+              } else {
+                this.installState = "update";
+              }
+
+              // 保存已安装应用的 namespace/recordName 以便打开
+              this._installedNamespace = existing.namespace || "mazmot-apps";
+              this._installedRecordName = existing.name;
+            } catch (err) {
+              console.warn("检查已安装应用失败：", err);
+            }
+          },
+
+          async handleInstall() {
+            const payload = this._payload;
+            if (!payload) return;
+
+            // 拒绝自我安装
+            if (this.isSelfShare) {
+              toast({
+                content: "分享链接来自你自己，无需安装",
+                color: "info",
+              });
+              return;
+            }
+
+            // 已经是同版本，无需重复安装
+            if (this.installState === "installed") {
+              toast({ content: "该应用已安装", color: "info" });
+              return;
+            }
+
+            this.step = "installing";
+            this.progress = 5;
+            this.progressText = "正在连接分享网络...";
+
+            try {
+              const { user, publisher } = await ensurePublisher();
+
+              this.progress = 15;
+              this.progressText = "连接发布者...";
+              const remoteUser = await user.connectUser(
+                payload.publisherUserId,
+              );
+
+              this.progress = 30;
+              this.progressText = "拉取应用清单...";
+              const manifest = await publisher.requestManifest(
+                remoteUser,
+                payload.fileHash,
+              );
+              if (!manifest || !Array.isArray(manifest.chunkHashes)) {
+                throw new Error("无法获取应用清单");
+              }
+
+              // 下载所有块
+              const total = manifest.chunkHashes.length;
+              for (let i = 0; i < total; i++) {
+                this.progressText = `下载文件块 ${i + 1} / ${total}...`;
+                await publisher.requestChunk(
+                  remoteUser,
+                  manifest.chunkHashes[i],
+                );
+                this.progress = 30 + Math.floor(((i + 1) / total) * 45);
+              }
+
+              this.progress = 78;
+              this.progressText = "组装应用包...";
+              const result = await publisher.assembleFile(payload.fileHash);
+              const pkg = JSON.parse(await result.blob.text());
+
+              if (!pkg || pkg.mazmotPackage !== PACKAGE_VERSION) {
+                throw new Error(
+                  `应用包格式不匹配（版本 ${pkg && pkg.mazmotPackage}）`,
+                );
+              }
+              if (!pkg.meta || pkg.meta.appId !== payload.appId) {
+                throw new Error("应用包内容与分享链接不一致");
+              }
+              if (!Array.isArray(pkg.files) || !pkg.files.length) {
+                throw new Error("应用包为空");
+              }
+
+              // 若为覆盖升级：沿用已安装的 recordName，避免新增列表项
+              // 否则：直接使用 appId 作为目录名（appId = `${appName}-${originalPublisherUserId}`，
+              // 是应用的稳定唯一标识；无论转分享多少次都不变，避免目录名叠加）
+              const isUpdate = this.installState === "update";
+              const uniqueRecordName = isUpdate
+                ? this._existingRecordName
+                : payload.appId;
+
+              this.progress = 82;
+              this.progressText = isUpdate
+                ? "覆盖写入应用文件..."
+                : "写入虚拟文件系统...";
+              const rootDir = await init("mazmot-apps");
+              const targetDir = await rootDir.get(uniqueRecordName, {
+                create: "dir",
+              });
+              // 覆盖升级：先清空旧的 client 目录，避免残留文件
+              if (isUpdate) {
+                try {
+                  const oldClient = await targetDir.get("client");
+                  if (oldClient) await oldClient.remove();
+                } catch (e) {
+                  // 目录不存在时忽略
+                }
+              }
+              const clientDir = await targetDir.get("client", {
+                create: "dir",
+              });
+              for (const file of pkg.files) {
+                const fh = await clientDir.get(file.path, {
+                  create: "file",
+                });
+                await fh.write(file.content);
+              }
+
+              this.progress = 90;
+              this.progressText = "记录应用信息...";
+              const apps = (await storage.apps) || [];
+
+              if (isUpdate) {
+                // 更新已存在记录：优先按 appId，退化按目录名匹配
+                const target = apps.find(
+                  (a) =>
+                    (a.appId && a.appId === payload.appId) ||
+                    (a.name && a.name === this._existingRecordName),
+                );
+                if (target) {
+                  target.desc = pkg.meta.description || target.desc || "";
+                  // 补齐 appId（老数据可能缺失）
+                  if (!target.appId) target.appId = payload.appId;
+                  await storage.setItem("apps", apps);
+                }
+              } else {
+                // 记录到 apps
+                apps.push({
+                  name: uniqueRecordName,
+                  desc: pkg.meta.description || "",
+                  handle: null,
+                  dirName: `mazmot-apps/${uniqueRecordName}`,
+                  source: "virtual",
+                  namespace: "mazmot-apps",
+                  appId: pkg.meta.appId,
+                  createdAt: Date.now(),
+                });
+                await storage.setItem("apps", apps);
+              }
+
+              this._installedNamespace = "mazmot-apps";
+              this._installedRecordName = uniqueRecordName;
+              this.progress = 100;
+              this.progressText = "";
+              this.step = "done";
+              toast({
+                content: isUpdate ? "更新成功" : "安装成功",
+                color: "success",
+              });
+            } catch (err) {
+              console.error("安装失败：", err);
+              this.errorTitle = "安装失败";
+              this.errorText = err.message || String(err);
+              this.step = "error";
+            }
+          },
+
+          openInstalledApp() {
+            if (!this._installedNamespace || !this._installedRecordName) return;
+            const url = `/$${this._installedNamespace}/${this._installedRecordName}/client/index.html`;
+            window.open(url, `mazmot-app-${this._installedRecordName}`);
+          },
+
+          goHome() {
+            window.location.href = "/";
+          },
+        },
+      };
+    };
+  </script>
+</template>

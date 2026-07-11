@@ -1,0 +1,864 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .list-wrapper {
+      padding: 0 16px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      height: 100%;
+    }
+    .app-item:hover {
+      background-color: var(--md-sys-color-on-primary);
+      border-radius: 12px;
+    }
+    .app-item:hover div {
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .empty {
+      padding: 40px 16px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
+
+    .item-suffix {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .open-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      white-space: nowrap;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      background-color: var(--md-sys-color-surface);
+    }
+    .source-badge[data-source="local"] {
+      border-color: var(--md-sys-color-tertiary);
+      color: var(--md-sys-color-tertiary);
+    }
+    .source-badge[data-source="virtual"] {
+      border-color: var(--md-sys-color-secondary);
+      color: var(--md-sys-color-secondary);
+    }
+    .version-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      margin-left: 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      font-family: monospace;
+      vertical-align: middle;
+    }
+    .mine-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      vertical-align: middle;
+    }
+    .mine-badge n-icon {
+      font-size: 12px;
+    }
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .share-url-input {
+      width: 100%;
+    }
+    .share-progress-bar {
+      width: 100%;
+      height: 8px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .share-progress-fill {
+      height: 100%;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .share-progress-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+    }
+    .share-error {
+      color: var(--md-sys-color-error);
+      font-size: 13px;
+      padding: 8px 0;
+    }
+    .share-hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.75;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+    .sub-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .sub-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sub-info-label {
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      min-width: 72px;
+    }
+    .sub-info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .app-id-value {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .icon-btn {
+      z-index: 3;
+      --icon-color: var(--md-sys-color-on-surface-variant);
+    }
+    .window-btn:hover {
+      --icon-color: var(--md-sys-color-primary);
+    }
+    .delete-btn:hover {
+      --icon-color: var(--md-sys-color-error);
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <p-dialog
+    sync:open="dialogOpen"
+    auto-close
+    style="--dialog-max-width: 800px"
+    on:close-dialog="handleDialogClose"
+  >
+    <span slot="title">添加应用</span>
+    <o-page src="./home/add-app.html" style="width: 100%"></o-page>
+  </p-dialog>
+
+  <p-dialog
+    sync:open="shareDialogOpen"
+    auto-close
+    style="--dialog-max-width: 480px"
+  >
+    <span slot="title">分享应用</span>
+    <div style="padding: 4px 0">
+      <o-if :value="shareStep === 'publishing'">
+        <div class="share-progress-bar">
+          <div
+            class="share-progress-fill"
+            :style.width="shareProgress + '%'"
+          ></div>
+        </div>
+        <div class="share-progress-text">{{shareProgressText}}</div>
+      </o-if>
+
+      <o-if :value="shareStep === 'ready'">
+        <p-input
+          class="share-url-input"
+          readonly
+          sync:value="shareUrl"
+          hang-label
+        >
+          <span slot="label">分享链接</span>
+        </p-input>
+        <div class="share-hint">
+          请保持本页面开启：应用文件是通过点对点方式分发的，关闭页面后对方将无法拉取。
+        </div>
+      </o-if>
+
+      <o-if :value="shareStep === 'error'">
+        <div class="share-error">{{shareError}}</div>
+      </o-if>
+    </div>
+    <div slot="bottom">
+      <o-if :value="shareStep === 'ready'">
+        <p-button color="primary" on:click="copyShareLink">
+          <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
+          复制链接
+        </p-button>
+      </o-if>
+      <p-button variant="text" on:click="closeShareDialog">关闭</p-button>
+    </div>
+  </p-dialog>
+
+  <div class="container">
+    <div class="header">
+      <h2>应用列表</h2>
+      <p-button color="primary" on:click="handleAdd" size="s">
+        <n-icon></n-icon>
+        添加应用
+      </p-button>
+    </div>
+
+    <div class="list-wrapper">
+      <o-if :value="appList.length > 0">
+        <p-list>
+          <o-fill :value="appList">
+            <p-list-item class="app-item" collapsible button>
+              <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
+              {{$data.name}}
+              <span class="version-badge">v{{$data.version}}</span>
+              <o-if :value="$data.isMine">
+                <span class="mine-badge" title="由当前账号开发发布">
+                  <n-icon icon="mdi:account-hard-hat"></n-icon>
+                  我开发的
+                </span>
+              </o-if>
+              <div secondary>{{$data.desc}}</div>
+
+              <div slot="suffix" class="item-suffix">
+                <o-if :value="$data.opened">
+                  <span class="open-badge" title="点击可切换到已打开的窗口">
+                    <n-icon icon="mdi:circle-medium"></n-icon>
+                    已打开
+                  </span>
+                </o-if>
+
+                <p-button
+                  class="icon-btn tab-btn"
+                  variant="text"
+                  color="primary"
+                  icon
+                  size="s"
+                  on:click="$host.handleOpenTab($event, $data)"
+                  title="在新标签页中打开"
+                >
+                  <n-icon icon="mdi:tab-plus"></n-icon>
+                </p-button>
+
+                <p-button
+                  class="icon-btn window-btn"
+                  variant="text"
+                  color="primary"
+                  icon
+                  size="s"
+                  on:click="$host.handleOpenWindow($event, $data)"
+                  title="在小窗口中打开（类原生应用）"
+                >
+                  <n-icon icon="mdi:open-in-new"></n-icon>
+                </p-button>
+              </div>
+
+              <p-list slot="sublist">
+                <p-list-item>
+                  <div class="sub-info">
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">应用来源：</span>
+                      <span
+                        class="source-badge"
+                        attr:data-source="$data.source"
+                        title="应用来源"
+                      >
+                        <o-if :value="$data.source === 'local'">
+                          <n-icon icon="mdi:folder-outline"></n-icon>
+                          本地目录
+                        </o-if>
+                        <o-if :value="$data.source === 'virtual'">
+                          <n-icon icon="mdi:database-outline"></n-icon>
+                          虚拟目录
+                        </o-if>
+                      </span>
+                    </div>
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">目录名称：</span>
+                      <span class="sub-info-value">{{$data.dirName}}</span>
+                    </div>
+                    <o-if :value="$data.appId">
+                      <div class="sub-info-row">
+                        <span class="sub-info-label">应用 ID：</span>
+                        <span
+                          class="sub-info-value app-id-value"
+                          attr:title="$data.appId"
+                        >
+                          {{$data.appId}}
+                        </span>
+                        <p-button
+                          class="icon-btn"
+                          variant="text"
+                          color="primary"
+                          icon
+                          size="s"
+                          on:click="$host.copyAppId($event, $data)"
+                          title="复制应用 ID"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </p-button>
+                      </div>
+                    </o-if>
+                    <div class="sub-info-row">
+                      <span class="sub-info-label">操作：</span>
+                      <div class="action-row">
+                        <p-button
+                          variant="outlined"
+                          color="primary"
+                          size="s"
+                          on:click="$host.handleShare($event, $data)"
+                        >
+                          <n-icon
+                            icon="mdi:share-variant"
+                            slot="prefix"
+                          ></n-icon>
+                          分享应用
+                        </p-button>
+                        <p-button
+                          variant="outlined"
+                          color="error"
+                          size="s"
+                          on:click="$host.handleDelete($event, $data)"
+                        >
+                          <n-icon
+                            icon="mdi:delete-outline"
+                            slot="prefix"
+                          ></n-icon>
+                          删除应用
+                        </p-button>
+                      </div>
+                    </div>
+                  </div>
+                </p-list-item>
+              </p-list>
+            </p-list-item>
+          </o-fill>
+        </p-list>
+      </o-if>
+      <o-if :value="appList.length === 0">
+        <div class="empty">还没有应用，点击右上角「添加应用」开始创建吧。</div>
+      </o-if>
+    </div>
+  </div>
+
+  <script>
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { get, init } from "/nos/fs/main.js";
+    import { DirHandle } from "/nos/fs/handle/dir.js";
+    import {
+      toast,
+      confirm,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import {
+      openedWindows,
+      readOpenedFromLS,
+      isWindowAlive,
+      startAppStatusWatcher,
+      markOpened,
+      clearOpened,
+      focusIfOpened,
+    } from "./home/app-status.js";
+    import { getRunUrl, readAppFiles } from "./lib/app-runner.js";
+    import {
+      ensurePublisher,
+      ensureUser,
+      generateAppId,
+      buildPackageFile,
+      signSharePayload,
+      buildShareUrl,
+    } from "./lib/share-mgr.js";
+
+    async function loadApps() {
+      const apps = (await storage.apps) || [];
+      // 从 localStorage 恢复已打开路径快照
+      const lsOpened = new Set(readOpenedFromLS());
+      // 当前用户的 userId，用于判定「自己开发的应用」
+      let currentUserId = "";
+      try {
+        const currentUser = await ensureUser();
+        currentUserId = (currentUser && currentUser.userId) || "";
+      } catch (err) {
+        console.warn("获取当前用户失败：", err);
+      }
+      const results = await Promise.all(
+        apps.map(async (app) => {
+          let manifest = null;
+          // 根据 source 类型构造 handle：
+          // - virtual：通过 init(namespace) 重新拿到虚拟根目录
+          // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
+          let handle = null;
+          // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
+          const namespaceForApp = app.namespace || "mazmot-apps";
+          const namespacePrefix = namespaceForApp + "/";
+          let virtualDirName = "";
+          if (app.source === "virtual") {
+            if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
+              virtualDirName = app.dirName.slice(namespacePrefix.length);
+            } else if (app.dirName) {
+              virtualDirName = app.dirName;
+            } else {
+              virtualDirName = app.name;
+            }
+          }
+          try {
+            if (app.source === "virtual") {
+              const rootDir = await init(namespaceForApp);
+              handle = await rootDir.get(virtualDirName, { create: "dir" });
+            } else if (app.handle) {
+              handle = new DirHandle(app.handle);
+            }
+          } catch (err) {
+            console.warn(`初始化 ${app.name} 的句柄失败：`, err);
+          }
+
+          try {
+            // 优先尝试从 client/app.json 获取，如果不存在则尝试根目录（兼容旧应用）
+            if (handle) {
+              let jsonFile = null;
+              try {
+                const clientDir = await handle.get("client");
+                jsonFile = await clientDir.get("app.json");
+              } catch (e) {
+                jsonFile = await handle.get("app.json");
+              }
+
+              if (jsonFile) {
+                manifest = await jsonFile.json();
+              }
+            }
+          } catch (err) {
+            console.warn(`读取 ${app.name} 的配置失败：`, err);
+          }
+
+          return {
+            icon: (manifest && manifest.icon) || "📦",
+            name:
+              (manifest && (manifest.displayName || manifest.name)) || app.name,
+            desc: (manifest && manifest.description) || app.desc || "",
+            dirName:
+              app.dirName ||
+              (app.source === "virtual"
+                ? `${app.namespace || "mazmot-apps"}/${app.name}`
+                : app.name) ||
+              "",
+            version: (manifest && manifest.version) || "0.1.0",
+            _handle: handle,
+            source: app.source || "local",
+            namespace: app.namespace || "",
+            virtualDirName,
+            _recordName: app.name,
+            appId: app.appId || "",
+            // 自己开发的应用：appId 后缀为当前用户的 userId
+            isMine:
+              !!currentUserId &&
+              !!app.appId &&
+              app.appId.endsWith("-" + currentUserId),
+            opened: isWindowAlive(app.name) || lsOpened.has(app.name),
+          };
+        }),
+      );
+      return results;
+    }
+
+    export default async () => {
+      const initialApps = await loadApps();
+
+      return {
+        data: {
+          dialogOpen: false,
+          appList: initialApps,
+          shareDialogOpen: false,
+          shareStep: "publishing", // publishing | ready | error
+          shareProgress: 0,
+          shareProgressText: "",
+          shareUrl: "",
+          shareError: "",
+        },
+        attached() {
+          // 启动广播监听 + 定时探测
+          this._stopWatcher = startAppStatusWatcher({
+            onAlive: (name) => {
+              const target = this.appList.find((a) => a._recordName === name);
+              if (target && !target.opened) target.opened = true;
+            },
+            onBye: (name) => {
+              const target = this.appList.find((a) => a._recordName === name);
+              if (target && target.opened) target.opened = false;
+            },
+            onTick: (aliveNames) => {
+              this.appList.forEach((app) => {
+                const alive = aliveNames.has(app._recordName);
+                if (app.opened !== alive) app.opened = alive;
+              });
+            },
+          });
+        },
+        detached() {
+          if (this._stopWatcher) {
+            this._stopWatcher();
+            this._stopWatcher = null;
+          }
+        },
+        proto: {
+          handleAdd() {
+            this.dialogOpen = true;
+          },
+
+          _markOpened(app, win) {
+            markOpened(app._recordName, win);
+            const target = this.appList.find(
+              (a) => a._recordName === app._recordName,
+            );
+            if (target) target.opened = true;
+          },
+
+          // 新标签页打开（点击按钮版本，阻止冒泡）
+          handleOpenTab(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            return this.handleOpen(app);
+          },
+
+          // 新标签页打开
+          async handleOpen(app) {
+            if (!app || !app._handle) {
+              toast({ content: "无法打开：缺少应用句柄", color: "error" });
+              return;
+            }
+            if (focusIfOpened(app._recordName)) return;
+
+            let url;
+            try {
+              url = await getRunUrl(app);
+            } catch (err) {
+              toast({
+                content: "无法生成运行地址：" + (err.message || err),
+                color: "error",
+              });
+              return;
+            }
+
+            const win = window.open(url, `mazmot-app-${app._recordName}`);
+            if (win) this._markOpened(app, win);
+          },
+
+          // 小窗口打开（尽量像原生应用）
+          async handleOpenWindow(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app._handle) {
+              toast({ content: "无法打开：缺少应用句柄", color: "error" });
+              return;
+            }
+            if (focusIfOpened(app._recordName)) return;
+
+            let url;
+            try {
+              url = await getRunUrl(app);
+            } catch (err) {
+              toast({
+                content: "无法生成运行地址：" + (err.message || err),
+                color: "error",
+              });
+              return;
+            }
+
+            // 类原生应用窗口：无地址栏/工具栏/菜单栏；居中显示
+            const width = 1024;
+            const height = 720;
+            const left = Math.max(
+              0,
+              Math.round((screen.availWidth - width) / 2),
+            );
+            const top = Math.max(
+              0,
+              Math.round((screen.availHeight - height) / 2),
+            );
+            const features = [
+              `width=${width}`,
+              `height=${height}`,
+              `left=${left}`,
+              `top=${top}`,
+              "popup=yes",
+              "resizable=yes",
+              "scrollbars=yes",
+              "toolbar=no",
+              "menubar=no",
+              "location=no",
+              "status=no",
+              "titlebar=no",
+            ].join(",");
+
+            const win = window.open(
+              url,
+              `mazmot-app-${app._recordName}`,
+              features,
+            );
+            if (!win) {
+              toast({
+                content: "窗口被浏览器拦截，请允许弹出窗口",
+                color: "error",
+              });
+              return;
+            }
+            this._markOpened(app, win);
+          },
+
+          async handleDialogClose() {
+            this.dialogOpen = false;
+            await this.refreshApps();
+          },
+          async refreshApps() {
+            const apps = await loadApps();
+            this.appList.length = 0;
+            apps.forEach((app) => this.appList.push(app));
+          },
+
+          // 打开分享弹窗并开始发布应用到 P2P 网络
+          async handleShare(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app._handle) {
+              toast({ content: "无法分享：缺少应用句柄", color: "error" });
+              return;
+            }
+
+            // 初始化弹窗状态
+            this.shareStep = "publishing";
+            this.shareProgress = 5;
+            this.shareProgressText = "正在准备分享...";
+            this.shareUrl = "";
+            this.shareError = "";
+            this.shareDialogOpen = true;
+
+            try {
+              // 兼容老数据：补写 appId 并持久化（新格式：`${appName}-${userId}`）
+              let appId = app.appId;
+              if (!appId) {
+                appId = await generateAppId(app._recordName);
+                const stored = (await storage.apps) || [];
+                const target = stored.find((a) => a.name === app._recordName);
+                if (target) {
+                  target.appId = appId;
+                  await storage.setItem("apps", stored);
+                }
+                app.appId = appId;
+              }
+
+              this.shareProgress = 15;
+              this.shareProgressText = "读取应用文件...";
+              const files = await readAppFiles(app._handle);
+              if (!files.length) {
+                throw new Error("应用目录为空，无法分享");
+              }
+
+              this.shareProgress = 30;
+              this.shareProgressText = "连接分享网络...";
+              const { user, publisher } = await ensurePublisher();
+
+              const meta = {
+                appId,
+                recordName: app._recordName,
+                displayName: app.name,
+                version: app.version || "0.1.0",
+                description: app.desc || "",
+                icon: app.icon || "📦",
+                sharedAt: Date.now(),
+              };
+
+              this.shareProgress = 55;
+              this.shareProgressText = "分块签名并发布到网络...";
+              const packageFile = buildPackageFile(files, meta);
+              const manifest = await publisher.publish(packageFile);
+
+              this.shareProgress = 85;
+              this.shareProgressText = "生成签名链接...";
+              const payloadData = {
+                appId,
+                recordName: app._recordName,
+                displayName: app.name,
+                version: meta.version,
+                description: meta.description,
+                icon: meta.icon,
+                publisherUserId: user.userId,
+                fileHash: manifest.fileHash,
+                sharedAt: meta.sharedAt,
+              };
+              const signedPayload = await signSharePayload(user, payloadData);
+              const shareUrl = buildShareUrl(
+                window.location.origin,
+                signedPayload,
+              );
+
+              this.shareProgress = 100;
+              this.shareUrl = shareUrl;
+              this.shareStep = "ready";
+              this.shareProgressText = "";
+            } catch (err) {
+              console.error("分享失败：", err);
+              this.shareError = err.message || String(err);
+              this.shareStep = "error";
+            }
+          },
+
+          async copyAppId(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app.appId) return;
+            try {
+              await navigator.clipboard.writeText(app.appId);
+              toast({ content: "应用 ID 已复制", color: "success" });
+            } catch (err) {
+              toast({
+                content: "复制失败，请手动复制",
+                color: "error",
+              });
+            }
+          },
+
+          async copyShareLink() {
+            if (!this.shareUrl) return;
+            try {
+              await navigator.clipboard.writeText(this.shareUrl);
+              toast({ content: "链接已复制", color: "success" });
+            } catch (err) {
+              toast({
+                content: "复制失败，请手动复制",
+                color: "error",
+              });
+            }
+          },
+
+          closeShareDialog() {
+            this.shareDialogOpen = false;
+            // 保留 shareUrl，等再次打开会清空；仅重置错误状态
+            if (this.shareStep === "error") {
+              this.shareError = "";
+            }
+          },
+
+          async handleDelete(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+
+            const ok = await confirm({
+              title: "删除应用",
+              message: `确定要从列表中删除应用「${app.name}」吗？该操作会从列表中移除，不会删除本地目录中的文件。`,
+              yes: "删除",
+              cancel: "取消",
+            });
+            if (!ok) return;
+
+            try {
+              // 关闭对应打开的窗口 + 清理状态
+              clearOpened(app._recordName);
+
+              // 对于虚拟目录应用，从共享命名空间中移除该应用的子目录
+              if (app.source === "virtual" && app._handle) {
+                try {
+                  await app._handle.remove();
+                } catch (vErr) {
+                  console.warn("清空虚拟目录失败（可忽略）：", vErr);
+                }
+              }
+
+              const apps = (await storage.apps) || [];
+              const next = apps.filter(
+                (a) => !(a.name === (app._recordName || app.name)),
+              );
+              await storage.setItem("apps", next);
+
+              await this.refreshApps();
+              toast({ content: "已删除", color: "success" });
+            } catch (err) {
+              console.error(err);
+              toast({
+                content: "删除失败：" + (err.message || err),
+                color: "error",
+              });
+            }
+          },
+        },
+        watch: {
+          async dialogOpen(val) {
+            if (!val) {
+              await this.refreshApps();
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

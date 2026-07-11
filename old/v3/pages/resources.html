@@ -1,0 +1,161 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-bar.html"
+  ></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .resources-container {
+      position: relative;
+      flex: 1;
+      overflow-y: auto;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .reset-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+    }
+  </style>
+  <link rel="stylesheet" href="./resources/app-public.css" />
+  <p-nav-bar style="--label-parallel: true; padding: 24px 12px">
+    <p-nav-item
+      attr:active="currentTab === 'resources'"
+      on:click="goto('./resources/apps.html')"
+    >
+      <n-icon icon="si:ai-sort-line" slot="icon"></n-icon>
+      <span>应用</span>
+    </p-nav-item>
+    <p-nav-item
+      attr:active="currentTab === 'capabilities'"
+      on:click="goto('./resources/capabilities.html')"
+    >
+      <n-icon icon="tabler:bulb" slot="icon"></n-icon>
+      <span>能力</span>
+    </p-nav-item>
+    <p-nav-item
+      attr:active="currentTab === 'skills'"
+      on:click="goto('./resources/skills.html')"
+    >
+      <n-icon icon="tabler:book" slot="icon"></n-icon>
+      <span>技能</span>
+    </p-nav-item>
+  </p-nav-bar>
+  <o-if :value="showResetBtn">
+    <p-button
+      class="reset-btn"
+      on:click="resetData"
+      type="primary"
+      attr:disabled="resetting"
+      size="small"
+    >
+      <n-icon icon="at-icons:recover" slot="prefix"></n-icon>
+      还原
+    </p-button>
+  </o-if>
+  <div class="resources-container">
+    <slot></slot>
+  </div>
+  <script>
+    export const parent = "./layout.html";
+
+    export default async ({ load }) => {
+      const { get } = await load("/nos/fs/main.js");
+      const { writeJsonToNos } = await load("../util/init.js");
+      const { toast, confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      return {
+        data: {
+          currentTab: "resources",
+          resetting: false,
+        },
+        routerChange() {
+          this.refreshActive();
+        },
+        ready() {
+          this.refreshActive();
+        },
+        proto: {
+          get showResetBtn() {
+            return this.currentTab === 'capabilities' || this.currentTab === 'skills';
+          },
+          refreshActive() {
+            const { current } = this.app;
+            const path = new URL(current.src).pathname;
+            if (path.includes("apps")) {
+              this.currentTab = "resources";
+            } else if (path.includes("capabilities")) {
+              this.currentTab = "capabilities";
+            } else if (path.includes("skills")) {
+              this.currentTab = "skills";
+            }
+          },
+          async resetData() {
+            if (this.resetting) return;
+
+            const result = await confirm({
+              title: '还原确认',
+              message: '确定要还原所有数据吗？这将重置能力和技能数据。',
+              yes: '还原',
+              cancel: '取消'
+            });
+
+            if (!result) return;
+
+            this.resetting = true;
+            try {
+              try {
+                const skillsDir = await get("mazmot/skills");
+                await skillsDir.remove();
+              } catch (e) {
+                console.log("skills directory not found");
+              }
+
+              try {
+                const capabilitiesDir = await get("mazmot/capabilities");
+                await capabilitiesDir.remove();
+              } catch (e) {
+                console.log("capabilities directory not found");
+              }
+
+              const capabilitiesRes = await fetch("/dist/capabilities.json");
+              const capabilitiesData = await capabilitiesRes.json();
+              await writeJsonToNos(capabilitiesData, "mazmot/capabilities");
+
+              const skillsRes = await fetch("/dist/skills.json");
+              const skillsData = await skillsRes.json();
+              await writeJsonToNos(skillsData, "mazmot/skills");
+
+              console.log("Data reset successfully");
+              toast({
+                message: "还原成功",
+                color: "success",
+              });
+
+              // 刷新子页面列表
+              const currentPage = this.app.current;
+              if (currentPage && currentPage.loadData) {
+                await currentPage.loadData();
+              }
+            } finally {
+              this.resetting = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

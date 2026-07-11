@@ -4,20 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot</title>
-    <script type="module">
-      const config = await fetch("/__config")
-        .then((e) => e.json())
-        .catch(() => {
-          // 没有配置文件，跳转到安装页面
-          window.location.href = "/_install.html";
-        });
-    </script>
-    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
-    <script
-      src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
-      type="module"
-    ></script>
-    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.js#debug"></script>
     <style>
       html,
       body {
@@ -36,16 +23,54 @@
           Apple Color Emoji,
           Segoe UI Emoji;
       }
+
+      .mask {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--md-sys-color-surface);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease;
+      }
     </style>
     <link
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
     />
   </head>
-
   <body>
-    <o-router fix-body>
-      <o-app src="./app-config.js"></o-app>
-    </o-router>
+    <div class="mask">
+      <nos-version auto-install></nos-version>
+    </div>
+
+    <script type="module">
+      const load = lm(import.meta);
+
+      $("nos-version").on("installed", () => {
+        // 安装/升级完成后，优先使用 ?redirect= 参数；否则进入主应用
+        const params = new URLSearchParams(location.search);
+        const raw = params.get("redirect");
+        let target = "/apps/main/";
+        if (raw) {
+          try {
+            const decoded = decodeURIComponent(raw);
+            // 仅允许站内相对路径，避免 open redirect 风险
+            if (decoded.startsWith("/") && !decoded.startsWith("//")) {
+              target = decoded;
+            }
+          } catch (e) {
+            // 解码失败则忽略
+          }
+        }
+        location.replace(target);
+      });
+
+      await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
+    </script>
   </body>
 </html>

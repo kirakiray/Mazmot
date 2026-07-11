@@ -1,0 +1,90 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-bar.html"
+  ></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/navigation/nav-layout.html"
+  ></l-m>
+  <l-m src="../comps/mascot/mascot.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .content-area {
+      height: 100%;
+      overflow: auto;
+    }
+  </style>
+  <p-nav-layout>
+    <div class="content-area">
+      <slot></slot>
+    </div>
+    <p-nav-bar slot="nav">
+      <p-nav-item
+        attr:active="activeTab === 'start'"
+        on:click="goto('./start/start.html')"
+      >
+        <m-mascot slot="icon" style="--mascot-size: 24px"></m-mascot>
+        <span>开始</span>
+      </p-nav-item>
+      <p-nav-item
+        attr:active="activeTab === 'create'"
+        on:click="goto('./create-app/app-builder.html')"
+      >
+        <n-icon slot="icon" icon="icon-park-outline:baby-app"></n-icon>
+        <span>创建应用</span>
+      </p-nav-item>
+      <p-nav-item
+        attr:active="activeTab === 'resources'"
+        on:click="goto('./resources/apps.html')"
+      >
+        <n-icon slot="icon" icon="solar:widget-bold"></n-icon>
+        <span>资源</span>
+      </p-nav-item>
+      <p-nav-item
+        attr:active="activeTab === 'config'"
+        on:click="goto('./config.html')"
+      >
+        <n-icon slot="icon" icon="solar:settings-bold"></n-icon>
+        <span>设置</span>
+      </p-nav-item>
+    </p-nav-bar>
+  </p-nav-layout>
+  <script>
+    import init from "../util/init.js";
+    init();
+
+    export default async ({ load }) => {
+      // await init(); // 确保初始化本地 capabilities 和 skills
+
+      return {
+        data: {
+          activeTab: "start",
+        },
+        routerChange() {
+          this.refreshActive();
+        },
+        ready() {
+          this.refreshActive();
+        },
+        proto: {
+          refreshActive() {
+            const { current } = this.app;
+            const path = new URL(current.src).pathname;
+            if (path.includes("start")) {
+              this.activeTab = "start";
+            } else if (path.includes("create")) {
+              this.activeTab = "create";
+            } else if (path.includes("resources")) {
+              this.activeTab = "resources";
+            } else if (path.includes("config")) {
+              this.activeTab = "config";
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

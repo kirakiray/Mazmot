@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mazmot Container</title>
+    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <style>
+      html,
+      body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+      .mask {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--md-sys-color-surface);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease;
+      }
+      .status-text {
+        color: var(--md-sys-color-on-surface-variant);
+        font-size: 14px;
+        margin-top: 16px;
+        text-align: center;
+      }
+      .error-text {
+        color: var(--md-sys-color-error);
+        font-size: 14px;
+        padding: 20px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 安装遮罩：首次使用容器时自动安装 NoneOS Core -->
+    <div class="mask" id="mask">
+      <div>
+        <nos-version auto-install></nos-version>
+        <div class="status-text" id="status">正在初始化容器环境...</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+
+      const NAMESPACE = "main-app";
+      let fsReady = false;
+
+      const load = lm(import.meta);
+
+      // 加载 nos-version 组件并自动安装 NoneOS Core
+      await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
+
+      $("nos-version").on("installed", async () => {
+        try {
+          // 安装完成后，初始化文件系统
+          const { init, get } = await import("/nos/fs/main.js");
+          await init(NAMESPACE);
+          fsReady = true;
+
+          // 隐藏安装遮罩
+          $("#mask").style.display = "none";
+
+          // 获取当前占用的应用信息
+          const occupier = await storage.getItem("occupier");
+
+          // 通知父页面容器已就绪
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "ready", occupier }, "*");
+          }
+
+          // 检查是否为运行模式
+          const params = new URLSearchParams(location.search);
+          if (params.get("mode") === "run") {
+            await runApp();
+          }
+        } catch (err) {
+          console.error("容器初始化失败：", err);
+          // Service Worker 刚注册可能还未接管页面，重载一次让其生效
+          const params = new URLSearchParams(location.search);
+          if (params.get("sw_retry") !== "1") {
+            params.set("sw_retry", "1");
+            location.replace(`/_install.html?${params.toString()}`);
+            return;
+          }
+          $("#status").text = "初始化失败：" + (err.message || err);
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { type: "error", message: err.message || String(err) },
+              "*",
+            );
+          }
+        }
+      });
+
+      /**
+       * 运行模式：挂载虚拟目录并跳转到应用入口
+       */
+      async function runApp() {
+        const { get, mount } = await import("/nos/fs/main.js");
+        const rootDir = await get(NAMESPACE);
+
+        if (!rootDir) {
+          document.body.innerHTML =
+            '<div class="error-text">应用文件未找到，请先安装应用。</div>';
+          return;
+        }
+
+        // 检查是否有 index.html
+        const entryFile = await rootDir.get("index.html");
+        if (!entryFile) {
+          document.body.innerHTML =
+            '<div class="error-text">应用入口文件 index.html 不存在。</div>';
+          return;
+        }
+
+        // 挂载目录，获取可通过 HTTP 访问的路径
+        const mounted = await mount(rootDir);
+        // 跳转到应用入口
+        location.replace(`/${mounted.path}/index.html`);
+      }
+
+      /**
+       * 监听来自主系统（父页面）的消息
+       */
+      window.addEventListener("message", async (event) => {
+        if (!fsReady) return;
+
+        const msg = event.data;
+        if (!msg || !msg.type) return;
+
+        try {
+          const { get } = await import("/nos/fs/main.js");
+          const rootDir = await get(NAMESPACE);
+
+          if (msg.type === "install") {
+            // 检查占用逻辑
+            const currentOccupier = await storage.getItem("occupier");
+            if (
+              currentOccupier &&
+              msg.appName &&
+              currentOccupier.name !== msg.appName
+            ) {
+              throw new Error(
+                `容器已被应用 "${currentOccupier.name}" 占用，无法由 "${msg.appName}" 使用`,
+              );
+            }
+
+            // 记录占用者信息
+            if (msg.appName) {
+              await storage.setItem("occupier", {
+                name: msg.appName,
+                parentOrigin: event.origin, // 记录父层域名/来源
+                time: Date.now(),
+              });
+            }
+
+            // 写入所有文件到虚拟文件系统
+            for (const file of msg.files) {
+              const fileHandle = await rootDir.get(file.path, {
+                create: "file",
+              });
+              await fileHandle.write(file.content);
+            }
+            event.source.postMessage(
+              { type: "install-done", success: true },
+              event.origin,
+            );
+          } else if (msg.type === "clear") {
+            // 清空占用者信息
+            await storage.removeItem("occupier");
+
+            // 清空虚拟文件系统中的所有文件
+            if (rootDir) {
+              for await (const [name, handle] of rootDir.entries()) {
+                try {
+                  await handle.remove();
+                } catch (e) {}
+              }
+            }
+            event.source.postMessage(
+              { type: "clear-done", success: true },
+              event.origin,
+            );
+          } else if (msg.type === "ping") {
+            event.source.postMessage({ type: "pong" }, event.origin);
+          }
+        } catch (err) {
+          event.source.postMessage(
+            { type: "error", message: err.message || String(err) },
+            event.origin,
+          );
+        }
+      });
+    </script>
+  </body>
+</html>

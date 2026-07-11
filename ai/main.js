@@ -1,4 +1,4 @@
-import { storage } from "/gh/kirakiray/ever-cache/src/main.js";
+import { storage } from "/gh/kirakiray/ever-cache/src/main.min.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
@@ -15,6 +15,29 @@ apiKeys.watchTick(() => {
   const data = apiKeys.toJSON();
   storage.apiKeys = data;
 });
+
+export const testApiKey = async (apiKey, provider) => {
+  let assistant;
+
+  switch (provider) {
+    case "deepseek":
+      assistant = new DeepseekAssistant("test", apiKey);
+      break;
+    case "kimi":
+      assistant = new KimiAssistant("test", apiKey);
+      break;
+    default:
+      throw new Error("provider not supported");
+  }
+
+  try {
+    // 尝试获取模型列表来验证 API key 是否有效
+    await assistant.getModels();
+    return { valid: true, message: "API Key 验证成功" };
+  } catch (error) {
+    return { valid: false, message: error.message };
+  }
+};
 
 export const saveKey = async (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);

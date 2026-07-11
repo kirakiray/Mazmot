@@ -1,0 +1,141 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      box-sizing: border-box;
+      height: 100%;
+    }
+    .emulator-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 40px;
+    }
+    .open-btn {
+      padding: 4px 12px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.2s;
+    }
+    .open-btn:hover {
+      background: rgb(
+        from var(--md-sys-color-primary) calc(r - 10) calc(g - 10) calc(b - 10)
+      );
+    }
+    .open-btn:disabled {
+      background: var(--md-sys-color-neutral-container);
+      color: var(--md-sys-color-on-neutral);
+      cursor: not-allowed;
+    }
+    .preview-info {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .preview-info p {
+      margin: 8px 0;
+    }
+    .window-status {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 16px;
+    }
+  </style>
+  <div class="emulator-container">
+    <div class="preview-info">
+      <p>Preview Window</p>
+      <o-if :value="!previewWindow">
+        <button class="open-btn" on:click="openPreview" :disabled="!iframeUrl">
+          <iconify-icon icon="lucide:external-link" width="14"></iconify-icon>
+          Open Preview
+        </button>
+      </o-if>
+      <o-if :value="previewWindow">
+        <p class="window-status">Preview window is open</p>
+        <button class="open-btn" on:click="focusPreview">
+          <iconify-icon icon="lucide:eye" width="14"></iconify-icon>
+          Focus Window
+        </button>
+      </o-if>
+    </div>
+  </div>
+  <o-consumer name="app-builder" watch:project-path="projectPath"> </o-consumer>
+  <script>
+    export default async () => {
+      const PREVIEW_WINDOW_NAME = "mazmot-preview";
+
+      return {
+        data: {
+          projectPath: "",
+          iframeUrl: "",
+          previewWindow: null,
+        },
+        proto: {
+          openPreview() {
+            if (this.iframeUrl) {
+              this.previewWindow = window.open(
+                this.iframeUrl,
+                PREVIEW_WINDOW_NAME,
+                "width=800,height=600"
+              );
+              this.startWindowCheck();
+            }
+          },
+          focusPreview() {
+            if (this.previewWindow && !this.previewWindow.closed) {
+              this.previewWindow.focus();
+            }
+          },
+          startWindowCheck() {
+            if (this._checkInterval) {
+              clearInterval(this._checkInterval);
+            }
+            this._checkInterval = setInterval(() => {
+              if (this.previewWindow && this.previewWindow.closed) {
+                this.previewWindow = null;
+                clearInterval(this._checkInterval);
+                this._checkInterval = null;
+              }
+            }, 500);
+          },
+          reconnectWindow() {
+            if (!this.iframeUrl) return;
+            const win = window.open("", PREVIEW_WINDOW_NAME);
+            if (win) {
+              if (win.closed || win.location.href === "about:blank") {
+                win.close();
+                return;
+              }
+              this.previewWindow = win;
+              this.startWindowCheck();
+            }
+          },
+        },
+        watch: {
+          projectPath() {
+            if (!this.projectPath) {
+              this.iframeUrl = "";
+              return;
+            }
+            const pathPrefix = this.projectPath.startsWith("$") ? "" : "$";
+            this.iframeUrl = `/${pathPrefix}${this.projectPath}/project/index.html`;
+            this.reconnectWindow();
+          },
+        },
+        detached() {
+          if (this._checkInterval) {
+            clearInterval(this._checkInterval);
+          }
+        },
+      };
+    };
+  </script>
+</template>

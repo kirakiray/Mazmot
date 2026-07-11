@@ -1,0 +1,124 @@
+<template page>
+  <style>
+    :host {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      background: var(--md-sys-color-surface);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .drag-handle {
+      padding: 6px 12px;
+      background: var(--md-sys-color-surface-variant);
+      cursor: grab;
+      font-size: 0.75em;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .drag-handle::before {
+      content: "⠿";
+      font-size: 1.1em;
+      opacity: 0.5;
+    }
+
+    .viewport {
+      width: 213px;
+      height: 213px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .drag-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      cursor: grabbing;
+    }
+
+    :host([dragging]) .drag-overlay {
+      display: block;
+    }
+
+    ::slotted(iframe) {
+      width: 640px;
+      height: 640px;
+      border: none;
+      display: block;
+      transform: scale(0.3333);
+      transform-origin: top left;
+    }
+  </style>
+  <div class="drag-handle" on:mousedown="startDrag">Emulator</div>
+  <div class="viewport">
+    <div class="drag-overlay"></div>
+    <slot></slot>
+  </div>
+  <script>
+    export default async () => {
+      return {
+        data: {
+          _dragState: null,
+        },
+        proto: {
+          startDrag(e) {
+            const host = this.ele;
+            const startLeft = host.offsetLeft;
+            const startTop = host.offsetTop;
+
+            // 切换为 left/top 定位
+            host.style.left = startLeft + "px";
+            host.style.top = startTop + "px";
+            host.style.right = "auto";
+
+            host.setAttribute("dragging", "");
+
+            this._dragState = {
+              startX: e.clientX,
+              startY: e.clientY,
+              startLeft,
+              startTop,
+            };
+
+            e.preventDefault();
+          },
+        },
+        attached() {
+          this._onMouseMove = (e) => {
+            if (!this._dragState) return;
+            const { startX, startY, startLeft, startTop } = this._dragState;
+            const host = this.shadow.host.ele;
+            host.style.left = startLeft + (e.clientX - startX) + "px";
+            host.style.top = startTop + (e.clientY - startY) + "px";
+          };
+
+          this._onMouseUp = () => {
+            this._dragState = null;
+            this.ele.removeAttribute("dragging");
+          };
+
+          document.addEventListener("mousemove", this._onMouseMove);
+          document.addEventListener("mouseup", this._onMouseUp);
+        },
+        detached() {
+          document.removeEventListener("mousemove", this._onMouseMove);
+          document.removeEventListener("mouseup", this._onMouseUp);
+        },
+      };
+    };
+  </script>
+</template>

@@ -1,0 +1,538 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      user-select: none;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .mascot-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .speech-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .speech-text {
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface);
+      text-align: center;
+      padding: 12px 24px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 12px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgb(from var(--md-sys-color-on-surface) r g b / 0.1);
+      border: 2px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .speech-text.has-options {
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px 24px;
+      cursor: default;
+    }
+
+    .speech-text.has-form {
+      padding: 0;
+      cursor: default;
+      background-color: transparent;
+      box-shadow: none;
+    }
+
+    .speech-text.exit {
+      animation: slideDown 0.2s ease-in forwards;
+    }
+
+    .speech-text.enter {
+      animation: slideUp 0.2s ease-out forwards;
+    }
+
+    @keyframes slideDown {
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+    }
+
+    @keyframes slideUp {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .warning {
+      font-size: 12px;
+      color: var(--md-sys-color-error);
+      margin-top: 4px;
+    }
+
+    .click-hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .form-content {
+      width: 100%;
+      padding: 16px;
+      background: var(--md-sys-color-surface-variant);
+      border-radius: 12px;
+    }
+
+    .form-label {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .form-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 16px;
+    }
+  </style>
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="../../comps/mascot/mascot.html"></l-m>
+
+  <div class="mascot-wrapper">
+    <m-mascot attr:state="mascotState" style="--mascot-size: 100px"></m-mascot>
+  </div>
+
+  <div class="speech-wrapper" on:click="handleClick">
+    <div class="speech-text" id="speechText" sync:class="speechClass">
+      <o-if :value="typeof currentSpeech === 'string'">
+        {{ currentSpeech }}
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'options'">
+        <div style="width: 100%">
+          <div style="margin-bottom: 12px">{{ currentSpeech.question }}</div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <o-fill :value="currentSpeech.options">
+              <p-button
+                variant="outlined"
+                attr:disabled="$data.disabled"
+                on:click="$host.selectOption($data)"
+                style="width: 100%"
+              >
+                {{ $data.label }}
+                <o-if :value="$data.disabled && $data.warning">
+                  <div class="warning">{{ $data.warning }}</div>
+                </o-if>
+              </p-button>
+            </o-fill>
+          </div>
+          <o-if :value="currentIndex > 1">
+            <div style="margin-top: 12px">
+              <p-button variant="outlined" size="s" on:click="prevSpeech"
+                >返回上一步</p-button
+              >
+            </div>
+          </o-if>
+        </div>
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'form'">
+        <div class="form-content">
+          <label class="form-label">{{ currentSpeech.label }}</label>
+          <p-input
+            sync:value="formValue"
+            :placeholder="currentSpeech.placeholder"
+            style="width: 100%"
+          ></p-input>
+          <div class="form-actions">
+            <p-button variant="outlined" on:click="prevSpeech">返回</p-button>
+            <p-button
+              color="primary"
+              attr:disabled="!formValue.trim()"
+              on:click="confirmForm"
+              >确认</p-button
+            >
+          </div>
+        </div>
+      </o-if>
+      <o-if :value="currentSpeech && currentSpeech.type === 'confirm'">
+        <div style="width: 100%; text-align: center">
+          <div style="margin-bottom: 16px">{{ currentSpeech.message }}</div>
+          <o-if :value="createProgress">
+            <div
+              style="
+                margin-bottom: 12px;
+                font-size: 14px;
+                color: var(--md-sys-color-on-surface-variant);
+              "
+            >
+              {{ createProgress.message }}
+            </div>
+            <div
+              style="
+                width: 100%;
+                height: 4px;
+                background: var(--md-sys-color-surface-variant);
+                border-radius: 2px;
+                margin-bottom: 16px;
+                overflow: hidden;
+              "
+            >
+              <div
+                style="
+                  height: 100%;
+                  background: var(--md-sys-color-primary);
+                  border-radius: 2px;
+                  transition: width 0.3s ease;
+                "
+                :style.width="`${(createProgress.current / createProgress.total * 100).toFixed(0)}%`"
+              ></div>
+            </div>
+          </o-if>
+          <div style="display: flex; justify-content: center; gap: 12px">
+            <p-button
+              variant="outlined"
+              attr:disabled="isCreating"
+              on:click="goBack"
+              >返回修改</p-button
+            >
+            <p-button
+              color="primary"
+              attr:disabled="isCreating"
+              on:click="confirmCreate"
+              >{{ isCreating ? '创建中...' : '开始创建' }}</p-button
+            >
+          </div>
+        </div>
+      </o-if>
+    </div>
+    <div class="click-hint">{{ currentHint }}</div>
+  </div>
+
+  <script>
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+
+    export default async ({ load }) => {
+      const { init, open, mount } = await load("/nos/fs/main.js");
+      const { initCode } = await load("./util/init-code.js");
+
+      return {
+        data: {
+          mascotState: "",
+          currentIndex: 0,
+          isAnimating: false,
+          selectedOption: null,
+          formValue: "",
+          appName: "",
+          _localHandle: null,
+          supportLocal: "showDirectoryPicker" in window,
+          isCreating: false,
+          createProgress: null,
+          speeches: [
+            "你好！我来帮你创建一个AI应用。",
+            {
+              type: "options",
+              question: "请选择应用创建的位置：",
+              options: [
+                { label: "虚拟系统（浏览器存储）", value: "virtual" },
+                {
+                  label: "本地文件夹（直接保存到电脑）",
+                  value: "local",
+                  disabled: !("showDirectoryPicker" in window),
+                  warning: !("showDirectoryPicker" in window)
+                    ? "当前浏览器不支持选择本地文件目录"
+                    : null,
+                },
+              ],
+              hint: "请选择一个选项",
+            },
+          ],
+        },
+        proto: {
+          get currentSpeech() {
+            // 动态生成后续对话内容
+            if (this.currentIndex < this.speeches.length) {
+              return this.speeches[this.currentIndex];
+            }
+
+            // 根据选择动态添加对话
+            if (
+              this.selectedOption === "virtual" &&
+              this.currentIndex === this.speeches.length
+            ) {
+              return {
+                type: "form",
+                label: "应用名称",
+                placeholder: "请输入应用名称",
+                hint: "输入应用名称后点击确认",
+              };
+            }
+
+            if (
+              this.selectedOption === "virtual" &&
+              this.currentIndex === this.speeches.length + 1
+            ) {
+              return {
+                type: "confirm",
+                message: `确认初始化应用「${this.appName}」到虚拟系统？`,
+                hint: "确认后开始初始化应用",
+              };
+            }
+
+            if (
+              this.selectedOption === "local" &&
+              this.currentIndex === this.speeches.length
+            ) {
+              return "正在打开文件夹选择器...";
+            }
+
+            if (
+              this.selectedOption === "local" &&
+              this.currentIndex === this.speeches.length + 1
+            ) {
+              return {
+                type: "confirm",
+                message: `确认在「${this._localHandle?.name || "未知"}」文件夹中创建应用？`,
+                hint: "确认后开始创建应用",
+              };
+            }
+
+            return "初始化完成！";
+          },
+          get speechClass() {
+            if (
+              this.currentSpeech &&
+              (this.currentSpeech.type === "options" ||
+                this.currentSpeech.type === "form" ||
+                this.currentSpeech.type === "confirm")
+            ) {
+              return "speech-text has-options";
+            }
+            return "speech-text";
+          },
+          get currentHint() {
+            // 创建过程中显示进度提示
+            if (this.isCreating) {
+              return this.createProgress
+                ? `${this.createProgress.current}/${this.createProgress.total}`
+                : "正在初始化...";
+            }
+            if (this.currentSpeech && this.currentSpeech.hint) {
+              return this.currentSpeech.hint;
+            }
+            if (this.currentSpeech && this.currentSpeech.type) {
+              return "";
+            }
+            return "点击继续";
+          },
+          handleClick() {
+            // 创建过程中或如果是选项、表单或确认类型，不能通过点击跳过
+            if (
+              this.isCreating ||
+              (this.currentSpeech && this.currentSpeech.type)
+            ) {
+              return;
+            }
+
+            this.nextSpeech();
+          },
+          async selectOption(opt) {
+            if (opt.disabled) {
+              return;
+            }
+
+            this.selectedOption = opt.value;
+
+            if (opt.value === "local") {
+              // 选择本地文件夹
+              try {
+                this.nextSpeech(); // 显示"正在打开..."
+                const handle = await open();
+                this._localHandle = handle;
+                this.mascotState = "happy";
+                this.nextSpeech(); // 显示确认
+              } catch (e) {
+                // 用户取消选择，返回选择页面
+                this.currentIndex = 1;
+              }
+            } else {
+              // 选择虚拟系统
+              this.nextSpeech();
+            }
+          },
+          confirmForm() {
+            if (!this.formValue.trim()) {
+              return;
+            }
+            this.appName = this.formValue.trim();
+            this.mascotState = "happy";
+            this.nextSpeech();
+          },
+          goBack() {
+            // 创建过程中不允许返回
+            if (this.isCreating) {
+              return;
+            }
+
+            // 返回到选择页面
+            this.currentIndex = 1;
+            this.selectedOption = null;
+            this.formValue = "";
+            this.appName = "";
+            this._localHandle = null;
+            this.mascotState = "";
+          },
+          async confirmCreate() {
+            if (this.isCreating) {
+              return;
+            }
+
+            this.isCreating = true;
+            this.mascotState = "happy";
+
+            let projectPath;
+
+            try {
+              if (this.selectedOption === "virtual") {
+                projectPath = this.appName;
+                await init(projectPath);
+              } else if (this.selectedOption === "local" && this._localHandle) {
+                await mount(this._localHandle);
+                projectPath = this._localHandle.path;
+              }
+
+              // 初始化代码到 project 子文件夹
+              await initCode(projectPath + "/project", (progress) => {
+                this.createProgress = progress;
+              });
+
+              // 保存应用到 ever-cache
+              const apps = (await storage.apps) || [];
+              const newApp = {
+                id: Date.now().toString(),
+                name: this.selectedOption === "virtual" ? this.appName : this._localHandle?.name || "未命名应用",
+                path: projectPath,
+                type: this.selectedOption,
+                source: "self-created", // 自建应用标记
+                createdAt: new Date().toISOString(),
+              };
+              apps.push(newApp);
+              await (storage.apps = apps);
+
+              // 跳转到创建页面
+              this.goto(`./create.html?projectPath=${projectPath}`);
+            } catch (e) {
+              console.error("初始化应用失败:", e);
+              this.isCreating = false;
+              this.createProgress = null;
+              this.mascotState = "sad";
+              // 可以在这里显示错误信息
+            }
+          },
+          nextSpeech() {
+            // 创建过程中不允许跳转
+            if (this.isCreating || this.isAnimating) {
+              return;
+            }
+
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              this.isAnimating = true;
+              speechText.classList.add("exit");
+
+              setTimeout(() => {
+                this.currentIndex++;
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 200);
+              }, 200);
+            } else {
+              this.currentIndex++;
+            }
+          },
+          prevSpeech() {
+            // 创建过程中不允许返回
+            if (this.isCreating || this.isAnimating || this.currentIndex <= 0) {
+              return;
+            }
+
+            const speechText = this.shadow.$("#speechText");
+            if (speechText) {
+              this.isAnimating = true;
+              speechText.classList.add("exit");
+
+              setTimeout(() => {
+                this.currentIndex--;
+                speechText.classList.remove("exit");
+                speechText.classList.add("enter");
+
+                // 返回到选择页面时，重置选择状态
+                if (this.currentIndex === 1) {
+                  this.selectedOption = null;
+                  this.formValue = "";
+                  this.appName = "";
+                  this._localHandle = null;
+                  this.mascotState = "";
+                }
+
+                setTimeout(() => {
+                  speechText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 200);
+              }, 200);
+            } else {
+              this.currentIndex--;
+              // 返回到选择页面时，重置选择状态
+              if (this.currentIndex === 1) {
+                this.selectedOption = null;
+                this.formValue = "";
+                this.appName = "";
+                this._localHandle = null;
+                this.mascotState = "";
+              }
+            }
+          },
+          reset() {
+            this.currentIndex = 0;
+            this.selectedOption = null;
+            this.formValue = "";
+            this.appName = "";
+            this._localHandle = null;
+            this.mascotState = "";
+            this.isAnimating = false;
+            this.isCreating = false;
+            this.createProgress = null;
+          },
+        },
+      };
+    };
+  </script>
+</template>

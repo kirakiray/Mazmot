@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试能力诊断组件</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m src="../src/capability-diagnosis.html"></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+
+  <body>
+    <capability-diagnosis label="诊断 capability-diagnosis 能力是否可用">
+      <iframe src="" frameborder="0" slot="emulator"></iframe>
+      <cap-request>
+        <template
+          name="fetch-url"
+          cid="fetch-01"
+          desc="请求package.json文件内容"
+          data-url="/package.json"
+        >
+        </template>
+        <template
+          name="run-js"
+          cid="run-js-01"
+          desc="尝试 run-js模块，运行1+2+3"
+        >
+          <script type="text/plain">
+            return 1 + 2 + 3;
+          </script>
+        </template>
+        <template
+          name="emulator-navigate"
+          data-action="go"
+          data-url="/capabilities/capability-diagnosis/test/cv.html"
+          cid="emulator-navigate-01"
+          desc="导航到cv.html"
+        >
+        </template>
+      </cap-request>
+      <template result cid="fetch-01">
+        <script type="module">
+          export default async function (result) {
+            // 直接获取内容
+            const data = await fetch("/package.json");
+            const jsonText = await data.text();
+
+            return {
+              assert: jsonText === result,
+              content: "获取成功",
+            };
+          }
+        </script>
+      </template>
+      <template result cid="run-js-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === 6,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+      <template result cid="emulator-navigate-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert:
+                result.success &&
+                result.url.includes(
+                  "/capabilities/capability-diagnosis/test/cv.html",
+                ),
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>

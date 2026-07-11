@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Preview Web 能力测试</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+  </head>
+  <body>
+    <l-m src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"></l-m>
+
+    <capability-diagnosis label="测试 preview-web 能力（配合 fs 能力）">
+      <cap-request>
+        <template
+          name="fs"
+          cid="fs-01"
+          desc="写入HTML文件"
+          data-mode="write"
+          data-path="mazmot/preview/test-demo/index.html"
+        >
+          <!doctype html>
+          <html lang="zh-CN">
+            <head>
+              <meta charset="UTF-8" />
+              <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1.0"
+              />
+              <title>测试页面</title>
+              <link rel="stylesheet" href="./style.css" />
+            </head>
+            <body>
+              <div class="container">
+                <h1>🎉 测试页面</h1>
+                <p>这是一个通过 fs 能力创建的测试页面。</p>
+                <button onclick="alert('按钮点击成功！')">点击测试</button>
+              </div>
+              <script src="./script.js"></script>
+            </body>
+          </html>
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-02"
+          desc="写入CSS文件"
+          data-mode="write"
+          data-path="mazmot/preview/test-demo/style.css"
+        >
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          Roboto, sans-serif; margin: 0; padding: 40px; background:
+          linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
+          min-height: 100vh; } .container { max-width: 600px; margin: 0 auto;
+          background: rgba(255, 255, 255, 0.1); padding: 40px; border-radius:
+          16px; backdrop-filter: blur(10px); } h1 { font-size: 32px;
+          margin-bottom: 20px; } p { font-size: 18px; line-height: 1.6;
+          margin-bottom: 20px; } button { padding: 12px 24px; background: white;
+          color: #667eea; border: none; border-radius: 8px; font-size: 16px;
+          font-weight: 600; cursor: pointer; transition: transform 0.2s; }
+          button:hover { transform: translateY(-2px); }
+        </template>
+
+        <template
+          name="fs"
+          cid="fs-03"
+          desc="写入JS文件"
+          data-mode="write"
+          data-path="mazmot/preview/test-demo/script.js"
+        >
+          console.log('页面加载完成');
+          document.addEventListener('DOMContentLoaded', function() {
+          console.log('DOM 已加载'); });
+        </template>
+
+        <template
+          name="preview-web"
+          cid="preview-web-01"
+          desc="预览网页内容"
+          data-url="/$mazmot/preview/test-demo/index.html"
+          data-title="测试页面预览"
+        >
+        </template>
+      </cap-request>
+
+      <template result cid="fs-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: "write html",
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-02">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: "write css",
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="fs-03">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === true,
+              content: "write js",
+            };
+          }
+        </script>
+      </template>
+
+      <template result cid="preview-web-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result.success === true,
+              content: result,
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>

@@ -1,0 +1,438 @@
+<template page>
+  <l-m src="../../comps/chatbox/chatbox.html"></l-m>
+  <l-m src="../../comps/o-md/o-md.html"></l-m>
+  <l-m src="../../comps/mascot/mascot.html"></l-m>
+  <l-m src="../../comps/cap-request/cap-request.html"></l-m>
+  <l-m src="../../comps/usage-stats/usage-stats.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      flex: 1;
+      padding: 16px;
+    }
+    m-chatbox {
+      display: block;
+    }
+    m-chat-item[role="system"],
+    m-chat-item[hidden],
+    m-chat-item[is-response] {
+      display: none;
+    }
+    .delete-btn {
+      opacity: 0;
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      padding: 4px 8px;
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    m-chat-item:hover .delete-btn {
+      opacity: 0.7;
+    }
+  </style>
+  <div style="height: 40px"></div>
+  <m-chatbox>
+    <o-fill :value="messages">
+      <m-chat-item
+        attr:role="$data.role"
+        attr:is-response="$data.isResponse"
+        attr:hidden="$data.hidden"
+      >
+        <o-if :value="$data.role === 'assistant'" slot="avatar">
+          <m-mascot style="--mascot-size: 28px"></m-mascot>
+        </o-if>
+        <o-else slot="avatar"> U </o-else>
+        <o-if :value="$data.role !== 'system' && !$data.isResponse">
+          <div style="position: relative">
+            <o-md>{{$data.content}}</o-md>
+            <button class="delete-btn" on:click="$host.deleteMessage($index)">
+              删除
+            </button>
+          </div>
+        </o-if>
+
+        <o-if :value="$data.usage">
+          <m-usage-stats
+            attr:model="$data.model"
+            :usage="$data.usage"
+          ></m-usage-stats>
+        </o-if>
+      </m-chat-item>
+    </o-fill>
+    <o-if :value="isLoading">
+      <m-chat-item role="assistant">AI 正在处理... </m-chat-item>
+    </o-if>
+    <o-if :value="!hasVisibleMessages && !isLoading">
+      <div
+        style="
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 300px;
+          color: var(--md-sys-color-normal);
+        "
+      >
+        请输入消息
+      </div>
+    </o-if>
+    <o-if :value="pendingResults">
+      <div
+        style="
+          padding: 16px;
+          border-top: 1px solid var(--md-sys-color-outline-variant);
+        "
+      >
+        <div style="margin-bottom: 12px; color: var(--md-sys-color-normal)">
+          AI 请求了以下能力，点击确认发送结果
+        </div>
+        <o-fill :value="pendingResults">
+          <div
+            style="
+              margin-bottom: 12px;
+              background: var(--md-sys-color-surface-container);
+              border-radius: 8px;
+              overflow: hidden;
+            "
+          >
+            <div
+              style="
+                padding: 8px 12px;
+                font-size: 12px;
+                color: var(--md-sys-color-on-surface-variant);
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+              on:click="$host.toggleResultExpand($index)"
+            >
+              <span>{{$data.name}}</span>
+              <span style="font-size: 10px"
+                >{{$host.resultExpanded[$index] ? '▼' : '◀'}}</span
+              >
+            </div>
+            <o-if :value="$host.resultExpanded[$index]">
+              <div style="padding: 0 12px 12px 12px">
+                <o-if :value="$data.error">
+                  <div
+                    style="
+                      font-size: 13px;
+                      color: var(--md-sys-color-error);
+                      font-family: monospace;
+                      word-break: break-all;
+                    "
+                  >
+                    {{$data.error}}
+                  </div>
+                </o-if>
+                <o-else>
+                  <div
+                    style="
+                      font-size: 13px;
+                      color: var(--md-sys-color-on-surface);
+                      font-family: monospace;
+                      word-break: break-all;
+                      white-space: pre-wrap;
+                      max-height: 200px;
+                      overflow-y: auto;
+                    "
+                  >
+                    {{$host.formatResult($data.result)}}
+                  </div>
+                </o-else>
+              </div>
+            </o-if>
+          </div>
+        </o-fill>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <button
+            style="
+              padding: 8px 16px;
+              background: var(--md-sys-color-primary);
+              color: var(--md-sys-color-on-primary);
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+            "
+            on:click="confirmSend"
+          >
+            确认发送
+          </button>
+          <p-switch
+            size="s"
+            checked-value="true"
+            unchecked-value="false"
+            sync:value="autoConfirm"
+          >
+            自动确认
+          </p-switch>
+        </div>
+      </div>
+    </o-if>
+  </m-chatbox>
+  <o-consumer
+    name="app-builder"
+    watch:project-path="projectPath"
+    on:send-message="sendMessage"
+  ></o-consumer>
+  <script>
+    export default async ({ load }) => {
+      const { get } = await load("/nos/fs/main.js");
+      const { getAssistant } = await load("../../ai/main.js");
+      const { getAppPrompt } = await load("./util/app-prompt.js");
+      const { confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      return {
+        data: {
+          projectPath: null,
+          messages: [],
+          inputMessage: "",
+          isLoading: false,
+          currentChatFile: null,
+          pendingResults: null,
+          resultExpanded: {},
+          autoConfirm: false,
+        },
+        watch: {
+          async projectPath(newPath) {
+            if (newPath) {
+              await this.loadProject();
+            }
+          },
+        },
+        proto: {
+          formatResult(result) {
+            return typeof result === "string"
+              ? result
+              : JSON.stringify(result, null, 2);
+          },
+          get emulator() {
+            return this.host.shadow.$("#emulator");
+          },
+          get hasVisibleMessages() {
+            if (!this.messages) return false;
+            return this.messages.some((m) => m.role !== "system" && !m.hidden);
+          },
+          toggleResultExpand(index) {
+            this.resultExpanded = {
+              ...this.resultExpanded,
+              [index]: !this.resultExpanded[index],
+            };
+          },
+          async deleteMessage(index) {
+            if (index < 0 || index >= this.messages.length) return;
+
+            const result = await confirm({
+              title: "删除确认",
+              message: "确定要删除这条消息及其后面的所有消息吗？",
+              yes: "删除",
+              cancel: "取消",
+            });
+
+            if (!result) return;
+
+            this.messages = this.messages.slice(0, index);
+
+            // 查看最后一个消息是否是响应项
+            const lastItem = this.messages.slice(-1)[0];
+            if (lastItem.isResponse) {
+              // 删除最后一个响应项，不然的会导致无法进行后续操作
+              this.messages.pop();
+            }
+
+            await this.saveProject();
+          },
+          async handleCapabilityResults(results) {
+            this.pendingResults = results;
+            this.resultExpanded = {};
+
+            if (this.autoConfirm) {
+              await this.confirmSend();
+            }
+          },
+          async confirmSend() {
+            if (!this.pendingResults) return;
+
+            const results = this.pendingResults;
+            const templates = results.map((r) => {
+              if (r.error) {
+                return `<template error name="${r.name}" cid="${r.cid}">${r.error}</template>`;
+              }
+              const resultStr =
+                typeof r.result === "string"
+                  ? r.result
+                  : JSON.stringify(r.result);
+              return `<template result name="${r.name}" cid="${r.cid}">${resultStr}</template>`;
+            });
+
+            this.messages.push({
+              role: "user",
+              content: `<cap-response>${templates.join("\n")}</cap-response>`,
+              isResponse: true,
+              responsesData: results,
+            });
+
+            this.pendingResults = null;
+            await this.saveProject();
+            await this.callAssistant();
+          },
+          handleKeyDown(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              this.sendMessage();
+            }
+          },
+          async callAssistant() {
+            if (!this.messages.some((m) => m.role === "system")) {
+              return;
+            }
+
+            this.isLoading = true;
+
+            try {
+              const assistant = await getAssistant();
+
+              if (!assistant) {
+                this.messages.push({
+                  role: "assistant",
+                  content: "请先在设置中配置 DeepSeek API Key",
+                });
+                return;
+              }
+
+              const chatMessages = this.messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+              }));
+
+              const response = await assistant.chat({
+                messages: chatMessages,
+                model: "deepseek-v4-flash",
+                // model: "deepseek-v4-pro",
+              });
+
+              this.messages.push({
+                role: "assistant",
+                content: response.content,
+                usage: response.usage,
+                model: response.model,
+              });
+
+              await this.saveProject();
+            } catch (e) {
+              console.error("Error in callAssistant:", e);
+              this.messages.push({
+                role: "assistant",
+                content: "请求失败：" + e.message,
+              });
+            } finally {
+              this.isLoading = false;
+            }
+          },
+          async sendMessage(e) {
+            const msg = (e?.data?.message || this.inputMessage || "").trim();
+            if (!msg || this.isLoading) {
+              return;
+            }
+
+            this.messages.push({ role: "user", content: msg });
+            this.inputMessage = "";
+
+            await this.saveProject();
+            await this.callAssistant();
+          },
+          async loadProject() {
+            const projectHandle = await get(this.projectPath, {
+              create: "dir",
+            });
+
+            const chatFiles = [];
+            for await (const [name, handle] of projectHandle.entries()) {
+              if (
+                handle.kind === "file" &&
+                name.startsWith("chat-") &&
+                name.endsWith(".json")
+              ) {
+                // 确保是有效的内容，无效则删除
+                try {
+                  await handle.json();
+                  chatFiles.push(name);
+                } catch (e) {
+                  await handle.remove();
+                  continue;
+                }
+              }
+            }
+
+            let targetChatHandle = null;
+
+            if (chatFiles.length === 0) {
+              const newChatFile = `chat-${Date.now()}.json`;
+
+              targetChatHandle = await projectHandle.get(newChatFile, {
+                create: "file",
+              });
+
+              const initMessages = await getAppPrompt({
+                projectPath: this.projectPath + "/project",
+              });
+
+              this.messages = initMessages;
+              await targetChatHandle.write(JSON.stringify(this.messages));
+            } else {
+              const maxFile = chatFiles.reduce((max, cur) => {
+                const maxNum = Number(max.split("-")[1]);
+                const curNum = Number(cur.split("-")[1]);
+                return maxNum > curNum ? max : cur;
+              }, chatFiles[0]);
+
+              targetChatHandle = await projectHandle.get(maxFile, {
+                create: "file",
+              });
+
+              const chatContent = await targetChatHandle.json();
+
+              const lastItem = chatContent.slice(-1)[0];
+              if (lastItem.isResponse) {
+                // 删除最后一个响应项，不然的会导致无法进行后续操作
+                chatContent.pop();
+                this.messages = chatContent;
+                await this.saveProject();
+              } else {
+                this.messages = chatContent;
+              }
+            }
+
+            this.currentChatFile = targetChatHandle.name;
+          },
+          async saveProject() {
+            if (!this.currentChatFile) return;
+
+            const projectHandle = await get(this.projectPath, {
+              create: "dir",
+            });
+
+            const fileHandle = await projectHandle.get(this.currentChatFile, {
+              create: "file",
+            });
+
+            await fileHandle.write(JSON.stringify(this.messages));
+          },
+        },
+        ready() {
+          this.attr("dialogue-host", "");
+        },
+      };
+    };
+  </script>
+</template>

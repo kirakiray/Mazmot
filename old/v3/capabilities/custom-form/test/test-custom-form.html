@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试 custom-form 能力</title>
+    <script src="/gh/ofajs/ofa.js/dist/ofa.mjs#debug" type="module"></script>
+    <link
+      rel="stylesheet"
+      href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+    />
+    <l-m
+      src="/capabilities/capability-diagnosis/src/capability-diagnosis.html"
+    ></l-m>
+    <l-m src="/comps/cap-request/cap-request.html"></l-m>
+  </head>
+  <body>
+    <capability-diagnosis label="测试 custom-form 能力">
+      <cap-request>
+        <template name="custom-form" cid="form-submit-01" desc="测试表单提交">
+          [{"type":"text","name":"username","desc":"用户名","required":true,"placeholder":"请输入用户名"},{"type":"radio","name":"gender","desc":"性别","required":true,"options":[{"label":"男","value":"male"},{"label":"女","value":"female"}],"defaultValue":"male"},{"type":"textarea","name":"bio","desc":"个人简介","placeholder":"请输入个人简介"},{"type":"select","name":"country","desc":"国家","required":true,"placeholder":"请选择","options":[{"label":"中国","value":"cn"},{"label":"美国","value":"us"}]},{"type":"checkbox","name":"hobbies","desc":"爱好","options":[{"label":"阅读","value":"reading"},{"label":"运动","value":"sports"}],"defaultValue":[]},{"type":"switch","name":"notifications","desc":"通知","label":"启用通知","defaultValue":false},{"type":"submit","name":"提交"},{"type":"cancel","name":"取消"}]
+        </template>
+        <template name="custom-form" cid="form-cancel-01" desc="测试表单取消">
+          [{"type":"text","name":"name","desc":"姓名","required":true},{"type":"cancel","name":"取消"}]
+        </template>
+      </cap-request>
+
+      <template interaction cid="form-submit-01">
+        <script type="module">
+          export default async function (page) {
+            page.formItems[0].value = "test-user";
+            page.formItems[1].value = "male";
+            page.formItems[2].value = "hello world";
+            page.formItems[3].value = "cn";
+            page.formItems[4].value = ["reading", "sports"];
+            page.formItems[5].value = true;
+            // 延迟提交，确保表单数据已正确设置
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            page.submit();
+          }
+        </script>
+      </template>
+
+      <template interaction cid="form-cancel-01">
+        <script type="module">
+          export default async function (page) {
+            page.cancel();
+          }
+        </script>
+      </template>
+
+      <template result cid="form-submit-01">
+        <script type="module">
+          export default async function (result) {
+            const checks = [
+              {
+                name: "username",
+                expected: "test-user",
+                actual: result.username,
+              },
+              { name: "gender", expected: "male", actual: result.gender },
+              { name: "bio", expected: "hello world", actual: result.bio },
+              { name: "country", expected: "cn", actual: result.country },
+              {
+                name: "hobbies",
+                expected: "2 items",
+                actual: Array.isArray(result.hobbies)
+                  ? `${result.hobbies.length} items`
+                  : "not array",
+              },
+              {
+                name: "notifications",
+                expected: true,
+                actual: result.notifications,
+              },
+            ];
+
+            const failed = checks.filter((c) => {
+              if (c.name === "hobbies") return c.actual !== c.expected;
+              return c.actual !== c.expected;
+            });
+            const assert = failed.length === 0;
+            const content = assert
+              ? "所有字段验证通过"
+              : `失败字段: ${failed.map((c) => `${c.name}(期望: ${c.expected}, 实际: ${c.actual})`).join(", ")}`;
+
+            return { assert, content };
+          }
+        </script>
+      </template>
+
+      <template result cid="form-cancel-01">
+        <script type="module">
+          export default async function (result) {
+            return {
+              assert: result === undefined || result === null,
+              content: "取消操作成功",
+            };
+          }
+        </script>
+      </template>
+    </capability-diagnosis>
+  </body>
+</html>

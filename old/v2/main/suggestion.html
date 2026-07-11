@@ -1,0 +1,178 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      user-select: none;
+    }
+
+    .suggestion-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .suggestion-text {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-align: center;
+      padding: 4px 16px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      max-width: 350px;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.8;
+      transition: all 0.3s ease;
+    }
+
+    .suggestion-text.exit {
+      animation: fadeOut 0.3s ease-in forwards;
+    }
+
+    .suggestion-text.enter {
+      animation: fadeIn 0.3s ease-out forwards;
+    }
+
+    @keyframes fadeOut {
+      0% {
+        opacity: 0.8;
+        transform: translateY(0);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+    }
+
+    @keyframes fadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      100% {
+        opacity: 0.8;
+        transform: translateY(0);
+      }
+    }
+
+    .suggestion-text:hover {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+
+    .suggestion-text.exit:hover,
+    .suggestion-text.enter:hover {
+      transform: none;
+    }
+  </style>
+  <link rel="stylesheet" href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css" />
+  <div class="suggestion-wrapper">
+    <div class="suggestion-text" id="suggestionText" sync:class="suggestionClass">
+      {{ currentSuggestion }}
+    </div>
+  </div>
+  <script>
+    export default async ({ load }) => {
+      return {
+        data: {
+          suggestions: [
+            "试试问我如何创建一个AI聊天应用",
+            // "想知道如何用AI生成图片吗？",
+            "我可以帮你设计一个智能问答系统",
+            // "需要AI帮你写代码吗？",
+            // "想了解如何用AI分析数据？",
+            // "试试让AI帮你写一篇文章",
+            "我可以帮你创建一个AI翻译工具",
+            "想知道如何用AI做语音识别吗？",
+          ],
+          currentIndex: 0,
+          isAnimating: false,
+        },
+        ready() {
+          // 随机选择一个初始建议
+          this.currentIndex = Math.floor(
+            Math.random() * this.suggestions.length,
+          );
+          // 启动定时切换
+          this.startAutoSwitch();
+        },
+        detached() {
+          // 清理定时器
+          if (this.timer) {
+            clearInterval(this.timer);
+          }
+        },
+        proto: {
+          get currentSuggestion() {
+            return this.suggestions[this.currentIndex];
+          },
+          get suggestionClass() {
+            return this.isAnimating
+              ? "suggestion-text exit"
+              : "suggestion-text";
+          },
+          startAutoSwitch() {
+            this.timer = setInterval(() => {
+              this.nextSuggestion();
+            }, 5000);
+          },
+          async nextSuggestion() {
+            if (this.isAnimating) {
+              return;
+            }
+
+            const suggestionText = this.shadow.$("#suggestionText");
+            if (suggestionText) {
+              this.isAnimating = true;
+
+              // 第一步：当前建议淡出
+              suggestionText.classList.add("exit");
+
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+
+              setTimeout(() => {
+                // 随机选择下一个建议（避免重复）
+                let newIndex;
+                do {
+                  newIndex = Math.floor(
+                    Math.random() * this.suggestions.length,
+                  );
+                } while (
+                  newIndex === this.currentIndex &&
+                  this.suggestions.length > 1
+                );
+
+                this.currentIndex = newIndex;
+
+                // 移除 exit 类，添加 enter 类
+                suggestionText.classList.remove("exit");
+                suggestionText.classList.add("enter");
+
+                setTimeout(() => {
+                  suggestionText.classList.remove("enter");
+                  this.isAnimating = false;
+                }, 300);
+              }, 300);
+            } else {
+              // 如果找不到元素，直接切换
+              let newIndex;
+              do {
+                newIndex = Math.floor(Math.random() * this.suggestions.length);
+              } while (
+                newIndex === this.currentIndex &&
+                this.suggestions.length > 1
+              );
+
+              this.currentIndex = newIndex;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>
