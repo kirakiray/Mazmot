@@ -295,7 +295,7 @@
                     </div>
                     <div class="sub-info-row">
                       <span class="sub-info-label">目录名称：</span>
-                      <span class="sub-info-value">{{$data.desc}}</span>
+                      <span class="sub-info-value">{{$data.dirName}}</span>
                     </div>
                     <o-if :value="$data.appId">
                       <div class="sub-info-row">
@@ -431,7 +431,13 @@
             icon: (manifest && manifest.icon) || "📦",
             name:
               (manifest && (manifest.displayName || manifest.name)) || app.name,
-            desc: (manifest && manifest.description) || app.dirName || "",
+            desc: (manifest && manifest.description) || app.desc || "",
+            dirName:
+              app.dirName ||
+              (app.source === "virtual"
+                ? `${app.namespace || "mazmot-apps"}/${app.name}`
+                : app.name) ||
+              "",
             version: (manifest && manifest.version) || "0.1.0",
             _handle: handle,
             source: app.source || "local",
