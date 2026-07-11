@@ -1,6 +1,6 @@
 # Mazmot 项目 Context
 
-> 这份 Context 提供项目全局视图，帮助 AI 快速掌握项目结构、技术栈和关键设计。阅读后再针对具体任务查看相关文件即可。
+> 项目全局视图，帮助 AI 快速掌握当前架构、技术栈和关键设计。阅读后再针对具体任务查看相关文件即可。
 
 ## 项目定位
 
@@ -12,11 +12,11 @@
 | ---- | ---- | ---- |
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
 | 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
-| UI | Punch-UI v2 | Material Design 风格组件（`p-list`、`p-dialog`、`p-button`……） |
+| UI | Punch-UI v2 | Material Design 风格组件（`p-list`、`p-dialog`、`p-button` 等） |
 | 存储 | ever-cache | 基于 IndexedDB 的异步存储（类 localStorage） |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 统一使用 `<n-icon icon="mdi:xxx">`，禁止 `iconify-icon` |
 
-**约束**：所有代码必须符合 ofa.js 语法（用 `<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`attr:`、`:style.` 等），禁止 Vue/React 语法。详见 `AGENTS.md`。
+**约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
 ## 目录结构
 
@@ -28,11 +28,6 @@ Mazmot/
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 只提供 static 脚本：node scripts/static.js
 │
-├── container/                # 历史容器目录（已废弃，不再启动对应服务器）
-│   ├── _install.html         # 原容器安装/运行页（已废弃）
-│   ├── _info.html            # 原容器用户信息查看页（已废弃）
-│   └── sw.js                 # 原容器专用 SW（已废弃）
-│
 ├── apps/                     # 应用（monorepo 风格）
 │   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口，URL = /apps/main/
 │   │   ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
@@ -40,23 +35,23 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 目录读取 .tpl 源文件，替换占位符后写入目标 client/ 目录）
+│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取 .tpl 源文件，替换占位符后写入 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
-│   │   │   │   ├── manifest.json     # 模板清单（AI 添加新模板时需在此登记 id/name/desc）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json 清单 + 若干 .tpl 源文件
+│   │   │   │   ├── manifest.json     # 模板清单（添加新模板时登记 id/name/desc）
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json 清单 + .tpl 源文件
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 install-app 反向引用
-│           ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成虚拟目录运行 URL
-│           ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│           └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
+│   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
+│   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
+│   │       └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   │
 │   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
-│       ├── index.html        # 应用入口 HTML：先校验 Core 模块（含分享必须的 data-publisher），缺失则回根入口升级；再装载 ./app-config.js
+│       ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
 │       ├── app-config.js     # ofa.js 应用配置
 │       └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
 │
 ├── scripts/
-│   ├── static.js             # 启动 1 个 http-server：Main(30031)
+│   ├── static.js             # 启动 http-server：Main(30031)
 │   └── ...                   # generate-capabilities / update-skill / update-files-json
 │
 ├── ai/                       # AI 相关：deepseek、kimi、assistant
@@ -76,37 +71,37 @@ Mazmot/
   - 运行前先把 `client/` 子目录 `mount()` 到主域，得到类似 `$mount-xxx>dirName` 的路径。
   - 运行 URL：`/{mounted.path}/index.html`
 
-这样不需要额外的容器服务器，也不会跨 `iframe` / `window.open` 安装，Safari 等浏览器只要支持 NoneOS Core 即可运行虚拟目录应用。
+应用通过 `window.open(runUrl)` 直接打开，不需要额外的容器服务器或跨 `iframe` / `window.open` 的容器页。
 
 ### 安全说明
 
-由于应用和主系统现在**同域**运行，应用理论上可以访问主系统的 IndexedDB / Service Worker。当前方案以“兼容 Safari、简化部署”为优先，不再做 Origin 级隔离。后续如需隔离，可考虑 iframe + `sandbox` 或 CSP 等方案。
+由于应用和主系统**同域**运行，应用理论上可以访问主系统的 IndexedDB / Service Worker。当前方案以"兼容 Safari、简化部署"为优先，不再做 Origin 级隔离。容器模式已废弃，相关代码仅保留在 `old/v4/container/` 中。
 
 ## 应用生命周期
 
-### 1. 添加应用（`apps/main/home/add-app.html`）
+### 1. 添加应用（[apps/main/home/add-app.html](apps/main/home/add-app.html)）
 
 ```
 选择应用来源 → 输入应用名 → 校验唯一性
    ├─ 本地目录：open() 选择目录，得到原生 FileSystemDirectoryHandle
-   └─ 虚拟目录：直接进入下一步，确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立应用子目录
+   └─ 虚拟目录：确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立子目录
    ↓
-存入 ever-cache 的 apps[]（本地：直接存储原生 handle；虚拟：存 namespace=mazmot-apps，handle=null）
+存入 ever-cache 的 apps[]（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
    ↓
-writeTemplateFiles 写入 4 个模板文件到目标目录（本地/虚拟）的 client/ 子目录下
+writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录
    ↓
 完成
 ```
 
-### 2. 启动应用（`apps/main/home.html`）
+### 2. 启动应用（[apps/main/home.html](apps/main/home.html)）
 
 ```
 handleOpen / handleOpenWindow / handleOpenTab
    ↓
-loadApps 通过 new DirHandle(app.handle) 重新初始化存储的原生句柄为 noneos handle（虚拟则通过 init+get 重建）
+loadApps 重新初始化存储的句柄（本地：new DirHandle(app.handle)；虚拟：init+get 重建）
    ↓
 app-runner.js getRunUrl(app)
-   ├─ 虚拟：直接返回 /$mazmot-apps/{name}/client/index.html
+   ├─ 虚拟：返回 /$mazmot-apps/{name}/client/index.html
    └─ 本地：mount(clientDir) 后返回 /{mounted.path}/index.html
    ↓
 window.open(runUrl)
@@ -126,29 +121,27 @@ clearOpened → 关闭窗口
 
 ```javascript
 {
-  name: "my-app",           // 唯一名称（校验：字母/数字/_-，不能空格）
+  name: "my-app",           // 唯一名称（字母/数字/_-，不含空格）
   desc: "描述",
   handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录为 null
   dirName: "选择的目录名 / 虚拟命名空间",
   source: "local" | "virtual",
   namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
-  appId: "abc123def456...-my-app",  // 稳定 ID = `${LocalUser.userId}-${应用名}`，跨设备识别同一应用；老数据首次分享/加载时自动补写
+  appId: "abc123def456...-my-app",  // 稳定 ID = `${LocalUser.userId}-${应用名}`，跨设备识别同一应用
   createdAt: timestamp
 }
 ```
 
-### 应用模板文件（`template-writer.js`）
+### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
 
-生成 4 个文件，存放在目标目录的 `client/` 子目录下（**这些是给用户新建的子应用用的模板内容，与主应用无关**）：
+生成 4 个文件，存放在目标目录的 `client/` 子目录下（给用户新建的子应用用的模板）：
 
 - `app.json` — 应用元数据（name / displayName / version / icon / entry / permissions / capabilities）
 - `index.html` — 入口 HTML，加载 ofa.js + router + Punch-UI + `./app-config.js`
 - `app-config.js` — 定义 `home` 页面路径和过渡动画
 - `pages/home.html` — Hello World 页面模块
 
-> ⚠️ 已删除 `/common` 目录（跨域后不可用）。
-
-## UI 关键组件（`apps/main/home.html`）
+## UI 关键组件（[apps/main/home.html](apps/main/home.html)）
 
 ### 主界面
 
@@ -159,9 +152,9 @@ clearOpened → 关闭窗口
   - **主行点击**：`on:click-main="handleOpen"` 触发打开（区分展开箭头点击）
   - **折叠子列表**：显示应用来源徽章、目录名称、应用 ID、删除按钮
 
-### 状态追踪（`app-status.js`）
+### 状态追踪（[app-status.js](apps/main/home/app-status.js)）
 
-用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。由于应用现在与主系统同域，BroadcastChannel 可以正常工作。使用 `appName` 作为唯一标识符。
+用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。使用 `appName` 作为唯一标识符。
 
 ## 开发/调试
 
@@ -177,58 +170,42 @@ npm run static
 ### 首次访问
 
 1. 访问 30031 根路径 → 根 `index.html` 加载 `nos-version` 自动安装/升级 NoneOS Core；完成后根据 `?redirect=` 跳转，默认进入 `/apps/main/`
-2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块是否存在；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
+2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
-> 直接打开分享链接（`/apps/install-app/?p=...`）时，`install-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；旧版本 Core 缺少任一模块都会先回根入口升级，再返回继续安装。
+> 直接打开分享链接（`/apps/install-app/?p=...`）时，`install-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；任一模块缺失都会先回根入口升级，再返回继续安装。
 
 ### 运行测试
 
 使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
 
-- `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 `app-runner.js` 的 URL 生成与文件读取
-- `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 `share-mgr.js` 的 Base64URL、分享链接与打包结构
+- `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 [app-runner.js](apps/main/lib/app-runner.js) 的 URL 生成与文件读取
+- `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](apps/main/lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
 
-### 添加第一个应用
+### 添加并运行第一个应用
 
 1. 点击"添加应用" → 选择本地目录（Chrome 才支持）或虚拟目录
 2. 输入名称 → 写入 4 个模板文件到目标目录的 `client/` 子目录
 3. 应用列表出现新项
 4. 点击应用行或 `tab-plus` / `open-in-new` 按钮启动
 
-## 关键陷阱
-
-1. **本地目录仅 Chrome 支持**：`open()` 需要系统文件选择器，Safari 等浏览器只能使用虚拟目录。
-2. **应用改动本地文件后**，重新点击"打开"会自动读取最新文件并重新 `mount()`。
-3. **改造前**创建的应用如果有 `containerUrl` 字段会被忽略，使用 `namespace` / `handle` 重新生成运行 URL。
-4. **图标只用 `n-icon`**（`<l-m src="/nos/n-icon/n-icon.html"></l-m>` 引入）—— 项目已从 `iconify-icon` 全部迁移。
-5. **添加 UI 前必读 SKILL 文档**：`ofajs-docs`、`punch-ui`、`noneos-core-docs`、`ever-cache`。
-6. **应用与主系统同域运行**：不再具备原先的多 Origin 隔离，不要运行不可信应用。
-
-## Skill 资源
-
-若本地缺失请从以下获取（AGENTS.md 列出）：
-
-- ofa.js-docs: https://github.com/ofajs/ofa.js/tree/main/skills/ofajs-docs
-- punch-ui-docs: https://github.com/ofajs/Punch-UI/tree/v2/skills/punch-ui
-- noneos-core-docs: https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs
-- ever-cache: https://github.com/kirakiray/ever-cache/blob/main/skills/ever-cache/SKILL.md
-
 ## 应用分享（基于 DataPublisher）
 
 用点对点方式把应用发给别人，无需 zip、无需后端。
 
 ### 分享（发布端）
-1. 在应用列表折叠子项中点击"分享应用" → `apps/main/home.html` 的 `handleShare`。
+
+1. 在应用列表折叠子项中点击"分享应用" → [apps/main/home.html](apps/main/home.html) 的 `handleShare`。
 2. `readAppFiles(handle)` 读取 `client/` 下所有文件（`{ path, content }` 数组）。
 3. `ensurePublisher()` 单例获取 `LocalUser("mazmot")` + `DataPublisher`；`user.ready()` 自动连接默认信令服务器。
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
 5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
-6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名（内部 `user.sign`）。
+6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名。
 7. `buildShareUrl(origin, signedPayload)` → `{origin}/apps/install-app/?p={base64url(signedPayload)}`。
 8. 弹窗展示只读链接 + "复制链接" 按钮；提醒用户保持页面开启（P2P 依赖发布者在线）。
 
-### 接收（`/apps/install-app/` → `apps/install-app/index.html` → 页面模块 `install-app.html`）
+### 接收（`/apps/install-app/` → [install-app/index.html](apps/install-app/index.html) → [install-app.html](apps/install-app/install-app.html)）
+
 1. `parseShareUrl(location.search)` 用 `JSON.parse` 拿到 `payload`（**必须保留字段原顺序**，不能重建对象）。
 2. `verifySharePayload(payload)` 调用 `verifyData(payload)`（`/nos/crypto/crypto-verify.js`）—— **无需构造 user 实例**。失败 → `error` 步骤，提示"签名无效"。
 3. 通过后进入 `preview` 步骤展示 icon / displayName / version / description / publisherUserId。
@@ -240,7 +217,7 @@ npm run static
    - 校验 `pkg.mazmotPackage === "1.0.0"`、`pkg.meta.appId === payload.appId`。
    - **同名不冲突**：`recordName = pkg.meta.recordName + "-" + publisherUserId.slice(0, 6)` 保证唯一。
    - `init("mazmot-apps") → get(recordName, {create:"dir"}) → get("client", {create:"dir"})`，逐个写入文件。
-   - `apps.push({...})` 记录到 ever-cache（无 containerUrl）。
+   - `apps.push({...})` 记录到 ever-cache。
    - `step = done`，显示"打开应用"按钮 → `window.open("/$mazmot-apps/{recordName}/client/index.html")`。
 
 ### URL Payload 结构（扁平 + 签名）
@@ -265,29 +242,23 @@ npm run static
 Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范围。
 
 ### 关键约束
+
 - 发布端和接收端字段顺序陷阱：`verifyData` 依赖字段原顺序，接收端 `JSON.parse` 结果**不可**用扩展运算符 / `Object.assign` 重建。
 - 发布者必须保持标签页在线；DataPublisher 是 P2P 的，关闭页面对方无法拉取剩余块。
-- 目前分享包只支持 UTF-8 文本文件（与 `readAppFiles` 现状一致）。二进制资源后续通过 `encoding: "base64"` 扩展。
-
-## 未来扩展方向（预留但未实现）
-
-- **应用市场**：`浏览市场` 按钮 disabled
-- **外源下载**：从 URL/ZIP 安装应用，disabled
-- **在线联机**：NoneOS Core 提供 `getUser` / `registerService` / `AppManager` 能力尚未接入
-- **应用隔离**：当前与主系统同域，后续可考虑 iframe sandbox / CSP 等隔离手段
+- 目前分享包只支持 UTF-8 文本文件。二进制资源后续通过 `encoding: "base64"` 扩展。
 
 ## 关键代码文件速查
 
 | 需求 | 打开文件 |
 | ---- | -------- |
-| 修改应用列表 UI | `apps/main/home.html` |
-| 修改添加应用流程 | `apps/main/home/add-app.html` |
-| 应用运行 URL 生成 / 文件读取 | `apps/main/lib/app-runner.js` |
-| 应用模板内容 | `apps/main/home/template-writer.js` + `apps/main/home/templates/` |
-| 应用打开状态 | `apps/main/home/app-status.js` |
-| 分享工具（发布/验签） | `apps/main/lib/share-mgr.js` |
-| 分享接收页 | `apps/install-app/install-app.html` |
-| 静态服务器配置 | `scripts/static.js` |
-| 主应用 ofa.js 配置 | `apps/main/app-config.js` |
-| 接收应用 ofa.js 配置 | `apps/install-app/app-config.js` |
-| 主 SW | `sw.js` |
+| 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
+| 修改添加应用流程 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
+| 应用运行 URL 生成 / 文件读取 | [apps/main/lib/app-runner.js](apps/main/lib/app-runner.js) |
+| 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
+| 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
+| 分享工具（发布/验签） | [apps/main/lib/share-mgr.js](apps/main/lib/share-mgr.js) |
+| 分享接收页 | [apps/install-app/install-app.html](apps/install-app/install-app.html) |
+| 静态服务器配置 | [scripts/static.js](scripts/static.js) |
+| 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
+| 接收应用 ofa.js 配置 | [apps/install-app/app-config.js](apps/install-app/app-config.js) |
+| 主 SW | [sw.js](sw.js) |
