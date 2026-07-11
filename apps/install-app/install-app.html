@@ -367,16 +367,12 @@
             this._existingRecordName = "";
             try {
               const apps = (await storage.apps) || [];
-              // 目录命名规则 = `${recordName}-${publisherUserId}`，与 appId 结构一致，
+              // 目录命名规则 = appId（应用稳定唯一 ID），
               // 兼容老数据：优先按 appId 匹配，退化时按目录名匹配。
-              const expectedDirName =
-                (payload.recordName || "") +
-                "-" +
-                (payload.publisherUserId || "");
               const existing = apps.find(
                 (a) =>
                   (a.appId && a.appId === payload.appId) ||
-                  (a.name && a.name === expectedDirName),
+                  (a.name && a.name === payload.appId),
               );
               if (!existing) return;
 
@@ -493,13 +489,12 @@
               }
 
               // 若为覆盖升级：沿用已安装的 recordName，避免新增列表项
-              // 否则：组装本地唯一 recordName（避免与已有应用同名冲突）
-              // 命名规则 = `${appName}-${publisherUserId}`，与 appId 保持一致
+              // 否则：直接使用 appId 作为目录名（appId = `${appName}-${originalPublisherUserId}`，
+              // 是应用的稳定唯一标识；无论转分享多少次都不变，避免目录名叠加）
               const isUpdate = this.installState === "update";
-              const suffix = payload.publisherUserId || "shared";
               const uniqueRecordName = isUpdate
                 ? this._existingRecordName
-                : pkg.meta.recordName + "-" + suffix;
+                : payload.appId;
 
               this.progress = 82;
               this.progressText = isUpdate
