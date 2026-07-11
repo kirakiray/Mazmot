@@ -41,12 +41,13 @@ export async function readAppFiles(handle) {
 
 /**
  * 获取应用的运行 URL。
- * - 虚拟目录应用：直接通过 /$mazmot-apps/{name}/client/index.html 访问
+ * - 虚拟目录应用：直接通过 /$mazmot-apps/{virtualDirName}/client/index.html 访问
  * - 本地目录应用：把 client/ 子目录 mount() 到主域，返回 /{mounted.path}/index.html
  * @param {Object} app - 应用记录（来自 ever-cache 或安装流程）
  * @param {Object} [app._handle] - 本地目录的 noneos DirHandle
  * @param {string} [app.source] - "local" | "virtual"
  * @param {string} [app.namespace] - 虚拟目录命名空间
+ * @param {string} [app.virtualDirName] - 虚拟目录名（优先使用；兼容老数据回退到 app.name）
  * @param {string} [app.name] - 应用唯一名称（recordName）
  * @returns {Promise<string>}
  */
@@ -56,7 +57,8 @@ export async function getRunUrl(app) {
   }
 
   if (app.source === "virtual" && app.namespace) {
-    return `/$${app.namespace}/${app.name}/${CLIENT_DIR}/${ENTRY_FILE}`;
+    const dirName = app.virtualDirName || app.name;
+    return `/$${app.namespace}/${dirName}/${CLIENT_DIR}/${ENTRY_FILE}`;
   }
 
   // 本地目录：mount client 子目录

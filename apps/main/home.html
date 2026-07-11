@@ -449,11 +449,23 @@
           // - virtual：通过 init(namespace) 重新拿到虚拟根目录
           // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
           let handle = null;
+          // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
+          const namespaceForApp = app.namespace || "mazmot-apps";
+          const namespacePrefix = namespaceForApp + "/";
+          let virtualDirName = "";
+          if (app.source === "virtual") {
+            if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
+              virtualDirName = app.dirName.slice(namespacePrefix.length);
+            } else if (app.dirName) {
+              virtualDirName = app.dirName;
+            } else {
+              virtualDirName = app.name;
+            }
+          }
           try {
             if (app.source === "virtual") {
-              const namespace = app.namespace || "mazmot-apps";
-              const rootDir = await init(namespace);
-              handle = await rootDir.get(app.name, { create: "dir" });
+              const rootDir = await init(namespaceForApp);
+              handle = await rootDir.get(virtualDirName, { create: "dir" });
             } else if (app.handle) {
               handle = new DirHandle(app.handle);
             }
@@ -495,6 +507,7 @@
             _handle: handle,
             source: app.source || "local",
             namespace: app.namespace || "",
+            virtualDirName,
             _recordName: app.name,
             appId: app.appId || "",
             // 自己开发的应用：appId 后缀为当前用户的 userId
