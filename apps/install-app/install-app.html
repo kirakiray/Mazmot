@@ -169,11 +169,52 @@
           </div>
         </div>
       </div>
+
+      <o-if :value="isSelfShare">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-error);"
+        >
+          这个分享链接来自你自己（发布者与当前用户为同一账号），无需通过分享链接进行安装。你可以直接在主页应用列表中打开。
+        </div>
+      </o-if>
+
+      <o-if :value="!isSelfShare && installState === 'installed'">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-primary);"
+        >
+          该应用已安装（当前版本 v{{existingVersion}}），无需重复安装。
+        </div>
+      </o-if>
+      <o-if :value="!isSelfShare && installState === 'update'">
+        <div
+          class="progress-text"
+          style="margin-top: 16px; color: var(--md-sys-color-tertiary);"
+        >
+          该应用已安装（当前版本 v{{existingVersion}}），将覆盖升级到 v{{meta.version}}，不会新增列表项。
+        </div>
+      </o-if>
+
       <div class="actions">
-        <p-button color="primary" on:click="handleInstall">
-          <n-icon icon="mdi:download" slot="prefix"></n-icon>
-          安装应用
-        </p-button>
+        <o-if :value="!isSelfShare && installState === 'new'">
+          <p-button color="primary" on:click="handleInstall">
+            <n-icon icon="mdi:download" slot="prefix"></n-icon>
+            安装应用
+          </p-button>
+        </o-if>
+        <o-if :value="!isSelfShare && installState === 'update'">
+          <p-button color="primary" on:click="handleInstall">
+            <n-icon icon="mdi:update" slot="prefix"></n-icon>
+            更新到 v{{meta.version}}
+          </p-button>
+        </o-if>
+        <o-if :value="!isSelfShare && installState === 'installed'">
+          <p-button color="primary" on:click="openInstalledApp">
+            <n-icon icon="mdi:rocket-launch" slot="prefix"></n-icon>
+            打开应用
+          </p-button>
+        </o-if>
         <p-button variant="text" on:click="goHome">返回主页</p-button>
       </div>
     </o-if>
@@ -201,7 +242,12 @@
           <n-icon icon="mdi:check-circle"></n-icon>
         </div>
         <div class="status-text">
-          应用「{{meta.displayName}}」安装成功！
+          <o-if :value="installState === 'update'">
+            应用「{{meta.displayName}}」已更新到 v{{meta.version}}！
+          </o-if>
+          <o-if :value="installState !== 'update'">
+            应用「{{meta.displayName}}」安装成功！
+          </o-if>
         </div>
       </div>
       <div class="actions">
@@ -236,6 +282,7 @@
       parseShareUrl,
       verifySharePayload,
       ensurePublisher,
+      ensureUser,
       PACKAGE_VERSION,
     } from "../main/lib/share-mgr.js";
 
@@ -258,6 +305,10 @@
           _payload: null,
           _installedNamespace: "",
           _installedRecordName: "",
+          installState: "new", // new | installed | update
+          existingVersion: "",
+          _existingRecordName: "",
+          isSelfShare: false,
         },
         attached() {
           this.startVerify();
@@ -289,12 +340,96 @@
             this.meta.version = payload.version || "0.1.0";
             this.meta.description = payload.description || "";
             this.meta.publisherUserId = payload.publisherUserId || "";
+
+            // 若分享链接的发布者就是当前用户，禁止自我安装
+            try {
+              const currentUser = await ensureUser();
+              if (
+                currentUser &&
+                payload.publisherUserId &&
+                currentUser.userId === payload.publisherUserId
+              ) {
+                this.isSelfShare = true;
+              }
+            } catch (err) {
+              console.warn("获取当前用户失败：", err);
+            }
+
+            // 检查是否已经安装过（按 appId 判断）
+            await this.checkInstalled(payload);
+
             this.step = "preview";
+          },
+
+          async checkInstalled(payload) {
+            this.installState = "new";
+            this.existingVersion = "";
+            this._existingRecordName = "";
+            try {
+              const apps = (await storage.apps) || [];
+              const existing = apps.find((a) => a.appId === payload.appId);
+              if (!existing) return;
+
+              this._existingRecordName = existing.name;
+              // 尝试读取已安装应用的版本号
+              let installedVersion = "";
+              try {
+                if (existing.source === "virtual") {
+                  const namespace = existing.namespace || "mazmot-apps";
+                  const rootDir = await init(namespace);
+                  const appDir = await rootDir.get(existing.name, {
+                    create: "dir",
+                  });
+                  let jsonFile = null;
+                  try {
+                    const clientDir = await appDir.get("client");
+                    jsonFile = await clientDir.get("app.json");
+                  } catch (e) {
+                    jsonFile = await appDir.get("app.json");
+                  }
+                  if (jsonFile) {
+                    const manifest = await jsonFile.json();
+                    installedVersion = (manifest && manifest.version) || "";
+                  }
+                }
+              } catch (err) {
+                console.warn("读取已安装应用版本失败：", err);
+              }
+              this.existingVersion = installedVersion || "未知";
+
+              const newVersion = payload.version || "";
+              if (installedVersion && newVersion && installedVersion === newVersion) {
+                this.installState = "installed";
+              } else {
+                this.installState = "update";
+              }
+
+              // 保存已安装应用的 namespace/recordName 以便打开
+              this._installedNamespace = existing.namespace || "mazmot-apps";
+              this._installedRecordName = existing.name;
+            } catch (err) {
+              console.warn("检查已安装应用失败：", err);
+            }
           },
 
           async handleInstall() {
             const payload = this._payload;
             if (!payload) return;
+
+            // 拒绝自我安装
+            if (this.isSelfShare) {
+              toast({
+                content: "分享链接来自你自己，无需安装",
+                color: "info",
+              });
+              return;
+            }
+
+            // 已经是同版本，无需重复安装
+            if (this.installState === "installed") {
+              toast({ content: "该应用已安装", color: "info" });
+              return;
+            }
 
             this.step = "installing";
             this.progress = 5;
@@ -347,18 +482,32 @@
                 throw new Error("应用包为空");
               }
 
-              // 组装本地唯一 recordName（避免与已有应用同名冲突）
+              // 若为覆盖升级：沿用已安装的 recordName，避免新增列表项
+              // 否则：组装本地唯一 recordName（避免与已有应用同名冲突）
               // appId 形如 `${publisherUserId}-${appName}`，用发布者 userId 前 6 位做后缀
+              const isUpdate = this.installState === "update";
               const suffix = (payload.publisherUserId || "").slice(0, 6) || "shared";
-              const uniqueRecordName =
-                pkg.meta.recordName + "-" + suffix;
+              const uniqueRecordName = isUpdate
+                ? this._existingRecordName
+                : pkg.meta.recordName + "-" + suffix;
 
               this.progress = 82;
-              this.progressText = "写入虚拟文件系统...";
+              this.progressText = isUpdate
+                ? "覆盖写入应用文件..."
+                : "写入虚拟文件系统...";
               const rootDir = await init("mazmot-apps");
               const targetDir = await rootDir.get(uniqueRecordName, {
                 create: "dir",
               });
+              // 覆盖升级：先清空旧的 client 目录，避免残留文件
+              if (isUpdate) {
+                try {
+                  const oldClient = await targetDir.get("client");
+                  if (oldClient) await oldClient.remove();
+                } catch (e) {
+                  // 目录不存在时忽略
+                }
+              }
               const clientDir = await targetDir.get("client", {
                 create: "dir",
               });
@@ -373,25 +522,37 @@
               this.progressText = "记录应用信息...";
               const apps = (await storage.apps) || [];
 
-              // 记录到 apps
-              apps.push({
-                name: uniqueRecordName,
-                desc: pkg.meta.description || "",
-                handle: null,
-                dirName: `mazmot-apps/${uniqueRecordName}`,
-                source: "virtual",
-                namespace: "mazmot-apps",
-                appId: pkg.meta.appId,
-                createdAt: Date.now(),
-              });
-              await storage.setItem("apps", apps);
+              if (isUpdate) {
+                // 更新已存在记录的描述等元信息，不新增列表项
+                const target = apps.find((a) => a.appId === payload.appId);
+                if (target) {
+                  target.desc = pkg.meta.description || target.desc || "";
+                  await storage.setItem("apps", apps);
+                }
+              } else {
+                // 记录到 apps
+                apps.push({
+                  name: uniqueRecordName,
+                  desc: pkg.meta.description || "",
+                  handle: null,
+                  dirName: `mazmot-apps/${uniqueRecordName}`,
+                  source: "virtual",
+                  namespace: "mazmot-apps",
+                  appId: pkg.meta.appId,
+                  createdAt: Date.now(),
+                });
+                await storage.setItem("apps", apps);
+              }
 
               this._installedNamespace = "mazmot-apps";
               this._installedRecordName = uniqueRecordName;
               this.progress = 100;
               this.progressText = "";
               this.step = "done";
-              toast({ content: "安装成功", color: "success" });
+              toast({
+                content: isUpdate ? "更新成功" : "安装成功",
+                color: "success",
+              });
             } catch (err) {
               console.error("安装失败：", err);
               this.errorTitle = "安装失败";
