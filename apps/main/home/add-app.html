@@ -263,7 +263,12 @@
         <p-button color="primary" variant="outlined" on:click="chooseVirtual">
           虚拟目录
         </p-button>
-        <p-button color="primary" variant="outlined" on:click="chooseLocal">
+        <p-button
+          color="primary"
+          variant="outlined"
+          on:click="chooseLocal"
+          attr:disabled="!supportLocalDir"
+        >
           本地目录
         </p-button>
       </div>
@@ -271,6 +276,11 @@
         虚拟目录基于 NoneOS
         虚拟文件系统，数据存储在浏览器内；本地目录则挂载你电脑上的真实文件夹。
       </div>
+      <o-if :value="!supportLocalDir">
+        <div class="section-desc" style="color: var(--md-sys-color-error); opacity: 1;">
+          当前浏览器不支持 showDirectoryPicker API，无法选择本地目录，建议使用 Chrome 或基于 Chromium 的浏览器。
+        </div>
+      </o-if>
     </div>
 
     <!-- 应用市场 -->
@@ -469,6 +479,7 @@
         data: {
           step: 1,
           source: "", // "local" | "virtual"
+          supportLocalDir: typeof window !== "undefined" && typeof window.showDirectoryPicker === "function",
           _selectedHandle: null, // 用户选择的目录句柄（本地或虚拟，_ 前缀避免响应式代理复杂对象）
           _virtualNamespace: "", // 虚拟目录使用的命名空间
           selectedDirName: "",
