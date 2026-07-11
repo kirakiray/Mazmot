@@ -181,6 +181,7 @@ npm run static
 
 - `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 [app-runner.js](apps/main/lib/app-runner.js) 的 URL 生成与文件读取
 - `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](apps/main/lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
+- `http://localhost:30031/apps/main/lib/test/_ready.sb.html` — 测试 [nos-version](https://core.noneos.com/nos-tool/comps/nos-version.html) 在 NoneOS Core 已安装后的组件状态、事件与方法（需先完成 Core 安装后打开）
 
 ### 添加并运行第一个应用
 
