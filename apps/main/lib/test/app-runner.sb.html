@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>app-runner 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>app-runner 单元测试</h1>
+
+    <!-- ================= getRunUrl ================= -->
+    <sb-test name="getRunUrl 虚拟目录返回 /$namespace/{name}/client/index.html">
+      <template>
+        <script type="module">
+          import { getRunUrl } from "../app-runner.js";
+          {
+            const url = await getRunUrl({
+              source: "virtual",
+              namespace: "mazmot-apps",
+              name: "demo-app",
+            });
+            return {
+              assert: url === "/$mazmot-apps/demo-app/client/index.html",
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="getRunUrl 缺少应用信息时抛错">
+      <template>
+        <script type="module">
+          import { getRunUrl } from "../app-runner.js";
+          {
+            let error = null;
+            try {
+              await getRunUrl(null);
+            } catch (err) {
+              error = err.message;
+            }
+            return {
+              assert: error && error.includes("缺少应用信息"),
+              content: { error },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="getRunUrl 本地应用缺少句柄时抛错">
+      <template>
+        <script type="module">
+          import { getRunUrl } from "../app-runner.js";
+          {
+            let error = null;
+            try {
+              await getRunUrl({ source: "local" });
+            } catch (err) {
+              error = err.message;
+            }
+            return {
+              assert: error && error.includes("本地应用缺少目录句柄"),
+              content: { error },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= readAppFiles ================= -->
+    <sb-test name="readAppFiles 空句柄返回空数组">
+      <template>
+        <script type="module">
+          import { readAppFiles } from "../app-runner.js";
+          {
+            const files = await readAppFiles(null);
+            return {
+              assert: Array.isArray(files) && files.length === 0,
+              content: { files },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readAppFiles 优先读取 client 子目录">
+      <template>
+        <script type="module">
+          import { init } from "/nos/fs/main.js";
+          import { readAppFiles } from "../app-runner.js";
+          {
+            const root = await init("mazmot-test-apps");
+            const appDir = await root.get("test-client-" + Date.now(), {
+              create: "dir",
+            });
+            const clientDir = await appDir.get("client", { create: "dir" });
+            const indexFile = await clientDir.get("index.html", {
+              create: "file",
+            });
+            await indexFile.write("<h1>client</h1>");
+
+            const files = await readAppFiles(appDir);
+            const index = files.find((f) => f.path === "index.html");
+            return {
+              assert:
+                files.length === 1 &&
+                index &&
+                index.content === "<h1>client</h1>",
+              content: { files },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readAppFiles 兼容无 client 子目录的旧数据">
+      <template>
+        <script type="module">
+          import { init } from "/nos/fs/main.js";
+          import { readAppFiles } from "../app-runner.js";
+          {
+            const root = await init("mazmot-test-apps");
+            const appDir = await root.get("test-legacy-" + Date.now(), {
+              create: "dir",
+            });
+            const indexFile = await appDir.get("index.html", {
+              create: "file",
+            });
+            await indexFile.write("<h1>legacy</h1>");
+
+            const files = await readAppFiles(appDir);
+            const index = files.find((f) => f.path === "index.html");
+            return {
+              assert:
+                files.length === 1 &&
+                index &&
+                index.content === "<h1>legacy</h1>",
+              content: { files },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readAppFiles 正确裁剪嵌套文件路径前缀">
+      <template>
+        <script type="module">
+          import { init } from "/nos/fs/main.js";
+          import { readAppFiles } from "../app-runner.js";
+          {
+            const root = await init("mazmot-test-apps");
+            const appDir = await root.get("test-nested-" + Date.now(), {
+              create: "dir",
+            });
+            const clientDir = await appDir.get("client", { create: "dir" });
+            const pagesDir = await clientDir.get("pages", { create: "dir" });
+            const pageFile = await pagesDir.get("home.html", {
+              create: "file",
+            });
+            await pageFile.write("<h1>home</h1>");
+
+            const files = await readAppFiles(appDir);
+            const home = files.find((f) => f.path === "pages/home.html");
+            return {
+              assert:
+                files.length === 1 &&
+                home &&
+                home.content === "<h1>home</h1>",
+              content: { files },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

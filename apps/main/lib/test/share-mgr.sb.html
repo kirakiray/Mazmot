@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>share-mgr 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>share-mgr 单元测试</h1>
+
+    <!-- ================= base64UrlEncode / base64UrlDecode ================= -->
+    <sb-test name="base64UrlEncode/Decode 支持 ASCII 与 Unicode 往返">
+      <template>
+        <script type="module">
+          import { base64UrlEncode, base64UrlDecode } from "../share-mgr.js";
+          {
+            const cases = [
+              "hello",
+              "你好世界",
+              "🚀 emoji",
+              '{"a":1,"b":[2,3]}',
+            ];
+            const results = cases.map(
+              (c) => base64UrlDecode(base64UrlEncode(c)) === c,
+            );
+            return {
+              assert: results.every(Boolean),
+              content: { cases, results },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="base64UrlEncode 结果不含 + / 和末尾 =">
+      <template>
+        <script type="module">
+          import { base64UrlEncode } from "../share-mgr.js";
+          {
+            // 构造一段会产生 + / = 的原始字节：0xff 0xfe 0xfd 0xfc
+            const binary = String.fromCharCode(255, 254, 253, 252);
+            const encoded = base64UrlEncode(binary);
+            return {
+              assert:
+                !encoded.includes("+") &&
+                !encoded.includes("/") &&
+                !encoded.includes("="),
+              content: { encoded },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= buildShareUrl / parseShareUrl ================= -->
+    <sb-test name="buildShareUrl/parseShareUrl 往返保留字段">
+      <template>
+        <script type="module">
+          import { buildShareUrl, parseShareUrl } from "../share-mgr.js";
+          {
+            const payload = {
+              appId: "abc123",
+              recordName: "my-app",
+              displayName: "My App",
+              version: "1.0.0",
+            };
+            const origin = "http://localhost:30031";
+            const url = buildShareUrl(origin, payload);
+            const parsed = parseShareUrl(new URL(url).search);
+            return {
+              assert:
+                parsed &&
+                parsed.appId === "abc123" &&
+                parsed.recordName === "my-app" &&
+                parsed.displayName === "My App" &&
+                parsed.version === "1.0.0",
+              content: { url, parsed },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="parseShareUrl 对非法参数返回 null">
+      <template>
+        <script type="module">
+          import { parseShareUrl } from "../share-mgr.js";
+          {
+            const r1 = parseShareUrl("");
+            const r2 = parseShareUrl("?x=1");
+            const r3 = parseShareUrl("?p=not-valid-base64!!!");
+            return {
+              assert: r1 === null && r2 === null && r3 === null,
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= buildPackageFile ================= -->
+    <sb-test name="buildPackageFile 结构正确且文件名使用 recordName">
+      <template>
+        <script type="module">
+          import { buildPackageFile, PACKAGE_VERSION } from "../share-mgr.js";
+          {
+            const files = [{ path: "index.html", content: "<h1>hi</h1>" }];
+            const meta = { recordName: "test-app", appId: "abc123" };
+            const file = buildPackageFile(files, meta);
+            const text = await file.text();
+            const pkg = JSON.parse(text);
+            return {
+              assert:
+                file.name === "test-app.mazmot.json" &&
+                pkg.mazmotPackage === PACKAGE_VERSION &&
+                pkg.meta.recordName === "test-app" &&
+                pkg.files.length === 1 &&
+                pkg.files[0].path === "index.html",
+              content: { fileName: file.name, pkg },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= verifySharePayload ================= -->
+    <sb-test name="verifySharePayload 对非法 payload 返回 false">
+      <template>
+        <script type="module">
+          import { verifySharePayload } from "../share-mgr.js";
+          {
+            const r1 = await verifySharePayload(null);
+            const r2 = await verifySharePayload({});
+            const r3 = await verifySharePayload({ signature: "x" });
+            return {
+              assert: r1 === false && r2 === false && r3 === false,
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

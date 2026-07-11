@@ -46,9 +46,9 @@ Mazmot/
 │   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json 清单 + 若干 .tpl 源文件
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 install-app 反向引用
-│   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成虚拟目录运行 URL
-│   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│   │       └── test/                 # sibyl-test 单元/集成测试（已随容器模式移除）
+│           ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成虚拟目录运行 URL
+│           ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
+│           └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   │
 │   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
 │       ├── index.html        # 应用入口 HTML：先校验 Core 模块（含分享必须的 data-publisher），缺失则回根入口升级；再装载 ./app-config.js
@@ -181,6 +181,13 @@ npm run static
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
 > 直接打开分享链接（`/apps/install-app/?p=...`）时，`install-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；旧版本 Core 缺少任一模块都会先回根入口升级，再返回继续安装。
+
+### 运行测试
+
+使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
+
+- `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 `app-runner.js` 的 URL 生成与文件读取
+- `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 `share-mgr.js` 的 Base64URL、分享链接与打包结构
 
 ### 添加第一个应用
 
