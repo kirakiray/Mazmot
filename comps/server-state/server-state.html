@@ -394,17 +394,31 @@
           async _probeServer(server) {
             server.testing = true;
             try {
-              const result = await this._user.server.testLatency(server.url);
+              // 复用已有连接并获取版本（对同一 URL 多次 connect 会复用）
+              const connectResult = await this._user.server.connect(server.url);
+              if (connectResult.success) {
+                server.connected = true;
+                server.version = connectResult.version || "";
+              } else {
+                server.connected = false;
+                server.version = "";
+              }
+
+              const latencyResult = await this._user.server.testLatency(
+                server.url,
+              );
               server.rtt =
-                typeof result.rtt === "number" ? Math.round(result.rtt) : null;
+                typeof latencyResult.rtt === "number"
+                  ? Math.round(latencyResult.rtt)
+                  : null;
               server.oneWayLatency =
-                typeof result.oneWayLatency === "number"
-                  ? Math.round(result.oneWayLatency)
+                typeof latencyResult.oneWayLatency === "number"
+                  ? Math.round(latencyResult.oneWayLatency)
                   : null;
               server.latencyLevel = getLatencyLevel(server.rtt);
             } catch (err) {
               console.warn(
-                `[server-state] 测试 ${server.url} 延迟失败：`,
+                `[server-state] 探测 ${server.url} 失败：`,
                 err,
               );
               server.rtt = null;
