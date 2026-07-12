@@ -30,26 +30,16 @@
     }
 
     .server-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      --list-gap: 4px;
     }
 
-    .server-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px;
-      border-radius: 12px;
-      background-color: var(--md-sys-color-surface-container-low);
-      transition: background-color 0.2s ease;
-    }
-
-    .server-item:hover {
-      background-color: var(--md-sys-color-surface-container);
+    .server-list p-list-item {
+      --list-item-leading-space: 12px;
+      --list-item-trailing-space: 8px;
     }
 
     .status-dot {
+      display: inline-block;
       width: 10px;
       height: 10px;
       border-radius: 50%;
@@ -66,20 +56,9 @@
       background-color: var(--md-sys-color-outline);
     }
 
-    .server-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
     .server-url {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--md-sys-color-on-surface);
-      word-break: break-all;
       font-family: monospace;
+      word-break: break-all;
     }
 
     .server-meta {
@@ -87,6 +66,7 @@
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
+      margin-top: 4px;
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
@@ -175,6 +155,7 @@
     }
   </style>
 
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
@@ -211,47 +192,46 @@
     </o-if>
 
     <o-if :value="!loading && serverList.length > 0">
-      <div class="server-list">
+      <p-list class="server-list">
         <o-fill :value="serverList">
-          <div class="server-item">
-            <div
+          <p-list-item>
+            <span
+              slot="prefix"
               class="status-dot"
               attr:data-connected="$data.connected"
               attr:title="$data.connected ? '已连接' : '未连接'"
-            ></div>
-            <div class="server-info">
-              <div class="server-url">{{$data.url}}</div>
-              <div class="server-meta">
-                <o-if :value="$data.connected">
-                  <span class="meta-badge version" title="服务器版本">
-                    <n-icon icon="mdi:tag-outline"></n-icon>
-                    {{$data.version || "未知版本"}}
-                  </span>
-                </o-if>
-                <o-if :value="$data.connected && $data.rtt !== null">
-                  <span
-                    class="meta-badge latency-value"
-                    class:latency-good="$data.latencyLevel === 'good'"
-                    class:latency-medium="$data.latencyLevel === 'medium'"
-                    class:latency-high="$data.latencyLevel === 'high'"
-                    title="往返延迟"
-                  >
-                    <n-icon icon="mdi:clock-outline"></n-icon>
-                    {{$data.rtt}} ms
-                  </span>
-                </o-if>
-                <o-if :value="$data.testing">
-                  <span class="meta-badge">
-                    <n-icon icon="mdi:loading"></n-icon>
-                    测试中
-                  </span>
-                </o-if>
-                <o-if :value="!$data.connected">
-                  <span class="meta-badge">未连接</span>
-                </o-if>
-              </div>
+            ></span>
+            <span class="server-url">{{$data.url}}</span>
+            <div secondary class="server-meta">
+              <o-if :value="$data.connected">
+                <span class="meta-badge version" title="服务器版本">
+                  <n-icon icon="mdi:tag-outline"></n-icon>
+                  {{$data.version || "未知版本"}}
+                </span>
+              </o-if>
+              <o-if :value="$data.connected && $data.rtt !== null">
+                <span
+                  class="meta-badge latency-value"
+                  class:latency-good="$data.latencyLevel === 'good'"
+                  class:latency-medium="$data.latencyLevel === 'medium'"
+                  class:latency-high="$data.latencyLevel === 'high'"
+                  title="往返延迟"
+                >
+                  <n-icon icon="mdi:clock-outline"></n-icon>
+                  {{$data.rtt}} ms
+                </span>
+              </o-if>
+              <o-if :value="$data.testing">
+                <span class="meta-badge">
+                  <n-icon icon="mdi:loading"></n-icon>
+                  测试中
+                </span>
+              </o-if>
+              <o-if :value="!$data.connected">
+                <span class="meta-badge">未连接</span>
+              </o-if>
             </div>
-            <div class="server-actions">
+            <div slot="suffix" class="server-actions">
               <o-if :value="!$data.connected">
                 <p-button
                   class="icon-btn connect-btn"
@@ -265,9 +245,9 @@
                 </p-button>
               </o-if>
             </div>
-          </div>
+          </p-list-item>
         </o-fill>
-      </div>
+      </p-list>
     </o-if>
   </div>
 
