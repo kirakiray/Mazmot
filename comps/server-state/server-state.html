@@ -279,10 +279,12 @@
         attached() {
           this._bindLatencyListener();
           this._startLatencyMonitor();
+          this._startConnectionWatcher();
         },
         detached() {
           this._unbindLatencyListener();
           this._stopLatencyMonitor();
+          this._stopConnectionWatcher();
         },
         watch: {
           namespace() {
@@ -304,11 +306,13 @@
           async _resetUser() {
             this._unbindLatencyListener();
             this._stopLatencyMonitor();
+            this._stopConnectionWatcher();
             this._user = null;
             this._userReady = false;
             await this._initUser();
             this._bindLatencyListener();
             this._startLatencyMonitor();
+            this._startConnectionWatcher();
           },
           _bindLatencyListener() {
             if (!this._user) return;
@@ -339,6 +343,37 @@
             } catch (err) {
               console.warn("[server-state] 停止延迟监测失败：", err);
             }
+          },
+          _startConnectionWatcher() {
+            this._stopConnectionWatcher();
+            this._connectionWatcherId = setInterval(() => {
+              this._syncConnectedState();
+            }, 3000);
+          },
+          _stopConnectionWatcher() {
+            if (this._connectionWatcherId) {
+              clearInterval(this._connectionWatcherId);
+              this._connectionWatcherId = null;
+            }
+          },
+          _syncConnectedState() {
+            if (!this._user) return;
+            const connectedUrls = new Set(
+              Array.isArray(this._user.server.connectedUrls)
+                ? this._user.server.connectedUrls
+                : [],
+            );
+            this.serverList.forEach((server) => {
+              const wasConnected = server.connected;
+              server.connected = connectedUrls.has(server.url);
+              if (wasConnected && !server.connected) {
+                // 从已连接变为断开，清空版本与延迟
+                server.version = "";
+                server.rtt = null;
+                server.oneWayLatency = null;
+                server.latencyLevel = null;
+              }
+            });
           },
           _updateServerLatency(url, rtt, oneWayLatency) {
             const target = this.serverList.find((s) => s.url === url);
@@ -421,6 +456,8 @@
                 `[server-state] 探测 ${server.url} 失败：`,
                 err,
               );
+              server.connected = false;
+              server.version = "";
               server.rtt = null;
               server.oneWayLatency = null;
               server.latencyLevel = null;
