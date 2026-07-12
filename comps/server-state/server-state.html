@@ -224,7 +224,7 @@
               <o-if :value="$data.testing">
                 <span class="meta-badge">
                   <n-icon icon="mdi:loading"></n-icon>
-                  测试中
+                  连接中
                 </span>
               </o-if>
               <o-if :value="!$data.connected">
@@ -266,6 +266,7 @@
         tag: "server-state",
         attrs: {
           namespace: "mazmot",
+          autoReconnect: true,
         },
         data: {
           loading: true,
@@ -274,22 +275,26 @@
         },
         async ready() {
           await this._initUser();
+          this._configureAutoReconnect();
           await this.refreshServers();
         },
         attached() {
           this._bindLatencyListener();
           this._startLatencyMonitor();
-          this._startConnectionWatcher();
+          this._bindServerListeners();
         },
         detached() {
           this._unbindLatencyListener();
           this._stopLatencyMonitor();
-          this._stopConnectionWatcher();
+          this._unbindServerListeners();
         },
         watch: {
           namespace() {
             this._resetUser();
             this.refreshServers();
+          },
+          autoReconnect() {
+            this._configureAutoReconnect();
           },
         },
         proto: {
@@ -306,13 +311,14 @@
           async _resetUser() {
             this._unbindLatencyListener();
             this._stopLatencyMonitor();
-            this._stopConnectionWatcher();
+            this._unbindServerListeners();
             this._user = null;
             this._userReady = false;
             await this._initUser();
+            this._configureAutoReconnect();
             this._bindLatencyListener();
             this._startLatencyMonitor();
-            this._startConnectionWatcher();
+            this._bindServerListeners();
           },
           _bindLatencyListener() {
             if (!this._user) return;
@@ -344,36 +350,91 @@
               console.warn("[server-state] 停止延迟监测失败：", err);
             }
           },
-          _startConnectionWatcher() {
-            this._stopConnectionWatcher();
-            this._connectionWatcherId = setInterval(() => {
-              this._syncConnectedState();
-            }, 3000);
-          },
-          _stopConnectionWatcher() {
-            if (this._connectionWatcherId) {
-              clearInterval(this._connectionWatcherId);
-              this._connectionWatcherId = null;
+          _configureAutoReconnect() {
+            if (!this._user) return;
+            try {
+              this._user.server.setAutoReconnect({
+                enabled: !!this.autoReconnect,
+                baseDelay: 2000,
+                maxDelay: 30000,
+                multiplier: 2,
+                maxRetries: Infinity,
+              });
+            } catch (err) {
+              console.warn("[server-state] 配置自动重连失败：", err);
             }
           },
-          _syncConnectedState() {
+          _bindServerListeners() {
             if (!this._user) return;
-            const connectedUrls = new Set(
-              Array.isArray(this._user.server.connectedUrls)
-                ? this._user.server.connectedUrls
-                : [],
-            );
-            this.serverList.forEach((server) => {
-              const wasConnected = server.connected;
-              server.connected = connectedUrls.has(server.url);
-              if (wasConnected && !server.connected) {
-                // 从已连接变为断开，清空版本与延迟
-                server.version = "";
-                server.rtt = null;
-                server.oneWayLatency = null;
-                server.latencyLevel = null;
-              }
-            });
+            this._serverConnectedHandler = (event) => {
+              const { url, version } = event.detail || {};
+              this._onServerConnected(url, version);
+            };
+            this._serverDisconnectedHandler = (event) => {
+              const { url, reason } = event.detail || {};
+              this._onServerDisconnected(url, reason);
+            };
+            this._serverReconnectingHandler = (event) => {
+              const { url, attempt } = event.detail || {};
+              this._onServerReconnecting(url, attempt);
+            };
+            this._serverReconnectExhaustedHandler = (event) => {
+              const { url, attempt } = event.detail || {};
+              this._onServerReconnectExhausted(url, attempt);
+            };
+            this._user.bind("server_connected", this._serverConnectedHandler);
+            this._user.bind("server_disconnected", this._serverDisconnectedHandler);
+            this._user.bind("server_reconnecting", this._serverReconnectingHandler);
+            this._user.bind("server_reconnect_exhausted", this._serverReconnectExhaustedHandler);
+          },
+          _unbindServerListeners() {
+            if (!this._user) return;
+            if (this._serverConnectedHandler) {
+              this._user.unbind("server_connected", this._serverConnectedHandler);
+              this._serverConnectedHandler = null;
+            }
+            if (this._serverDisconnectedHandler) {
+              this._user.unbind("server_disconnected", this._serverDisconnectedHandler);
+              this._serverDisconnectedHandler = null;
+            }
+            if (this._serverReconnectingHandler) {
+              this._user.unbind("server_reconnecting", this._serverReconnectingHandler);
+              this._serverReconnectingHandler = null;
+            }
+            if (this._serverReconnectExhaustedHandler) {
+              this._user.unbind("server_reconnect_exhausted", this._serverReconnectExhaustedHandler);
+              this._serverReconnectExhaustedHandler = null;
+            }
+          },
+          _onServerConnected(url, version) {
+            const server = this.serverList.find((s) => s.url === url);
+            if (!server) return;
+            server.connected = true;
+            server.version = version || "";
+            server.testing = false;
+          },
+          _onServerDisconnected(url, reason) {
+            const server = this.serverList.find((s) => s.url === url);
+            if (!server) return;
+            server.connected = false;
+            server.version = "";
+            server.rtt = null;
+            server.oneWayLatency = null;
+            server.latencyLevel = null;
+            server.testing = false;
+            console.warn(`[server-state] 服务器 ${url} 断开：`, reason);
+          },
+          _onServerReconnecting(url, attempt) {
+            const server = this.serverList.find((s) => s.url === url);
+            if (!server) return;
+            server.testing = true;
+            console.warn(`[server-state] 服务器 ${url} 第 ${attempt} 次重连中...`);
+          },
+          _onServerReconnectExhausted(url, attempt) {
+            const server = this.serverList.find((s) => s.url === url);
+            if (!server) return;
+            server.testing = false;
+            console.error(`[server-state] 服务器 ${url} 重连次数耗尽（已尝试 ${attempt} 次）`);
           },
           _updateServerLatency(url, rtt, oneWayLatency) {
             const target = this.serverList.find((s) => s.url === url);
