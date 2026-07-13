@@ -1,0 +1,467 @@
+<template component>
+  <style>
+    :host {
+      display: block;
+      position: absolute;
+      z-index: 2;
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    .resize-handle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background-color: #fff;
+      border: 1px solid #333;
+      z-index: 3;
+    }
+
+    .handle-nw {
+      top: -5px;
+      left: -5px;
+      cursor: nwse-resize;
+      z-index: 4;
+    }
+
+    .handle-ne {
+      top: -5px;
+      right: -5px;
+      cursor: nesw-resize;
+      z-index: 4;
+    }
+
+    .handle-sw {
+      bottom: -5px;
+      left: -5px;
+      cursor: nesw-resize;
+      z-index: 4;
+    }
+
+    .handle-se {
+      bottom: -5px;
+      right: -5px;
+      cursor: nwse-resize;
+      z-index: 4;
+    }
+
+    .handle-n {
+      top: -5px;
+      left: 0;
+      right: 0;
+      width: auto;
+      height: 10px;
+      cursor: ns-resize;
+    }
+
+    .handle-s {
+      bottom: -5px;
+      left: 0;
+      right: 0;
+      width: auto;
+      height: 10px;
+      cursor: ns-resize;
+    }
+
+    .handle-w {
+      top: 0;
+      bottom: 0;
+      left: -5px;
+      width: 10px;
+      height: auto;
+      transform: none;
+      cursor: ew-resize;
+    }
+
+    .handle-e {
+      top: 0;
+      bottom: 0;
+      right: -5px;
+      width: 10px;
+      height: auto;
+      transform: none;
+      cursor: ew-resize;
+    }
+
+    .handle-nw,
+    .handle-ne,
+    .handle-sw,
+    .handle-se,
+    .handle-n,
+    .handle-s,
+    .handle-w,
+    .handle-e {
+      opacity: 0;
+    }
+
+    :host([rnd-focus]) {
+      z-index: 5;
+    }
+  </style>
+  <slot></slot>
+  <o-if :value="resizable !== null">
+    <div
+      class="resize-handle handle-nw"
+      data-dir="nw"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-ne"
+      data-dir="ne"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-sw"
+      data-dir="sw"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-se"
+      data-dir="se"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-n"
+      data-dir="n"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-s"
+      data-dir="s"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-w"
+      data-dir="w"
+      on:mousedown="startResize"
+    ></div>
+    <div
+      class="resize-handle handle-e"
+      data-dir="e"
+      on:mousedown="startResize"
+    ></div>
+  </o-if>
+  <script>
+    export default async ({ load }) => {
+      const { EverCache } = await load(
+        "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+      );
+      const rndBoxCache = new EverCache("mazmot-rnd-box");
+
+      return {
+        tag: "m-rnd-box",
+        data: {
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+        },
+        attrs: {
+          resizable: null,
+          movable: null,
+          autoSaveId: null,
+        },
+        watch: {
+          "x,y,width,height": function ([x, y, width, height]) {
+            this.style.left = `${x}px`;
+            this.style.top = `${y}px`;
+            this.style.width = `${width}px`;
+            this.style.height = `${height}px`;
+          },
+        },
+        proto: {
+          startDrag(e) {
+            if (this.movable === null) return;
+            e.stopPropagation();
+
+            this.isDragging = true;
+            this.startX = e.clientX;
+            this.startY = e.clientY;
+            this.startBoxX = this.x;
+            this.startBoxY = this.y;
+
+            this.setFocus();
+
+            this.moveHandler = (ev) => this.onDrag(ev);
+            this.upHandler = () => this.stopDrag();
+
+            document.addEventListener("mousemove", this.moveHandler);
+            document.addEventListener("mouseup", this.upHandler);
+          },
+          onDrag(e) {
+            if (!this.isDragging) return;
+            const dx = e.clientX - this.startX;
+            const dy = e.clientY - this.startY;
+
+            let newX = this.startBoxX + dx;
+            let newY = this.startBoxY + dy;
+
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+
+            if (parent) {
+              const maxW = parent.clientWidth;
+              const maxH = parent.clientHeight;
+
+              if (newX < 0) newX = 0;
+              else if (newX + this.width > maxW) newX = maxW - this.width;
+
+              if (newY < 0) newY = 0;
+              else if (newY + this.height > maxH) newY = maxH - this.height;
+            }
+
+            this.x = newX;
+            this.y = newY;
+          },
+          stopDrag() {
+            this.isDragging = false;
+            document.removeEventListener("mousemove", this.moveHandler);
+            document.removeEventListener("mouseup", this.upHandler);
+            this.saveState();
+          },
+          startResize(e) {
+            if (this.resizable === null) return;
+            e.stopPropagation();
+
+            this.isResizing = true;
+            this.resizeDir = e.target.dataset.dir;
+            this.startX = e.clientX;
+            this.startY = e.clientY;
+            this.startBoxX = this.x;
+            this.startBoxY = this.y;
+            this.startBoxW = this.width;
+            this.startBoxH = this.height;
+
+            this.setFocus();
+
+            this.resizeMoveHandler = (ev) => this.onResize(ev);
+            this.resizeUpHandler = () => this.stopResize();
+
+            document.addEventListener("mousemove", this.resizeMoveHandler);
+            document.addEventListener("mouseup", this.resizeUpHandler);
+          },
+          onResize(e) {
+            if (!this.isResizing) return;
+            const dx = e.clientX - this.startX;
+            const dy = e.clientY - this.startY;
+
+            let newX = this.startBoxX;
+            let newY = this.startBoxY;
+            let newW = this.startBoxW;
+            let newH = this.startBoxH;
+
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            const parentW = parent ? parent.clientWidth : Infinity;
+            const parentH = parent ? parent.clientHeight : Infinity;
+
+            if (this.resizeDir.includes("e")) {
+              newW = this.startBoxW + dx;
+              if (newX + newW > parentW) {
+                newW = parentW - newX;
+              }
+            }
+            if (this.resizeDir.includes("s")) {
+              newH = this.startBoxH + dy;
+              if (newY + newH > parentH) {
+                newH = parentH - newY;
+              }
+            }
+            if (this.resizeDir.includes("w")) {
+              newW = this.startBoxW - dx;
+              newX = this.startBoxX + dx;
+              if (newX < 0) {
+                newW = newW + newX;
+                newX = 0;
+              }
+            }
+            if (this.resizeDir.includes("n")) {
+              newH = this.startBoxH - dy;
+              newY = this.startBoxY + dy;
+              if (newY < 0) {
+                newH = newH + newY;
+                newY = 0;
+              }
+            }
+
+            const minW = 20;
+            const minH = 20;
+            if (newW < minW) {
+              if (this.resizeDir.includes("w")) {
+                newX = newX - (minW - newW);
+              }
+              newW = minW;
+            }
+            if (newH < minH) {
+              if (this.resizeDir.includes("n")) {
+                newY = newY - (minH - newH);
+              }
+              newH = minH;
+            }
+
+            this.x = newX;
+            this.y = newY;
+            this.width = newW;
+            this.height = newH;
+          },
+          stopResize() {
+            this.isResizing = false;
+            document.removeEventListener("mousemove", this.resizeMoveHandler);
+            document.removeEventListener("mouseup", this.resizeUpHandler);
+            this.saveState();
+          },
+          setFocus() {
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            if (parent) {
+              $(parent)
+                .all("m-rnd-box[rnd-focus]")
+                .forEach((el) => {
+                  if (el === this) {
+                    return;
+                  }
+                  el.attr("rnd-focus", null);
+                  el.emit("rnd-blur");
+                });
+            }
+            this.attr("rnd-focus", "");
+            this.emit("rnd-focus");
+            this.saveState();
+          },
+          getStorageKey() {
+            return `mazmot:rnd-box:${this.autoSaveId}`;
+          },
+          getParentSize() {
+            const parent = this.ele.offsetParent || this.ele.parentElement;
+            return {
+              parent,
+              width: parent ? parent.clientWidth : null,
+              height: parent ? parent.clientHeight : null,
+            };
+          },
+          async saveState() {
+            if (!this.autoSaveId) return;
+            const { width: parentWidth, height: parentHeight } =
+              this.getParentSize();
+            try {
+              await rndBoxCache.setItem(this.getStorageKey(), {
+                x: this.x,
+                y: this.y,
+                width: this.width,
+                height: this.height,
+                focus: this.ele.hasAttribute("rnd-focus"),
+                parentWidth,
+                parentHeight,
+                savedAt: Date.now(),
+              });
+            } catch (err) {
+              console.warn("[m-rnd-box] failed to save state", err);
+            }
+          },
+          async loadState() {
+            if (!this.autoSaveId) return null;
+            try {
+              const data = await rndBoxCache.getItem(this.getStorageKey());
+              if (!data) return null;
+              if (
+                typeof data.x !== "number" ||
+                typeof data.y !== "number" ||
+                typeof data.width !== "number" ||
+                typeof data.height !== "number"
+              ) {
+                return null;
+              }
+              return {
+                x: data.x,
+                y: data.y,
+                width: data.width,
+                height: data.height,
+                focus: data.focus === true,
+                parentWidth:
+                  typeof data.parentWidth === "number"
+                    ? data.parentWidth
+                    : null,
+                parentHeight:
+                  typeof data.parentHeight === "number"
+                    ? data.parentHeight
+                    : null,
+                savedAt: typeof data.savedAt === "number" ? data.savedAt : null,
+              };
+            } catch (err) {
+              console.warn("[m-rnd-box] failed to load state", err);
+              return null;
+            }
+          },
+        },
+        async attached() {
+          this.on("mousedown", (e) => {
+            this.startDrag(e);
+          });
+
+          this.on("rnd-blur", () => this.saveState());
+
+          const saved = await this.loadState();
+
+          if (saved) {
+            const { width: parentW, height: parentH } = this.getParentSize();
+            let x = saved.x;
+            let y = saved.y;
+            let w = saved.width;
+            let h = saved.height;
+
+            if (saved.parentWidth && parentW) {
+              const sx = parentW / saved.parentWidth;
+              x = x * sx;
+              w = w * sx;
+            }
+            if (saved.parentHeight && parentH) {
+              const sy = parentH / saved.parentHeight;
+              y = y * sy;
+              h = h * sy;
+            }
+
+            if (parentW) {
+              if (x < 0) x = 0;
+              if (x + w > parentW) x = Math.max(0, parentW - w);
+            }
+            if (parentH) {
+              if (y < 0) y = 0;
+              if (y + h > parentH) y = Math.max(0, parentH - h);
+            }
+
+            this.x = x;
+            this.y = y;
+            this.width = w;
+            this.height = h;
+            if (saved.focus) {
+              this.setFocus();
+            }
+          } else {
+            if (this.attr("x")) {
+              this.x = Number(this.attr("x"));
+            }
+            if (this.attr("y")) {
+              this.y = Number(this.attr("y"));
+            }
+            if (this.attr("width")) {
+              this.width = Number(this.attr("width"));
+            }
+            if (this.attr("height")) {
+              this.height = Number(this.attr("height"));
+            }
+          }
+
+          this.attr("x", null);
+          this.attr("y", null);
+          this.attr("width", null);
+          this.attr("height", null);
+        },
+        detached() {
+          if (this.isDragging) {
+            this.stopDrag();
+          }
+          if (this.isResizing) {
+            this.stopResize();
+          }
+        },
+      };
+    };
+  </script>
+</template>
