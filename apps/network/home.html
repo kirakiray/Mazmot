@@ -10,6 +10,59 @@
       margin: 0 auto;
       padding: 16px;
     }
+    .me-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      border-radius: 14px;
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .me-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      flex-shrink: 0;
+    }
+    .me-icon n-icon {
+      font-size: 22px;
+      width: 22px;
+      height: 22px;
+    }
+    .me-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .me-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .me-row .k {
+      opacity: 0.7;
+      min-width: 68px;
+    }
+    .me-row .v {
+      flex: 1;
+      min-width: 0;
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .section {
       margin-bottom: 24px;
     }
@@ -138,6 +191,32 @@
       <div class="error">{{error}}</div>
     </o-if>
 
+    <!-- 当前身份 -->
+    <div class="me-card">
+      <div class="me-icon">
+        <n-icon icon="mdi:account-key"></n-icon>
+      </div>
+      <div class="me-body">
+        <div class="me-row">
+          <span class="k">当前 UserId</span>
+          <span class="v" attr:title="userId">{{userId || "-"}}</span>
+        </div>
+        <div class="me-row">
+          <span class="k">当前 Session</span>
+          <span class="v" attr:title="sessionId">{{sessionId || "-"}}</span>
+        </div>
+      </div>
+      <p-button
+        variant="text"
+        icon
+        size="s"
+        on:click="copySessionId"
+        title="复制 Session ID"
+      >
+        <n-icon icon="mdi:content-copy"></n-icon>
+      </p-button>
+    </div>
+
     <!-- 服务器区块 -->
     <div class="section">
       <div class="section-header">
@@ -232,12 +311,16 @@
       return {
         data: {
           error: "",
+          userId: "",
+          sessionId: "",
           serverList: [],
           userList: [],
         },
         async ready() {
           try {
             this._user = await getUser(NAMESPACE);
+            this.userId = this._user.userId || "";
+            this.sessionId = this._user.sessionId || "";
           } catch (err) {
             this.error = "初始化用户失败：" + (err.message || String(err));
             console.error("[network] 初始化用户失败：", err);
@@ -330,6 +413,14 @@
           },
           buildUserHref(userId) {
             return `./user-detail.html?userId=${encodeURIComponent(userId)}`;
+          },
+          async copySessionId() {
+            if (!this.sessionId) return;
+            try {
+              await navigator.clipboard.writeText(this.sessionId);
+            } catch (err) {
+              console.warn("[network] 复制 sessionId 失败：", err);
+            }
           },
         },
       };

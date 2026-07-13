@@ -285,7 +285,8 @@
           this._bindEvents();
           this._refreshStatus();
           if (this.connected) {
-            this.testLatency();
+            // 已连接：复用连接以拿到版本号
+            this._probe();
           }
         },
         detached() {
@@ -355,6 +356,26 @@
               this.error = "延迟测试失败：" + (err.message || err);
             } finally {
               this.testing = false;
+            }
+          },
+          // 复用已有连接，同时拿到版本号并测试延迟
+          async _probe() {
+            if (!this._user) return;
+            this.testing = true;
+            try {
+              const result = await this._user.server.connect(this.url);
+              if (result && result.success) {
+                this.connected = true;
+                this.version = result.version || this.version || "";
+              }
+            } catch (err) {
+              console.warn("[server-detail] _probe connect 失败：", err);
+            } finally {
+              this.testing = false;
+            }
+            // 拿版本后再单独测延迟
+            if (this.connected) {
+              await this.testLatency();
             }
           },
           async connectServer() {
