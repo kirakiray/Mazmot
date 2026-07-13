@@ -1,0 +1,428 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow: auto;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .card {
+      padding: 16px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container);
+      margin-bottom: 12px;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .icon-wrap {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 18px;
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      flex-shrink: 0;
+    }
+    .icon-wrap n-icon {
+      font-size: 40px;
+      width: 40px;
+      height: 40px;
+    }
+    .status-dot {
+      position: absolute;
+      right: -2px;
+      bottom: -2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-outline);
+      border: 3px solid var(--md-sys-color-surface);
+    }
+    .status-dot[data-online="true"] {
+      background-color: #22c55e;
+    }
+    .status-dot[data-online="false"] {
+      background-color: var(--md-sys-color-outline);
+    }
+    .info {
+      flex: 1;
+      min-width: 0;
+    }
+    .info h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      word-break: break-all;
+      color: var(--md-sys-color-on-surface);
+    }
+    .info .sub {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .row:last-child {
+      border-bottom: none;
+    }
+    .row .label {
+      min-width: 96px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .row .value {
+      flex: 1;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+      font-family: monospace;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background-color: var(--md-sys-color-surface-container-highest);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .badge.on {
+      background-color: rgba(34, 197, 94, 0.15);
+      color: #16a34a;
+    }
+    .session-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .session-item {
+      padding: 4px 8px;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-surface-container-highest);
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .error {
+      padding: 12px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .via {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      font-size: 11px;
+      margin-left: 6px;
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="container">
+    <div class="header">
+      <p-button variant="text" icon size="s" on:click="goBack" title="返回">
+        <n-icon icon="mdi:arrow-left"></n-icon>
+      </p-button>
+      <h1>用户详情</h1>
+    </div>
+
+    <o-if :value="error">
+      <div class="error">{{error}}</div>
+    </o-if>
+
+    <div class="card">
+      <div class="top">
+        <div class="icon-wrap">
+          <n-icon icon="mdi:account-circle"></n-icon>
+          <span class="status-dot" attr:data-online="online"></span>
+        </div>
+        <div class="info">
+          <h2>{{displayName}}</h2>
+          <div class="sub">
+            <o-if :value="online">
+              <span class="badge on">
+                <n-icon icon="mdi:check-circle-outline"></n-icon>
+                在线
+              </span>
+            </o-if>
+            <o-if :value="!online">
+              <span class="badge">离线</span>
+            </o-if>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label">用户 ID</div>
+        <div class="value">{{userId}}</div>
+      </div>
+      <div class="row">
+        <div class="label">在线状态</div>
+        <div class="value">{{online ? "在线" : "离线"}}</div>
+      </div>
+      <div class="row">
+        <div class="label">最近 RTT</div>
+        <div class="value">
+          <o-if :value="rtt !== null">
+            {{rtt}} ms
+            <o-if :value="rttVia">
+              <span class="via">{{rttVia}}</span>
+            </o-if>
+          </o-if>
+          <o-if :value="rtt === null">-</o-if>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label">在线 Session</div>
+        <div class="value">
+          <o-if :value="sessionIds.length === 0">-</o-if>
+          <o-if :value="sessionIds.length > 0">
+            <div class="session-list">
+              <o-fill :value="sessionIds">
+                <div class="session-item">{{$data}}</div>
+              </o-fill>
+            </div>
+          </o-if>
+        </div>
+      </div>
+
+      <div class="actions">
+        <p-button
+          color="primary"
+          size="s"
+          on:click="refreshSessions"
+          attr:disabled="busy"
+        >
+          <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
+          刷新会话
+        </p-button>
+        <p-button
+          color="primary"
+          size="s"
+          variant="outlined"
+          on:click="pingUser"
+          attr:disabled="busy || !online || sessionIds.length === 0"
+        >
+          <n-icon icon="mdi:speedometer" slot="prefix"></n-icon>
+          Ping
+        </p-button>
+        <p-button
+          color="error"
+          size="s"
+          variant="outlined"
+          on:click="disconnect"
+          attr:disabled="busy"
+        >
+          <n-icon icon="mdi:link-off" slot="prefix"></n-icon>
+          断开连接
+        </p-button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import { getUser } from "/nos/user/main.js";
+
+    const NAMESPACE = "mazmot";
+
+    function shortId(userId) {
+      if (!userId) return "";
+      return userId.length > 12 ? userId.slice(0, 8) + "…" : userId;
+    }
+
+    export default async ({ query }) => {
+      const userId = query.userId || "";
+      return {
+        data: {
+          userId,
+          displayName: shortId(userId),
+          error: "",
+          online: false,
+          sessionIds: [],
+          rtt: null,
+          rttVia: "",
+          busy: false,
+        },
+        async ready() {
+          if (!this.userId) {
+            this.error = "缺少 userId 参数";
+            return;
+          }
+          try {
+            this._user = await getUser(NAMESPACE);
+          } catch (err) {
+            this.error = "初始化用户失败：" + (err.message || err);
+            return;
+          }
+          this._locateRemote();
+          this._bindEvents();
+          await this.refreshSessions();
+        },
+        detached() {
+          this._unbindEvents();
+        },
+        proto: {
+          _locateRemote() {
+            const remotes = Array.isArray(this._user.remoteUsers)
+              ? this._user.remoteUsers
+              : [];
+            this._remoteUser = remotes.find((r) => r.userId === this.userId) || null;
+          },
+          _bindEvents() {
+            if (!this._user) return;
+            const onDisconnected = (event) => {
+              const detail = event.detail || {};
+              if (detail.userId !== this.userId) return;
+              this.online = false;
+              this.sessionIds.length = 0;
+              this._remoteUser = null;
+            };
+            const onConnected = (event) => {
+              const detail = event.detail || {};
+              if (detail.userId !== this.userId) return;
+              this._locateRemote();
+              this.refreshSessions();
+            };
+            const onRtt = (event) => {
+              const detail = event.detail || {};
+              if (detail.userId !== this.userId) return;
+              if (typeof detail.rtt === "number") {
+                this.rtt = Math.round(detail.rtt);
+                this.rttVia = detail.via || "";
+              }
+            };
+            this._unbindHandlers = [
+              this._user.bind("remote_user_disconnected", onDisconnected),
+              this._user.bind("remote_user_connected", onConnected),
+              this._user.bind("rtt_update", onRtt),
+            ];
+          },
+          _unbindEvents() {
+            if (!this._unbindHandlers) return;
+            this._unbindHandlers.forEach((off) => {
+              try {
+                off && off();
+              } catch (e) {}
+            });
+            this._unbindHandlers = null;
+          },
+          async refreshSessions() {
+            if (!this._user) return;
+            this.busy = true;
+            this.error = "";
+            try {
+              this.online = await this._user.isRemoteUserOnline(this.userId);
+              this._locateRemote();
+              let sessions = [];
+              if (this._remoteUser) {
+                try {
+                  sessions = await this._remoteUser.getSessionIds();
+                } catch (e) {
+                  sessions = [];
+                }
+              }
+              this.sessionIds.length = 0;
+              (sessions || []).forEach((sid) => this.sessionIds.push(sid));
+
+              // 更新缓存的 RTT
+              if (this._remoteUser) {
+                const best = this._remoteUser.getRTT();
+                if (best && typeof best.rtt === "number") {
+                  this.rtt = Math.round(best.rtt);
+                  this.rttVia = best.via || "";
+                }
+              }
+            } catch (err) {
+              console.error("[user-detail] refreshSessions 失败：", err);
+              this.error = "刷新会话失败：" + (err.message || err);
+            } finally {
+              this.busy = false;
+            }
+          },
+          async pingUser() {
+            if (!this._remoteUser || this.sessionIds.length === 0) return;
+            this.busy = true;
+            try {
+              const sid = this.sessionIds[0];
+              const rtt = await this._remoteUser.ping(sid);
+              if (typeof rtt === "number") {
+                this.rtt = Math.round(rtt);
+                const info = this._remoteUser.getRTT(sid);
+                this.rttVia = (info && info.via) || "";
+              }
+            } catch (err) {
+              console.error("[user-detail] ping 失败：", err);
+              this.error = "Ping 失败：" + (err.message || err);
+            } finally {
+              this.busy = false;
+            }
+          },
+          async disconnect() {
+            if (!this._user) return;
+            this.busy = true;
+            try {
+              await this._user.disconnectUser(this.userId);
+              this.online = false;
+              this.sessionIds.length = 0;
+              this._remoteUser = null;
+            } catch (err) {
+              console.error("[user-detail] disconnect 失败：", err);
+              this.error = "断开失败：" + (err.message || err);
+            } finally {
+              this.busy = false;
+            }
+          },
+          goBack() {
+            this.back();
+          },
+        },
+      };
+    };
+  </script>
+</template>

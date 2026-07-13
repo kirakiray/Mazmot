@@ -1,0 +1,402 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow: auto;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .card {
+      padding: 16px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container);
+      margin-bottom: 12px;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .icon-wrap {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 18px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      flex-shrink: 0;
+    }
+    .icon-wrap n-icon {
+      font-size: 40px;
+      width: 40px;
+      height: 40px;
+    }
+    .status-dot {
+      position: absolute;
+      right: -2px;
+      bottom: -2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-outline);
+      border: 3px solid var(--md-sys-color-surface);
+    }
+    .status-dot[data-connected="true"] {
+      background-color: #22c55e;
+    }
+    .status-dot[data-connected="false"] {
+      background-color: var(--md-sys-color-outline);
+    }
+    .info {
+      flex: 1;
+      min-width: 0;
+    }
+    .info h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      word-break: break-all;
+      color: var(--md-sys-color-on-surface);
+    }
+    .info .sub {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .row:last-child {
+      border-bottom: none;
+    }
+    .row .label {
+      min-width: 96px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .row .value {
+      flex: 1;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+      font-family: monospace;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background-color: var(--md-sys-color-surface-container-highest);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .badge.on {
+      background-color: rgba(34, 197, 94, 0.15);
+      color: #16a34a;
+    }
+    .badge.off {
+      background-color: var(--md-sys-color-surface-container-highest);
+    }
+    .latency-good { color: #16a34a; }
+    .latency-medium { color: #ca8a04; }
+    .latency-high { color: var(--md-sys-color-error); }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .error {
+      padding: 12px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="container">
+    <div class="header">
+      <p-button variant="text" icon size="s" on:click="goBack" title="返回">
+        <n-icon icon="mdi:arrow-left"></n-icon>
+      </p-button>
+      <h1>服务器详情</h1>
+    </div>
+
+    <o-if :value="error">
+      <div class="error">{{error}}</div>
+    </o-if>
+
+    <div class="card">
+      <div class="top">
+        <div class="icon-wrap">
+          <n-icon icon="mdi:server-network"></n-icon>
+          <span class="status-dot" attr:data-connected="connected"></span>
+        </div>
+        <div class="info">
+          <h2>{{url}}</h2>
+          <div class="sub">
+            <o-if :value="connected">
+              <span class="badge on">
+                <n-icon icon="mdi:check-circle-outline"></n-icon>
+                已连接
+              </span>
+            </o-if>
+            <o-if :value="!connected">
+              <span class="badge off">未连接</span>
+            </o-if>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label">连接状态</div>
+        <div class="value">{{connected ? "已连接" : "未连接"}}</div>
+      </div>
+      <div class="row">
+        <div class="label">服务器版本</div>
+        <div class="value">{{version || "-"}}</div>
+      </div>
+      <div class="row">
+        <div class="label">往返延迟 (RTT)</div>
+        <div class="value">
+          <o-if :value="rtt !== null">
+            <span
+              class:latency-good="latencyLevel === 'good'"
+              class:latency-medium="latencyLevel === 'medium'"
+              class:latency-high="latencyLevel === 'high'"
+            >
+              {{rtt}} ms
+            </span>
+          </o-if>
+          <o-if :value="rtt === null">-</o-if>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label">单向延迟</div>
+        <div class="value">
+          {{oneWayLatency !== null ? oneWayLatency + " ms" : "-"}}
+        </div>
+      </div>
+
+      <div class="actions">
+        <p-button
+          color="primary"
+          size="s"
+          on:click="testLatency"
+          attr:disabled="testing || !connected"
+        >
+          <n-icon icon="mdi:speedometer" slot="prefix"></n-icon>
+          测试延迟
+        </p-button>
+        <o-if :value="!connected">
+          <p-button
+            color="primary"
+            size="s"
+            variant="outlined"
+            on:click="connectServer"
+            attr:disabled="testing"
+          >
+            <n-icon icon="mdi:lan-connect" slot="prefix"></n-icon>
+            连接
+          </p-button>
+        </o-if>
+        <o-if :value="connected">
+          <p-button
+            color="error"
+            size="s"
+            variant="outlined"
+            on:click="disconnectServer"
+          >
+            <n-icon icon="mdi:lan-disconnect" slot="prefix"></n-icon>
+            断开
+          </p-button>
+        </o-if>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import { getUser } from "/nos/user/main.js";
+
+    const NAMESPACE = "mazmot";
+
+    function getLatencyLevel(rtt) {
+      if (rtt === null || rtt === undefined) return null;
+      if (rtt < 100) return "good";
+      if (rtt < 300) return "medium";
+      return "high";
+    }
+
+    export default async ({ query }) => {
+      const url = query.url || "";
+      return {
+        data: {
+          url,
+          error: "",
+          connected: false,
+          version: "",
+          rtt: null,
+          oneWayLatency: null,
+          latencyLevel: null,
+          testing: false,
+        },
+        async ready() {
+          if (!this.url) {
+            this.error = "缺少 url 参数";
+            return;
+          }
+          try {
+            this._user = await getUser(NAMESPACE);
+          } catch (err) {
+            this.error = "初始化用户失败：" + (err.message || err);
+            return;
+          }
+          this._bindEvents();
+          this._refreshStatus();
+          if (this.connected) {
+            this.testLatency();
+          }
+        },
+        detached() {
+          this._unbindEvents();
+        },
+        proto: {
+          _bindEvents() {
+            if (!this._user) return;
+            const onConnected = (event) => {
+              const detail = event.detail || {};
+              if (detail.url !== this.url) return;
+              this.connected = true;
+              this.version = detail.version || "";
+            };
+            const onDisconnected = (event) => {
+              const detail = event.detail || {};
+              if (detail.url !== this.url) return;
+              this.connected = false;
+              this.version = "";
+              this.rtt = null;
+              this.oneWayLatency = null;
+              this.latencyLevel = null;
+            };
+            const onLatency = (event) => {
+              const detail = event.detail || {};
+              if (detail.url !== this.url) return;
+              this._applyLatency(detail.rtt, detail.oneWayLatency);
+            };
+            this._unbindHandlers = [
+              this._user.bind("server_connected", onConnected),
+              this._user.bind("server_disconnected", onDisconnected),
+              this._user.bind("latency_test", onLatency),
+            ];
+          },
+          _unbindEvents() {
+            if (!this._unbindHandlers) return;
+            this._unbindHandlers.forEach((off) => {
+              try {
+                off && off();
+              } catch (e) {}
+            });
+            this._unbindHandlers = null;
+          },
+          _refreshStatus() {
+            if (!this._user) return;
+            const connected = Array.isArray(this._user.server.connectedUrls)
+              ? this._user.server.connectedUrls
+              : [];
+            this.connected = connected.includes(this.url);
+          },
+          _applyLatency(rtt, oneWayLatency) {
+            this.rtt = typeof rtt === "number" ? Math.round(rtt) : null;
+            this.oneWayLatency =
+              typeof oneWayLatency === "number"
+                ? Math.round(oneWayLatency)
+                : null;
+            this.latencyLevel = getLatencyLevel(this.rtt);
+          },
+          async testLatency() {
+            if (!this._user || !this.connected) return;
+            this.testing = true;
+            try {
+              const result = await this._user.server.testLatency(this.url);
+              this._applyLatency(result.rtt, result.oneWayLatency);
+            } catch (err) {
+              console.error("[server-detail] testLatency 失败：", err);
+              this.error = "延迟测试失败：" + (err.message || err);
+            } finally {
+              this.testing = false;
+            }
+          },
+          async connectServer() {
+            if (!this._user) return;
+            this.testing = true;
+            this.error = "";
+            try {
+              const result = await this._user.server.connect(this.url);
+              this.connected = !!result.success;
+              this.version = result.version || "";
+              if (this.connected) {
+                await this.testLatency();
+              }
+            } catch (err) {
+              console.error("[server-detail] connect 失败：", err);
+              this.error = "连接失败：" + (err.message || err);
+            } finally {
+              this.testing = false;
+            }
+          },
+          async disconnectServer() {
+            if (!this._user) return;
+            try {
+              this._user.server.disconnect(this.url);
+              this.connected = false;
+              this.version = "";
+              this.rtt = null;
+              this.oneWayLatency = null;
+              this.latencyLevel = null;
+            } catch (err) {
+              console.error("[server-detail] disconnect 失败：", err);
+              this.error = "断开失败：" + (err.message || err);
+            }
+          },
+          goBack() {
+            this.back();
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -45,10 +45,17 @@ Mazmot/
 │   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   │       └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   │
-│   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
-│       ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
-│       ├── app-config.js     # ofa.js 应用配置
-│       └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
+│   ├── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
+│   │   ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
+│   │   ├── app-config.js     # ofa.js 应用配置
+│   │   └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
+│   │
+│   └── connection-status/    # 连接状态查看应用，URL = /apps/connection-status/
+│       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
+│       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
+│       ├── home.html         # 首页：上部服务器网格 + 下部已连接 RemoteUser 网格，点击跳转详情
+│       ├── server-detail.html # 服务器详情：连接状态 / 版本 / 延迟 / 连接·断开·测试延迟
+│       └── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │
 ├── scripts/
 │   ├── static.js             # 启动 http-server：Main(30031)
@@ -262,3 +269,4 @@ Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/install-app/app-config.js](apps/install-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
+| 连接状态应用（服务器/用户网格 + 详情页） | [apps/connection-status/](apps/connection-status/) |
