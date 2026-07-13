@@ -50,7 +50,7 @@ Mazmot/
 │   │   ├── app-config.js     # ofa.js 应用配置
 │   │   └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
 │   │
-│   └── connection-status/    # 连接状态查看应用，URL = /apps/connection-status/
+│   └── network/              # 网络应用（服务器/用户连接状态与后续网络配置），URL = /apps/network/
 │       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
 │       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
 │       ├── home.html         # 首页：上部服务器网格 + 下部已连接 RemoteUser 网格，点击跳转详情
@@ -269,4 +269,4 @@ Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/install-app/app-config.js](apps/install-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
-| 连接状态应用（服务器/用户网格 + 详情页） | [apps/connection-status/](apps/connection-status/) |
+| 连接状态应用（服务器/用户网格 + 详情页） | [apps/network/](apps/network/) |
