@@ -1,0 +1,532 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow: auto;
+      container-type: inline-size;
+      container-name: net;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      padding: 14px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .summary-card .label {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .summary-card .value {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      font-family: monospace;
+    }
+    .summary-card .sub {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 4px;
+      font-family: monospace;
+    }
+
+    .section {
+      margin-bottom: 24px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .section-header .count {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      background-color: var(--md-sys-color-surface-container-highest);
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
+    .card {
+      padding: 14px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container);
+      margin-bottom: 12px;
+    }
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .icon-wrap {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      flex-shrink: 0;
+    }
+    .icon-wrap.user {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .icon-wrap n-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    .status-dot {
+      position: absolute;
+      right: -2px;
+      bottom: -2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-outline);
+      border: 2px solid var(--md-sys-color-surface);
+    }
+    .status-dot.on {
+      background-color: #22c55e;
+    }
+    .card-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .card-sub {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .metric {
+      padding: 10px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface-container-highest);
+    }
+    .metric .k {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 4px;
+    }
+    .metric .v {
+      font-size: 14px;
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .empty {
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+      opacity: 0.8;
+      border: 1px dashed var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+    }
+    .error {
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      font-size: 13px;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 16px;
+      opacity: 0.85;
+    }
+
+    @container net (max-width: 480px) {
+      .container {
+        padding: 12px;
+      }
+      .header h1 {
+        font-size: 17px;
+      }
+      .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .summary-card {
+        padding: 12px;
+        border-radius: 14px;
+      }
+      .summary-card .value {
+        font-size: 15px;
+      }
+      .card {
+        padding: 12px;
+        border-radius: 14px;
+      }
+      .metrics {
+        gap: 8px;
+      }
+      .metric {
+        padding: 8px;
+      }
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="container">
+    <div class="header">
+      <p-button variant="text" icon size="s" on:click="goBack" title="返回">
+        <n-icon icon="mdi:arrow-left"></n-icon>
+      </p-button>
+      <h1>流量监控</h1>
+      <p-button
+        variant="text"
+        icon
+        size="s"
+        on:click="refreshAll"
+        title="刷新列表"
+      >
+        <n-icon icon="mdi:refresh"></n-icon>
+      </p-button>
+    </div>
+
+    <o-if :value="error">
+      <div class="error">{{error}}</div>
+    </o-if>
+
+    <div class="hint">
+      数据来自 noneos-core 内置流量记录器，按消息元数据持久化存储，刷新页面不会清零。
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="label">服务器连接</div>
+        <div class="value">{{serverList.length}}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">已缓存用户</div>
+        <div class="value">{{userList.length}}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">WS 总流量</div>
+        <div class="value">{{formatBytes(totals.wsTotal)}}</div>
+        <div class="sub">↑ {{formatBytes(totals.wsSent)}} / ↓ {{formatBytes(totals.wsReceived)}}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">RTC 总流量</div>
+        <div class="value">{{formatBytes(totals.rtcTotal)}}</div>
+        <div class="sub">↑ {{formatBytes(totals.rtcSent)}} / ↓ {{formatBytes(totals.rtcReceived)}}</div>
+      </div>
+    </div>
+
+    <!-- 服务器流量 -->
+    <div class="section">
+      <div class="section-header">
+        <h2>服务器流量</h2>
+        <span class="count">{{serverList.length}}</span>
+      </div>
+      <o-if :value="serverList.length === 0">
+        <div class="empty">暂无服务器</div>
+      </o-if>
+      <o-if :value="serverList.length > 0">
+        <o-fill :value="serverList">
+          <div class="card">
+            <div class="card-top">
+              <div class="icon-wrap">
+                <n-icon icon="mdi:server-network"></n-icon>
+                <span class="status-dot" class:on="$data.connected"></span>
+              </div>
+              <div class="card-info">
+                <div class="card-title">{{$data.url}}</div>
+                <div class="card-sub">{{$data.statusText}}</div>
+              </div>
+            </div>
+            <div class="metrics">
+              <div class="metric">
+                <div class="k">发送</div>
+                <div class="v">{{$data.sentText}}</div>
+              </div>
+              <div class="metric">
+                <div class="k">接收</div>
+                <div class="v">{{$data.receivedText}}</div>
+              </div>
+            </div>
+          </div>
+        </o-fill>
+      </o-if>
+    </div>
+
+    <!-- 用户流量 -->
+    <div class="section">
+      <div class="section-header">
+        <h2>用户流量</h2>
+        <span class="count">{{userList.length}}</span>
+      </div>
+      <o-if :value="userList.length === 0">
+        <div class="empty">暂无已缓存的远程用户</div>
+      </o-if>
+      <o-if :value="userList.length > 0">
+        <o-fill :value="userList">
+          <div class="card">
+            <div class="card-top">
+              <div class="icon-wrap user">
+                <n-icon icon="mdi:account-circle"></n-icon>
+                <span class="status-dot" class:on="$data.online"></span>
+              </div>
+              <div class="card-info">
+                <div class="card-title">{{$data.displayName}}</div>
+                <div class="card-sub">
+                  {{$data.statusText}}
+                  <o-if :value="$data.online && $data.rtt !== null">
+                    · {{$data.rtt}} ms
+                    <o-if :value="$data.via">({{$data.via}})</o-if>
+                  </o-if>
+                </div>
+              </div>
+            </div>
+            <div class="metrics">
+              <div class="metric">
+                <div class="k">RTC 发送</div>
+                <div class="v">{{$data.rtcSentText}}</div>
+              </div>
+              <div class="metric">
+                <div class="k">RTC 接收</div>
+                <div class="v">{{$data.rtcReceivedText}}</div>
+              </div>
+            </div>
+          </div>
+        </o-fill>
+      </o-if>
+    </div>
+  </div>
+
+  <script>
+    import { getUser } from "/nos/user/main.js";
+
+    const NAMESPACE = "mazmot";
+
+    function shortId(userId) {
+      if (!userId) return "";
+      return userId.length > 12 ? userId.slice(0, 8) + "…" : userId;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0 || !bytes) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      const value = bytes / Math.pow(1024, i);
+      return `${value.toFixed(i === 0 ? 0 : 2)} ${units[Math.min(i, units.length - 1)]}`;
+    }
+
+    export default async () => {
+      return {
+        data: {
+          error: "",
+          serverList: [],
+          userList: [],
+          totals: {
+            wsSent: 0,
+            wsReceived: 0,
+            wsTotal: 0,
+            rtcSent: 0,
+            rtcReceived: 0,
+            rtcTotal: 0,
+          },
+        },
+        async ready() {
+          try {
+            this._user = await getUser(NAMESPACE);
+          } catch (err) {
+            this.error = "初始化用户失败：" + (err.message || err);
+            return;
+          }
+          await this.refreshAll();
+          this._intervalId = setInterval(() => this.tick(), 1000);
+        },
+        detached() {
+          if (this._intervalId) {
+            clearInterval(this._intervalId);
+            this._intervalId = null;
+          }
+        },
+        proto: {
+          async refreshAll() {
+            await Promise.all([this.refreshServers(), this.refreshUsers()]);
+            await this.refreshTraffic();
+          },
+          async refreshServers() {
+            if (!this._user) return;
+            const urls = await this._user.server.getServers();
+            const connected = new Set(
+              Array.isArray(this._user.server.connectedUrls)
+                ? this._user.server.connectedUrls
+                : [],
+            );
+            const list = urls.map((url) => ({
+              url,
+              connected: connected.has(url),
+              statusText: connected.has(url) ? "已连接" : "未连接",
+              sent: 0,
+              received: 0,
+              sentText: "0 B",
+              receivedText: "0 B",
+            }));
+            this.serverList.length = 0;
+            list.forEach((item) => this.serverList.push(item));
+          },
+          async refreshUsers() {
+            if (!this._user) return;
+            const remotes = Array.isArray(this._user.remoteUsers)
+              ? this._user.remoteUsers
+              : [];
+            const list = await Promise.all(
+              remotes.map(async (ru) => {
+                let online = false;
+                let rtt = null;
+                let via = "";
+                try {
+                  online = await this._user.isRemoteUserOnline(ru.userId);
+                } catch {
+                  online = false;
+                }
+                try {
+                  const best = ru.getRTT();
+                  if (best && typeof best.rtt === "number") {
+                    rtt = Math.round(best.rtt);
+                    via = best.via || "";
+                  }
+                } catch {
+                  // ignore
+                }
+                return {
+                  userId: ru.userId,
+                  displayName: shortId(ru.userId),
+                  online,
+                  statusText: online ? "在线" : "离线",
+                  rtt,
+                  via,
+                  rtcSent: 0,
+                  rtcReceived: 0,
+                  rtcSentText: "0 B",
+                  rtcReceivedText: "0 B",
+                };
+              }),
+            );
+            this.userList.length = 0;
+            list.forEach((item) => this.userList.push(item));
+          },
+          async refreshTraffic() {
+            if (!this._user || !this._user.traffic) return;
+            try {
+              const total = await this._user.traffic.getTotalStats();
+              this.totals.wsSent = 0;
+              this.totals.wsReceived = 0;
+              this.totals.rtcSent = 0;
+              this.totals.rtcReceived = 0;
+
+              const viaTotals = await this._user.traffic.summary({
+                groupBy: ["via"],
+              });
+              (viaTotals || []).forEach((row) => {
+                if (row.via === "server") {
+                  this.totals.wsSent = row.bytesOut || 0;
+                  this.totals.wsReceived = row.bytesIn || 0;
+                } else if (row.via === "rtc") {
+                  this.totals.rtcSent = row.bytesOut || 0;
+                  this.totals.rtcReceived = row.bytesIn || 0;
+                }
+              });
+              this.totals.wsTotal = this.totals.wsSent + this.totals.wsReceived;
+              this.totals.rtcTotal =
+                this.totals.rtcSent + this.totals.rtcReceived;
+
+              const serverTotals = await this._user.traffic.getServerTotals();
+              const serverMap = new Map(
+                (serverTotals || []).map((t) => [t.serverUrl, t]),
+              );
+              this.serverList.forEach((item) => {
+                const t = serverMap.get(item.url);
+                if (t) {
+                  item.sent = t.bytesOut || 0;
+                  item.received = t.bytesIn || 0;
+                  item.sentText = formatBytes(item.sent);
+                  item.receivedText = formatBytes(item.received);
+                }
+              });
+
+              const peerTotals = await this._user.traffic.getPeerTotals();
+              const peerMap = new Map(
+                (peerTotals || []).map((t) => [t.peerUserId, t]),
+              );
+              this.userList.forEach((item) => {
+                const t = peerMap.get(item.userId);
+                if (t) {
+                  item.rtcSent = t.bytesOut || 0;
+                  item.rtcReceived = t.bytesIn || 0;
+                  item.rtcSentText = formatBytes(item.rtcSent);
+                  item.rtcReceivedText = formatBytes(item.rtcReceived);
+                }
+              });
+            } catch (err) {
+              console.error("[traffic] 刷新流量统计失败：", err);
+            }
+          },
+          async tick() {
+            await this.refreshTraffic();
+          },
+          formatBytes,
+          goBack() {
+            this.back();
+          },
+        },
+      };
+    };
+  </script>
+</template>

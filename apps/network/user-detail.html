@@ -82,6 +82,19 @@
       .via {
         margin-left: 0;
       }
+      .metrics {
+        gap: 8px;
+      }
+      .metric {
+        padding: 8px;
+      }
+      .session-traffic-item {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .session-traffic-item .sid {
+        flex-basis: 100%;
+      }
     }
     .card {
       padding: 16px;
@@ -214,6 +227,83 @@
       font-size: 11px;
       margin-left: 6px;
     }
+    .traffic-section {
+      margin-top: 16px;
+    }
+    .traffic-section h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .metric {
+      padding: 10px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface-container-highest);
+    }
+    .metric .k {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 4px;
+    }
+    .metric .v {
+      font-size: 14px;
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+    }
+    .session-traffic-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .session-traffic-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background-color: var(--md-sys-color-surface-container-highest);
+      font-size: 12px;
+    }
+    .session-traffic-item .sid {
+      flex: 1;
+      min-width: 0;
+      font-family: monospace;
+      word-break: break-all;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .session-traffic-item .up,
+    .session-traffic-item .down {
+      font-family: monospace;
+      white-space: nowrap;
+    }
+    .session-traffic-item .up {
+      color: var(--md-sys-color-primary);
+    }
+    .session-traffic-item .down {
+      color: var(--md-sys-color-tertiary);
+    }
+    .session-traffic-item .time {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: nowrap;
+    }
+    .session-traffic-item .meta {
+      display: flex;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .session-traffic-item .meta span {
+      padding: 1px 6px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-surface-container);
+    }
   </style>
 
   <link
@@ -322,6 +412,37 @@
           断开连接
         </p-button>
       </div>
+
+      <div class="traffic-section">
+        <h3>流量统计</h3>
+        <div class="metrics">
+          <div class="metric">
+            <div class="k">RTC 发送</div>
+            <div class="v">{{rtcSentText}}</div>
+          </div>
+          <div class="metric">
+            <div class="k">RTC 接收</div>
+            <div class="v">{{rtcReceivedText}}</div>
+          </div>
+        </div>
+
+        <o-if :value="sessionTraffic.length > 0">
+          <div class="session-traffic-list">
+            <o-fill :value="sessionTraffic">
+              <div class="session-traffic-item">
+                <span class="time">{{$data.timeText}}</span>
+                <span class="sid">{{$data.sid}}</span>
+                <span class="up">↑ {{$data.sentText}}</span>
+                <span class="down">↓ {{$data.receivedText}}</span>
+                <span class="meta">
+                  <span>{{$data.via}}</span>
+                  <span>{{$data.category}}</span>
+                </span>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+      </div>
     </div>
   </div>
 
@@ -333,6 +454,14 @@
     function shortId(userId) {
       if (!userId) return "";
       return userId.length > 12 ? userId.slice(0, 8) + "…" : userId;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0 || !bytes) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      const value = bytes / Math.pow(1024, i);
+      return `${value.toFixed(i === 0 ? 0 : 2)} ${units[Math.min(i, units.length - 1)]}`;
     }
 
     export default async ({ query }) => {
@@ -347,6 +476,11 @@
           rtt: null,
           rttVia: "",
           busy: false,
+          rtcSent: 0,
+          rtcReceived: 0,
+          rtcSentText: "0 B",
+          rtcReceivedText: "0 B",
+          sessionTraffic: [],
         },
         async ready() {
           if (!this.userId) {
@@ -362,9 +496,15 @@
           this._locateRemote();
           this._bindEvents();
           await this.refreshSessions();
+          await this.updateTraffic();
+          this._intervalId = setInterval(() => this.tick(), 1000);
         },
         detached() {
           this._unbindEvents();
+          if (this._intervalId) {
+            clearInterval(this._intervalId);
+            this._intervalId = null;
+          }
         },
         proto: {
           _locateRemote() {
@@ -475,6 +615,48 @@
               this.error = "断开失败：" + (err.message || err);
             } finally {
               this.busy = false;
+            }
+          },
+          async tick() {
+            await this.updateTraffic();
+          },
+          async updateTraffic() {
+            if (!this._user || !this._user.traffic) return;
+            try {
+              const peerTotals = await this._user.traffic.getPeerTotals();
+              const mine = peerTotals.find(
+                (t) => t.peerUserId === this.userId,
+              ) || { bytesOut: 0, bytesIn: 0 };
+              this.rtcSent = mine.bytesOut || 0;
+              this.rtcReceived = mine.bytesIn || 0;
+              this.rtcSentText = formatBytes(this.rtcSent);
+              this.rtcReceivedText = formatBytes(this.rtcReceived);
+            } catch (err) {
+              // ignore
+            }
+
+            try {
+              const rows = await this._user.traffic.query({
+                peerUserId: this.userId,
+                limit: 20,
+                order: "desc",
+              });
+              const list = (rows || []).map((row) => ({
+                sid: row.sessionId || "-",
+                sent: row.direction === "out" ? row.size : 0,
+                received: row.direction === "in" ? row.size : 0,
+                sentText:
+                  row.direction === "out" ? formatBytes(row.size) : "-",
+                receivedText:
+                  row.direction === "in" ? formatBytes(row.size) : "-",
+                via: row.via || "-",
+                category: row.category || "-",
+                timeText: new Date(row.ts).toLocaleTimeString(),
+              }));
+              this.sessionTraffic.length = 0;
+              list.forEach((item) => this.sessionTraffic.push(item));
+            } catch (err) {
+              // ignore
             }
           },
           goBack() {
