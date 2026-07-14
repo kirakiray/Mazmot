@@ -290,6 +290,10 @@
       </div>
       <div class="me-body">
         <div class="me-row">
+          <span class="k">用户名</span>
+          <span class="v" attr:title="username">{{username || "-"}}</span>
+        </div>
+        <div class="me-row">
           <span class="k">当前 UserId</span>
           <span class="v" attr:title="userId">{{userId || "-"}}</span>
         </div>
@@ -413,6 +417,7 @@
           error: "",
           userId: "",
           sessionId: "",
+          username: "",
           serverList: [],
           userList: [],
         },
@@ -421,6 +426,12 @@
             this._user = await getUser(NAMESPACE);
             this.userId = this._user.userId || "";
             this.sessionId = this._user.sessionId || "";
+            try {
+              const info = await this._user.getInfo();
+              this.username = info.username || "";
+            } catch (e) {
+              this.username = "";
+            }
           } catch (err) {
             this.error = "初始化用户失败：" + (err.message || String(err));
             console.error("[network] 初始化用户失败：", err);
@@ -488,15 +499,18 @@
                 : [];
               const list = await Promise.all(
                 remotes.map(async (ru) => {
-                  let online = false;
-                  // try {
-                  //   online = await this._user.isRemoteUserOnline(ru.userId);
-                  // } catch (e) {
-                  //   online = false;
-                  // }
+                  let displayName = shortId(ru.userId);
+                  try {
+                    const card = await this._user.card.get(ru.userId);
+                    if (card && card.username) {
+                      displayName = card.username;
+                    }
+                  } catch {
+                    // ignore
+                  }
                   return {
                     userId: ru.userId,
-                    displayName: shortId(ru.userId),
+                    displayName,
                     online: true,
                   };
                 }),

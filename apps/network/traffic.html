@@ -273,7 +273,7 @@
         <span class="count">{{serverList.length}}</span>
       </div>
       <o-if :value="serverList.length === 0">
-        <div class="empty">暂无服务器</div>
+        <div class="empty">暂无服务器流量记录</div>
       </o-if>
       <o-if :value="serverList.length > 0">
         <o-fill :value="serverList">
@@ -310,7 +310,7 @@
         <span class="count">{{userList.length}}</span>
       </div>
       <o-if :value="userList.length === 0">
-        <div class="empty">暂无已缓存的远程用户</div>
+        <div class="empty">暂无用户流量记录</div>
       </o-if>
       <o-if :value="userList.length > 0">
         <o-fill :value="userList">
@@ -333,11 +333,11 @@
             </div>
             <div class="metrics">
               <div class="metric">
-                <div class="k">RTC 发送</div>
+                <div class="k">发送</div>
                 <div class="v">{{$data.rtcSentText}}</div>
               </div>
               <div class="metric">
-                <div class="k">RTC 接收</div>
+                <div class="k">接收</div>
                 <div class="v">{{$data.rtcReceivedText}}</div>
               </div>
             </div>
@@ -409,15 +409,39 @@
                 ? this._user.server.connectedUrls
                 : [],
             );
-            const list = urls.map((url) => ({
-              url,
-              connected: connected.has(url),
-              statusText: connected.has(url) ? "已连接" : "未连接",
-              sent: 0,
-              received: 0,
-              sentText: "0 B",
-              receivedText: "0 B",
-            }));
+
+            let serverTotals = [];
+            if (this._user.traffic) {
+              try {
+                serverTotals = await this._user.traffic.getServerTotals();
+              } catch (e) {
+                // ignore
+              }
+            }
+            const trafficUrls = new Set(
+              (serverTotals || []).map((t) => t.serverUrl),
+            );
+            const allUrls = Array.from(new Set([...urls, ...trafficUrls]));
+
+            const totalsMap = new Map(
+              (serverTotals || []).map((t) => [t.serverUrl, t]),
+            );
+            const list = allUrls.map((url) => {
+              const t = totalsMap.get(url) || {
+                bytesOut: 0,
+                bytesIn: 0,
+              };
+              const isConnected = connected.has(url);
+              return {
+                url,
+                connected: isConnected,
+                statusText: isConnected ? "已连接" : "未连接",
+                sent: t.bytesOut || 0,
+                received: t.bytesIn || 0,
+                sentText: formatBytes(t.bytesOut || 0),
+                receivedText: formatBytes(t.bytesIn || 0),
+              };
+            });
             this.serverList.length = 0;
             list.forEach((item) => this.serverList.push(item));
           },
@@ -426,39 +450,63 @@
             const remotes = Array.isArray(this._user.remoteUsers)
               ? this._user.remoteUsers
               : [];
+            const remoteMap = new Map(remotes.map((ru) => [ru.userId, ru]));
+
+            let peerTotals = [];
+            if (this._user.traffic) {
+              try {
+                peerTotals = await this._user.traffic.getPeerTotals();
+              } catch (e) {
+                // ignore
+              }
+            }
+
             const list = await Promise.all(
-              remotes.map(async (ru) => {
+              (peerTotals || []).map(async (t) => {
+                const ru = remoteMap.get(t.peerUserId);
                 let online = false;
                 let rtt = null;
                 let via = "";
-                try {
-                  online = await this._user.isRemoteUserOnline(ru.userId);
-                } catch {
-                  online = false;
+                if (ru) {
+                  try {
+                    online = await this._user.isRemoteUserOnline(ru.userId);
+                  } catch {
+                    online = false;
+                  }
+                  try {
+                    const best = ru.getRTT();
+                    if (best && typeof best.rtt === "number") {
+                      rtt = Math.round(best.rtt);
+                      via = best.via || "";
+                    }
+                  } catch {
+                    // ignore
+                  }
                 }
+                let displayName = shortId(t.peerUserId);
                 try {
-                  const best = ru.getRTT();
-                  if (best && typeof best.rtt === "number") {
-                    rtt = Math.round(best.rtt);
-                    via = best.via || "";
+                  const card = await this._user.card.get(t.peerUserId);
+                  if (card && card.username) {
+                    displayName = card.username;
                   }
                 } catch {
                   // ignore
                 }
                 return {
-                  userId: ru.userId,
-                  displayName: shortId(ru.userId),
+                  userId: t.peerUserId,
+                  displayName,
                   online,
                   statusText: online ? "在线" : "离线",
                   rtt,
                   via,
-                  rtcSent: 0,
-                  rtcReceived: 0,
-                  rtcSentText: "0 B",
-                  rtcReceivedText: "0 B",
+                  rtcSent: t.bytesOut || 0,
+                  rtcReceived: t.bytesIn || 0,
+                  rtcSentText: formatBytes(t.bytesOut || 0),
+                  rtcReceivedText: formatBytes(t.bytesIn || 0),
                 };
               }),
             );
+            debugger
             this.userList.length = 0;
             list.forEach((item) => this.userList.push(item));
           },
