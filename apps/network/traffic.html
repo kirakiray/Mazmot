@@ -242,7 +242,8 @@
     </o-if>
 
     <div class="hint">
-      数据来自 noneos-core 内置流量记录器，按消息元数据持久化存储，刷新页面不会清零。
+      数据来自 noneos-core
+      内置流量记录器，按消息元数据持久化存储，刷新页面不会清零。
     </div>
 
     <div class="summary-grid">
@@ -257,12 +258,18 @@
       <div class="summary-card">
         <div class="label">WS 总流量</div>
         <div class="value">{{formatBytes(totals.wsTotal)}}</div>
-        <div class="sub">↑ {{formatBytes(totals.wsSent)}} / ↓ {{formatBytes(totals.wsReceived)}}</div>
+        <div class="sub">
+          ↑ {{formatBytes(totals.wsSent)}} / ↓
+          {{formatBytes(totals.wsReceived)}}
+        </div>
       </div>
       <div class="summary-card">
         <div class="label">RTC 总流量</div>
         <div class="value">{{formatBytes(totals.rtcTotal)}}</div>
-        <div class="sub">↑ {{formatBytes(totals.rtcSent)}} / ↓ {{formatBytes(totals.rtcReceived)}}</div>
+        <div class="sub">
+          ↑ {{formatBytes(totals.rtcSent)}} / ↓
+          {{formatBytes(totals.rtcReceived)}}
+        </div>
       </div>
     </div>
 
@@ -458,6 +465,7 @@
                 peerTotals = await this._user.traffic.getPeerTotals();
               } catch (e) {
                 // ignore
+                console.warn(e);
               }
             }
 
@@ -485,11 +493,14 @@
                 }
                 let displayName = shortId(t.peerUserId);
                 try {
-                  const card = await this._user.card.get(t.peerUserId);
-                  if (card && card.username) {
-                    displayName = card.username;
+                  if (t.key) {
+                    const card = await this._user.card.get(t.key.peerUserId);
+                    if (card && card.username) {
+                      displayName = card.username;
+                    }
                   }
-                } catch {
+                } catch (e) {
+                  console.warn(e);
                   // ignore
                 }
                 return {
@@ -506,7 +517,6 @@
                 };
               }),
             );
-            debugger
             this.userList.length = 0;
             list.forEach((item) => this.userList.push(item));
           },
