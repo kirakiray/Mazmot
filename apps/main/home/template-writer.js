@@ -1,14 +1,15 @@
 // ofa.js 应用模板加载与写入
 // 模板文件位于同目录下的 `templates/<id>/`，通过各模板下的 `__files.json`
-// 描述文件清单。模板源文件以 `.tpl` 结尾（避免 IDE 对占位符做 lint 校验），
-// 写入时会去除 `.tpl` 后缀，并把占位符替换为实际的应用信息。
+// 描述文件清单。模板源文件使用符合自身文件格式的正常字符串作为默认值，
+// 可直接通过静态服务器运行调试；写入时根据 `__files.json` 中的 replacements
+// 清单，把指定字符串替换为实际的应用信息。
 //
-// 支持的占位符：
-//   {{APP_NAME}}       - 应用名（原样）
-//   {{APP_DESC}}       - 应用描述（原样）
-//   {{APP_DESC_HTML}}  - 应用描述（HTML 转义）
-//   {{APP_DESC_JSON}}  - 应用描述（不带外层引号的 JSON 字符串片段，可安全嵌入 "..." 中）
-//   {{CREATED_AT}}     - 创建时间（毫秒时间戳）
+// __files.json 中 replacements 的 `to` 支持以下模板变量：
+//   APP_NAME       - 应用名（原样）
+//   APP_DESC       - 应用描述（原样）
+//   APP_DESC_HTML  - 应用描述（HTML 转义）
+//   APP_DESC_JSON  - 应用描述（不带外层引号的 JSON 字符串片段，可安全嵌入 "..." 中）
+//   CREATED_AT     - 创建时间（毫秒时间戳）
 
 const TEMPLATES_ROOT = new URL("./templates/", import.meta.url);
 
@@ -42,13 +43,29 @@ function toJsonFragment(str) {
   return s.slice(1, -1);
 }
 
-function applyPlaceholders(content, ctx) {
-  return content
-    .replace(/\{\{APP_NAME\}\}/g, ctx.name)
-    .replace(/\{\{APP_DESC_HTML\}\}/g, escapeHtml(ctx.desc))
-    .replace(/\{\{APP_DESC_JSON\}\}/g, toJsonFragment(ctx.desc))
-    .replace(/\{\{APP_DESC\}\}/g, ctx.desc)
-    .replace(/\{\{CREATED_AT\}\}/g, String(ctx.createdAt));
+function resolveVar(name, ctx) {
+  switch (name) {
+    case "APP_NAME":
+      return ctx.name;
+    case "APP_DESC":
+      return ctx.desc;
+    case "APP_DESC_HTML":
+      return escapeHtml(ctx.desc);
+    case "APP_DESC_JSON":
+      return toJsonFragment(ctx.desc);
+    case "CREATED_AT":
+      return String(ctx.createdAt);
+    default:
+      throw new Error(`未知的模板变量：${name}`);
+  }
+}
+
+function applyReplacements(content, replacements, ctx) {
+  for (const { from, to } of replacements) {
+    const value = resolveVar(to, ctx);
+    content = content.split(from).join(value);
+  }
+  return content;
 }
 
 /**
@@ -66,7 +83,7 @@ export async function buildTemplateFiles({ name, desc, templateId = "base" }) {
     throw new Error(`加载模板 ${templateId} 失败：${filesRes.status}`);
   }
   const filesJson = await filesRes.json();
-  const paths = Array.isArray(filesJson.files) ? filesJson.files : [];
+  const fileEntries = Array.isArray(filesJson.files) ? filesJson.files : [];
 
   const ctx = {
     name: String(name || ""),
@@ -75,18 +92,21 @@ export async function buildTemplateFiles({ name, desc, templateId = "base" }) {
   };
 
   const files = [];
-  for (const relPath of paths) {
+  for (const entry of fileEntries) {
+    const relPath = typeof entry === "string" ? entry : entry.path;
+    const replacements =
+      typeof entry === "object" && Array.isArray(entry.replacements)
+        ? entry.replacements
+        : [];
+
     const res = await fetch(new URL(relPath, templateRoot));
     if (!res.ok) {
       throw new Error(`读取模板文件 ${relPath} 失败：${res.status}`);
     }
     const raw = await res.text();
-    const outPath = relPath.endsWith(".tpl")
-      ? relPath.slice(0, -4)
-      : relPath;
     files.push({
-      path: outPath,
-      content: applyPlaceholders(raw, ctx),
+      path: relPath,
+      content: applyReplacements(raw, replacements, ctx),
     });
   }
   return files;
