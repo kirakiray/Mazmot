@@ -15,7 +15,7 @@
         tag: "user-name",
         attrs: {
           userId: "",
-          force: false,
+          force: null,
         },
         data: {
           displayName: "",
@@ -32,7 +32,7 @@
         },
         proto: {
           _load() {
-            if (this.force) {
+            if (this.attr("force") !== null) {
               return this._forceLoadUserName();
             }
             return this._loadUserName();
@@ -71,8 +71,10 @@
               try {
                 await user.connectUser(uid);
               } catch {
-                // 对方不在线，沿用缓存名片
+                // 对方不在线
               }
+              // 清除缓存后重新获取（连接成功则拿到最新名片）
+              await user.card.delete(uid);
               const card = await user.card.get(uid);
               if (card && card.username) {
                 this.displayName = card.username;
