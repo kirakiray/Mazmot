@@ -74,28 +74,39 @@
       </template>
     </sb-test>
 
-    <!-- ============ 查询用户后显示对应用户 ID ============ -->
-    <sb-test name="查询用户后显示对应用户 ID">
+    <!-- ============ 创建独立测试用户，修改名称后用 user-name 显示 ============ -->
+    <sb-test name="创建测试用户修改名称后用 user-name 显示">
       <template>
         <script type="module">
           {
             const { getUser } = await import("/nos/user/main.js");
-            const user = await getUser("mazmot");
-            const targetUserId = user.userId;
+
+            // 创建独立测试用户（不使用 default 命名空间）
+            const testUser = await getUser("test-name-user");
+            const targetUserId = testUser.userId;
+
+            // 修改用户名称
+            await testUser.updateInfo({ username: "测试昵称" });
+
+            // 获取更新后的用户名
+            const info = await testUser.getInfo();
+
+            const expectedUsername = info.username;
 
             const container = $("#query-target");
-            container.html =
-              `<user-name user-id="${targetUserId}"></user-name>`;
+            container.html = `<user-name user-id="${targetUserId}"></user-name>`;
             await new Promise((r) => setTimeout(r, 50));
             const el = container.$("user-name");
-            const beforeQuery = el.shadow.$("span").text;
             await new Promise((r) => setTimeout(r, 200));
             const afterQuery = el.shadow.$("span").text;
 
             return {
-              assert:
-                beforeQuery === targetUserId && afterQuery === targetUserId,
-              content: { targetUserId, beforeQuery, afterQuery },
+              assert: afterQuery === expectedUsername,
+              content: {
+                targetUserId,
+                expectedUsername,
+                afterQuery,
+              },
             };
           }
         </script>

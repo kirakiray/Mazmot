@@ -8,7 +8,7 @@
   <script>
     import { getUser } from "/nos/user/main.js";
 
-    const NAMESPACE = "mazmot";
+    const NAMESPACE = "default";
 
     export default async () => {
       return {
@@ -32,12 +32,12 @@
 
             try {
               const user = await getUser(NAMESPACE);
-              const remoteUser = await user.connectUser(uid);
-              if (remoteUser) {
-                this.displayName = remoteUser.userId || uid;
+              const card = await user.card.get(uid);
+              if (card && card.username) {
+                this.displayName = card.username;
               }
             } catch {
-              // 连接失败，保持显示 userId
+              // 获取名片失败，保持显示 userId
             }
           },
         },
