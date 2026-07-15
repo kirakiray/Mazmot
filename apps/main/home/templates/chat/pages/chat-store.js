@@ -210,7 +210,7 @@ function onRemoteDisconnected(e) {
 export function initChat() {
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
-    _user = await getUser("mazmot-chat");
+    _user = await getUser("default");
     await _user.ready();
     chatStore.userId = _user.userId;
     await restoreFromStorage();
