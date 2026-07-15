@@ -8,13 +8,10 @@
 comps/
 ├── rdn-network/          # 浮窗式网络状态面板
 │   └── rdn-network.html
-├── rnd-box/              # 可拖拽/缩放的浮动盒子容器
-│   ├── rnd-box.html
-│   ├── demo.html
-│   └── README.md
-└── user-name/            # 用户名片显示组件
-    ├── user-name.html
-    └── user-name.sb.html
+└── rnd-box/              # 可拖拽/缩放的浮动盒子容器
+    ├── rnd-box.html
+    ├── demo.html
+    └── README.md
 ```
 
 ## 组件说明
@@ -45,18 +42,6 @@ comps/
   - 使用 `EverCache("mazmot-rdn-network")` 持久化 `collapsed` 状态。
 - **注意**：该组件依赖 `rnd-box` 组件，需确保 [rnd-box/rnd-box.html](rnd-box/rnd-box.html) 可被加载。
 
-### `user-name` — 用户显示名组件
-
-- **文件**：[user-name/user-name.html](user-name/user-name.html)
-- **标签**：`<user-name>`
-- **定位**：根据 `userId` 自动解析并展示用户的 `username`（名片信息），回退显示 `userId`。
-- **核心能力**：
-  - `user-id` 属性：目标用户 ID。
-  - `force` 布尔属性：开启时会先尝试 `connectUser(uid)` 触发名片交换，再刷新缓存读取最新名片。
-  - `namespace` 属性：指定 `getUser(namespace)` 的命名空间，默认 `"default"`。
-  - 内部通过 `/nos/user/main.js` 的 `getUser` 获取当前用户，再使用 `user.card.get(uid)` 读取名片。
-- **测试**：[user-name/user-name.sb.html](user-name/user-name.sb.html)
-
 ## 使用方式
 
 在需要使用的页面或组件中通过 ofa.js 的 `l-m` 引入：
@@ -64,7 +49,6 @@ comps/
 ```html
 <l-m src="/comps/rnd-box/rnd-box.html"></l-m>
 <l-m src="/comps/rdn-network/rdn-network.html"></l-m>
-<l-m src="/comps/user-name/user-name.html"></l-m>
 ```
 
 ## 开发规范
@@ -72,4 +56,4 @@ comps/
 - 所有组件必须符合 ofa.js 语法（`template component`、`attrs`、`data`、`proto`、`sync:`、`:style.` 等）。
 - 涉及本地持久化优先使用 `ever-cache`，禁止直接操作 `localStorage`。
 - 图标统一使用 `<n-icon icon="mdi:xxx">`，禁止直接使用 `iconify-icon`。
-- 新增组件后应在本文件补充上下文说明，并在 [CONTEXT.md](../CONTEXT.md) 中添加引用路径。
+- 新增、删除或重命名组件时，必须同步更新本文件的目录结构、组件说明和使用方式；若该组件在 [CONTEXT.md](../CONTEXT.md) 中有引用，也需同步更新。

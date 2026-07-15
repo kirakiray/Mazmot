@@ -61,7 +61,7 @@ Mazmot/
 │   ├── static.js             # 启动 http-server：Main(30031)
 │   └── ...                   # generate-capabilities / update-skill / update-files-json
 │
-├── comps/                    # 系统级公共组件（rdn-network / rnd-box / user-name）
+├── comps/                    # 系统级公共组件（rdn-network / rnd-box）
 │   └── CONTEXT.md            # 组件上下文说明
 │
 ├── ai/                       # AI 相关：deepseek、kimi、assistant
