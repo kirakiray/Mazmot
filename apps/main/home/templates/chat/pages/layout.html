@@ -1,0 +1,687 @@
+<template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .chat-app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .header-top h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-primary);
+    }
+    .clear-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--md-sys-color-error);
+      border-radius: 8px;
+      background-color: transparent;
+      color: var(--md-sys-color-error);
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .clear-btn:hover {
+      background-color: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+    }
+    .user-id {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+    .user-id span {
+      flex: 1;
+    }
+    .copy-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 6px;
+      background-color: transparent;
+      color: var(--md-sys-color-primary);
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover {
+      background-color: var(--md-sys-color-surface-container-high);
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+    }
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .sidebar-header .title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .new-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: none;
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      cursor: pointer;
+    }
+    .connect-card {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .input-row input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+    }
+    .input-row button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .input-row button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      min-height: 16px;
+    }
+    .contact-list {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 8px;
+    }
+    .contact-empty {
+      padding: 20px 16px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-align: center;
+    }
+    p-list-item {
+      --padding: 8px 12px;
+      border-radius: 10px;
+      transition:
+        background-color ease 0.15s,
+        color ease 0.15s;
+    }
+    p-list-item.active {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .avatar {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      flex-shrink: 0;
+    }
+    .avatar n-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    .avatar .status-dot {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-error);
+      border: 2px solid var(--md-sys-color-surface-container-low);
+    }
+    .avatar .status-dot.connected {
+      background-color: var(--md-sys-color-success);
+    }
+    .contact-name {
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .contact-badge {
+      flex-shrink: 0;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background-color: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .contact-badge[hidden] {
+      display: none;
+    }
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    ::slotted(*) {
+      flex: 1;
+      overflow: hidden;
+    }
+  </style>
+
+  <div class="chat-app">
+    <div class="header">
+      <div class="header-top">
+        <h1>{{appName}}</h1>
+        <button class="clear-btn" on:click="clearAllData">Clear data</button>
+      </div>
+      <div class="user-id">
+        My ID: <span>{{userId}}</span>
+        <button class="copy-btn" on:click="copyUserId" attr:disabled="!userId">
+          {{copyBtnText}}
+        </button>
+      </div>
+    </div>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="title">Contacts</div>
+          <button class="new-btn" on:click="toggleConnectForm">
+            {{showConnectForm ? "Cancel" : "+ New"}}
+          </button>
+        </div>
+
+        <o-if :value="showConnectForm">
+          <div class="connect-card">
+            <div class="input-row">
+              <input
+                type="text"
+                sync:value="targetUserId"
+                placeholder="Enter target user ID"
+              />
+              <button on:click="checkOnline" attr:disabled="!targetUserId">
+                Connect
+              </button>
+            </div>
+            <div class="status">{{statusText}}</div>
+          </div>
+        </o-if>
+
+        <div class="contact-list">
+          <o-if :value="!contacts.length">
+            <div class="contact-empty">No contacts yet</div>
+          </o-if>
+          <p-list>
+            <o-fill :value="contacts">
+              <p-list-item
+                button
+                class:active="$data.userId === $host.activeUserId"
+                on:click="$host.selectContact($data.userId)"
+              >
+                <div slot="prefix" class="avatar">
+                  <n-icon icon="mdi:account-circle"></n-icon>
+                  <span
+                    class="status-dot"
+                    class:connected="$data.connected"
+                  ></span>
+                </div>
+                <div class="contact-name">{{$data.userId}}</div>
+                <div slot="suffix" class="contact-badge" attr:hidden="!$data.unread">
+                  {{$data.unread}}
+                </div>
+              </p-list-item>
+            </o-fill>
+          </p-list>
+        </div>
+      </aside>
+
+      <section class="chat-area">
+        <o-provider name="chat-store" :store="chatStore">
+          <slot></slot>
+        </o-provider>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    import { getUser } from "/nos/user/main.js";
+    import { EverCache } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import {
+      confirm,
+      toast,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+
+    const chatStorage = new EverCache("mazmot-chat");
+    const contactsKey = (ownerId) => `contacts:${ownerId}`;
+    const messagesKey = (ownerId, peerId) => `messages:${ownerId}:${peerId}`;
+
+    export default async () => {
+      return {
+        data: {
+          appName: "Mazmot Chat",
+          userId: "",
+          targetUserId: "",
+          statusText: "",
+          showConnectForm: true,
+          contacts: [],
+          activeUserId: "",
+          copyBtnText: "Copy",
+          // 通过 provider 暴露给子页面的 store。
+          // 使用非响应式对象承载方法与联系人索引，避免 ofa 对复杂对象反复代理。
+          chatStore: null,
+        },
+        proto: {
+          async initUser() {
+            this._remoteUsers = {};
+            this._saveMsgTimers = {};
+
+            this._user = await getUser("mazmot-chat");
+            await this._user.ready();
+            this.userId = this._user.userId;
+
+            // 先从持久化中恢复联系人及消息，再暴露 chatStore，
+            // 保证子页面通过 consumer 拿到 store 时能立刻读取到历史消息。
+            await this.restoreFromStorage();
+
+            // 构造 store 并挂到 data.chatStore，供子页面通过 consumer 消费。
+            // 注意：store 内不要保留对 this 的直接引用，避免响应式系统检测到循环引用。
+            this.chatStore = {
+              _getContact: (userId) => this.getContact(userId),
+              _getMessages: (userId) => {
+                const c = this.getContact(userId);
+                return c ? c.messages : null;
+              },
+              _sendMessage: (userId, text) => this.sendMessage(userId, text),
+              _markRead: (userId) => this.markRead(userId),
+              _formatTime: (ts) => this.formatTime(ts),
+            };
+
+            this._chatService = this._user.registerService("mazmot-chat-v1", {
+              onMessage: (data, ctx) => this.onServiceMessage(data, ctx),
+            });
+
+            this._user.bind("remote_user_connected", (e) =>
+              this.onRemoteConnected(e),
+            );
+            this._user.bind("remote_user_disconnected", (e) =>
+              this.onRemoteDisconnected(e),
+            );
+          },
+
+          async restoreFromStorage() {
+            if (!this.userId) return;
+            let stored = [];
+            try {
+              stored = (await chatStorage.getItem(contactsKey(this.userId))) || [];
+            } catch (err) {
+              console.warn("restore contacts failed:", err);
+              return;
+            }
+            for (const item of stored) {
+              if (!item || !item.userId) continue;
+              let messages = [];
+              try {
+                messages =
+                  (await chatStorage.getItem(
+                    messagesKey(this.userId, item.userId),
+                  )) || [];
+              } catch (err) {
+                console.warn("restore messages failed:", err);
+              }
+              this.contacts.push({
+                userId: item.userId,
+                messages,
+                unread: item.unread || 0,
+                connected: false,
+              });
+            }
+          },
+
+          async persistContacts() {
+            if (!this.userId) return;
+            const snapshot = this.contacts.map((c) => ({
+              userId: c.userId,
+              unread: c.unread || 0,
+            }));
+            try {
+              await chatStorage.setItem(contactsKey(this.userId), snapshot);
+            } catch (err) {
+              console.warn("persist contacts failed:", err);
+            }
+          },
+
+          persistMessages(peerId) {
+            if (!this.userId || !peerId) return;
+            // 简单去抖，避免连发消息时频繁写入
+            clearTimeout(this._saveMsgTimers[peerId]);
+            this._saveMsgTimers[peerId] = setTimeout(async () => {
+              const contact = this.getContact(peerId);
+              if (!contact) return;
+              const snapshot = contact.messages.map((m) => ({
+                text: m.text,
+                time: m.time,
+                from: m.from,
+              }));
+              try {
+                await chatStorage.setItem(
+                  messagesKey(this.userId, peerId),
+                  snapshot,
+                );
+              } catch (err) {
+                console.warn("persist messages failed:", err);
+              }
+            }, 200);
+          },
+
+          toggleConnectForm() {
+            this.showConnectForm = !this.showConnectForm;
+            if (!this.showConnectForm) {
+              this.statusText = "";
+            }
+          },
+
+          getContact(userId) {
+            return this.contacts.find((c) => c.userId === userId);
+          },
+
+          async ensureContact(userId) {
+            let contact = this.getContact(userId);
+            let isNew = false;
+            if (!contact) {
+              this.contacts.push({
+                userId,
+                messages: [],
+                unread: 0,
+                connected: false,
+              });
+              contact = this.getContact(userId);
+              isNew = true;
+            }
+            if (!this._remoteUsers[userId]) {
+              this._remoteUsers[userId] = await this._user.connectUser(userId);
+            }
+            contact.connected = true;
+            if (isNew) this.persistContacts();
+            return contact;
+          },
+
+          async selectContact(userId) {
+            // 点击联系人：尝试连接对方（若未连接），然后切换到聊天页。
+            // activeUserId 由 routerChange 同步。
+            this.goto(`./chat.html?userId=${encodeURIComponent(userId)}`);
+            try {
+              await this.connectContact(userId);
+            } catch (err) {
+              this.statusText = "Connect failed: " + (err.message || err);
+            }
+          },
+
+          async connectContact(userId) {
+            if (!userId || userId === this.userId) return;
+            if (this._remoteUsers[userId]) {
+              const contact = this.getContact(userId);
+              if (contact) contact.connected = true;
+              return;
+            }
+            const contact = this.getContact(userId);
+            try {
+              const online = await this._user.isRemoteUserOnline(userId);
+              if (!online) {
+                if (contact) contact.connected = false;
+                return;
+              }
+              this._remoteUsers[userId] = await this._user.connectUser(userId);
+              if (contact) contact.connected = true;
+            } catch (err) {
+              if (contact) contact.connected = false;
+              throw err;
+            }
+          },
+
+          markRead(userId) {
+            const contact = this.getContact(userId);
+            if (contact && contact.unread) {
+              contact.unread = 0;
+              this.persistContacts();
+            }
+          },
+
+          async checkOnline() {
+            const target = this.targetUserId.trim();
+            if (!target) {
+              this.statusText = "Please enter a user ID.";
+              return;
+            }
+            if (target === this.userId) {
+              this.statusText = "Cannot connect to yourself.";
+              return;
+            }
+            this.statusText = "Checking online status...";
+            try {
+              const online = await this._user.isRemoteUserOnline(target);
+              if (!online) {
+                this.statusText = "User is offline.";
+                return;
+              }
+              this.statusText = "User is online. Connecting...";
+              await this.ensureContact(target);
+              this.statusText = "Connected.";
+              this.targetUserId = "";
+              this.showConnectForm = false;
+              this.selectContact(target);
+            } catch (err) {
+              this.statusText = "Check failed: " + (err.message || err);
+            }
+          },
+
+          async sendMessage(userId, text) {
+            if (!userId || !text) return false;
+            const remoteUser = this._remoteUsers[userId];
+            if (!remoteUser) return false;
+            const msg = { type: "chat", text, time: Date.now() };
+            try {
+              await remoteUser.sendToService("mazmot-chat-v1", msg);
+              const contact = this.getContact(userId);
+              if (contact) {
+                contact.messages.push({ ...msg, from: "me" });
+                this.persistMessages(userId);
+              }
+              return true;
+            } catch (err) {
+              this.statusText = "Send failed: " + (err.message || err);
+              return false;
+            }
+          },
+
+          async onServiceMessage(data, ctx) {
+            const fromUserId = ctx && ctx.fromUserId;
+            if (!fromUserId || fromUserId === this.userId) return;
+
+            if (typeof data === "string") {
+              try {
+                data = JSON.parse(data);
+              } catch {
+                return;
+              }
+            }
+            if (!data || data.type !== "chat" || !data.text) return;
+
+            const contact = await this.ensureContact(fromUserId);
+            contact.messages.push({
+              text: data.text,
+              time: data.time || Date.now(),
+              from: "other",
+            });
+            this.persistMessages(fromUserId);
+            if (this.activeUserId !== fromUserId) {
+              contact.unread = (contact.unread || 0) + 1;
+              this.persistContacts();
+            }
+          },
+
+          async onRemoteConnected(e) {
+            const userId = e.detail.userId;
+            if (!userId || userId === this.userId) return;
+            await this.ensureContact(userId);
+          },
+
+          onRemoteDisconnected(e) {
+            const userId = e.detail && e.detail.userId;
+            if (!userId) return;
+            delete this._remoteUsers[userId];
+            const contact = this.getContact(userId);
+            if (contact) contact.connected = false;
+            if (userId === this.activeUserId) {
+              this.statusText = "Disconnected.";
+            }
+          },
+
+          formatTime(ts) {
+            return new Date(ts).toLocaleTimeString();
+          },
+
+          async clearAllData() {
+            const ok = await confirm({
+              title: "Clear chat data",
+              content:
+                "This will remove all contacts and message history stored on this device. Continue?",
+            });
+            if (!ok) return;
+
+            // 清理 IndexedDB 中所有该实例下的数据
+            try {
+              await chatStorage.clear();
+            } catch (err) {
+              toast({
+                text: "Clear failed: " + (err.message || err),
+                type: "error",
+              });
+              return;
+            }
+
+            // 清理内存状态并回到联系人列表
+            for (const key of Object.keys(this._saveMsgTimers || {})) {
+              clearTimeout(this._saveMsgTimers[key]);
+            }
+            this._saveMsgTimers = {};
+            this.contacts = [];
+            this.activeUserId = "";
+            this.statusText = "";
+            this.showConnectForm = true;
+
+            try {
+              // 若当前正处于聊天页，退回到 layout 根路径
+              this.goto("./");
+            } catch {}
+
+            toast({ text: "Chat data cleared." });
+          },
+
+          async copyUserId() {
+            if (!this.userId) return;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(this.userId);
+              } else {
+                const input = document.createElement("textarea");
+                input.value = this.userId;
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand("copy");
+                document.body.removeChild(input);
+              }
+              this.copyBtnText = "Copied";
+            } catch (err) {
+              this.copyBtnText = "Failed";
+            }
+            clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => {
+              this.copyBtnText = "Copy";
+            }, 1500);
+          },
+
+          syncActiveFromRoute() {
+            const current = this.app && this.app.current;
+            if (!current) {
+              this.activeUserId = "";
+              return;
+            }
+            try {
+              const url = new URL(current.src, location.href);
+              const uid = url.searchParams.get("userId") || "";
+              this.activeUserId = uid;
+              if (uid) this.markRead(uid);
+            } catch {
+              this.activeUserId = "";
+            }
+          },
+        },
+        routerChange() {
+          this.syncActiveFromRoute();
+        },
+        ready() {
+          this.initUser();
+          this.syncActiveFromRoute();
+        },
+      };
+    };
+  </script>
+</template>

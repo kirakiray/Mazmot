@@ -1,0 +1,152 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+    .chat-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+    .messages {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 20px;
+    }
+    .message {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .message[self] {
+      align-self: flex-end;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      border-bottom-right-radius: 4px;
+    }
+    .message:not([self]) {
+      align-self: flex-start;
+      background-color: var(--md-sys-color-surface-container-highest);
+      color: var(--md-sys-color-on-surface);
+      border-bottom-left-radius: 4px;
+    }
+    .message-time {
+      margin-top: 4px;
+      font-size: 11px;
+      opacity: 0.7;
+      text-align: right;
+    }
+    .input-area {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .input-area input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 14px;
+    }
+    .input-area button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .input-area button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+
+  <div class="chat-header">Chatting with {{userId}}</div>
+  <div class="messages">
+    <o-fill :value="messages">
+      <div class="message" attr:self="$data.from === 'me'">
+        <div>{{$data.text}}</div>
+        <div class="message-time">{{$host.formatTimeSafe($data.time)}}</div>
+      </div>
+    </o-fill>
+  </div>
+  <div class="input-area">
+    <input
+      type="text"
+      sync:value="inputText"
+      placeholder="Type a message"
+      on:keypress="handleKeyPress($event)"
+    />
+    <button on:click="send" attr:disabled="!inputText">Send</button>
+  </div>
+
+  <o-consumer name="chat-store" watch:store="_store"></o-consumer>
+
+  <script>
+    export const parent = "./layout.html";
+
+    export default async ({ query }) => {
+      return {
+        data: {
+          userId: (query && query.userId) || "",
+          inputText: "",
+          messages: [],
+          // 通过 consumer 注入的 store（layout 中提供）
+          _store: null,
+        },
+        watch: {
+          _store() {
+            this.bindMessages();
+          },
+        },
+        proto: {
+          bindMessages() {
+            if (!this._store || !this.userId) return;
+            const list = this._store._getMessages(this.userId);
+            if (list) {
+              this.messages = list;
+            }
+            this._store._markRead(this.userId);
+          },
+
+          async send() {
+            const text = this.inputText.trim();
+            if (!text || !this._store) return;
+            const ok = await this._store._sendMessage(this.userId, text);
+            if (ok) this.inputText = "";
+          },
+
+          handleKeyPress(e) {
+            if (e.key === "Enter") this.send();
+          },
+
+          formatTimeSafe(ts) {
+            if (this._store && this._store._formatTime) {
+              return this._store._formatTime(ts);
+            }
+            return new Date(ts).toLocaleTimeString();
+          },
+        },
+        ready() {
+          this.bindMessages();
+        },
+      };
+    };
+  </script>
+</template>
