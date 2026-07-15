@@ -15,6 +15,7 @@
         tag: "user-name",
         attrs: {
           userId: "",
+          force: false,
         },
         data: {
           displayName: "",
@@ -23,10 +24,19 @@
         watch: {
           userId(val) {
             this.displayName = val || "";
-            if (val) this._loadUserName();
+            if (val) this._load();
+          },
+          force() {
+            if (this.userId) this._load();
           },
         },
         proto: {
+          _load() {
+            if (this.force) {
+              return this._forceLoadUserName();
+            }
+            return this._loadUserName();
+          },
           async _loadUserName() {
             const uid = this.userId;
             if (!uid) return;
@@ -46,11 +56,36 @@
               // 获取名片失败，保持显示 userId
             }
           },
+          async _forceLoadUserName() {
+            const uid = this.userId;
+            if (!uid) return;
+
+            try {
+              const user = await getUser(this.namespace);
+              if (user.userId === uid) {
+                const info = await user.getInfo();
+                this.displayName = info.username;
+                return;
+              }
+              // 尝试连接用户触发名片交换
+              try {
+                await user.connectUser(uid);
+              } catch {
+                // 对方不在线，沿用缓存名片
+              }
+              const card = await user.card.get(uid);
+              if (card && card.username) {
+                this.displayName = card.username;
+              }
+            } catch {
+              // 保持当前显示
+            }
+          },
         },
         async attached() {
           if (!this.displayName && this.userId) {
             this.displayName = this.userId;
-            this._loadUserName();
+            this._load();
           }
 
           if (this.attr("namespace")) {

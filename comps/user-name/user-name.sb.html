@@ -21,9 +21,10 @@
     <user-name id="name3"></user-name>
     <div id="query-target"></div>
     <div id="default-target"></div>
+    <div id="force-target"></div>
     <user-name user-id="nonexistent-user-999999999" id="name4"></user-name>
 
-    <!-- ============ 创建独立测试用户，修改名称后用 user-name 显示 ============ -->
+    <!-- ============ 创建测试用户，正常获取用户名显示 ============ -->
     <sb-test name="创建测试用户修改名称后用 user-name 显示">
       <template>
         <script type="module">
@@ -34,12 +35,9 @@
             const testUser = await getUser("test-name-user");
             const targetUserId = testUser.userId;
 
-            // 修改用户名称
+            // 设置用户名称
             await testUser.updateInfo({ username: "测试昵称" });
-
-            // 获取更新后的用户名
             const info = await testUser.getInfo();
-
             const expectedUsername = info.username;
 
             const container = $("#query-target");
@@ -51,11 +49,38 @@
 
             return {
               assert: afterQuery === expectedUsername,
-              content: {
-                targetUserId,
-                expectedUsername,
-                afterQuery,
-              },
+              content: { targetUserId, expectedUsername, afterQuery },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============ 更新名称后 force 强制刷新 ============ -->
+    <sb-test name="updateInfo 后设置 force 刷新用户名">
+      <template>
+        <script type="module">
+          {
+            const { getUser } = await import("/nos/user/main.js");
+
+            const testUser = await getUser("test-name-user");
+            const targetUserId = testUser.userId;
+
+            const newUserName = "新名称_" + Math.random().toString(36).slice(2);
+
+            // 先设置一个初始名称
+            await testUser.updateInfo({ username: newUserName });
+
+            const container = $("#force-target");
+            container.html = `<user-name user-id="${targetUserId}" force></user-name>`;
+            await new Promise((r) => setTimeout(r, 200));
+            const el = container.$("user-name");
+            const afterForce = el.shadow.$("span").text;
+            debugger;
+
+            return {
+              assert: afterForce === newUserName,
+              content: { targetUserId, newUserName, afterForce },
             };
           }
         </script>
