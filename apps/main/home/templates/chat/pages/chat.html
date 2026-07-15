@@ -102,6 +102,7 @@
       sendMessage,
       markRead,
       formatTime,
+      initChat,
     } from "./chat-store.js";
 
     export const parent = "./layout.html";
@@ -116,7 +117,7 @@
         },
         watch: {
           userId() {
-            this.bindMessages();
+            this.bindMessagesAsync();
           },
         },
         proto: {
@@ -124,6 +125,16 @@
             const c = getContact(this.userId);
             this.messages = c ? c.messages : [];
             if (this.userId) markRead(this.userId);
+          },
+
+          // 刷新场景下 layout 的 initChat 可能还没完成，直接读 getContact
+          // 会拿到 undefined，得到一个游离的空数组。这里等 initChat 完成后
+          // 再挂接一次，确保历史消息能同步进来。
+          async bindMessagesAsync() {
+            try {
+              await initChat();
+            } catch {}
+            this.bindMessages();
           },
 
           async send() {
@@ -142,7 +153,7 @@
           },
         },
         attached() {
-          this.bindMessages();
+          this.bindMessagesAsync();
         },
         detached() {
           this.messages = [];

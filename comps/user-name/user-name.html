@@ -1,0 +1,53 @@
+<template component>
+  <style>
+    :host {
+      display: inline;
+    }
+  </style>
+  <span>{{displayName}}</span>
+  <script>
+    import { getUser } from "/nos/user/main.js";
+
+    const NAMESPACE = "mazmot";
+
+    export default async () => {
+      return {
+        tag: "user-name",
+        attrs: {
+          userId: "",
+        },
+        data: {
+          displayName: "",
+        },
+        watch: {
+          userId(val) {
+            this.displayName = val || "";
+            if (val) this._loadUserName();
+          },
+        },
+        proto: {
+          async _loadUserName() {
+            const uid = this.userId;
+            if (!uid) return;
+
+            try {
+              const user = await getUser(NAMESPACE);
+              const remoteUser = await user.connectUser(uid);
+              if (remoteUser) {
+                this.displayName = remoteUser.userId || uid;
+              }
+            } catch {
+              // 连接失败，保持显示 userId
+            }
+          },
+        },
+        async attached() {
+          if (!this.displayName && this.userId) {
+            this.displayName = this.userId;
+            this._loadUserName();
+          }
+        },
+      };
+    };
+  </script>
+</template>
