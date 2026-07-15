@@ -79,7 +79,7 @@
 
   <div class="chat-header">Chatting with {{userId}}</div>
   <div class="messages">
-    <o-fill :value="messages">
+    <o-fill :value="store && userId ? store._getMessages(userId) || [] : []">
       <div class="message" attr:self="$data.from === 'me'">
         <div>{{$data.text}}</div>
         <div class="message-time">{{$host.formatTimeSafe($data.time)}}</div>
@@ -96,7 +96,7 @@
     <button on:click="send" attr:disabled="!inputText">Send</button>
   </div>
 
-  <o-consumer name="chat-store" watch:store="_store"></o-consumer>
+  <o-consumer name="chat-store" watch:store="store"></o-consumer>
 
   <script>
     export const parent = "./layout.html";
@@ -106,29 +106,28 @@
         data: {
           userId: (query && query.userId) || "",
           inputText: "",
-          messages: [],
           // 通过 consumer 注入的 store（layout 中提供）
-          _store: null,
+          store: null,
         },
         watch: {
-          _store() {
-            this.bindMessages();
+          store() {
+            this.markReadIfReady();
+          },
+          userId() {
+            this.markReadIfReady();
           },
         },
         proto: {
-          bindMessages() {
-            if (!this._store || !this.userId) return;
-            const list = this._store._getMessages(this.userId);
-            if (list) {
-              this.messages = list;
+          markReadIfReady() {
+            if (this.store && this.userId) {
+              this.store._markRead(this.userId);
             }
-            this._store._markRead(this.userId);
           },
 
           async send() {
             const text = this.inputText.trim();
-            if (!text || !this._store) return;
-            const ok = await this._store._sendMessage(this.userId, text);
+            if (!text || !this.store) return;
+            const ok = await this.store._sendMessage(this.userId, text);
             if (ok) this.inputText = "";
           },
 
@@ -137,14 +136,14 @@
           },
 
           formatTimeSafe(ts) {
-            if (this._store && this._store._formatTime) {
-              return this._store._formatTime(ts);
+            if (this.store && this.store._formatTime) {
+              return this.store._formatTime(ts);
             }
             return new Date(ts).toLocaleTimeString();
           },
         },
         ready() {
-          this.bindMessages();
+          this.markReadIfReady();
         },
       };
     };
