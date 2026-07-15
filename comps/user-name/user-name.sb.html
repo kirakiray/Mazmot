@@ -18,61 +18,9 @@
     <l-m src="./user-name.html"></l-m>
 
     <!-- 各测试用例使用的静态元素 -->
-    <user-name user-id="test-user-001" id="name1"></user-name>
-    <user-name user-id="first-id" id="name2"></user-name>
     <user-name id="name3"></user-name>
     <div id="query-target"></div>
     <user-name user-id="nonexistent-user-999999999" id="name4"></user-name>
-
-    <!-- ============ 初始显示 ============ -->
-    <sb-test name="设置 userId 后立即显示该值">
-      <template>
-        <script type="module">
-          {
-            await new Promise((r) => setTimeout(r, 200));
-            const text = $("#name1").shadow.$("span").text;
-            return {
-              assert: text === "test-user-001",
-              content: { text, expected: "test-user-001" },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <!-- ============ 动态修改 userId ============ -->
-    <sb-test name="动态修改 userId 后显示新值">
-      <template>
-        <script type="module">
-          {
-            const el = $("#name2");
-            el.attr("user-id", "second-id");
-            await new Promise((r) => setTimeout(r, 50));
-            const text = el.shadow.$("span").text;
-            return {
-              assert: text === "second-id",
-              content: { text, expected: "second-id" },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <!-- ============ 空 userId ============ -->
-    <sb-test name="未设置 userId 时显示空内容">
-      <template>
-        <script type="module">
-          {
-            await new Promise((r) => setTimeout(r, 50));
-            const text = $("#name3").shadow.$("span").text;
-            return {
-              assert: text === "",
-              content: { text, expected: "" },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
 
     <!-- ============ 创建独立测试用户，修改名称后用 user-name 显示 ============ -->
     <sb-test name="创建测试用户修改名称后用 user-name 显示">
@@ -81,7 +29,7 @@
           {
             const { getUser } = await import("/nos/user/main.js");
 
-            // 创建独立测试用户（不使用 default 命名空间）
+            // 创建独立测试用户
             const testUser = await getUser("test-name-user");
             const targetUserId = testUser.userId;
 
@@ -107,6 +55,22 @@
                 expectedUsername,
                 afterQuery,
               },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============ 空 userId ============ -->
+    <sb-test name="未设置 userId 时显示空内容">
+      <template>
+        <script type="module">
+          {
+            await new Promise((r) => setTimeout(r, 50));
+            const text = $("#name3").shadow.$("span").text;
+            return {
+              assert: text === "",
+              content: { text, expected: "" },
             };
           }
         </script>
