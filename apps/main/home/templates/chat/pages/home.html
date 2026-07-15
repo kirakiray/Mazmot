@@ -232,11 +232,7 @@
       <h1>{{appName}}</h1>
       <div class="user-id">
         My ID: <span>{{userId}}</span>
-        <button
-          class="copy-btn"
-          on:click="copyUserId"
-          attr:disabled="!userId"
-        >
+        <button class="copy-btn" on:click="copyUserId" attr:disabled="!userId">
           {{copyBtnText}}
         </button>
       </div>
@@ -345,12 +341,15 @@
             await this._user.ready();
             this.userId = this._user.userId;
 
-            this._user.bind("message", (e) => this.onMessage(e));
+            this._chatService = this._user.registerService("mazmot-chat-v1", {
+              onMessage: (data, ctx) => this.onServiceMessage(data, ctx),
+            });
+
             this._user.bind("remote_user_connected", (e) =>
-              this.onRemoteConnected(e)
+              this.onRemoteConnected(e),
             );
             this._user.bind("remote_user_disconnected", (e) =>
-              this.onRemoteDisconnected(e)
+              this.onRemoteDisconnected(e),
             );
           },
 
@@ -439,18 +438,12 @@
             }
 
             try {
-              const sessionIds = await remoteUser.getSessionIds();
-              if (!sessionIds.length) {
-                this.statusText = "No active session.";
-                return;
-              }
-
               const msg = {
                 type: "chat",
                 text,
                 time: Date.now(),
               };
-              await remoteUser.send(sessionIds[0], msg);
+              await remoteUser.sendToService("mazmot-chat-v1", msg);
               this.appendMessage(target, { ...msg, from: "me" });
               this.inputText = "";
             } catch (err) {
@@ -464,12 +457,10 @@
             }
           },
 
-          async onMessage(e) {
-            const detail = e.detail;
-            const fromUserId = detail.fromUserId;
+          async onServiceMessage(data, ctx) {
+            const fromUserId = ctx && ctx.fromUserId;
             if (!fromUserId || fromUserId === this.userId) return;
 
-            let data = detail.data;
             if (typeof data === "string") {
               try {
                 data = JSON.parse(data);
