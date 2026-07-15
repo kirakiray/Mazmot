@@ -6,6 +6,7 @@
 //
 // __files.json 中 replacements 的 `to` 支持以下模板变量：
 //   APP_NAME       - 应用名（原样）
+//   APP_NAMESPACE  - 应用命名空间（原样，通常同 APP_NAME）
 //   APP_DESC       - 应用描述（原样）
 //   APP_DESC_HTML  - 应用描述（HTML 转义）
 //   APP_DESC_JSON  - 应用描述（不带外层引号的 JSON 字符串片段，可安全嵌入 "..." 中）
@@ -46,6 +47,8 @@ function toJsonFragment(str) {
 function resolveVar(name, ctx) {
   switch (name) {
     case "APP_NAME":
+      return ctx.name;
+    case "APP_NAMESPACE":
       return ctx.name;
     case "APP_DESC":
       return ctx.desc;
