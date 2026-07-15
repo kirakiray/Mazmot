@@ -32,6 +32,11 @@
 
             try {
               const user = await getUser(NAMESPACE);
+              if (user.userId === uid) {
+                const info = await user.getInfo();
+                this.displayName = info.username;
+                return;
+              }
               const card = await user.card.get(uid);
               if (card && card.username) {
                 this.displayName = card.username;

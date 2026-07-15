@@ -20,6 +20,7 @@
     <!-- 各测试用例使用的静态元素 -->
     <user-name id="name3"></user-name>
     <div id="query-target"></div>
+    <div id="default-target"></div>
     <user-name user-id="nonexistent-user-999999999" id="name4"></user-name>
 
     <!-- ============ 创建独立测试用户，修改名称后用 user-name 显示 ============ -->
@@ -42,6 +43,38 @@
             const expectedUsername = info.username;
 
             const container = $("#query-target");
+            container.html = `<user-name user-id="${targetUserId}"></user-name>`;
+            await new Promise((r) => setTimeout(r, 50));
+            const el = container.$("user-name");
+            await new Promise((r) => setTimeout(r, 200));
+            const afterQuery = el.shadow.$("span").text;
+
+            return {
+              assert: afterQuery === expectedUsername,
+              content: {
+                targetUserId,
+                expectedUsername,
+                afterQuery,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============ 使用 default 用户的 userId 显示 ============ -->
+    <sb-test name="使用 default 用户的 userId 显示用户名">
+      <template>
+        <script type="module">
+          {
+            const { getUser } = await import("/nos/user/main.js");
+
+            const defaultUser = await getUser("default");
+            const targetUserId = defaultUser.userId;
+            const info = await defaultUser.getInfo();
+            const expectedUsername = info.username;
+
+            const container = $("#default-target");
             container.html = `<user-name user-id="${targetUserId}"></user-name>`;
             await new Promise((r) => setTimeout(r, 50));
             const el = container.$("user-name");
