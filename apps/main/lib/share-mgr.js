@@ -131,6 +131,19 @@ export function buildShareUrl(origin, signedPayload) {
 }
 
 /**
+ * 构造「自动安装并跳转到应用」的一键分享链接。
+ * 接收端为 /apps/run-app/，将静默完成 Core 校验、验签、自动安装/更新后
+ * 用 location.replace 跳转到应用运行地址。
+ * @param {string} origin - 当前域名（location.origin）
+ * @param {Object} signedPayload - user._sign 的返回值
+ * @returns {string}
+ */
+export function buildRunUrl(origin, signedPayload) {
+  const encoded = base64UrlEncode(JSON.stringify(signedPayload));
+  return `${origin}/apps/run-app/?p=${encoded}`;
+}
+
+/**
  * 从 URL search 解析签名 payload；返回 null 表示参数缺失/非法。
  * 保留 JSON 字段原顺序，供后续 verifyData 使用。
  * @param {string} search - location.search（带或不带 "?" 均可）
