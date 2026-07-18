@@ -1,0 +1,610 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      padding: 28px 24px;
+      border-radius: 16px;
+      background: var(--md-sys-color-surface-container-low);
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .icon {
+      font-size: 56px;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      word-break: break-word;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 20px;
+      word-break: break-word;
+    }
+    .bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--md-sys-color-surface-variant);
+    }
+    .fill {
+      height: 100%;
+      background: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      min-height: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .error-text {
+      color: var(--md-sys-color-error);
+      font-size: 13px;
+      word-break: break-word;
+    }
+    .actions {
+      margin-top: 16px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+    .confirm-list {
+      margin: 12px 0 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      text-align: left;
+      background: var(--md-sys-color-surface);
+    }
+    .cli {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      font-size: 13px;
+    }
+    .cli:last-child {
+      border-bottom: none;
+    }
+    .cli-name {
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+    .cli-meta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+      word-break: break-all;
+    }
+    .confirm-warn {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .intro {
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface);
+    }
+    /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
+    nos-version {
+      display: none !important;
+    }
+  </style>
+
+  <link
+    rel="stylesheet"
+    href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
+  />
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+
+  <!--
+    隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core。
+    通过 on:xxx 声明式绑定所有事件；ofa.js 会在元素挂载时立刻装上监听器，
+    因此即使组件定义稍后通过 load() 加载，浏览器升级元素时同步触发的
+    check-start / uninstalled / installed 也能被稳定接收。
+  -->
+  <nos-version
+    auto-install
+    on:check-start="onCoreCheckStart"
+    on:uninstalled="onCoreUninstalled"
+    on:upgradable="onCoreUpgradable"
+    on:install-start="onCoreInstallStart"
+    on:install-progress="onCoreInstallProgress"
+    on:installed="onCoreInstalled"
+    on:error="onCoreError($event)"
+  ></nos-version>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="icon">{{iconText}}</div>
+      <h1 class="title">{{titleText}}</h1>
+      <div class="subtitle">{{subtitleText}}</div>
+
+      <!-- 进度条：确认/错误态之外都显示 -->
+      <o-if :value="step !== 'confirm' && step !== 'error'">
+        <div class="bar">
+          <div class="fill" :style.width="progress + '%'"></div>
+        </div>
+        <div class="status">{{statusText}}</div>
+      </o-if>
+
+      <!-- 确认安装（本地已有其它应用） -->
+      <o-if :value="step === 'confirm'">
+        <div class="intro">
+          当前系统已初始化，已存在 <b>{{otherApps.length}}</b> 个应用：
+        </div>
+        <div class="confirm-list">
+          <o-fill :value="otherApps">
+            <div class="cli">
+              <div class="cli-name">{{$data.name}}</div>
+              <o-if :value="$data.meta">
+                <div class="cli-meta">{{$data.meta}}</div>
+              </o-if>
+            </div>
+          </o-fill>
+        </div>
+        <div class="confirm-warn">
+          请确认是否安装该应用。应用间能够访问彼此的数据，请确认此虚拟系统内不存在敏感数据，或数据可对该应用开发者信任后再确认安装。
+        </div>
+        <div class="actions">
+          <p-button variant="text" on:click="cancelInstall">取消</p-button>
+          <p-button color="primary" on:click="agreeInstall">确认安装</p-button>
+        </div>
+      </o-if>
+
+      <!-- 错误 -->
+      <o-if :value="step === 'error'">
+        <div class="error-text">{{errorText}}</div>
+        <div class="actions">
+          <p-button variant="text" on:click="goHome">返回主页</p-button>
+        </div>
+      </o-if>
+    </div>
+  </div>
+
+  <script>
+    const load = lm(import.meta);
+
+    // 进度分段：0-40% 给 Core 检测/安装，40-100% 给应用安装
+    const CORE_END = 40;
+
+    export default async ({load}) => {
+      // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
+      let coreResolve;
+      let coreReject;
+      const coreReady = new Promise((resolve, reject) => {
+        coreResolve = resolve;
+        coreReject = reject;
+      });
+      let coreDone = false;
+
+      return {
+        data: {
+          step: "core", // core | verifying | confirm | installing | error
+          iconText: "📦",
+          titleText: "正在打开应用...",
+          subtitleText: "校验运行环境",
+          statusText: "正在检测 NoneOS Core...",
+          progress: 0,
+          errorText: "",
+          otherApps: [], // { name, meta }
+          _payload: null,
+          _installed: null, // { record, installedVersion } | null
+          _confirmResolver: null,
+          _modules: null, // { init, storage, shareMgr } after core ready
+        },
+        attached() {
+          this.startFlow();
+        },
+        proto: {
+          // ============ 通用工具 ============
+          setProgress(p, text) {
+            this.progress = Math.max(0, Math.min(100, p));
+            if (text != null) this.statusText = text;
+          },
+          setMeta(payload) {
+            this.iconText = payload.icon || "📦";
+            this.titleText =
+              payload.displayName || payload.recordName || "未命名应用";
+            this.subtitleText = `v${payload.version || "0.1.0"}`;
+          },
+          fail(title, detail) {
+            this.titleText = title;
+            this.subtitleText = "";
+            this.errorText = detail || "";
+            this.progress = 0;
+            this.step = "error";
+          },
+          goApp(recordName) {
+            const url = `/$mazmot-apps/${recordName}/client/index.html`;
+            window.location.replace(url);
+          },
+          goHome() {
+            window.location.href = "/";
+          },
+          // 把 5-100 的旧刻度线性映射到 CORE_END-100
+          appProgress(oldPct, text) {
+            const clamped = Math.max(5, Math.min(100, oldPct));
+            const mapped =
+              CORE_END + ((clamped - 5) / 95) * (100 - CORE_END);
+            this.setProgress(mapped, text);
+          },
+
+          // ============ nos-version 事件处理（模板 on: 声明式绑定） ============
+          onCoreCheckStart() {
+            this.setProgress(2, "正在检测 NoneOS Core...");
+          },
+          onCoreUninstalled() {
+            this.setProgress(5, "首次运行，正在安装 NoneOS Core...");
+          },
+          onCoreUpgradable(e) {
+            const d = e.detail || {};
+            this.setProgress(
+              5,
+              `NoneOS Core 升级中（${d.version || "?"} → ${d.lastVersion || "?"}）...`,
+            );
+          },
+          onCoreInstallStart() {
+            this.setProgress(6, "NoneOS Core 安装准备中...");
+          },
+          onCoreInstallProgress(e) {
+            const d = e.detail || {};
+            const step = Number(d.step) || 0;
+            const total = Number(d.total) || 0;
+            const ratio = total > 0 ? Math.min(1, step / total) : 0;
+            const p = 6 + Math.floor(ratio * (CORE_END - 6));
+            this.setProgress(p, `NoneOS Core：${d.desc || "安装中"}`);
+          },
+          onCoreInstalled() {
+            if (coreDone) return;
+            coreDone = true;
+            this.setProgress(CORE_END, "NoneOS Core 就绪");
+            coreResolve();
+          },
+          onCoreError(event) {
+            if (coreDone) return;
+            coreDone = true;
+            const d = (event && event.detail) || {};
+            coreReject(
+              new Error(
+                `NoneOS Core ${d.phase || "初始化"}失败：${d.message || "未知错误"}`,
+              ),
+            );
+          },
+
+          // ============ 主流程 ============
+          async startFlow() {
+            // 步骤 1：加载 nos-version 组件定义。事件已通过模板 on: 绑定，
+            // 组件升级时的同步事件（check-start / uninstalled / installed）不会遗漏。
+            try {
+              // 与根 index.html 保持一致的 nos-version 组件来源
+              // await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
+              await load(
+                "http://localhost:3002/nos-tool/comps/nos-version.html",
+              );
+              await coreReady;
+            } catch (err) {
+              console.error(err);
+              this.fail("运行环境初始化失败", err.message || String(err));
+              return;
+            }
+
+            // 步骤 2：Core 就绪后动态加载文件系统/存储/分享模块
+            try {
+              await this.loadDeps();
+            } catch (err) {
+              console.error(err);
+              this.fail("依赖模块加载失败", err.message || String(err));
+              return;
+            }
+
+            // 步骤 3：验签 → 检查已装 → 必要时确认 → 下载 → 跳转
+            await this.runInstall();
+          },
+
+          async loadDeps() {
+            // 使用页面模块提供的 load（= lm(import.meta)）加载依赖：
+            // - 自动基于 import.meta.url 解析相对路径
+            // - 与组件加载共用 ofa.js 的资源缓存
+            const [fsMod, cacheMod, shareMgr] = await Promise.all([
+              load("/nos/fs/main.js"),
+              load(
+                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+              ),
+              load("../main/lib/share-mgr.js"),
+            ]);
+            // 预加载 publisher 依赖
+            await Promise.all([
+              load("/nos/user/main.js"),
+              load("/nos/publish/data-publisher.js"),
+              load("/nos/crypto/crypto-verify.js"),
+            ]);
+            this._modules = {
+              init: fsMod.init,
+              storage: cacheMod.storage,
+              shareMgr,
+            };
+          },
+
+          async runInstall() {
+            const { storage, shareMgr } = this._modules;
+            const { parseShareUrl, verifySharePayload, ensureUser } = shareMgr;
+
+            this.step = "verifying";
+            this.appProgress(5, "解析分享链接...");
+            const payload = parseShareUrl(window.location.search);
+            if (!payload) {
+              this.fail("分享链接无效", "未在 URL 中检测到分享参数。");
+              return;
+            }
+            this._payload = payload;
+            this.setMeta(payload);
+
+            this.appProgress(8, "验证签名...");
+            const ok = await verifySharePayload(payload);
+            if (!ok) {
+              this.fail(
+                "分享链接签名无效",
+                "该链接的签名无法通过验证，可能已被篡改。",
+              );
+              return;
+            }
+
+            // 检查已安装状态
+            const installed = await this.findInstalled(payload);
+            this._installed = installed;
+            const newVersion = payload.version || "";
+
+            // 自我分享
+            let isSelfShare = false;
+            try {
+              const currentUser = await ensureUser();
+              if (
+                currentUser &&
+                payload.publisherUserId &&
+                currentUser.userId === payload.publisherUserId
+              ) {
+                isSelfShare = true;
+              }
+            } catch (err) {
+              console.warn("获取当前用户失败：", err);
+            }
+
+            // 已安装且版本一致 or 自我分享 → 直接跳转
+            if (
+              installed &&
+              ((installed.installedVersion &&
+                newVersion &&
+                installed.installedVersion === newVersion) ||
+                isSelfShare)
+            ) {
+              this.setProgress(100, "已是最新，正在跳转...");
+              this.goApp(installed.record.name);
+              return;
+            }
+
+            // 未安装 or 有新版本 → 若本地已有其它应用，先请求用户确认
+            try {
+              const allApps = (await storage.apps) || [];
+              const others = allApps.filter(
+                (a) =>
+                  !(
+                    (a.appId && a.appId === payload.appId) ||
+                    (a.name && a.name === payload.appId)
+                  ),
+              );
+              if (others.length > 0) {
+                this.otherApps = others.map((a) => {
+                  const parts = [];
+                  if (a.source === "virtual") parts.push("虚拟目录");
+                  else if (a.source === "local") parts.push("本地目录");
+                  if (a.appId) parts.push(a.appId);
+                  return {
+                    name: a.name || "（未命名）",
+                    meta: parts.join(" · "),
+                  };
+                });
+                this.setProgress(CORE_END, "等待用户确认安装...");
+                const agreed = await new Promise((resolve) => {
+                  this._confirmResolver = resolve;
+                  this.titleText = "确认安装此应用？";
+                  this.subtitleText = `${payload.displayName || payload.recordName || ""} v${payload.version || "0.1.0"}`;
+                  this.step = "confirm";
+                });
+                this._confirmResolver = null;
+                if (!agreed) {
+                  this.fail("已取消安装", "你取消了此次应用安装。");
+                  return;
+                }
+                this.setMeta(payload);
+                this.step = "installing";
+              }
+            } catch (err) {
+              console.warn("读取本地应用列表失败：", err);
+            }
+
+            try {
+              const recordName = await this.installOrUpdate(
+                payload,
+                installed ? installed.record : null,
+              );
+              this.setProgress(100, "启动应用...");
+              this.goApp(recordName);
+            } catch (err) {
+              console.error(err);
+              this.fail("安装失败", err.message || String(err));
+            }
+          },
+
+          agreeInstall() {
+            if (this._confirmResolver) this._confirmResolver(true);
+          },
+
+          cancelInstall() {
+            if (this._confirmResolver) this._confirmResolver(false);
+          },
+
+          // 查找已安装应用（按 appId 匹配，兼容按 name 匹配的老数据）
+          async findInstalled(payload) {
+            const { storage, init } = this._modules;
+            const apps = (await storage.apps) || [];
+            const existing = apps.find(
+              (a) =>
+                (a.appId && a.appId === payload.appId) ||
+                (a.name && a.name === payload.appId),
+            );
+            if (!existing) return null;
+            let installedVersion = "";
+            try {
+              if (existing.source === "virtual") {
+                const namespace = existing.namespace || "mazmot-apps";
+                const rootDir = await init(namespace);
+                const appDir = await rootDir.get(existing.name, {
+                  create: "dir",
+                });
+                let jsonFile = null;
+                try {
+                  const clientDir = await appDir.get("client");
+                  jsonFile = await clientDir.get("app.json");
+                } catch (e) {
+                  jsonFile = await appDir.get("app.json");
+                }
+                if (jsonFile) {
+                  const manifest = await jsonFile.json();
+                  installedVersion = (manifest && manifest.version) || "";
+                }
+              }
+            } catch (err) {
+              console.warn("读取已安装应用版本失败：", err);
+            }
+            return { record: existing, installedVersion };
+          },
+
+          // 下载 → 组装 → 写文件 → 更新 storage.apps
+          async installOrUpdate(payload, existingRecord) {
+            const { storage, init, shareMgr } = this._modules;
+            const { ensurePublisher, PACKAGE_VERSION } = shareMgr;
+
+            this.appProgress(15, "连接分享网络...");
+            const { user, publisher } = await ensurePublisher();
+
+            this.appProgress(20, "连接发布者...");
+            const remoteUser = await user.connectUser(payload.publisherUserId);
+
+            this.appProgress(30, "拉取应用清单...");
+            const manifest = await publisher.requestManifest(
+              remoteUser,
+              payload.fileHash,
+            );
+            if (!manifest || !Array.isArray(manifest.chunkHashes)) {
+              throw new Error("无法获取应用清单");
+            }
+
+            const total = manifest.chunkHashes.length;
+            for (let i = 0; i < total; i++) {
+              this.appProgress(
+                30 + Math.floor(((i + 1) / total) * 45),
+                `下载文件块 ${i + 1} / ${total}...`,
+              );
+              await publisher.requestChunk(remoteUser, manifest.chunkHashes[i]);
+            }
+
+            this.appProgress(78, "组装应用包...");
+            const result = await publisher.assembleFile(payload.fileHash);
+            const pkg = JSON.parse(await result.blob.text());
+
+            if (!pkg || pkg.mazmotPackage !== PACKAGE_VERSION) {
+              throw new Error(
+                `应用包格式不匹配（版本 ${pkg && pkg.mazmotPackage}）`,
+              );
+            }
+            if (!pkg.meta || pkg.meta.appId !== payload.appId) {
+              throw new Error("应用包内容与分享链接不一致");
+            }
+            if (!Array.isArray(pkg.files) || !pkg.files.length) {
+              throw new Error("应用包为空");
+            }
+
+            const isUpdate = !!existingRecord;
+            const recordName = isUpdate ? existingRecord.name : payload.appId;
+
+            this.appProgress(
+              82,
+              isUpdate ? "覆盖写入应用文件..." : "写入虚拟文件系统...",
+            );
+            const rootDir = await init("mazmot-apps");
+            const targetDir = await rootDir.get(recordName, { create: "dir" });
+            if (isUpdate) {
+              try {
+                const oldClient = await targetDir.get("client");
+                if (oldClient) await oldClient.remove();
+              } catch (e) {
+                // 旧目录不存在时忽略
+              }
+            }
+            const clientDir = await targetDir.get("client", { create: "dir" });
+            for (const file of pkg.files) {
+              const fh = await clientDir.get(file.path, { create: "file" });
+              await fh.write(file.content);
+            }
+
+            this.appProgress(92, "记录应用信息...");
+            const apps = (await storage.apps) || [];
+            if (isUpdate) {
+              const target = apps.find(
+                (a) =>
+                  (a.appId && a.appId === payload.appId) ||
+                  (a.name && a.name === existingRecord.name),
+              );
+              if (target) {
+                target.desc = pkg.meta.description || target.desc || "";
+                if (!target.appId) target.appId = payload.appId;
+                await storage.setItem("apps", apps);
+              }
+            } else {
+              apps.push({
+                name: recordName,
+                desc: pkg.meta.description || "",
+                handle: null,
+                dirName: `mazmot-apps/${recordName}`,
+                source: "virtual",
+                namespace: "mazmot-apps",
+                appId: pkg.meta.appId,
+                createdAt: Date.now(),
+              });
+              await storage.setItem("apps", apps);
+            }
+
+            return recordName;
+          },
+        },
+      };
+    };
+  </script>
+</template>

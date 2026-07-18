@@ -51,7 +51,9 @@ Mazmot/
 │   │   └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
 │   │
 │   ├── run-app/              # 自动安装并跳转的静态入口，URL = /apps/run-app/?p=...
-│   │   └── index.html        # 纯静态页：校验 Core → 验签 → 静默拉取/覆盖安装 → location.replace 跳转应用
+│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">
+│   │   ├── app-config.js     # 声明 home = ./run-app.html（不 init 文件系统，Core 未装时不可用）
+│   │   └── run-app.html      # 页面模块：内嵌 <nos-version auto-install> 装 Core → 验签 → 已装弹确认 → 安装 → location.replace
 │   │
 │   └── network/              # 网络应用（服务器/用户连接状态与后续网络配置），URL = /apps/network/
 │       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
@@ -237,18 +239,19 @@ npm run static
    - `apps.push({...})` 记录到 ever-cache。
    - `step = done`，显示"打开应用"按钮 → `window.open("/$mazmot-apps/{recordName}/client/index.html")`。
 
-### 自动跳转接收（`/apps/run-app/?p=...` → [run-app/index.html](apps/run-app/index.html)）
+### 自动跳转接收（`/apps/run-app/?p=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）
 
 用于「分享 → 一键进入」场景，全流程静默：
 
-1. 页面内嵌隐藏的 `<nos-version auto-install>` 组件，绑定其 `check-start` / `uninstalled` / `upgradable` / `install-start` / `install-progress` / `installed` / `error` 事件；Core 检测/安装占进度条前 40%，无需跳回根入口。绑定必须在 `load(nos-version)` 之前，避免遗漏组件 attached 时的同步事件。
-2. `installed` 后动态 `import` `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 与 `share-mgr.js`；随后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
-3. `findInstalled(payload)`：
+1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`。
+2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，绑定其 `check-start` / `uninstalled` / `upgradable` / `install-start` / `install-progress` / `installed` / `error` 事件；Core 检测/安装占进度条前 40%，无需跳回根入口。绑定必须在 `load(nos-version)` 之前，避免遗漏组件 attached 时的同步事件。
+3. `installed` 后动态 `import` `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 与 `share-mgr.js`；随后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
+4. `findInstalled(payload)`：
    - 未安装 or 已安装但版本不同 → 走与 install-app 一致的 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。占进度条后 60%。
    - 已安装且版本一致，或来自本人分享 → 跳过下载。
-4. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前会**暂停**，在页面上展示已有应用列表 + 数据可互通的安全提示，让用户「确认安装 / 取消」。取消即停止流程。
-5. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
-6. 出错时展示错误 + "返回主页"按钮，不做自动重试。
+5. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
+6. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
+7. 出错时展示错误 + "返回主页"按钮，不做自动重试。
 
 ### URL Payload 结构（扁平 + 签名）
 
@@ -288,7 +291,7 @@ Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [apps/main/lib/share-mgr.js](apps/main/lib/share-mgr.js) |
 | 分享接收页 | [apps/install-app/install-app.html](apps/install-app/install-app.html) |
-| 分享一键跳转页 | [apps/run-app/index.html](apps/run-app/index.html) |
+| 分享一键跳转页 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 静态服务器配置 | [scripts/static.js](scripts/static.js) |
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/install-app/app-config.js](apps/install-app/app-config.js) |
