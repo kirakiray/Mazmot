@@ -4,23 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot - 正在打开应用...</title>
-    <script type="module">
-      // 静态入口：先校验 NoneOS Core 是否具备分享/安装所需的全部模块，
-      // 缺失则回根入口升级；升级完成后原样带上 ?p=... 返回本页。
-      const redirect = encodeURIComponent(
-        window.location.pathname + window.location.search,
-      );
-      try {
-        await Promise.all([
-          import("/nos/fs/main.js"),
-          import("/nos/user/main.js"),
-          import("/nos/publish/data-publisher.js"),
-          import("/nos/crypto/crypto-verify.js"),
-        ]);
-      } catch (e) {
-        window.location.href = `/?redirect=${redirect}`;
-      }
-    </script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug"
+      type="module"
+    ></script>
     <link
       rel="stylesheet"
       href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
@@ -123,6 +110,10 @@
         background: transparent;
         color: var(--md-sys-color-primary);
       }
+      /* nos-version 只做逻辑驱动，不显示 UI（进度已由本页统一表现） */
+      nos-version {
+        display: none !important;
+      }
     </style>
   </head>
 
@@ -131,23 +122,18 @@
       <div class="card" id="card">
         <div class="icon" id="app-icon">📦</div>
         <h1 class="title" id="app-title">正在打开应用...</h1>
-        <div class="subtitle" id="app-subtitle">校验分享链接中</div>
+        <div class="subtitle" id="app-subtitle">校验运行环境</div>
         <div class="bar"><div class="fill" id="bar-fill"></div></div>
-        <div class="status" id="status">正在验证签名...</div>
+        <div class="status" id="status">正在检测 NoneOS Core...</div>
         <div class="actions" id="actions" style="display: none"></div>
       </div>
     </div>
 
+    <!-- 隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core -->
+    <nos-version id="nv" auto-install></nos-version>
+
     <script type="module">
-      import { init } from "/nos/fs/main.js";
-      import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
-      import {
-        parseShareUrl,
-        verifySharePayload,
-        ensurePublisher,
-        ensureUser,
-        PACKAGE_VERSION,
-      } from "../main/lib/share-mgr.js";
+      const load = lm(import.meta);
 
       const $icon = document.getElementById("app-icon");
       const $title = document.getElementById("app-title");
@@ -155,6 +141,9 @@
       const $status = document.getElementById("status");
       const $fill = document.getElementById("bar-fill");
       const $actions = document.getElementById("actions");
+
+      // 进度分段：0-40% 给 Core 检测/安装，40-100% 给应用安装
+      const CORE_END = 40;
 
       function setProgress(p, text) {
         $fill.style.width = Math.max(0, Math.min(100, p)) + "%";
@@ -169,7 +158,6 @@
       function fail(title, detail) {
         $title.textContent = title;
         $subtitle.textContent = "";
-        $status.innerHTML = "";
         $status.className = "error";
         $status.textContent = detail || "";
         $fill.style.width = "0%";
@@ -182,6 +170,101 @@
       function goApp(recordName) {
         const url = `/$mazmot-apps/${recordName}/client/index.html`;
         window.location.replace(url);
+      }
+
+      // ============ Core 阶段：先绑定 nos-version 事件，再加载组件定义 ============
+      // 注意：必须在 load(nos-version) 之前绑定，否则组件 attached 时同步触发的
+      // check-start / uninstalled / installed 会被遗漏。
+      const nv = $("#nv");
+      const coreReady = new Promise((resolve, reject) => {
+        let resolved = false;
+
+        nv.on("check-start", () => {
+          setProgress(2, "正在检测 NoneOS Core...");
+        });
+        nv.on("uninstalled", () => {
+          setProgress(5, "首次运行，正在安装 NoneOS Core...");
+        });
+        nv.on("upgradable", (e) => {
+          const d = e.detail || {};
+          setProgress(
+            5,
+            `NoneOS Core 升级中（${d.version || "?"} → ${d.lastVersion || "?"}）...`,
+          );
+        });
+        nv.on("install-start", () => {
+          setProgress(6, "NoneOS Core 安装准备中...");
+        });
+        nv.on("install-progress", (e) => {
+          const d = e.detail || {};
+          const step = Number(d.step) || 0;
+          const total = Number(d.total) || 0;
+          const ratio = total > 0 ? Math.min(1, step / total) : 0;
+          // 6 → CORE_END 之间线性推进
+          const p = 6 + Math.floor(ratio * (CORE_END - 6));
+          setProgress(p, `NoneOS Core：${d.desc || "安装中"}`);
+        });
+        nv.on("installed", () => {
+          if (resolved) return;
+          resolved = true;
+          setProgress(CORE_END, "NoneOS Core 就绪");
+          resolve();
+        });
+        nv.on("error", (e) => {
+          if (resolved) return;
+          resolved = true;
+          const d = e.detail || {};
+          reject(
+            new Error(
+              `NoneOS Core ${d.phase || "初始化"}失败：${d.message || "未知错误"}`,
+            ),
+          );
+        });
+      });
+
+      // 与根 index.html 保持一致的 nos-version 组件来源
+      // await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
+      await load("http://localhost:3002/nos-tool/comps/nos-version.html");
+
+      // ============ 等待 Core 就绪后再动态加载分享模块 ============
+      let init, storage, shareMgr;
+      try {
+        await coreReady;
+        // 使用动态 import：等 Core Service Worker 就绪后再拉这些依赖
+        const fsMod = await import("/nos/fs/main.js");
+        init = fsMod.init;
+        const cacheMod = await import(
+          "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js"
+        );
+        storage = cacheMod.storage;
+        shareMgr = await import("../main/lib/share-mgr.js");
+        // 触发 publisher 依赖的两个模块预加载，保证后续 ensurePublisher 时可用
+        await Promise.all([
+          import("/nos/user/main.js"),
+          import("/nos/publish/data-publisher.js"),
+          import("/nos/crypto/crypto-verify.js"),
+        ]);
+      } catch (err) {
+        console.error(err);
+        fail("运行环境初始化失败", err.message || String(err));
+        throw err;
+      }
+
+      const {
+        parseShareUrl,
+        verifySharePayload,
+        ensurePublisher,
+        ensureUser,
+        PACKAGE_VERSION,
+      } = shareMgr;
+
+      // ============ 应用阶段辅助函数 ============
+      // 把 5-100 的旧刻度线性映射到 CORE_END-100 上，尽量少改动原有语义
+      function appProgress(oldPct, text) {
+        const clamped = Math.max(5, Math.min(100, oldPct));
+        const mapped =
+          CORE_END + ((clamped - 5) / 95) * (100 - CORE_END);
+        setProgress(mapped, text);
       }
 
       // 查找已安装应用（按 appId 匹配，兼容按 name 匹配的老数据）；
@@ -221,13 +304,13 @@
       // 执行 P2P 下载 + 组装 + 写入文件系统 + 更新 storage.apps
       // 返回最终 recordName
       async function installOrUpdate(payload, existingRecord) {
-        setProgress(15, "连接分享网络...");
+        appProgress(15, "连接分享网络...");
         const { user, publisher } = await ensurePublisher();
 
-        setProgress(20, "连接发布者...");
+        appProgress(20, "连接发布者...");
         const remoteUser = await user.connectUser(payload.publisherUserId);
 
-        setProgress(30, "拉取应用清单...");
+        appProgress(30, "拉取应用清单...");
         const manifest = await publisher.requestManifest(
           remoteUser,
           payload.fileHash,
@@ -238,14 +321,14 @@
 
         const total = manifest.chunkHashes.length;
         for (let i = 0; i < total; i++) {
-          setProgress(
+          appProgress(
             30 + Math.floor(((i + 1) / total) * 45),
             `下载文件块 ${i + 1} / ${total}...`,
           );
           await publisher.requestChunk(remoteUser, manifest.chunkHashes[i]);
         }
 
-        setProgress(78, "组装应用包...");
+        appProgress(78, "组装应用包...");
         const result = await publisher.assembleFile(payload.fileHash);
         const pkg = JSON.parse(await result.blob.text());
 
@@ -265,7 +348,10 @@
         // 覆盖升级沿用旧目录名；新装用 appId 作为目录名（稳定唯一）
         const recordName = isUpdate ? existingRecord.name : payload.appId;
 
-        setProgress(82, isUpdate ? "覆盖写入应用文件..." : "写入虚拟文件系统...");
+        appProgress(
+          82,
+          isUpdate ? "覆盖写入应用文件..." : "写入虚拟文件系统...",
+        );
         const rootDir = await init("mazmot-apps");
         const targetDir = await rootDir.get(recordName, { create: "dir" });
         if (isUpdate) {
@@ -282,7 +368,7 @@
           await fh.write(file.content);
         }
 
-        setProgress(92, "记录应用信息...");
+        appProgress(92, "记录应用信息...");
         const apps = (await storage.apps) || [];
         if (isUpdate) {
           const target = apps.find(
@@ -312,9 +398,10 @@
         return recordName;
       }
 
+      // ============ 主流程 ============
       async function main() {
         // 1. 解析 + 验签
-        setProgress(5, "解析分享链接...");
+        appProgress(5, "解析分享链接...");
         const payload = parseShareUrl(window.location.search);
         if (!payload) {
           fail("分享链接无效", "未在 URL 中检测到分享参数。");
@@ -322,7 +409,7 @@
         }
         setMeta(payload);
 
-        setProgress(8, "验证签名...");
+        appProgress(8, "验证签名...");
         const ok = await verifySharePayload(payload);
         if (!ok) {
           fail("分享链接签名无效", "该链接的签名无法通过验证，可能已被篡改。");

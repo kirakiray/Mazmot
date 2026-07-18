@@ -237,10 +237,10 @@ npm run static
 
 用于「分享 → 一键进入」场景，全流程静默：
 
-1. 校验 Core 模块，缺失则回根入口升级。
-2. `parseShareUrl` + `verifySharePayload`：验签失败直接停止并展示错误。
+1. 页面内嵌隐藏的 `<nos-version auto-install>` 组件，绑定其 `check-start` / `uninstalled` / `upgradable` / `install-start` / `install-progress` / `installed` / `error` 事件；Core 检测/安装占进度条前 40%，无需跳回根入口。绑定必须在 `load(nos-version)` 之前，避免遗漏组件 attached 时的同步事件。
+2. `installed` 后动态 `import` `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 与 `share-mgr.js`；随后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
 3. `findInstalled(payload)`：
-   - 未安装 or 已安装但版本不同 → 走与 install-app 一致的 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
+   - 未安装 or 已安装但版本不同 → 走与 install-app 一致的 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。占进度条后 60%。
    - 已安装且版本一致，或来自本人分享 → 跳过下载。
 4. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
 5. 出错时展示错误 + "返回主页"按钮，不做自动重试。
