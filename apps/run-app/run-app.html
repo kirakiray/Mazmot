@@ -236,6 +236,19 @@
     const TOTAL_STEPS = STEPS.length;
 
     export default async ({ load }) => {
+      // 抽出的纯函数（便于单测），run-app.html 只做壳。
+      const utils = await load("./lib/run-app-utils.js");
+      const {
+        formatStatus,
+        buildErrorDetail,
+        mapAppProgress,
+        mapCoreInstallProgress,
+        findAppRecord,
+        filterOtherApps,
+        formatOtherAppEntry,
+        shouldSkipInstall,
+      } = utils;
+
       // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
       let coreResolve;
       let coreReject;
@@ -273,11 +286,7 @@
             this.stepIndex = index;
           },
           formatStatus(text) {
-            const label = text == null ? "" : String(text);
-            if (this.stepIndex >= 1 && this.stepIndex <= TOTAL_STEPS) {
-              return `${this.stepIndex}/${TOTAL_STEPS} · ${label}`;
-            }
-            return label;
+            return formatStatus(text, this.stepIndex, TOTAL_STEPS);
           },
           setProgress(p, text) {
             this.progress = Math.max(0, Math.min(100, p));
@@ -291,34 +300,7 @@
           },
           // 生成错误的详细信息（含 message / stack / 关键上下文），方便开发者排查
           buildErrorDetail(err) {
-            const parts = [];
-            if (err && err.name) parts.push(`name: ${err.name}`);
-            if (err && err.message) parts.push(`message: ${err.message}`);
-            if (err && err.code != null) parts.push(`code: ${err.code}`);
-            if (err && err.cause) {
-              try {
-                parts.push(
-                  "cause: " +
-                    (err.cause instanceof Error
-                      ? err.cause.stack || err.cause.message
-                      : JSON.stringify(err.cause)),
-                );
-              } catch (_) {
-                parts.push("cause: " + String(err.cause));
-              }
-            }
-            if (err && err.stack) {
-              parts.push("");
-              parts.push(err.stack);
-            } else if (!(err instanceof Error)) {
-              // 非 Error 抛出物：尽量序列化
-              try {
-                parts.push("raw: " + JSON.stringify(err));
-              } catch (_) {
-                parts.push("raw: " + String(err));
-              }
-            }
-            return parts.join("\n");
+            return buildErrorDetail(err);
           },
           fail(title, err) {
             const message =
@@ -347,10 +329,7 @@
           },
           // 把 5-100 的旧刻度线性映射到 CORE_END-100
           appProgress(oldPct, text) {
-            const clamped = Math.max(5, Math.min(100, oldPct));
-            const mapped =
-              CORE_END + ((clamped - 5) / 95) * (100 - CORE_END);
-            this.setProgress(mapped, text);
+            this.setProgress(mapAppProgress(oldPct, CORE_END), text);
           },
 
           // ============ nos-version 事件处理（模板 on: 声明式绑定） ============
@@ -372,10 +351,7 @@
           },
           onCoreInstallProgress(e) {
             const d = e.detail || {};
-            const step = Number(d.step) || 0;
-            const total = Number(d.total) || 0;
-            const ratio = total > 0 ? Math.min(1, step / total) : 0;
-            const p = 6 + Math.floor(ratio * (CORE_END - 6));
+            const p = mapCoreInstallProgress(d.step, d.total, CORE_END);
             this.setProgress(p, `NoneOS Core：${d.desc || "安装中"}`);
           },
           onCoreInstalled() {
@@ -497,7 +473,6 @@
               return;
             }
             this._installed = installed;
-            const newVersion = payload.version || "";
 
             // 自我分享
             let isSelfShare = false;
@@ -515,13 +490,7 @@
             }
 
             // 已安装且版本一致 or 自我分享 → 直接跳转
-            if (
-              installed &&
-              ((installed.installedVersion &&
-                newVersion &&
-                installed.installedVersion === newVersion) ||
-                isSelfShare)
-            ) {
+            if (shouldSkipInstall(installed, payload, isSelfShare)) {
               this.enterStep(TOTAL_STEPS);
               this.setProgress(100, "已是最新，正在跳转...");
               this.goApp(installed.record.name);
@@ -531,25 +500,10 @@
             // 步骤 6：若本地已有其它应用则等待用户确认
             try {
               const allApps = (await storage.apps) || [];
-              const others = allApps.filter(
-                (a) =>
-                  !(
-                    (a.appId && a.appId === payload.appId) ||
-                    (a.name && a.name === payload.appId)
-                  ),
-              );
+              const others = filterOtherApps(allApps, payload);
               if (others.length > 0) {
                 this.enterStep(6);
-                this.otherApps = others.map((a) => {
-                  const parts = [];
-                  if (a.source === "virtual") parts.push("虚拟目录");
-                  else if (a.source === "local") parts.push("本地目录");
-                  if (a.appId) parts.push(a.appId);
-                  return {
-                    name: a.name || "（未命名）",
-                    meta: parts.join(" · "),
-                  };
-                });
+                this.otherApps = others.map(formatOtherAppEntry);
                 this.setProgress(CORE_END, "等待用户确认安装...");
                 const agreed = await new Promise((resolve) => {
                   this._confirmResolver = resolve;
@@ -599,11 +553,7 @@
           async findInstalled(payload) {
             const { storage, init } = this._modules;
             const apps = (await storage.apps) || [];
-            const existing = apps.find(
-              (a) =>
-                (a.appId && a.appId === payload.appId) ||
-                (a.name && a.name === payload.appId),
-            );
+            const existing = findAppRecord(apps, payload);
             if (!existing) return null;
             let installedVersion = "";
             try {
