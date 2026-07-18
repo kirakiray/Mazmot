@@ -244,14 +244,15 @@ npm run static
 用于「分享 → 一键进入」场景，全流程静默：
 
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`。
-2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，绑定其 `check-start` / `uninstalled` / `upgradable` / `install-start` / `install-progress` / `installed` / `error` 事件；Core 检测/安装占进度条前 40%，无需跳回根入口。绑定必须在 `load(nos-version)` 之前，避免遗漏组件 attached 时的同步事件。
-3. `installed` 后动态 `import` `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 与 `share-mgr.js`；随后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
-4. `findInstalled(payload)`：
-   - 未安装 or 已安装但版本不同 → 走与 install-app 一致的 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。占进度条后 60%。
-   - 已安装且版本一致，或来自本人分享 → 跳过下载。
-5. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
-6. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
-7. 出错时展示错误 + "返回主页"按钮，不做自动重试。
+2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
+3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀，通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`，然后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
+5. `findInstalled(payload)`：
+   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
+   - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。
+6. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
+7. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
+8. 任意步骤抛错均调用 `fail(title, err)`：错误页除展示标题与 message 外，还会显示"出错步骤：n/N · 描述"，以及一个只读的详情框（`error-detail`，等宽字体、`white-space: pre-wrap`）打印 `err.name / message / code / cause / stack`，便于开发者排查；同时 `console.error` 一次原始 err 对象。
 
 ### URL Payload 结构（扁平 + 签名）
 
