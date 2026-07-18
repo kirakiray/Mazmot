@@ -235,10 +235,7 @@
           sync:value="shareUrl"
           hang-label
         >
-          <span slot="label">
-            <o-if :value="shareMode === 'install'">分享链接（打开后确认安装）</o-if>
-            <o-if :value="shareMode === 'run'">自动跳转链接（打开后自动安装并进入应用）</o-if>
-          </span>
+          <span slot="label">自动跳转链接（打开后自动安装并进入应用）</span>
         </p-input>
         <div class="share-hint">
           请保持本页面开启：应用文件是通过点对点方式分发的，关闭页面后对方将无法拉取。
@@ -251,20 +248,6 @@
     </div>
     <div slot="bottom">
       <o-if :value="shareStep === 'ready'">
-        <p-button
-          variant="outlined"
-          color="primary"
-          on:click="toggleShareMode"
-        >
-          <o-if :value="shareMode === 'install'">
-            <n-icon icon="mdi:rocket-launch-outline" slot="prefix"></n-icon>
-            切换为自动跳转链接
-          </o-if>
-          <o-if :value="shareMode === 'run'">
-            <n-icon icon="mdi:cursor-default-click-outline" slot="prefix"></n-icon>
-            切换为确认安装链接
-          </o-if>
-        </p-button>
         <p-button color="primary" on:click="copyShareLink">
           <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
           复制链接
@@ -444,7 +427,6 @@
       generateAppId,
       buildPackageFile,
       signSharePayload,
-      buildShareUrl,
       buildRunUrl,
     } from "./lib/share-mgr.js";
 
@@ -553,8 +535,6 @@
           shareProgressText: "",
           shareUrl: "",
           shareError: "",
-          shareMode: "install", // install（默认，跳到 /apps/install-app/）| run（自动跳转 /apps/run-app/）
-          _signedPayload: null,
         },
         attached() {
           // 启动广播监听 + 定时探测
@@ -717,8 +697,6 @@
             this.shareProgressText = "正在准备分享...";
             this.shareUrl = "";
             this.shareError = "";
-            this.shareMode = "install";
-            this._signedPayload = null;
             this.shareDialogOpen = true;
 
             try {
@@ -775,13 +753,12 @@
                 sharedAt: meta.sharedAt,
               };
               const signedPayload = await signSharePayload(user, payloadData);
-              const shareUrl = buildShareUrl(
+              const shareUrl = buildRunUrl(
                 window.location.origin,
                 signedPayload,
               );
 
               this.shareProgress = 100;
-              this._signedPayload = signedPayload;
               this.shareUrl = shareUrl;
               this.shareStep = "ready";
               this.shareProgressText = "";

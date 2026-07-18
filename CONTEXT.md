@@ -218,8 +218,8 @@ npm run static
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
 5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
 6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名。
-7. `buildShareUrl(origin, signedPayload)` → `{origin}/apps/install-app/?p={base64url(signedPayload)}`。
-8. 弹窗展示只读链接 + "复制链接" 按钮；同一签名 payload 可通过"切换为自动跳转链接"按钮切到 `buildRunUrl()` 生成的 `/apps/run-app/?p=...` 版本（不重新签名/发布，只换目标入口）。提醒用户保持页面开启（P2P 依赖发布者在线）。
+7. `buildRunUrl(origin, signedPayload)` → `{origin}/apps/run-app/?p={base64url(signedPayload)}`。
+8. 弹窗展示只读自动跳转链接 + "复制链接" 按钮；分享一律使用 run-app 入口，无需在确认安装 / 自动跳转之间切换。提醒用户保持页面开启（P2P 依赖发布者在线）。
 
 ### 接收（`/apps/install-app/` → [install-app/index.html](apps/install-app/index.html) → [install-app.html](apps/install-app/install-app.html)）
 
@@ -246,8 +246,9 @@ npm run static
 3. `findInstalled(payload)`：
    - 未安装 or 已安装但版本不同 → 走与 install-app 一致的 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。占进度条后 60%。
    - 已安装且版本一致，或来自本人分享 → 跳过下载。
-4. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
-5. 出错时展示错误 + "返回主页"按钮，不做自动重试。
+4. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前会**暂停**，在页面上展示已有应用列表 + 数据可互通的安全提示，让用户「确认安装 / 取消」。取消即停止流程。
+5. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
+6. 出错时展示错误 + "返回主页"按钮，不做自动重试。
 
 ### URL Payload 结构（扁平 + 签名）
 

@@ -110,6 +110,43 @@
         background: transparent;
         color: var(--md-sys-color-primary);
       }
+      .confirm-list {
+        margin: 12px 0 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid var(--md-sys-color-outline-variant);
+        border-radius: 8px;
+        text-align: left;
+        background: var(--md-sys-color-surface);
+      }
+      .confirm-list-item {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--md-sys-color-outline-variant);
+        font-size: 13px;
+      }
+      .confirm-list-item:last-child {
+        border-bottom: none;
+      }
+      .confirm-list-item .cli-name {
+        font-weight: 500;
+        color: var(--md-sys-color-on-surface);
+      }
+      .confirm-list-item .cli-meta {
+        font-size: 12px;
+        color: var(--md-sys-color-on-surface-variant);
+        margin-top: 2px;
+        word-break: break-all;
+      }
+      .confirm-warn {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--md-sys-color-error-container);
+        color: var(--md-sys-color-on-error-container);
+        text-align: left;
+        font-size: 13px;
+        line-height: 1.5;
+      }
       /* nos-version 只做逻辑驱动，不显示 UI（进度已由本页统一表现） */
       nos-version {
         display: none !important;
@@ -170,6 +207,71 @@
       function goApp(recordName) {
         const url = `/$mazmot-apps/${recordName}/client/index.html`;
         window.location.replace(url);
+      }
+      function escapeHtml(str) {
+        return String(str == null ? "" : str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      // 已存在其他应用时的安装确认
+      function confirmInstall(payload, otherApps) {
+        return new Promise((resolve) => {
+          $title.textContent = "确认安装此应用？";
+          $subtitle.textContent = `${payload.displayName || payload.recordName || ""} v${payload.version || "0.1.0"}`;
+          $fill.style.width = "0%";
+          $status.className = "";
+
+          const listHtml = otherApps
+            .map((a) => {
+              const name = escapeHtml(a.name || "（未命名）");
+              const appId = a.appId ? escapeHtml(a.appId) : "";
+              const source =
+                a.source === "virtual"
+                  ? "虚拟目录"
+                  : a.source === "local"
+                    ? "本地目录"
+                    : "";
+              const metaParts = [];
+              if (source) metaParts.push(source);
+              if (appId) metaParts.push(appId);
+              const meta = metaParts.join(" · ");
+              return `
+                <div class="confirm-list-item">
+                  <div class="cli-name">${name}</div>
+                  ${meta ? `<div class="cli-meta">${meta}</div>` : ""}
+                </div>
+              `;
+            })
+            .join("");
+
+          $status.innerHTML = `
+            <div style="text-align:left; font-size:13px; line-height:1.6;">
+              当前系统已初始化，已存在 <b>${otherApps.length}</b> 个应用：
+            </div>
+            <div class="confirm-list">${listHtml}</div>
+            <div class="confirm-warn">
+              请确认是否安装该应用。应用间能够访问彼此的数据，请确认此虚拟系统内不存在敏感数据，或数据可对该应用开发者信任后再确认安装。
+            </div>
+          `;
+
+          $actions.style.display = "flex";
+          $actions.innerHTML = `
+            <button class="btn secondary" id="btn-cancel">取消</button>
+            <button class="btn" id="btn-agree">确认安装</button>
+          `;
+          const cleanup = (val) => {
+            $actions.style.display = "none";
+            $actions.innerHTML = "";
+            $status.innerHTML = "";
+            resolve(val);
+          };
+          document.getElementById("btn-agree").onclick = () => cleanup(true);
+          document.getElementById("btn-cancel").onclick = () => cleanup(false);
+        });
       }
 
       // ============ Core 阶段：先绑定 nos-version 事件，再加载组件定义 ============
@@ -449,6 +551,31 @@
         }
 
         // 3. 未安装 or 有新版本 → 拉取并覆盖
+        // 在开始下载前：若本地已有其他应用，暂停并请求用户确认
+        try {
+          const allApps = (await storage.apps) || [];
+          const otherApps = allApps.filter(
+            (a) =>
+              !(
+                (a.appId && a.appId === payload.appId) ||
+                (a.name && a.name === payload.appId)
+              ),
+          );
+          if (otherApps.length > 0) {
+            setProgress(CORE_END, "等待用户确认安装...");
+            const agreed = await confirmInstall(payload, otherApps);
+            if (!agreed) {
+              fail("已取消安装", "你取消了此次应用安装。");
+              return;
+            }
+            // 恢复标题与副标题
+            setMeta(payload);
+            $status.className = "";
+          }
+        } catch (err) {
+          console.warn("读取本地应用列表失败：", err);
+        }
+
         try {
           const recordName = await installOrUpdate(
             payload,
