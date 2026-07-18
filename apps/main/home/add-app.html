@@ -221,7 +221,9 @@
   </style>
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
+  ></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
 
   <!-- 步骤导航条 -->
@@ -233,7 +235,7 @@
         </x-if>
         <x-if :value="step <= 1">1</x-if>
       </div>
-      <div class="step-label">选择目录</div>
+      <div class="step-label">选择应用来源</div>
     </div>
     <div class="step-line" attr:done="step > 1"></div>
     <div class="step" attr:active="step === 2" attr:done="step > 2">
@@ -257,7 +259,7 @@
     <!-- 开发应用 -->
     <div class="section">
       <div class="section-header">
-        <div class="section-title">创建应用</div>
+        <div class="section-title">创建或导入应用</div>
       </div>
       <div class="btn-group">
         <p-button color="primary" variant="outlined" on:click="chooseVirtual">
@@ -277,8 +279,12 @@
         虚拟文件系统，数据存储在浏览器内；本地目录则挂载你电脑上的真实文件夹。
       </div>
       <o-if :value="!supportLocalDir">
-        <div class="section-desc" style="color: var(--md-sys-color-error); opacity: 1;">
-          当前浏览器不支持 showDirectoryPicker API，无法选择本地目录，建议使用 Chrome 或基于 Chromium 的浏览器。
+        <div
+          class="section-desc"
+          style="color: var(--md-sys-color-error); opacity: 1"
+        >
+          当前浏览器不支持 showDirectoryPicker API，无法选择本地目录，建议使用
+          Chrome 或基于 Chromium 的浏览器。
         </div>
       </o-if>
     </div>
@@ -306,16 +312,10 @@
           style="flex: 1 0 320px"
         >
           <span slot="label">应用包地址</span>
-          <p-button
-            slot="suffix"
-            color="primary"
-            variant="text"
-            size="s"
-            style="margin-left: 16px"
-          >
-            安装
-          </p-button>
         </p-input>
+        <p-button color="primary" variant="outlined" disabled> 安装 </p-button>
+      </div>
+      <div style="margin-top: 12px">
         <p-button color="primary" variant="outlined" disabled>
           选择安装包
         </p-button>
@@ -387,13 +387,13 @@
     <div class="footer">
       <p-button variant="text" on:click="backToStep1">上一步</p-button>
       <p-button
-            color="primary"
-            on:click="confirmAppInfo"
-            attr:loading="submitting"
-            attr:disabled="submitting"
-          >
-            确认
-          </p-button>
+        color="primary"
+        on:click="confirmAppInfo"
+        attr:loading="submitting"
+        attr:disabled="submitting"
+      >
+        确认
+      </p-button>
     </div>
   </o-if>
 
@@ -461,7 +461,11 @@
   <script>
     import { open, get, init } from "/nos/fs/main.js";
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
-    import { toast, alert, confirm } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import {
+      toast,
+      alert,
+      confirm,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
     import { generateAppId } from "../lib/share-mgr.js";
 
@@ -472,14 +476,15 @@
       } catch (err) {
         console.warn("加载模板列表失败：", err);
       }
-      const defaultTemplateId =
-        templates.length > 0 ? templates[0].id : "base";
+      const defaultTemplateId = templates.length > 0 ? templates[0].id : "base";
 
       return {
         data: {
           step: 1,
           source: "", // "local" | "virtual"
-          supportLocalDir: typeof window !== "undefined" && typeof window.showDirectoryPicker === "function",
+          supportLocalDir:
+            typeof window !== "undefined" &&
+            typeof window.showDirectoryPicker === "function",
           _selectedHandle: null, // 用户选择的目录句柄（本地或虚拟，_ 前缀避免响应式代理复杂对象）
           _virtualNamespace: "", // 虚拟目录使用的命名空间
           selectedDirName: "",
@@ -531,10 +536,7 @@
                 this._selectedHandle = handle;
                 this.selectedDirName = handle.name || "已选择的目录";
                 this.source = "local";
-                this.appName =
-                  existingManifest.name ||
-                  handle.name ||
-                  "";
+                this.appName = existingManifest.name || handle.name || "";
                 this.appDesc = existingManifest.description || "";
                 this.step = 2;
                 return;
@@ -592,10 +594,7 @@
 
           // 「直接导入」：把已有本地应用目录登记到 storage.apps 并关闭弹窗
           async importExistingLocalApp(handle, manifest) {
-            const rawName =
-              (manifest && manifest.name) ||
-              handle.name ||
-              "";
+            const rawName = (manifest && manifest.name) || handle.name || "";
             const cleanName = (rawName || "").trim().replace(/\s+/g, "-");
             if (!cleanName || !/^[A-Za-z0-9_-]+$/.test(cleanName)) {
               alert({
@@ -668,8 +667,7 @@
               return false;
             }
             if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-              this.nameError =
-                "应用名称只能包含字母、数字、下划线和连字符";
+              this.nameError = "应用名称只能包含字母、数字、下划线和连字符";
               return false;
             }
             // 检查重复
