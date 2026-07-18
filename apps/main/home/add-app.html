@@ -461,7 +461,7 @@
   <script>
     import { open, get, init } from "/nos/fs/main.js";
     import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
-    import { toast, alert } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import { toast, alert, confirm } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
     import { generateAppId } from "../lib/share-mgr.js";
 
@@ -500,6 +500,47 @@
             try {
               const handle = await open();
               if (!handle) return;
+
+              // 尝试探测目录是否已经是 Mazmot 应用（存在 client/app.json 或根 app.json）
+              const existingManifest = await this.probeExistingApp(handle);
+
+              if (existingManifest) {
+                // 已经是项目：询问用户「直接导入」还是「作为模板信息填充」
+                const wantImport = await confirm({
+                  title: "检测到已有应用",
+                  message: `所选目录已经包含 Mazmot 应用配置（${
+                    existingManifest.displayName ||
+                    existingManifest.name ||
+                    handle.name
+                  }${
+                    existingManifest.version
+                      ? " v" + existingManifest.version
+                      : ""
+                  }）。是否直接导入到应用列表？\n\n选择「取消」将用已有配置填充表单，让你继续新建流程。`,
+                  yes: "直接导入",
+                  cancel: "取消",
+                });
+
+                if (wantImport) {
+                  // 直接导入：走完记录写入，跳过 step2/step3 的模板初始化
+                  await this.importExistingLocalApp(handle, existingManifest);
+                  return;
+                }
+
+                // 用户选择「取消」→ 用已有配置预填 step2 表单
+                this._selectedHandle = handle;
+                this.selectedDirName = handle.name || "已选择的目录";
+                this.source = "local";
+                this.appName =
+                  existingManifest.name ||
+                  handle.name ||
+                  "";
+                this.appDesc = existingManifest.description || "";
+                this.step = 2;
+                return;
+              }
+
+              // 常规空/非应用目录：进入 step2 让用户填名称
               this._selectedHandle = handle;
               this.selectedDirName = handle.name || "已选择的目录";
               this.source = "local";
@@ -512,6 +553,88 @@
                   type: "error",
                 });
               }
+            }
+          },
+
+          // 探测本地目录是否已经是 Mazmot 应用（读取 app.json）。
+          // 优先 client/app.json，回退根目录 app.json。找不到或解析失败 → null。
+          async probeExistingApp(handle) {
+            if (!handle) return null;
+            const tryReadJson = async (dirHandle, fileName) => {
+              try {
+                const fh = await dirHandle.get(fileName);
+                if (!fh || fh.kind !== "file") return null;
+                return await fh.json();
+              } catch (e) {
+                return null;
+              }
+            };
+            try {
+              let clientDir = null;
+              try {
+                clientDir = await handle.get("client");
+                if (clientDir && clientDir.kind !== "dir") clientDir = null;
+              } catch (e) {
+                clientDir = null;
+              }
+              if (clientDir) {
+                const manifest = await tryReadJson(clientDir, "app.json");
+                if (manifest) return manifest;
+              }
+              // 兼容老结构：根目录直接放 app.json
+              const rootManifest = await tryReadJson(handle, "app.json");
+              return rootManifest || null;
+            } catch (err) {
+              console.warn("探测本地应用配置失败：", err);
+              return null;
+            }
+          },
+
+          // 「直接导入」：把已有本地应用目录登记到 storage.apps 并关闭弹窗
+          async importExistingLocalApp(handle, manifest) {
+            const rawName =
+              (manifest && manifest.name) ||
+              handle.name ||
+              "";
+            const cleanName = (rawName || "").trim().replace(/\s+/g, "-");
+            if (!cleanName || !/^[A-Za-z0-9_-]+$/.test(cleanName)) {
+              alert({
+                content:
+                  "应用配置中的名称不符合规则（只能包含字母、数字、下划线、连字符）：" +
+                  rawName,
+              });
+              return;
+            }
+            const apps = (await storage.apps) || [];
+            if (apps.some((a) => a.name === cleanName)) {
+              alert({
+                content: `已存在同名应用「${cleanName}」，无法重复导入。`,
+              });
+              return;
+            }
+            try {
+              const appId = await generateAppId(cleanName);
+              const handleForStorage = handle._handle || handle;
+              apps.push({
+                name: cleanName,
+                desc: (manifest && manifest.description) || "",
+                handle: handleForStorage,
+                dirName: handle.name || cleanName,
+                source: "local",
+                namespace: "",
+                appId,
+                createdAt: Date.now(),
+              });
+              await storage.setItem("apps", apps);
+              toast({ content: "已导入应用", type: "success" });
+              // 通知外层 home.html 关闭弹窗并刷新列表
+              this.emit("close-dialog", { bubbles: true, composed: true });
+              this.resetState();
+            } catch (err) {
+              console.error(err);
+              alert({
+                content: "导入失败：" + (err.message || err),
+              });
             }
           },
 

@@ -96,12 +96,16 @@ Mazmot/
 
 ```
 选择应用来源 → 输入应用名 → 校验唯一性
-   ├─ 本地目录：open() 选择目录，得到原生 FileSystemDirectoryHandle
+   ├─ 本地目录：open() 选择目录
+   │    └─ probeExistingApp(handle)：读 client/app.json（回退根 app.json）
+   │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 storage.apps 并关闭弹窗（不写模板）
+   │         ├─ 命中且用户点「取消」→ 用 manifest.name / description 预填 step2 表单继续
+   │         └─ 未命中 → 进入 step2 让用户填名称
    └─ 虚拟目录：确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立子目录
    ↓
 存入 ever-cache 的 apps[]（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
    ↓
-writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录
+writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录（仅新建流程走到这里）
    ↓
 完成
 ```
