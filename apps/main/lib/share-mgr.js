@@ -120,17 +120,6 @@ export function base64UrlDecode(b64url) {
 }
 
 /**
- * 构造分享链接
- * @param {string} origin - 当前域名（location.origin）
- * @param {Object} signedPayload - user._sign 的返回值
- * @returns {string}
- */
-export function buildShareUrl(origin, signedPayload) {
-  const encoded = base64UrlEncode(JSON.stringify(signedPayload));
-  return `${origin}/apps/install-app/?p=${encoded}`;
-}
-
-/**
  * 构造「自动安装并跳转到应用」的一键分享链接。
  * 接收端为 /apps/run-app/，将静默完成 Core 校验、验签、自动安装/更新后
  * 用 location.replace 跳转到应用运行地址。

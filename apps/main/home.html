@@ -799,20 +799,6 @@
             }
           },
 
-          // 在「确认安装」与「自动跳转」两种分享链接之间切换。
-          // 复用同一个已签名 payload，只是切换目标入口路径。
-          toggleShareMode() {
-            if (!this._signedPayload) return;
-            const nextMode =
-              this.shareMode === "install" ? "run" : "install";
-            const origin = window.location.origin;
-            this.shareUrl =
-              nextMode === "run"
-                ? buildRunUrl(origin, this._signedPayload)
-                : buildShareUrl(origin, this._signedPayload);
-            this.shareMode = nextMode;
-          },
-
           closeShareDialog() {
             this.shareDialogOpen = false;
             // 保留 shareUrl，等再次打开会清空；仅重置错误状态
