@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mazmot - 安装应用</title>
+    <title>Mazmot - 连接状态</title>
     <script type="module">
-      // 加载应用前先校验 NoneOS Core 是否已就绪且包含分享所需的全部模块。
-      // 旧版本 Core 缺少 /nos/publish/data-publisher.js 等模块时，先到根入口完成升级。
+      // 加载应用前先校验 NoneOS Core 是否已就绪。
+      // 旧版本 Core 可能缺少新模块（如 /nos/user/main.js），此时先到根入口完成升级。
       const redirect = encodeURIComponent(
         window.location.pathname + window.location.search,
       );
@@ -14,8 +14,6 @@
         await Promise.all([
           import("/nos/fs/main.js"),
           import("/nos/user/main.js"),
-          import("/nos/publish/data-publisher.js"),
-          import("/nos/crypto/crypto-verify.js"),
         ]);
       } catch (e) {
         window.location.href = `/?redirect=${redirect}`;

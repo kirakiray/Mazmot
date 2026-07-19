@@ -35,24 +35,34 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取 .tpl 源文件，替换占位符后写入 client/）
+│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __files.json 的 replacements 清单替换后写入 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（添加新模板时登记 id/name/desc）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json 清单 + .tpl 源文件
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json（文件清单 + 替换规则）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
-│   │   └── lib/              # 主应用工具库，同时被 install-app 反向引用
+│   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
 │   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   │       └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   │
-│   └── install-app/          # 分享接收应用，URL = /apps/install-app/?p=...
-│       ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
-│       ├── app-config.js     # ofa.js 应用配置
-│       └── install-app.html  # 分享安装页面模块（校验/拉取/安装）
+│   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?p=...
+│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">
+│   │   ├── app-config.js     # 声明 home = ./run-app.html（不 init 文件系统，Core 未装时不可用）
+│   │   └── run-app.html      # 页面模块：内嵌 <nos-version auto-install> 装 Core → 验签 → 已装弹确认 → 安装 → location.replace
+│   │
+│   └── network/              # 网络应用（服务器/用户连接状态与后续网络配置），URL = /apps/network/
+│       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
+│       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
+│       ├── home.html         # 首页：上部服务器网格 + 下部已连接 RemoteUser 网格，点击跳转详情
+│       ├── server-detail.html # 服务器详情：连接状态 / 版本 / 延迟 / 连接·断开·测试延迟
+│       └── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │
 ├── scripts/
 │   ├── static.js             # 启动 http-server：Main(30031)
 │   └── ...                   # generate-capabilities / update-skill / update-files-json
+│
+├── comps/                    # 系统级公共组件（rdn-network / rnd-box）
+│   └── CONTEXT.md            # 组件上下文说明
 │
 ├── ai/                       # AI 相关：deepseek、kimi、assistant
 └── old/                      # v1/v2/v3 历史版本（不参与新逻辑）
@@ -83,12 +93,16 @@ Mazmot/
 
 ```
 选择应用来源 → 输入应用名 → 校验唯一性
-   ├─ 本地目录：open() 选择目录，得到原生 FileSystemDirectoryHandle
+   ├─ 本地目录：open() 选择目录
+   │    └─ probeExistingApp(handle)：读 client/app.json（回退根 app.json）
+   │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 storage.apps 并关闭弹窗（不写模板）
+   │         ├─ 命中且用户点「取消」→ 用 manifest.name / description 预填 step2 表单继续
+   │         └─ 未命中 → 进入 step2 让用户填名称
    └─ 虚拟目录：确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立子目录
    ↓
 存入 ever-cache 的 apps[]（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
    ↓
-writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录
+writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录（仅新建流程走到这里）
    ↓
 完成
 ```
@@ -173,7 +187,7 @@ npm run static
 2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
-> 直接打开分享链接（`/apps/install-app/?p=...`）时，`install-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；任一模块缺失都会先回根入口升级，再返回继续安装。
+> 直接打开分享链接（`/apps/run-app/?p=...`）时，`run-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；任一模块缺失都会先回根入口升级，再返回继续安装。
 
 ### 运行测试
 
@@ -201,24 +215,23 @@ npm run static
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
 5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
 6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名。
-7. `buildShareUrl(origin, signedPayload)` → `{origin}/apps/install-app/?p={base64url(signedPayload)}`。
-8. 弹窗展示只读链接 + "复制链接" 按钮；提醒用户保持页面开启（P2P 依赖发布者在线）。
+7. `buildRunUrl(origin, signedPayload)` → `{origin}/apps/run-app/?p={base64url(signedPayload)}`。
+8. 弹窗展示只读自动跳转链接 + "复制链接" 按钮；分享一律使用 run-app 入口，无需在确认安装 / 自动跳转之间切换。提醒用户保持页面开启（P2P 依赖发布者在线）。
 
-### 接收（`/apps/install-app/` → [install-app/index.html](apps/install-app/index.html) → [install-app.html](apps/install-app/install-app.html)）
+### 接收（`/apps/run-app/?p=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）
 
-1. `parseShareUrl(location.search)` 用 `JSON.parse` 拿到 `payload`（**必须保留字段原顺序**，不能重建对象）。
-2. `verifySharePayload(payload)` 调用 `verifyData(payload)`（`/nos/crypto/crypto-verify.js`）—— **无需构造 user 实例**。失败 → `error` 步骤，提示"签名无效"。
-3. 通过后进入 `preview` 步骤展示 icon / displayName / version / description / publisherUserId。
-4. 用户点击"安装应用"：
-   - `ensurePublisher()` → `user.connectUser(publisherUserId)`。
-   - `publisher.requestManifest(remoteUser, fileHash)` → 拿到 `chunkHashes[]`。
-   - 循环 `publisher.requestChunk(remoteUser, hash)` 下载所有块（进度百分比）。
-   - `publisher.assembleFile(fileHash)` 组装 Blob → JSON.parse 得 `pkg`。
-   - 校验 `pkg.mazmotPackage === "1.0.0"`、`pkg.meta.appId === payload.appId`。
-   - **同名不冲突**：`recordName = pkg.meta.recordName + "-" + publisherUserId.slice(0, 6)` 保证唯一。
-   - `init("mazmot-apps") → get(recordName, {create:"dir"}) → get("client", {create:"dir"})`，逐个写入文件。
-   - `apps.push({...})` 记录到 ever-cache。
-   - `step = done`，显示"打开应用"按钮 → `window.open("/$mazmot-apps/{recordName}/client/index.html")`。
+用于「分享 → 一键进入」场景，全流程静默；若本地已装其他应用则弹窗确认，其余步骤自动完成：
+
+1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`。
+2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
+3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀，通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`，然后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
+5. `findInstalled(payload)`：
+   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
+   - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。
+6. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
+7. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
+8. 任意步骤抛错均调用 `fail(title, err)`：错误页除展示标题与 message 外，还会显示"出错步骤：n/N · 描述"，以及一个只读的详情框（`error-detail`，等宽字体、`white-space: pre-wrap`）打印 `err.name / message / code / cause / stack`，便于开发者排查；同时 `console.error` 一次原始 err 对象。
 
 ### URL Payload 结构（扁平 + 签名）
 
@@ -257,8 +270,11 @@ Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [apps/main/lib/share-mgr.js](apps/main/lib/share-mgr.js) |
-| 分享接收页 | [apps/install-app/install-app.html](apps/install-app/install-app.html) |
+| 分享接收页 | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
+| 分享一键跳转页 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 静态服务器配置 | [scripts/static.js](scripts/static.js) |
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
-| 接收应用 ofa.js 配置 | [apps/install-app/app-config.js](apps/install-app/app-config.js) |
+| 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
+| 连接状态应用（服务器/用户网格 + 详情页） | [apps/network/](apps/network/) |
+| 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |

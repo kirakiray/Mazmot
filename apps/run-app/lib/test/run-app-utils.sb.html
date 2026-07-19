@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>run-app 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>run-app 单元测试</h1>
+
+    <!-- ================= formatStatus ================= -->
+    <sb-test name="formatStatus 在合法 stepIndex 范围内加「n/N · 」前缀">
+      <template>
+        <script type="module">
+          import { formatStatus } from "../run-app-utils.js";
+          {
+            const r1 = formatStatus("正在检测 NoneOS Core...", 1, 9);
+            const r2 = formatStatus("下载文件块 3 / 10...", 8, 9);
+            return {
+              assert:
+                r1 === "1/9 · 正在检测 NoneOS Core..." &&
+                r2 === "8/9 · 下载文件块 3 / 10...",
+              content: { r1, r2 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatStatus stepIndex 越界或非法时不加前缀">
+      <template>
+        <script type="module">
+          import { formatStatus } from "../run-app-utils.js";
+          {
+            const r1 = formatStatus("hello", 0, 9);
+            const r2 = formatStatus("hello", 10, 9);
+            const r3 = formatStatus("hello", -1, 9);
+            return {
+              assert: r1 === "hello" && r2 === "hello" && r3 === "hello",
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatStatus 空文本 / null 也能安全处理">
+      <template>
+        <script type="module">
+          import { formatStatus } from "../run-app-utils.js";
+          {
+            const r1 = formatStatus(null, 1, 9);
+            const r2 = formatStatus(undefined, 1, 9);
+            const r3 = formatStatus("", 1, 9);
+            return {
+              assert: r1 === "1/9 · " && r2 === "1/9 · " && r3 === "1/9 · ",
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= buildErrorDetail ================= -->
+    <sb-test name="buildErrorDetail 常规 Error 包含 name/message/stack">
+      <template>
+        <script type="module">
+          import { buildErrorDetail } from "../run-app-utils.js";
+          {
+            const err = new TypeError("Invalid URL");
+            const text = buildErrorDetail(err);
+            return {
+              assert:
+                text.includes("name: TypeError") &&
+                text.includes("message: Invalid URL") &&
+                text.includes(err.stack),
+              content: { text },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildErrorDetail 支持 code 字段与 cause">
+      <template>
+        <script type="module">
+          import { buildErrorDetail } from "../run-app-utils.js";
+          {
+            const inner = new Error("root cause");
+            const err = new Error("outer");
+            err.code = "E_BOOM";
+            err.cause = inner;
+            const text = buildErrorDetail(err);
+            return {
+              assert:
+                text.includes("code: E_BOOM") &&
+                text.includes("cause:") &&
+                (text.includes(inner.stack) ||
+                  text.includes("root cause")),
+              content: { text },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildErrorDetail 处理非 Error 抛出物（对象序列化）">
+      <template>
+        <script type="module">
+          import { buildErrorDetail } from "../run-app-utils.js";
+          {
+            const text = buildErrorDetail({ code: 42, hint: "boom" });
+            return {
+              assert:
+                text.includes("code: 42") &&
+                text.includes('"hint":"boom"'),
+              content: { text },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildErrorDetail 处理 null / undefined 返回空串">
+      <template>
+        <script type="module">
+          import { buildErrorDetail } from "../run-app-utils.js";
+          {
+            const r1 = buildErrorDetail(null);
+            const r2 = buildErrorDetail(undefined);
+            return {
+              assert: r1 === "" && r2 === "",
+              content: { r1, r2 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= mapAppProgress ================= -->
+    <sb-test name="mapAppProgress 5 → CORE_END, 100 → 100">
+      <template>
+        <script type="module">
+          import { mapAppProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            const a = mapAppProgress(5, CORE_END);
+            const b = mapAppProgress(100, CORE_END);
+            return {
+              assert: a === CORE_END && b === 100,
+              content: { a, b },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mapAppProgress 越界自动 clamp 到 [5,100]">
+      <template>
+        <script type="module">
+          import { mapAppProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            const belowMin = mapAppProgress(-10, CORE_END);
+            const aboveMax = mapAppProgress(150, CORE_END);
+            return {
+              assert: belowMin === CORE_END && aboveMax === 100,
+              content: { belowMin, aboveMax },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mapAppProgress 中间值线性递增">
+      <template>
+        <script type="module">
+          import { mapAppProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            // oldPct=52.5（(5+100)/2） → 应该正好落在 (40+100)/2 = 70
+            const mid = mapAppProgress(52.5, CORE_END);
+            return {
+              assert: Math.abs(mid - 70) < 1e-6,
+              content: { mid },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= mapCoreInstallProgress ================= -->
+    <sb-test name="mapCoreInstallProgress step=0 → 6，step=total → coreEnd">
+      <template>
+        <script type="module">
+          import { mapCoreInstallProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            const a = mapCoreInstallProgress(0, 10, CORE_END);
+            const b = mapCoreInstallProgress(10, 10, CORE_END);
+            return {
+              assert: a === 6 && b === CORE_END,
+              content: { a, b },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mapCoreInstallProgress total<=0 或非法输入返回 6">
+      <template>
+        <script type="module">
+          import { mapCoreInstallProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            const a = mapCoreInstallProgress(3, 0, CORE_END);
+            const b = mapCoreInstallProgress("x", "y", CORE_END);
+            const c = mapCoreInstallProgress(undefined, undefined, CORE_END);
+            return {
+              assert: a === 6 && b === 6 && c === 6,
+              content: { a, b, c },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mapCoreInstallProgress step > total 时截断为 100%">
+      <template>
+        <script type="module">
+          import { mapCoreInstallProgress } from "../run-app-utils.js";
+          {
+            const CORE_END = 40;
+            const a = mapCoreInstallProgress(20, 10, CORE_END);
+            return {
+              assert: a === CORE_END,
+              content: { a },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= findAppRecord ================= -->
+    <sb-test name="findAppRecord 优先按 appId 匹配">
+      <template>
+        <script type="module">
+          import { findAppRecord } from "../run-app-utils.js";
+          {
+            const apps = [
+              { name: "app-x", appId: "id-x" },
+              { name: "app-y", appId: "id-y" },
+            ];
+            const found = findAppRecord(apps, { appId: "id-y" });
+            return {
+              assert: found && found.name === "app-y",
+              content: { found },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="findAppRecord 兼容旧数据（name === payload.appId）">
+      <template>
+        <script type="module">
+          import { findAppRecord } from "../run-app-utils.js";
+          {
+            const apps = [{ name: "legacy-id", appId: null }];
+            const found = findAppRecord(apps, { appId: "legacy-id" });
+            return {
+              assert: found && found.name === "legacy-id",
+              content: { found },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="findAppRecord 找不到返回 null">
+      <template>
+        <script type="module">
+          import { findAppRecord } from "../run-app-utils.js";
+          {
+            const r1 = findAppRecord([], { appId: "x" });
+            const r2 = findAppRecord(null, { appId: "x" });
+            const r3 = findAppRecord([{ name: "a", appId: "b" }], null);
+            return {
+              assert: r1 === null && r2 === null && r3 === null,
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= filterOtherApps ================= -->
+    <sb-test name="filterOtherApps 过滤掉 appId / 兼容 name 命中的应用">
+      <template>
+        <script type="module">
+          import { filterOtherApps } from "../run-app-utils.js";
+          {
+            const apps = [
+              { name: "keep-a", appId: "id-a" },
+              { name: "id-target", appId: null }, // 旧数据 name==appId
+              { name: "keep-b", appId: "id-b" },
+              { name: "keep-c", appId: "id-target" }, // 新数据 appId==target
+            ];
+            const others = filterOtherApps(apps, { appId: "id-target" });
+            return {
+              assert:
+                others.length === 2 &&
+                others[0].name === "keep-a" &&
+                others[1].name === "keep-b",
+              content: { others },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="filterOtherApps payload 为空时返回全部（浅拷贝）">
+      <template>
+        <script type="module">
+          import { filterOtherApps } from "../run-app-utils.js";
+          {
+            const apps = [{ name: "a" }, { name: "b" }];
+            const others = filterOtherApps(apps, null);
+            return {
+              assert: others.length === 2 && others !== apps,
+              content: { others },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= formatOtherAppEntry ================= -->
+    <sb-test name="formatOtherAppEntry 虚拟目录 + appId">
+      <template>
+        <script type="module">
+          import { formatOtherAppEntry } from "../run-app-utils.js";
+          {
+            const entry = formatOtherAppEntry({
+              name: "MyApp",
+              source: "virtual",
+              appId: "abc",
+            });
+            return {
+              assert:
+                entry.name === "MyApp" && entry.meta === "虚拟目录 · abc",
+              content: { entry },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatOtherAppEntry 本地目录，无 appId">
+      <template>
+        <script type="module">
+          import { formatOtherAppEntry } from "../run-app-utils.js";
+          {
+            const entry = formatOtherAppEntry({
+              name: "LocalApp",
+              source: "local",
+            });
+            return {
+              assert:
+                entry.name === "LocalApp" && entry.meta === "本地目录",
+              content: { entry },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatOtherAppEntry 空/无 name 用「（未命名）」占位">
+      <template>
+        <script type="module">
+          import { formatOtherAppEntry } from "../run-app-utils.js";
+          {
+            const e1 = formatOtherAppEntry({});
+            const e2 = formatOtherAppEntry(null);
+            return {
+              assert:
+                e1.name === "（未命名）" &&
+                e1.meta === "" &&
+                e2.name === "（未命名）" &&
+                e2.meta === "",
+              content: { e1, e2 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= shouldSkipInstall ================= -->
+    <sb-test name="shouldSkipInstall 已装版本与分享版本一致 → true">
+      <template>
+        <script type="module">
+          import { shouldSkipInstall } from "../run-app-utils.js";
+          {
+            const installed = {
+              record: { name: "app-x" },
+              installedVersion: "1.2.3",
+            };
+            const r = shouldSkipInstall(installed, { version: "1.2.3" }, false);
+            return { assert: r === true, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="shouldSkipInstall 版本不一致 → false">
+      <template>
+        <script type="module">
+          import { shouldSkipInstall } from "../run-app-utils.js";
+          {
+            const installed = {
+              record: { name: "app-x" },
+              installedVersion: "1.0.0",
+            };
+            const r = shouldSkipInstall(installed, { version: "1.2.3" }, false);
+            return { assert: r === false, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="shouldSkipInstall 自我分享即使版本不同也 → true">
+      <template>
+        <script type="module">
+          import { shouldSkipInstall } from "../run-app-utils.js";
+          {
+            const installed = {
+              record: { name: "app-x" },
+              installedVersion: "1.0.0",
+            };
+            const r = shouldSkipInstall(installed, { version: "2.0.0" }, true);
+            return { assert: r === true, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="shouldSkipInstall 未安装 → false">
+      <template>
+        <script type="module">
+          import { shouldSkipInstall } from "../run-app-utils.js";
+          {
+            const r = shouldSkipInstall(null, { version: "1.0.0" }, true);
+            return { assert: r === false, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="shouldSkipInstall 已装但缺少版本号 → false（不认为一致）">
+      <template>
+        <script type="module">
+          import { shouldSkipInstall } from "../run-app-utils.js";
+          {
+            const installed = {
+              record: { name: "app-x" },
+              installedVersion: "",
+            };
+            const r = shouldSkipInstall(installed, { version: "1.0.0" }, false);
+            return { assert: r === false, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

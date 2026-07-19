@@ -235,7 +235,7 @@
           sync:value="shareUrl"
           hang-label
         >
-          <span slot="label">分享链接</span>
+          <span slot="label">自动跳转链接（打开后自动安装并进入应用）</span>
         </p-input>
         <div class="share-hint">
           请保持本页面开启：应用文件是通过点对点方式分发的，关闭页面后对方将无法拉取。
@@ -269,7 +269,7 @@
     <div class="list-wrapper">
       <o-if :value="appList.length > 0">
         <p-list>
-          <o-fill :value="appList">
+          <o-fill :value="appList" fill-key="appId">
             <p-list-item class="app-item" collapsible button>
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               {{$data.name}}
@@ -427,7 +427,7 @@
       generateAppId,
       buildPackageFile,
       signSharePayload,
-      buildShareUrl,
+      buildRunUrl,
     } from "./lib/share-mgr.js";
 
     async function loadApps() {
@@ -753,7 +753,7 @@
                 sharedAt: meta.sharedAt,
               };
               const signedPayload = await signSharePayload(user, payloadData);
-              const shareUrl = buildShareUrl(
+              const shareUrl = buildRunUrl(
                 window.location.origin,
                 signedPayload,
               );

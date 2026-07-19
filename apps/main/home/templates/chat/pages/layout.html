@@ -1,0 +1,485 @@
+<template page>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
+  <l-m src="/ncomp/user-status/user-status.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .chat-app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .header-top h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-primary);
+    }
+    .clear-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--md-sys-color-error);
+      border-radius: 8px;
+      background-color: transparent;
+      color: var(--md-sys-color-error);
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .clear-btn:hover {
+      background-color: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+    }
+    .user-id {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+    .user-id span {
+      flex: 1;
+    }
+    .copy-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 6px;
+      background-color: transparent;
+      color: var(--md-sys-color-primary);
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover {
+      background-color: var(--md-sys-color-surface-container-high);
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+    }
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .sidebar-header .title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .new-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: none;
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      cursor: pointer;
+    }
+    .connect-card {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .input-row input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+    }
+    .input-row button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .input-row button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      min-height: 16px;
+    }
+    .contact-list {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 8px;
+    }
+    .contact-empty {
+      padding: 20px 16px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-align: center;
+    }
+    p-list-item {
+      --padding: 8px 12px;
+      border-radius: 10px;
+      transition:
+        background-color ease 0.15s,
+        color ease 0.15s;
+    }
+    p-list-item.active {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .avatar {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      flex-shrink: 0;
+    }
+    .avatar n-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    .avatar n-user-status {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid var(--md-sys-color-surface-container-low);
+      box-sizing: content-box;
+    }
+    .contact-name {
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .contact-badge {
+      flex-shrink: 0;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background-color: var(--md-sys-color-error);
+      color: var(--md-sys-color-on-error);
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .contact-badge[hidden] {
+      display: none;
+    }
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    ::slotted(*) {
+      flex: 1;
+      overflow: hidden;
+    }
+  </style>
+
+  <div class="chat-app">
+    <div class="header">
+      <div class="header-top">
+        <h1>{{appName}}</h1>
+        <button class="clear-btn" on:click="clearAllData">Clear data</button>
+      </div>
+      <div class="user-id">
+        My ID: <span>{{store.userId}}</span>
+        <button
+          class="copy-btn"
+          on:click="copyUserId"
+          attr:disabled="!store.userId"
+        >
+          {{copyBtnText}}
+        </button>
+      </div>
+    </div>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="title">Contacts</div>
+          <button class="new-btn" on:click="toggleConnectForm">
+            {{showConnectForm ? "Cancel" : "+ New"}}
+          </button>
+        </div>
+
+        <o-if :value="showConnectForm">
+          <div class="connect-card">
+            <div class="input-row">
+              <input
+                type="text"
+                sync:value="targetUserId"
+                placeholder="Enter target user ID"
+              />
+              <button on:click="checkOnline" attr:disabled="!targetUserId">
+                Connect
+              </button>
+            </div>
+            <div class="status">{{store.statusText}}</div>
+          </div>
+        </o-if>
+
+        <div class="contact-list">
+          <o-if :value="!store.contacts.length">
+            <div class="contact-empty">No contacts yet</div>
+          </o-if>
+          <p-list>
+            <o-fill :value="store.contacts">
+              <p-list-item
+                button
+                class:active="$data.userId === $host.store.activeUserId"
+                on:click="$host.selectContact($data.userId)"
+              >
+                <div slot="prefix" class="avatar">
+                  <n-icon icon="mdi:account-circle"></n-icon>
+                  <n-user-status
+                    attr:user-id="$data.userId"
+                    namespace="default"
+                  ></n-user-status>
+                </div>
+                <n-user-name
+                  class="contact-name"
+                  attr:user-id="$data.userId"
+                  namespace="default"
+                ></n-user-name>
+                <div
+                  slot="suffix"
+                  class="contact-badge"
+                  attr:hidden="!$data.unread"
+                >
+                  {{$data.unread}}
+                </div>
+              </p-list-item>
+            </o-fill>
+          </p-list>
+        </div>
+      </aside>
+
+      <section class="chat-area">
+        <slot></slot>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    import {
+      confirm,
+      toast,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import {
+      chatStore,
+      initChat,
+      ensureContact,
+      connectContact,
+      markRead,
+      sendMessage,
+      checkOnlineUser,
+      clearAll,
+    } from "./chat-store.js";
+
+    export default async () => {
+      return {
+        data: {
+          appName: "Mazmot Chat",
+          targetUserId: "",
+          showConnectForm: true,
+          copyBtnText: "Copy",
+          // 挂载 chat-store 中的响应式共享状态；先给一个同构默认值，
+          // 避免 attached 之前（或 detached 之后）模板读取 store.contacts.length 报错。
+          store: {
+            userId: "",
+            contacts: [],
+            activeUserId: "",
+            statusText: "",
+          },
+        },
+        proto: {
+          toggleConnectForm() {
+            this.showConnectForm = !this.showConnectForm;
+            if (!this.showConnectForm) {
+              chatStore.statusText = "";
+            }
+          },
+
+          async selectContact(userId) {
+            // 点击联系人：先跳转到聊天页，再尝试连接对方。
+            this.goto(`./chat.html?userId=${encodeURIComponent(userId)}`);
+            try {
+              await connectContact(userId);
+            } catch (err) {
+              chatStore.statusText = "Connect failed: " + (err.message || err);
+            }
+          },
+
+          async checkOnline() {
+            const target = this.targetUserId.trim();
+            if (!target) {
+              chatStore.statusText = "Please enter a user ID.";
+              return;
+            }
+            if (target === chatStore.userId) {
+              chatStore.statusText = "Cannot connect to yourself.";
+              return;
+            }
+            chatStore.statusText = "Checking online status...";
+            try {
+              const online = await checkOnlineUser(target);
+              if (!online) {
+                chatStore.statusText = "User is offline.";
+                return;
+              }
+              chatStore.statusText = "User is online. Connecting...";
+              await ensureContact(target);
+              chatStore.statusText = "Connected.";
+              this.targetUserId = "";
+              this.showConnectForm = false;
+              this.selectContact(target);
+            } catch (err) {
+              chatStore.statusText = "Check failed: " + (err.message || err);
+            }
+          },
+
+          async clearAllData() {
+            const ok = await confirm({
+              title: "Clear chat data",
+              content:
+                "This will remove all contacts and message history stored on this device. Continue?",
+            });
+            if (!ok) return;
+            try {
+              await clearAll();
+            } catch (err) {
+              toast({
+                text: "Clear failed: " + (err.message || err),
+                type: "error",
+              });
+              return;
+            }
+            this.showConnectForm = true;
+            try {
+              this.goto("./");
+            } catch {}
+            toast({ text: "Chat data cleared." });
+          },
+
+          async copyUserId() {
+            if (!chatStore.userId) return;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(chatStore.userId);
+              } else {
+                const input = document.createElement("textarea");
+                input.value = chatStore.userId;
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand("copy");
+                document.body.removeChild(input);
+              }
+              this.copyBtnText = "Copied";
+            } catch (err) {
+              this.copyBtnText = "Failed";
+            }
+            clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => {
+              this.copyBtnText = "Copy";
+            }, 1500);
+          },
+
+          syncActiveFromRoute() {
+            const current = this.app && this.app.current;
+            if (!current) {
+              chatStore.activeUserId = "";
+              return;
+            }
+            try {
+              const url = new URL(current.src, location.href);
+              const uid = url.searchParams.get("userId") || "";
+              chatStore.activeUserId = uid;
+              if (uid) {
+                markRead(uid);
+                // 若已进入聊天页，尝试自动连接对方（未初始化时会静默跳过，
+                // initChat 完成后 attached 再触发一次）。
+                connectContact(uid).catch((err) => {
+                  chatStore.statusText =
+                    "Connect failed: " + (err.message || err);
+                });
+              }
+            } catch {
+              chatStore.activeUserId = "";
+            }
+          },
+        },
+        routerChange() {
+          this.syncActiveFromRoute();
+        },
+        attached() {
+          // 挂载响应式共享状态
+          this.store = chatStore;
+          initChat().then(() => {
+            // initChat 完成后再同步一次路由：刷新时 URL 已带 userId，
+            // 需要在 _user 就绪后才能真正发起连接。
+            this.syncActiveFromRoute();
+          });
+          this.syncActiveFromRoute();
+        },
+        detached() {
+          this.store = {
+            userId: "",
+            contacts: [],
+            activeUserId: "",
+            statusText: "",
+          };
+        },
+      };
+    };
+  </script>
+</template>
