@@ -646,6 +646,32 @@
             this.appProgress(20, "连接发布者...");
             const remoteUser = await user.connectUser(payload.publisherUserId);
 
+            // 探测一次连接路径，让用户知道是通过哪个握手服务器 / 或已 RTC 直连
+            try {
+              await remoteUser.ping();
+            } catch (_) {
+              // ping 失败不影响后续下载，忽略
+            }
+            const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
+            if (rttInfo) {
+              if (rttInfo.via === "rtc") {
+                this.appProgress(
+                  22,
+                  `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                );
+              } else if (rttInfo.via === "server" && rttInfo.url) {
+                // 只保留服务器 host，避免文案太长
+                let host = rttInfo.url;
+                try {
+                  host = new URL(rttInfo.url).host;
+                } catch (_) {}
+                this.appProgress(
+                  22,
+                  `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                );
+              }
+            }
+
             // 步骤 8：下载并写入应用文件
             this.enterStep(8);
             this.appProgress(30, "拉取应用清单...");
