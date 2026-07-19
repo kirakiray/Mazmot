@@ -72,10 +72,29 @@
       font-size: 12px;
       line-height: 1.5;
       text-align: left;
-      max-height: 220px;
+      max-height: 280px;
       overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
+      user-select: text;
+    }
+    .error-detail-actions {
+      margin-top: 6px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .copy-btn {
+      border: none;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .copy-btn:active {
+      opacity: 0.85;
     }
     .error-step {
       margin-top: 8px;
@@ -240,6 +259,11 @@
         </o-if>
         <o-if :value="errorDetail">
           <div class="error-detail">{{errorDetail}}</div>
+          <div class="error-detail-actions">
+            <button class="copy-btn" on:click="copyErrorDetail">
+              {{copyBtnText}}
+            </button>
+          </div>
         </o-if>
         <o-if :value="history.length > 0">
           <details class="history">
@@ -290,6 +314,15 @@
         formatOtherAppEntry,
         shouldSkipInstall,
       } = utils;
+      const diagMod = await load("./lib/diag.js");
+      const {
+        createDiag,
+        pathInfoOf,
+        collectSessionIds,
+        collectConnectedUrls,
+      } = diagMod;
+      const diag = createDiag();
+      diag.mark("page module ready");
 
       // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
       let coreResolve;
@@ -311,6 +344,7 @@
           errorText: "",
           errorStep: "",
           errorDetail: "",
+          copyBtnText: "复制诊断信息",
           stepIndex: 1, // 当前进行到第几步（1-based）
           otherApps: [], // { name, meta }
           history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
@@ -320,6 +354,8 @@
           _modules: null, // { init, storage, shareMgr } after core ready
           _remoteUser: null, // 与发布者建立的 RemoteUser 会话
           _publisher: null, // DataPublisher 实例
+          _userRef: null, // LocalUser（诊断用）
+          _coreEventsBound: false,
         },
         attached() {
           this.startFlow();
@@ -363,6 +399,26 @@
             if (this.statusText) {
               this.history.push({ text: this.statusText });
             }
+            // 采集失败瞬间的连接快照
+            try {
+              diag.snapshot("pathOnFail", {
+                path: pathInfoOf(this._remoteUser),
+                connectedUrls: collectConnectedUrls(this._userRef),
+              });
+            } catch (_) {}
+            // 异步补一次 sessionIds（不阻塞 UI）
+            (async () => {
+              if (!this._remoteUser) return;
+              const ids = await collectSessionIds(this._remoteUser);
+              if (diag._state.snapshots.pathOnFail) {
+                diag._state.snapshots.pathOnFail.sessionIds = ids;
+                // 重新拼一次 errorDetail，让 sessionIds 也显示出来
+                this.errorDetail =
+                  this.buildErrorDetail(err) +
+                  "\n\n--- 诊断信息 ---\n" +
+                  diag.format();
+              }
+            })();
             this.titleText = title;
             this.subtitleText = "";
             this.errorText = message;
@@ -370,11 +426,42 @@
               this.stepIndex >= 1 && this.stepIndex <= TOTAL_STEPS
                 ? `${this.stepIndex}/${TOTAL_STEPS} · ${STEPS[this.stepIndex - 1]}`
                 : "";
-            this.errorDetail = err ? this.buildErrorDetail(err) : "";
+            this.errorDetail = err
+              ? this.buildErrorDetail(err) +
+                "\n\n--- 诊断信息 ---\n" +
+                diag.format()
+              : "--- 诊断信息 ---\n" + diag.format();
             this.progress = 0;
             this.step = "error";
             // 同时打到控制台，便于结合 DevTools 查看
-            console.error(`[run-app] ${title}`, err);
+            console.error(`[run-app] ${title}`, err, diag.dump());
+          },
+          async copyErrorDetail() {
+            const text =
+              (this.errorText ? this.errorText + "\n\n" : "") +
+              (this.errorStep ? "出错步骤：" + this.errorStep + "\n\n" : "") +
+              (this.errorDetail || "");
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+              } else {
+                // 兼容降级：临时 textarea + execCommand
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+              }
+              this.copyBtnText = "已复制 ✓";
+            } catch (_) {
+              this.copyBtnText = "复制失败";
+            }
+            setTimeout(() => {
+              this.copyBtnText = "复制诊断信息";
+            }, 2000);
           },
           goApp(recordName) {
             const url = `/$mazmot-apps/${recordName}/client/index.html`;
@@ -429,6 +516,7 @@
 
           // ============ 主流程 ============
           async startFlow() {
+            diag.mark("startFlow");
             // 步骤 1：检测 / 安装 NoneOS Core
             this.enterStep(1);
             try {
@@ -436,6 +524,7 @@
               await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
               // await load("http://localhost:3002/nos-tool/comps/nos-version.html");
               await coreReady;
+              diag.mark("core ready");
             } catch (err) {
               this.fail("运行环境初始化失败", err);
               return;
@@ -446,6 +535,7 @@
             this.setProgress(CORE_END + 2, "加载依赖模块...");
             try {
               await this.loadDeps();
+              diag.mark("loadDeps done");
             } catch (err) {
               this.fail("依赖模块加载失败", err);
               return;
@@ -487,6 +577,7 @@
               isPublicKeyOfUser,
             } = shareMgr;
 
+            diag.mark("runInstall start");
             this.step = "verifying";
 
             // 步骤 3：解析短链接
@@ -501,6 +592,10 @@
               return;
             }
             const { userId: publisherUserId, payloadHash } = parsed;
+            diag.mark("parsed shareUrl", {
+              userIdHead: publisherUserId.slice(0, 8),
+              payloadHashHead: payloadHash.slice(0, 8),
+            });
 
             // 步骤 4：连接发布者 → 拉取分享清单 → 校验签发者
             this.enterStep(4);
@@ -511,13 +606,24 @@
             try {
               const ctx = await ensurePublisher();
               publisher = ctx.publisher;
+              this._userRef = ctx.user;
+              this.bindCoreEvents(ctx.user);
+              diag.mark("ensurePublisher done");
+
               remoteUser = await ctx.user.connectUser(publisherUserId);
+              diag.mark("connectUser done");
 
               // 探测一次连接路径，让历史里能看到走的是 RTC 直连还是哪台服务器
               try {
                 await remoteUser.ping();
-              } catch (_) {}
+                diag.mark("ping done");
+              } catch (e) {
+                diag.mark("ping failed", {
+                  msg: String((e && e.message) || e),
+                });
+              }
               const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
+              diag.snapshot("pathOnConnect", pathInfoOf(remoteUser));
               if (rttInfo) {
                 if (rttInfo.via === "rtc") {
                   this.appProgress(
@@ -537,10 +643,16 @@
               }
 
               this.appProgress(14, "拉取分享清单...");
+              diag.mark("payload requestManifest start");
               const pmf = await publisher.requestManifest(
                 remoteUser,
                 payloadHash,
               );
+              diag.mark("payload requestManifest done");
+              diag.snapshot("payloadManifest", {
+                chunks: pmf.chunkHashes ? pmf.chunkHashes.length : 0,
+                fileSize: pmf.fileSize,
+              });
 
               // 核对签发者：manifest.publicKey 必须能哈希回 URL 的 userId
               const isOwner = await isPublicKeyOfUser(
@@ -556,13 +668,17 @@
               }
 
               this.appProgress(18, "下载分享清单内容...");
-              for (const h of pmf.chunkHashes) {
-                await publisher.requestChunk(remoteUser, h);
+              const pTotal = pmf.chunkHashes.length;
+              for (let i = 0; i < pTotal; i++) {
+                diag.mark(`payload chunk ${i + 1}/${pTotal} start`);
+                await publisher.requestChunk(remoteUser, pmf.chunkHashes[i]);
+                diag.mark(`payload chunk ${i + 1}/${pTotal} done`);
               }
               const { blob } = await publisher.assembleFile(payloadHash);
               payload = JSON.parse(await blob.text());
               // 显式带上发布者 userId，便于后续兼容旧逻辑
               payload.publisherUserId = publisherUserId;
+              diag.mark("payload assembled");
             } catch (err) {
               this.fail("获取分享清单失败", err);
               return;
@@ -578,6 +694,11 @@
             let installed = null;
             try {
               installed = await this.findInstalled(payload);
+              diag.mark("findInstalled done", {
+                found: !!installed,
+                installedVersion:
+                  (installed && installed.installedVersion) || "",
+              });
             } catch (err) {
               this.fail("检查本地已装应用失败", err);
               return;
@@ -615,6 +736,7 @@
                 this.enterStep(6);
                 this.otherApps = others.map(formatOtherAppEntry);
                 this.setProgress(CORE_END, "等待用户确认安装...");
+                diag.mark("confirm shown");
                 const agreed = await new Promise((resolve) => {
                   this._confirmResolver = resolve;
                   this.titleText = "确认安装此应用？";
@@ -622,6 +744,7 @@
                   this.step = "confirm";
                 });
                 this._confirmResolver = null;
+                diag.mark(agreed ? "confirm agreed" : "confirm canceled");
                 if (!agreed) {
                   this.fail(
                     "已取消安装",
@@ -648,6 +771,35 @@
               this.goApp(recordName);
             } catch (err) {
               this.fail("安装失败", err);
+            }
+          },
+
+          bindCoreEvents(user) {
+            if (this._coreEventsBound || !user || !user.bind) return;
+            this._coreEventsBound = true;
+            try {
+              user.bind("server_disconnected", (e) =>
+                diag.logEvent("server_disconnected", e && e.detail),
+              );
+              user.bind("server_reconnecting", (e) =>
+                diag.logEvent("server_reconnecting", e && e.detail),
+              );
+              user.bind("server_reconnect_exhausted", (e) =>
+                diag.logEvent("server_reconnect_exhausted", e && e.detail),
+              );
+              user.bind("rtt_update", (e) => {
+                const d = (e && e.detail) || {};
+                // 只记 via + userId 前缀 + rtt，避免刷屏
+                diag.logEvent("rtt_update", {
+                  via: d.via,
+                  rtt: typeof d.rtt === "number" ? Math.round(d.rtt) : d.rtt,
+                  uid: d.userId ? String(d.userId).slice(0, 8) : "",
+                });
+              });
+            } catch (err) {
+              diag.logEvent("bindCoreEvents error", {
+                msg: String((err && err.message) || err),
+              });
             }
           },
 
@@ -706,13 +858,21 @@
             // 步骤 7：拉取应用清单
             this.enterStep(7);
             this.appProgress(30, "拉取应用清单...");
+            diag.mark("app requestManifest start", {
+              pathNow: pathInfoOf(remoteUser),
+            });
             const manifest = await publisher.requestManifest(
               remoteUser,
               payload.fileHash,
             );
+            diag.mark("app requestManifest done");
             if (!manifest || !Array.isArray(manifest.chunkHashes)) {
               throw new Error("无法获取应用清单");
             }
+            diag.snapshot("appManifest", {
+              chunks: manifest.chunkHashes.length,
+              fileSize: manifest.fileSize,
+            });
 
             // 步骤 8：下载并写入应用文件
             this.enterStep(8);
@@ -722,7 +882,9 @@
                 30 + Math.floor(((i + 1) / total) * 45),
                 `下载文件块 ${i + 1} / ${total}...`,
               );
+              diag.mark(`app chunk ${i + 1}/${total} start`);
               await publisher.requestChunk(remoteUser, manifest.chunkHashes[i]);
+              diag.mark(`app chunk ${i + 1}/${total} done`);
             }
 
             this.appProgress(78, "组装应用包...");
