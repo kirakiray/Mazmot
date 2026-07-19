@@ -56,6 +56,14 @@
       min-height: 18px;
       color: var(--md-sys-color-on-surface-variant);
     }
+    .path-hint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.75;
+      min-height: 16px;
+      word-break: break-word;
+    }
     .error-text {
       color: var(--md-sys-color-error);
       font-size: 13px;
@@ -215,6 +223,9 @@
           <div class="fill" :style.width="progress + '%'"></div>
         </div>
         <div class="status">{{statusText}}</div>
+        <o-if :value="pathHint">
+          <div class="path-hint">{{pathHint}}</div>
+        </o-if>
         <o-if :value="history.length > 0">
           <details class="history">
             <summary>历史步骤（{{history.length}}）</summary>
@@ -348,6 +359,7 @@
           stepIndex: 1, // 当前进行到第几步（1-based）
           otherApps: [], // { name, meta }
           history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
+          pathHint: "", // 当前到发布者的连接路径（RTC 直连 / 经某台服务器 + RTT）
           _payload: null,
           _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
@@ -635,21 +647,13 @@
 
               const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
               diag.snapshot("pathOnConnect", pathInfoOf(remoteUser));
+              // 初次连上时同步一次 pathHint（后续由 rtt_update 事件驱动更新）
+              this.pathHint = this.formatPathHint(rttInfo);
               if (rttInfo) {
                 if (rttInfo.via === "rtc") {
-                  this.appProgress(
-                    10,
-                    `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                  );
-                } else if (rttInfo.via === "server" && rttInfo.url) {
-                  let host = rttInfo.url;
-                  try {
-                    host = new URL(rttInfo.url).host;
-                  } catch (_) {}
-                  this.appProgress(
-                    10,
-                    `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                  );
+                  this.appProgress(10, "已连接发布者（RTC 直连）");
+                } else if (rttInfo.via === "server") {
+                  this.appProgress(10, "已连接发布者（经中继）");
                 }
               }
 
@@ -855,12 +859,40 @@
                   rtt: typeof d.rtt === "number" ? Math.round(d.rtt) : d.rtt,
                   uid: d.userId ? String(d.userId).slice(0, 8) : "",
                 });
+                // 实时更新 pathHint（只关心当前发布者的路径）
+                if (
+                  this._remoteUser &&
+                  d.userId &&
+                  d.userId === this._remoteUser.userId
+                ) {
+                  this.pathHint = this.formatPathHint(
+                    this._remoteUser.getRTT && this._remoteUser.getRTT(),
+                  );
+                }
               });
             } catch (err) {
               diag.logEvent("bindCoreEvents error", {
                 msg: String((err && err.message) || err),
               });
             }
+          },
+
+          // 把 getRTT() 结果格式化成一行简短提示；返回空字符串表示未知
+          formatPathHint(info) {
+            if (!info || !info.via) return "";
+            const rttMs =
+              typeof info.rtt === "number" ? `${Math.round(info.rtt)}ms` : "?";
+            if (info.via === "rtc") {
+              return `连接：RTC 直连 · RTT ${rttMs}`;
+            }
+            if (info.via === "server") {
+              let host = info.url || "?";
+              try {
+                host = new URL(info.url).host;
+              } catch (_) {}
+              return `连接：中继 ${host} · RTT ${rttMs}`;
+            }
+            return `连接：${info.via} · RTT ${rttMs}`;
           },
 
           agreeInstall() {
