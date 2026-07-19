@@ -83,6 +83,28 @@
       color: var(--md-sys-color-on-surface-variant);
       opacity: 0.85;
     }
+    .history {
+      margin-top: 12px;
+      text-align: left;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .history > summary {
+      cursor: pointer;
+      user-select: none;
+      list-style: revert;
+      padding: 4px 0;
+    }
+    .history-list {
+      margin: 6px 0 0;
+      padding-left: 20px;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .history-list li {
+      margin-bottom: 2px;
+      word-break: break-word;
+    }
     .actions {
       margin-top: 16px;
       display: flex;
@@ -174,6 +196,16 @@
           <div class="fill" :style.width="progress + '%'"></div>
         </div>
         <div class="status">{{statusText}}</div>
+        <o-if :value="history.length > 0">
+          <details class="history">
+            <summary>历史步骤（{{history.length}}）</summary>
+            <ol class="history-list">
+              <o-fill :value="history">
+                <li>{{$data.text}}</li>
+              </o-fill>
+            </ol>
+          </details>
+        </o-if>
       </o-if>
 
       <!-- 确认安装（本地已有其它应用） -->
@@ -208,6 +240,16 @@
         </o-if>
         <o-if :value="errorDetail">
           <div class="error-detail">{{errorDetail}}</div>
+        </o-if>
+        <o-if :value="history.length > 0">
+          <details class="history">
+            <summary>历史步骤（{{history.length}}）</summary>
+            <ol class="history-list">
+              <o-fill :value="history">
+                <li>{{$data.text}}</li>
+              </o-fill>
+            </ol>
+          </details>
         </o-if>
         <div class="actions">
           <p-button variant="text" on:click="goHome">返回主页</p-button>
@@ -271,6 +313,7 @@
           errorDetail: "",
           stepIndex: 1, // 当前进行到第几步（1-based）
           otherApps: [], // { name, meta }
+          history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
           _payload: null,
           _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
@@ -290,7 +333,14 @@
           },
           setProgress(p, text) {
             this.progress = Math.max(0, Math.min(100, p));
-            if (text != null) this.statusText = this.formatStatus(text);
+            if (text != null) {
+              const next = this.formatStatus(text);
+              // 把当前的状态文案归档到历史列表，供折叠框回看
+              if (this.statusText && this.statusText !== next) {
+                this.history.push({ text: this.statusText });
+              }
+              this.statusText = next;
+            }
           },
           setMeta(payload) {
             this.iconText = payload.icon || "📦";
@@ -307,6 +357,10 @@
               (err && err.message) ||
               (typeof err === "string" ? err : "") ||
               "";
+            // 把出错前最后的状态文案也保留到历史里，方便回看
+            if (this.statusText) {
+              this.history.push({ text: this.statusText });
+            }
             this.titleText = title;
             this.subtitleText = "";
             this.errorText = message;
@@ -591,6 +645,32 @@
 
             this.appProgress(20, "连接发布者...");
             const remoteUser = await user.connectUser(payload.publisherUserId);
+
+            // 探测一次连接路径，让用户知道是通过哪个握手服务器 / 或已 RTC 直连
+            try {
+              await remoteUser.ping();
+            } catch (_) {
+              // ping 失败不影响后续下载，忽略
+            }
+            const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
+            if (rttInfo) {
+              if (rttInfo.via === "rtc") {
+                this.appProgress(
+                  22,
+                  `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                );
+              } else if (rttInfo.via === "server" && rttInfo.url) {
+                // 只保留服务器 host，避免文案太长
+                let host = rttInfo.url;
+                try {
+                  host = new URL(rttInfo.url).host;
+                } catch (_) {}
+                this.appProgress(
+                  22,
+                  `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                );
+              }
+            }
 
             // 步骤 8：下载并写入应用文件
             this.enterStep(8);

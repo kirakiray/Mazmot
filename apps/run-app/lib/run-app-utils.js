@@ -23,6 +23,25 @@ export function formatStatus(text, stepIndex, totalSteps) {
  * @param {any} err
  * @returns {string}
  */
+/**
+ * 清除 stack trace 中 ofa.js 注入的超长 base64 data URL，
+ * 替换为 `data:text/javascript;base64,<前8字符>…<后8字符>` 的短形式，
+ * 便于开发者仍能识别是哪个模块，同时不刷屏。
+ * @param {string} stack
+ * @returns {string}
+ */
+function cleanStack(stack) {
+  if (!stack) return stack;
+  return stack.replace(
+    /(data:text\/javascript;base64,)([A-Za-z0-9+/=]{200,})/g,
+    (_, prefix, body) => {
+      const head = body.slice(0, 8);
+      const tail = body.slice(-8);
+      return `${prefix}${head}…${tail}`;
+    },
+  );
+}
+
 export function buildErrorDetail(err) {
   if (err == null) return "";
   const parts = [];
@@ -34,7 +53,7 @@ export function buildErrorDetail(err) {
       parts.push(
         "cause: " +
           (err.cause instanceof Error
-            ? err.cause.stack || err.cause.message
+            ? cleanStack(err.cause.stack || err.cause.message)
             : JSON.stringify(err.cause)),
       );
     } catch (_) {
@@ -43,7 +62,7 @@ export function buildErrorDetail(err) {
   }
   if (err && err.stack) {
     parts.push("");
-    parts.push(err.stack);
+    parts.push(cleanStack(err.stack));
   } else if (!(err instanceof Error)) {
     // 非 Error 抛出物：尽量序列化
     try {
