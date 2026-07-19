@@ -11,72 +11,51 @@
   <body>
     <h1>share-mgr 单元测试</h1>
 
-    <!-- ================= base64UrlEncode / base64UrlDecode ================= -->
-    <sb-test name="base64UrlEncode/Decode 支持 ASCII 与 Unicode 往返">
+    <!-- ================= buildRunUrl / parseShareUrl ================= -->
+    <sb-test name="buildRunUrl 生成的短链接只带 u/h 两个参数">
       <template>
         <script type="module">
-          import { base64UrlEncode, base64UrlDecode } from "../share-mgr.js";
+          import { buildRunUrl } from "../share-mgr.js";
           {
-            const cases = [
-              "hello",
-              "你好世界",
-              "🚀 emoji",
-              '{"a":1,"b":[2,3]}',
-            ];
-            const results = cases.map(
-              (c) => base64UrlDecode(base64UrlEncode(c)) === c,
+            const userId = "abc123";
+            const payloadHash = "deadbeef";
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              userId,
+              payloadHash,
             );
-            return {
-              assert: results.every(Boolean),
-              content: { cases, results },
-            };
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="base64UrlEncode 结果不含 + / 和末尾 =">
-      <template>
-        <script type="module">
-          import { base64UrlEncode } from "../share-mgr.js";
-          {
-            // 构造一段会产生 + / = 的原始字节：0xff 0xfe 0xfd 0xfc
-            const binary = String.fromCharCode(255, 254, 253, 252);
-            const encoded = base64UrlEncode(binary);
+            const parsed = new URL(url);
             return {
               assert:
-                !encoded.includes("+") &&
-                !encoded.includes("/") &&
-                !encoded.includes("="),
-              content: { encoded },
+                parsed.pathname === "/apps/run-app/" &&
+                parsed.searchParams.get("u") === userId &&
+                parsed.searchParams.get("h") === payloadHash &&
+                Array.from(parsed.searchParams.keys()).length === 2,
+              content: { url },
             };
           }
         </script>
       </template>
     </sb-test>
 
-    <!-- ================= buildRunUrl / parseShareUrl ================= -->
-    <sb-test name="buildRunUrl/parseShareUrl 往返保留字段">
+    <sb-test name="buildRunUrl/parseShareUrl 往返保留 userId/payloadHash">
       <template>
         <script type="module">
           import { buildRunUrl, parseShareUrl } from "../share-mgr.js";
           {
-            const payload = {
-              appId: "abc123",
-              recordName: "my-app",
-              displayName: "My App",
-              version: "1.0.0",
-            };
-            const origin = "http://localhost:30031";
-            const url = buildRunUrl(origin, payload);
+            const userId = "user-abc";
+            const payloadHash = "hash-xyz";
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              userId,
+              payloadHash,
+            );
             const parsed = parseShareUrl(new URL(url).search);
             return {
               assert:
                 parsed &&
-                parsed.appId === "abc123" &&
-                parsed.recordName === "my-app" &&
-                parsed.displayName === "My App" &&
-                parsed.version === "1.0.0",
+                parsed.userId === userId &&
+                parsed.payloadHash === payloadHash,
               content: { url, parsed },
             };
           }
@@ -84,17 +63,45 @@
       </template>
     </sb-test>
 
-    <sb-test name="parseShareUrl 对非法参数返回 null">
+    <sb-test name="parseShareUrl 对空/缺参数返回 null">
       <template>
         <script type="module">
           import { parseShareUrl } from "../share-mgr.js";
           {
             const r1 = parseShareUrl("");
             const r2 = parseShareUrl("?x=1");
-            const r3 = parseShareUrl("?p=not-valid-base64!!!");
+            const r3 = parseShareUrl("?u=abc"); // 缺 h
+            const r4 = parseShareUrl("?h=abc"); // 缺 u
             return {
-              assert: r1 === null && r2 === null && r3 === null,
-              content: { r1, r2, r3 },
+              assert:
+                r1 === null && r2 === null && r3 === null && r4 === null,
+              content: { r1, r2, r3, r4 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildRunUrl 对特殊字符做 URL 编码">
+      <template>
+        <script type="module">
+          import { buildRunUrl, parseShareUrl } from "../share-mgr.js";
+          {
+            const userId = "abc+def=";
+            const payloadHash = "h/ash";
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              userId,
+              payloadHash,
+            );
+            const parsed = parseShareUrl(new URL(url).search);
+            return {
+              assert:
+                !url.includes("+def=") &&
+                !url.includes("h/ash") &&
+                parsed.userId === userId &&
+                parsed.payloadHash === payloadHash,
+              content: { url, parsed },
             };
           }
         </script>
@@ -126,18 +133,79 @@
       </template>
     </sb-test>
 
-    <!-- ================= verifySharePayload ================= -->
-    <sb-test name="verifySharePayload 对非法 payload 返回 false">
+    <!-- ================= buildSharePayloadFile ================= -->
+    <sb-test name="buildSharePayloadFile 使用 appId 作为文件名并序列化 payload">
       <template>
         <script type="module">
-          import { verifySharePayload } from "../share-mgr.js";
+          import { buildSharePayloadFile } from "../share-mgr.js";
           {
-            const r1 = await verifySharePayload(null);
-            const r2 = await verifySharePayload({});
-            const r3 = await verifySharePayload({ signature: "x" });
+            const payload = {
+              appId: "demo",
+              displayName: "Demo",
+              publisherUserId: "u1",
+              fileHash: "h1",
+            };
+            const file = buildSharePayloadFile(payload);
+            const parsed = JSON.parse(await file.text());
+            return {
+              assert:
+                file.name === "demo.share.json" &&
+                file.type === "application/json" &&
+                parsed.appId === "demo" &&
+                parsed.fileHash === "h1",
+              content: { fileName: file.name, parsed },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildSharePayloadFile 无 appId 时回退到 mazmot 名">
+      <template>
+        <script type="module">
+          import { buildSharePayloadFile } from "../share-mgr.js";
+          {
+            const file = buildSharePayloadFile({});
+            return {
+              assert: file.name === "mazmot.share.json",
+              content: { fileName: file.name },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= isPublicKeyOfUser ================= -->
+    <sb-test name="isPublicKeyOfUser 输入为空时返回 false">
+      <template>
+        <script type="module">
+          import { isPublicKeyOfUser } from "../share-mgr.js";
+          {
+            const r1 = await isPublicKeyOfUser("", "user1");
+            const r2 = await isPublicKeyOfUser("pk", "");
+            const r3 = await isPublicKeyOfUser(null, null);
             return {
               assert: r1 === false && r2 === false && r3 === false,
               content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="isPublicKeyOfUser 匹配/不匹配都能正确判定">
+      <template>
+        <script type="module">
+          import { isPublicKeyOfUser } from "../share-mgr.js";
+          import { getHash } from "/nos/util/hash/main.js";
+          {
+            const pk = "some-public-key-string";
+            const uid = await getHash(pk);
+            const ok = await isPublicKeyOfUser(pk, uid);
+            const bad = await isPublicKeyOfUser(pk, "not-the-right-uid");
+            return {
+              assert: ok === true && bad === false,
+              content: { pk, uid, ok, bad },
             };
           }
         </script>

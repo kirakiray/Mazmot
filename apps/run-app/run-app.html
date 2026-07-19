@@ -267,11 +267,11 @@
     const STEPS = [
       "检测 NoneOS Core",
       "加载依赖模块",
-      "解析分享链接",
-      "验证签名",
+      "解析短链接",
+      "连接发布者并获取分享清单",
       "检查本地已装应用",
       "确认安装",
-      "连接分享网络",
+      "拉取应用清单",
       "下载并写入应用文件",
       "启动应用",
     ];
@@ -318,6 +318,8 @@
           _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
           _modules: null, // { init, storage, shareMgr } after core ready
+          _remoteUser: null, // 与发布者建立的 RemoteUser 会话
+          _publisher: null, // DataPublisher 实例
         },
         attached() {
           this.startFlow();
@@ -478,45 +480,101 @@
 
           async runInstall() {
             const { storage, shareMgr } = this._modules;
-            const { parseShareUrl, verifySharePayload, ensureUser } = shareMgr;
+            const {
+              parseShareUrl,
+              ensureUser,
+              ensurePublisher,
+              isPublicKeyOfUser,
+            } = shareMgr;
 
             this.step = "verifying";
 
-            // 步骤 3：解析分享链接
+            // 步骤 3：解析短链接
             this.enterStep(3);
-            this.appProgress(5, "解析分享链接...");
-            const payload = parseShareUrl(window.location.search);
-            if (!payload) {
+            this.appProgress(5, "解析短链接...");
+            const parsed = parseShareUrl(window.location.search);
+            if (!parsed) {
               this.fail(
                 "分享链接无效",
-                new Error("未在 URL 中检测到分享参数（?p=...）。"),
+                new Error("未在 URL 中检测到分享参数（?u=...&h=...）。"),
               );
+              return;
+            }
+            const { userId: publisherUserId, payloadHash } = parsed;
+
+            // 步骤 4：连接发布者 → 拉取分享清单 → 校验签发者
+            this.enterStep(4);
+            this.appProgress(8, "连接发布者...");
+            let payload = null;
+            let remoteUser = null;
+            let publisher = null;
+            try {
+              const ctx = await ensurePublisher();
+              publisher = ctx.publisher;
+              remoteUser = await ctx.user.connectUser(publisherUserId);
+
+              // 探测一次连接路径，让历史里能看到走的是 RTC 直连还是哪台服务器
+              try {
+                await remoteUser.ping();
+              } catch (_) {}
+              const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
+              if (rttInfo) {
+                if (rttInfo.via === "rtc") {
+                  this.appProgress(
+                    10,
+                    `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                  );
+                } else if (rttInfo.via === "server" && rttInfo.url) {
+                  let host = rttInfo.url;
+                  try {
+                    host = new URL(rttInfo.url).host;
+                  } catch (_) {}
+                  this.appProgress(
+                    10,
+                    `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
+                  );
+                }
+              }
+
+              this.appProgress(14, "拉取分享清单...");
+              const pmf = await publisher.requestManifest(
+                remoteUser,
+                payloadHash,
+              );
+
+              // 核对签发者：manifest.publicKey 必须能哈希回 URL 的 userId
+              const isOwner = await isPublicKeyOfUser(
+                pmf.publicKey,
+                publisherUserId,
+              );
+              if (!isOwner) {
+                this.fail(
+                  "签发者身份不匹配",
+                  new Error("分享清单的签名者与链接中的 userId 不一致。"),
+                );
+                return;
+              }
+
+              this.appProgress(18, "下载分享清单内容...");
+              for (const h of pmf.chunkHashes) {
+                await publisher.requestChunk(remoteUser, h);
+              }
+              const { blob } = await publisher.assembleFile(payloadHash);
+              payload = JSON.parse(await blob.text());
+              // 显式带上发布者 userId，便于后续兼容旧逻辑
+              payload.publisherUserId = publisherUserId;
+            } catch (err) {
+              this.fail("获取分享清单失败", err);
               return;
             }
             this._payload = payload;
+            this._remoteUser = remoteUser;
+            this._publisher = publisher;
             this.setMeta(payload);
-
-            // 步骤 4：验证签名
-            this.enterStep(4);
-            this.appProgress(8, "验证签名...");
-            let ok = false;
-            try {
-              ok = await verifySharePayload(payload);
-            } catch (err) {
-              this.fail("验证签名时出错", err);
-              return;
-            }
-            if (!ok) {
-              this.fail(
-                "分享链接签名无效",
-                new Error("该链接的签名无法通过验证，可能已被篡改。"),
-              );
-              return;
-            }
 
             // 步骤 5：检查本地已装应用
             this.enterStep(5);
-            this.appProgress(10, "检查本地已装应用...");
+            this.appProgress(22, "检查本地已装应用...");
             let installed = null;
             try {
               installed = await this.findInstalled(payload);
@@ -578,7 +636,7 @@
               console.warn("读取本地应用列表失败：", err);
             }
 
-            // 步骤 7 / 8：连接分享网络 → 下载并写入
+            // 步骤 7 / 8：拉取应用清单 → 下载并写入
             try {
               const recordName = await this.installOrUpdate(
                 payload,
@@ -636,44 +694,17 @@
           // 下载 → 组装 → 写文件 → 更新 storage.apps
           async installOrUpdate(payload, existingRecord) {
             const { storage, init, shareMgr } = this._modules;
-            const { ensurePublisher, PACKAGE_VERSION } = shareMgr;
+            const { PACKAGE_VERSION } = shareMgr;
 
-            // 步骤 7：连接分享网络
+            // 复用 runInstall 阶段已经建立好的 publisher / remoteUser
+            const publisher = this._publisher;
+            const remoteUser = this._remoteUser;
+            if (!publisher || !remoteUser) {
+              throw new Error("发布者连接尚未建立");
+            }
+
+            // 步骤 7：拉取应用清单
             this.enterStep(7);
-            this.appProgress(15, "连接分享网络...");
-            const { user, publisher } = await ensurePublisher();
-
-            this.appProgress(20, "连接发布者...");
-            const remoteUser = await user.connectUser(payload.publisherUserId);
-
-            // 探测一次连接路径，让用户知道是通过哪个握手服务器 / 或已 RTC 直连
-            try {
-              await remoteUser.ping();
-            } catch (_) {
-              // ping 失败不影响后续下载，忽略
-            }
-            const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
-            if (rttInfo) {
-              if (rttInfo.via === "rtc") {
-                this.appProgress(
-                  22,
-                  `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                );
-              } else if (rttInfo.via === "server" && rttInfo.url) {
-                // 只保留服务器 host，避免文案太长
-                let host = rttInfo.url;
-                try {
-                  host = new URL(rttInfo.url).host;
-                } catch (_) {}
-                this.appProgress(
-                  22,
-                  `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                );
-              }
-            }
-
-            // 步骤 8：下载并写入应用文件
-            this.enterStep(8);
             this.appProgress(30, "拉取应用清单...");
             const manifest = await publisher.requestManifest(
               remoteUser,
@@ -683,6 +714,8 @@
               throw new Error("无法获取应用清单");
             }
 
+            // 步骤 8：下载并写入应用文件
+            this.enterStep(8);
             const total = manifest.chunkHashes.length;
             for (let i = 0; i < total; i++) {
               this.appProgress(
