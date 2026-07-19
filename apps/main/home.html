@@ -426,8 +426,9 @@
       ensureUser,
       generateAppId,
       buildPackageFile,
-      signSharePayload,
+      buildSharePayloadFile,
       buildRunUrl,
+      SHARE_PAYLOAD_VERSION,
     } from "./lib/share-mgr.js";
 
     async function loadApps() {
@@ -740,8 +741,9 @@
               const manifest = await publisher.publish(packageFile);
 
               this.shareProgress = 85;
-              this.shareProgressText = "生成签名链接...";
+              this.shareProgressText = "发布分享清单...";
               const payloadData = {
+                v: SHARE_PAYLOAD_VERSION,
                 appId,
                 recordName: app._recordName,
                 displayName: app.name,
@@ -752,10 +754,14 @@
                 fileHash: manifest.fileHash,
                 sharedAt: meta.sharedAt,
               };
-              const signedPayload = await signSharePayload(user, payloadData);
+              // 将分享清单也交给 DataPublisher 发布，
+              // 得到的 payloadManifest.fileHash 就是短链接里的 h。
+              const payloadFile = buildSharePayloadFile(payloadData);
+              const payloadManifest = await publisher.publish(payloadFile);
               const shareUrl = buildRunUrl(
                 window.location.origin,
-                signedPayload,
+                user.userId,
+                payloadManifest.fileHash,
               );
 
               this.shareProgress = 100;

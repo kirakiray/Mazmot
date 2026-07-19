@@ -213,30 +213,38 @@ npm run static
 2. `readAppFiles(handle)` 读取 `client/` 下所有文件（`{ path, content }` 数组）。
 3. `ensurePublisher()` 单例获取 `LocalUser("mazmot")` + `DataPublisher`；`user.ready()` 自动连接默认信令服务器。
 4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
-5. `publisher.publish(file)` 分块签名 → 得到 `manifest.fileHash`。
-6. 拼装 payload 数据 → `signSharePayload(user, payloadData)` 用发布者私钥签名。
-7. `buildRunUrl(origin, signedPayload)` → `{origin}/apps/run-app/?p={base64url(signedPayload)}`。
-8. 弹窗展示只读自动跳转链接 + "复制链接" 按钮；分享一律使用 run-app 入口，无需在确认安装 / 自动跳转之间切换。提醒用户保持页面开启（P2P 依赖发布者在线）。
+5. `publisher.publish(file)` 分块签名 → 得到应用包的 `manifest.fileHash`。
+6. 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`），`buildSharePayloadFile(payloadData)` 打成 `File`，再 `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`——core manifest 已自带 ECDSA 签名。
+7. `buildRunUrl(origin, user.userId, payloadManifest.fileHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`（两个字段，短链接）。
+8. 弹窗展示只读自动跳转链接 + "复制链接" 按钮。提醒用户保持页面开启（P2P 依赖发布者在线）。
 
-### 接收（`/apps/run-app/?p=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）
+### 接收（`/apps/run-app/?u=...&h=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）
 
 用于「分享 → 一键进入」场景，全流程静默；若本地已装其他应用则弹窗确认，其余步骤自动完成：
 
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
 3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀，通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`，然后 `parseShareUrl` + `verifySharePayload`，验签失败直接停止并展示错误。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；`connectUser(userId)` 后 `publisher.requestManifest(remoteUser, payloadHash)` 拉分享清单，用 `isPublicKeyOfUser(pmf.publicKey, userId)` 核对签发者，再 `requestChunk` × N + `assembleFile` 得到 payload JSON。
 5. `findInstalled(payload)`：
-   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（`connectUser` → `requestManifest` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
+   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
    - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。
 6. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
 7. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。
-8. 任意步骤抛错均调用 `fail(title, err)`：错误页除展示标题与 message 外，还会显示"出错步骤：n/N · 描述"，以及一个只读的详情框（`error-detail`，等宽字体、`white-space: pre-wrap`）打印 `err.name / message / code / cause / stack`，便于开发者排查；同时 `console.error` 一次原始 err 对象。
+8. 任意步骤抛错均调用 `fail(title, err)`：错误页除展示标题与 message 外，还会显示"出错步骤：n/N · 描述"，以及一个只读的详情框（`error-detail`，等宽字体、`white-space: pre-wrap`）打印 `err.name / message / code / cause / stack`（长 base64 data URL 会被自动缩略），便于开发者排查；同时 `console.error` 一次原始 err 对象。所有走过的状态文案都保留在下方"历史步骤"折叠框里，可回看。
 
-### URL Payload 结构（扁平 + 签名）
+### URL 与 Payload 结构（短链接方案）
+
+**URL** 只包含两个字段：
+
+- `u` — 发布者 `userId`（core 会用它 `connectUser`；`userId = sha256_hex(publicKey)`）
+- `h` — 分享清单在发布者 IndexedDB 中的 `manifest.fileHash`
+
+**分享清单 payload**（通过 `publisher.publish` 发布，接收端拉取）：
 
 ```json
 {
+  "v": "1.0.0",
   "appId": "...",
   "recordName": "...",
   "displayName": "...",
@@ -245,18 +253,18 @@ npm run static
   "icon": "...",
   "publisherUserId": "...",
   "fileHash": "...",
-  "sharedAt": 0,
-  "signTime": 0,
-  "publicKey": "...",
-  "signature": "..."
+  "sharedAt": 0
 }
 ```
 
-Base64URL 编码后放到 `?p=` 单参数。所有业务字段均纳入签名范围。
+安全锚点由三层组成：
+1. `connectUser(u)` 会话本身由 core 做 E2E 密钥握手，链接被伪造 userId 就连不上。
+2. `publisher.requestManifest` 内部 `verifyData(manifest)` 校验 ECDSA 签名。
+3. `requestChunk` 内部按 SHA-256 校验 chunk 内容，防篡改。
+4. 显式 `isPublicKeyOfUser(manifest.publicKey, u)` 把 URL 的 userId 与签名者绑定起来。
 
 ### 关键约束
 
-- 发布端和接收端字段顺序陷阱：`verifyData` 依赖字段原顺序，接收端 `JSON.parse` 结果**不可**用扩展运算符 / `Object.assign` 重建。
 - 发布者必须保持标签页在线；DataPublisher 是 P2P 的，关闭页面对方无法拉取剩余块。
 - 目前分享包只支持 UTF-8 文本文件。二进制资源后续通过 `encoding: "base64"` 扩展。
 
