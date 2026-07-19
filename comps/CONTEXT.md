@@ -6,6 +6,10 @@
 
 ```
 comps/
+├── ercode/               # 二维码展示组件
+│   ├── ercode.html
+│   ├── demo.html
+│   └── ercode.sb.html
 ├── rdn-network/          # 浮窗式网络状态面板
 │   └── rdn-network.html
 └── rnd-box/              # 可拖拽/缩放的浮动盒子容器
@@ -15,6 +19,23 @@ comps/
 ```
 
 ## 组件说明
+
+### `m-ercode` — 二维码展示组件
+
+- **文件**：[ercode/ercode.html](ercode/ercode.html)
+- **标签**：`<m-ercode>`
+- **定位**：通用二维码展示组件，接收 `content` 内容并渲染为二维码图片。
+- **核心能力**：
+  - 通过 `content` 属性（attrs）传入需要编码的文本内容。
+  - 内部使用 `qrcode-generator` 生成 GIF 格式的 Base64 Data URL，通过 `<img>` 展示。
+  - `content` 变化时自动重新生成二维码。
+  - 默认尺寸为 `128px × 128px`，可通过 CSS 自定义宽高。
+- **使用示例**：
+
+```html
+<l-m src="/comps/ercode/ercode.html"></l-m>
+<m-ercode content="https://github.com/ofajs/ofa.js"></m-ercode>
+```
 
 ### `m-rnd-box` — 可拖拽缩放的浮动盒子
 
@@ -47,6 +68,7 @@ comps/
 在需要使用的页面或组件中通过 ofa.js 的 `l-m` 引入：
 
 ```html
+<l-m src="/comps/ercode/ercode.html"></l-m>
 <l-m src="/comps/rnd-box/rnd-box.html"></l-m>
 <l-m src="/comps/rdn-network/rdn-network.html"></l-m>
 ```

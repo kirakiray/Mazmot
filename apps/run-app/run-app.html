@@ -56,6 +56,29 @@
       min-height: 18px;
       color: var(--md-sys-color-on-surface-variant);
     }
+    .handshake-status {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      min-height: 16px;
+    }
+    .handshake-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-outline);
+      flex-shrink: 0;
+    }
+    .handshake-status.connected .handshake-dot {
+      background-color: #22c55e;
+    }
+    .handshake-url {
+      word-break: break-all;
+    }
     .path-hint {
       margin-top: 4px;
       font-size: 12px;
@@ -223,6 +246,15 @@
           <div class="fill" :style.width="progress + '%'"></div>
         </div>
         <div class="status">{{statusText}}</div>
+        <o-if :value="handshakeUrl">
+          <div
+            class="handshake-status"
+            class:connected="handshakeConnected"
+          >
+            <span class="handshake-dot"></span>
+            <span class="handshake-url">{{handshakeUrl}}</span>
+          </div>
+        </o-if>
         <o-if :value="pathHint">
           <div class="path-hint">{{pathHint}}</div>
         </o-if>
@@ -360,6 +392,8 @@
           otherApps: [], // { name, meta }
           history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
           pathHint: "", // 当前到发布者的连接路径（RTC 直连 / 经某台服务器 + RTT）
+          handshakeUrl: "", // 当前握手的信令服务器地址
+          handshakeConnected: false, // 握手服务器是否已连接
           _payload: null,
           _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
@@ -620,6 +654,7 @@
               publisher = ctx.publisher;
               this._userRef = ctx.user;
               this.bindCoreEvents(ctx.user);
+              this.updateHandshakeStatus();
               diag.mark("ensurePublisher done");
 
               remoteUser = await ctx.user.connectUser(publisherUserId);
@@ -842,9 +877,14 @@
             if (this._coreEventsBound || !user || !user.bind) return;
             this._coreEventsBound = true;
             try {
-              user.bind("server_disconnected", (e) =>
-                diag.logEvent("server_disconnected", e && e.detail),
-              );
+              user.bind("server_connected", (e) => {
+                diag.logEvent("server_connected", e && e.detail);
+                this.updateHandshakeStatus();
+              });
+              user.bind("server_disconnected", (e) => {
+                diag.logEvent("server_disconnected", e && e.detail);
+                this.updateHandshakeStatus();
+              });
               user.bind("server_reconnecting", (e) =>
                 diag.logEvent("server_reconnecting", e && e.detail),
               );
@@ -872,6 +912,31 @@
               });
             } catch (err) {
               diag.logEvent("bindCoreEvents error", {
+                msg: String((err && err.message) || err),
+              });
+            }
+          },
+
+          // 更新握手服务器状态：取配置列表中的第一个地址，或当前已连接的地址
+          async updateHandshakeStatus() {
+            if (!this._userRef || !this._userRef.server) return;
+            try {
+              const connected = Array.isArray(this._userRef.server.connectedUrls)
+                ? this._userRef.server.connectedUrls
+                : [];
+              let urls = [];
+              try {
+                urls = (await this._userRef.server.getServers()) || [];
+              } catch (_) {}
+              const url =
+                urls[0] ||
+                connected[0] ||
+                "";
+              this.handshakeUrl = url;
+              this.handshakeConnected =
+                !!url && connected.includes(url);
+            } catch (err) {
+              diag.logEvent("updateHandshakeStatus error", {
                 msg: String((err && err.message) || err),
               });
             }
