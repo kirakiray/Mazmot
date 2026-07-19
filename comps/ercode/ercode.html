@@ -1,0 +1,48 @@
+<template component>
+  <style>
+    :host {
+      display: inline-block;
+      width: 128px;
+      height: 128px;
+    }
+
+    img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      border-radius: 4px;
+    }
+  </style>
+  <img attr:src="qrDataUrl" attr:alt="content" />
+  <script>
+    import qrcode from "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/+esm";
+
+    export default async () => {
+      return {
+        tag: "m-ercode",
+        attrs: { content: "" },
+        data: {
+          qrDataUrl: "",
+        },
+        proto: {
+          generate() {
+            const text = this.content || "";
+            const qr = qrcode(0, "M");
+            qr.addData(text);
+            qr.make();
+            this.shadow.$("img").attr("src", qr.createDataURL(4, 0));
+          },
+        },
+        watch: {
+          content() {
+            this.generate();
+          },
+        },
+        attached() {
+          this.generate();
+        },
+      };
+    };
+  </script>
+</template>
