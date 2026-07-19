@@ -56,6 +56,14 @@
       min-height: 18px;
       color: var(--md-sys-color-on-surface-variant);
     }
+    .path-hint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.75;
+      min-height: 16px;
+      word-break: break-word;
+    }
     .error-text {
       color: var(--md-sys-color-error);
       font-size: 13px;
@@ -215,6 +223,9 @@
           <div class="fill" :style.width="progress + '%'"></div>
         </div>
         <div class="status">{{statusText}}</div>
+        <o-if :value="pathHint">
+          <div class="path-hint">{{pathHint}}</div>
+        </o-if>
         <o-if :value="history.length > 0">
           <details class="history">
             <summary>历史步骤（{{history.length}}）</summary>
@@ -348,6 +359,7 @@
           stepIndex: 1, // 当前进行到第几步（1-based）
           otherApps: [], // { name, meta }
           history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
+          pathHint: "", // 当前到发布者的连接路径（RTC 直连 / 经某台服务器 + RTT）
           _payload: null,
           _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
@@ -622,23 +634,26 @@
                   msg: String((e && e.message) || e),
                 });
               }
+
+              // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
+              // 如果 3s 内没升上来，就继续走 relay，不阻塞。
+              this.appProgress(9, "等待建立直连通道...");
+              const waited = await this.waitForRtcReady(
+                remoteUser,
+                ctx.user,
+                3000,
+              );
+              diag.mark("waitForRtcReady done", waited);
+
               const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
               diag.snapshot("pathOnConnect", pathInfoOf(remoteUser));
+              // 初次连上时同步一次 pathHint（后续由 rtt_update 事件驱动更新）
+              this.pathHint = this.formatPathHint(rttInfo);
               if (rttInfo) {
                 if (rttInfo.via === "rtc") {
-                  this.appProgress(
-                    10,
-                    `已连接发布者（RTC 直连，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                  );
-                } else if (rttInfo.via === "server" && rttInfo.url) {
-                  let host = rttInfo.url;
-                  try {
-                    host = new URL(rttInfo.url).host;
-                  } catch (_) {}
-                  this.appProgress(
-                    10,
-                    `已连接发布者（经 ${host}，RTT ${Math.round(rttInfo.rtt)}ms）`,
-                  );
+                  this.appProgress(10, "已连接发布者（RTC 直连）");
+                } else if (rttInfo.via === "server") {
+                  this.appProgress(10, "已连接发布者（经中继）");
                 }
               }
 
@@ -670,9 +685,12 @@
               this.appProgress(18, "下载分享清单内容...");
               const pTotal = pmf.chunkHashes.length;
               for (let i = 0; i < pTotal; i++) {
-                diag.mark(`payload chunk ${i + 1}/${pTotal} start`);
-                await publisher.requestChunk(remoteUser, pmf.chunkHashes[i]);
-                diag.mark(`payload chunk ${i + 1}/${pTotal} done`);
+                await this.requestChunkWithRetry(
+                  publisher,
+                  remoteUser,
+                  pmf.chunkHashes[i],
+                  `payload chunk ${i + 1}/${pTotal}`,
+                );
               }
               const { blob } = await publisher.assembleFile(payloadHash);
               payload = JSON.parse(await blob.text());
@@ -774,6 +792,52 @@
             }
           },
 
+          // 等待 RTC 直连就绪，最多等 timeout 毫秒
+          async waitForRtcReady(remoteUser, user, timeout) {
+            const start = Date.now();
+            const check = () => {
+              try {
+                const info = remoteUser.getRTT && remoteUser.getRTT();
+                return info && info.via === "rtc";
+              } catch (_) {
+                return false;
+              }
+            };
+            if (check()) return { ready: true, waited: 0 };
+            return new Promise((resolve) => {
+              const timer = setInterval(() => {
+                if (check()) {
+                  clearInterval(timer);
+                  resolve({ ready: true, waited: Date.now() - start });
+                } else if (Date.now() - start >= timeout) {
+                  clearInterval(timer);
+                  resolve({ ready: false, waited: Date.now() - start });
+                }
+              }, 100);
+            });
+          },
+
+          // 请求单个 chunk，失败时自动重试
+          async requestChunkWithRetry(publisher, remoteUser, chunkHash, label, retries = 3) {
+            let lastErr = null;
+            for (let attempt = 1; attempt <= retries; attempt++) {
+              try {
+                return await publisher.requestChunk(remoteUser, chunkHash);
+              } catch (err) {
+                lastErr = err;
+                diag.logEvent("chunk retry", {
+                  label,
+                  attempt,
+                  msg: String((err && err.message) || err),
+                });
+                if (attempt < retries) {
+                  await new Promise((r) => setTimeout(r, 300 * attempt));
+                }
+              }
+            }
+            throw lastErr || new Error(`获取 ${label} 失败`);
+          },
+
           bindCoreEvents(user) {
             if (this._coreEventsBound || !user || !user.bind) return;
             this._coreEventsBound = true;
@@ -795,12 +859,40 @@
                   rtt: typeof d.rtt === "number" ? Math.round(d.rtt) : d.rtt,
                   uid: d.userId ? String(d.userId).slice(0, 8) : "",
                 });
+                // 实时更新 pathHint（只关心当前发布者的路径）
+                if (
+                  this._remoteUser &&
+                  d.userId &&
+                  d.userId === this._remoteUser.userId
+                ) {
+                  this.pathHint = this.formatPathHint(
+                    this._remoteUser.getRTT && this._remoteUser.getRTT(),
+                  );
+                }
               });
             } catch (err) {
               diag.logEvent("bindCoreEvents error", {
                 msg: String((err && err.message) || err),
               });
             }
+          },
+
+          // 把 getRTT() 结果格式化成一行简短提示；返回空字符串表示未知
+          formatPathHint(info) {
+            if (!info || !info.via) return "";
+            const rttMs =
+              typeof info.rtt === "number" ? `${Math.round(info.rtt)}ms` : "?";
+            if (info.via === "rtc") {
+              return `连接：RTC 直连 · RTT ${rttMs}`;
+            }
+            if (info.via === "server") {
+              let host = info.url || "?";
+              try {
+                host = new URL(info.url).host;
+              } catch (_) {}
+              return `连接：中继 ${host} · RTT ${rttMs}`;
+            }
+            return `连接：${info.via} · RTT ${rttMs}`;
           },
 
           agreeInstall() {
@@ -882,9 +974,12 @@
                 30 + Math.floor(((i + 1) / total) * 45),
                 `下载文件块 ${i + 1} / ${total}...`,
               );
-              diag.mark(`app chunk ${i + 1}/${total} start`);
-              await publisher.requestChunk(remoteUser, manifest.chunkHashes[i]);
-              diag.mark(`app chunk ${i + 1}/${total} done`);
+              await this.requestChunkWithRetry(
+                publisher,
+                remoteUser,
+                manifest.chunkHashes[i],
+                `app chunk ${i + 1}/${total}`,
+              );
             }
 
             this.appProgress(78, "组装应用包...");
