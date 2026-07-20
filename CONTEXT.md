@@ -209,14 +209,11 @@ npm run static
 
 ### 分享（发布端）
 
-1. 在应用列表折叠子项中点击"分享应用" → [apps/main/home.html](apps/main/home.html) 的 `handleShare`。
-2. `readAppFiles(handle)` 读取 `client/` 下所有文件（`{ path, content }` 数组）。
-3. `ensurePublisher()` 单例获取 `LocalUser("mazmot")` + `DataPublisher`；`user.ready()` 自动连接默认信令服务器。
-4. `buildPackageFile(files, meta)` 将 `{ mazmotPackage, meta, files }` 打包成 UTF-8 JSON `File`。
-5. `publisher.publish(file)` 分块签名 → 得到应用包的 `manifest.fileHash`。
-6. 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`），`buildSharePayloadFile(payloadData)` 打成 `File`，再 `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`——core manifest 已自带 ECDSA 签名。
-7. `buildRunUrl(origin, user.userId, payloadManifest.fileHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`（两个字段，短链接）。
-8. 弹窗展示只读自动跳转链接 + "复制链接" 按钮。提醒用户保持页面开启（P2P 依赖发布者在线）。
+1. 在应用列表折叠子项中点击"分享应用" → [apps/main/home.html](apps/main/home.html) 的 `handleShare`；或在折叠子项开启"自动分享"开关 → `handleAutoShareToggle` → `autoShareApp`。两条路径最终都调用 [share-mgr.js](apps/main/lib/share-mgr.js) 中的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。
+2. `publishApp` 内部：`readAppFiles(handle)` 读 `client/` 下所有文件 → `ensurePublisher()` 拿到 `LocalUser("mazmot")` + `DataPublisher` 单例 → `buildPackageFile(files, meta)` 打成 UTF-8 JSON `File` → `publisher.publish(file)` 得到应用包 `manifest.fileHash` → 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`）→ `buildSharePayloadFile(payloadData)` → `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`（core manifest 已带 ECDSA 签名）→ `buildRunUrl(origin, userId, payloadHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`。
+3. 「分享应用」按钮：弹窗展示只读链接 + 二维码 + "复制链接"。
+4. 「自动分享」开关：字段持久化在 `storage.apps[i].autoShare`；首次开启立即触发 `publishApp`，折叠子项内仅展示开关 + 状态文字（不再内嵌 URL 输入框，需要复制链接时用户点「分享应用」按钮，在弹窗中复制）。`home.html` 的 `attached()` 与 `refreshApps()` 都会调 `_runAutoShareAll()`，对所有 `autoShare=true` 的应用重新执行一次 `publishApp`，保证进入 home 页时对端可直接连接、无需再点击分享。
+5. P2P 依赖发布者在线：只要 main 所在标签页保持打开（`_publisherCache` 常驻），对方即可通过短链接从本机拉取应用；关闭该标签页即断供。
 
 ### 接收（`/apps/run-app/?u=...&h=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）
 
