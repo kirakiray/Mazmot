@@ -198,6 +198,17 @@ clearOpened → 关闭窗口
 
 > 注意：`app-runner.js` 的 `getRunUrl(app)` 读取的是**运行时对象**：`source` + `namespace` + `virtualDirName || name` + `_handle`。`share-mgr.js` 的 `publishApp(app)` 读取的是 `_handle` + `_recordName` + `name` + `version` + `desc` + `icon` + `appId`。
 
+### 应用数据模型约束（强约定）
+
+以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](apps/main/lib/app-runner.js) / [share-mgr.js](apps/main/lib/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+
+- **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
+- **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
+- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
+- **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`。新增字段必须同步更新 [share-mgr.js](apps/main/lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
+
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
 
 生成 4 个文件，存放在目标目录的 `client/` 子目录下（给用户新建的子应用用的模板）：
