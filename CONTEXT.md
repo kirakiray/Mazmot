@@ -14,7 +14,7 @@
 | 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
 | UI | Punch-UI v2 | Material Design 风格组件（`p-list`、`p-dialog`、`p-button` 等） |
 | 存储 | ever-cache | 基于 IndexedDB 的异步存储（类 localStorage） |
-| 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 统一使用 `<n-icon icon="mdi:xxx">`，禁止 `iconify-icon` |
+| 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
@@ -26,11 +26,11 @@ Mazmot/
 ├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
-├── package.json              # 只提供 static 脚本：node scripts/static.js
+├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
 │
 ├── apps/                     # 应用（monorepo 风格）
 │   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口，URL = /apps/main/
-│   │   ├── index.html        # 应用入口 HTML：先校验 Core 模块，缺失则回根入口升级；再装载 ./app-config.js
+│   │   ├── index.html        # 入口 HTML：校验 Core 模块 → 装载 ./app-config.js；同时挂载 <rdn-network> 浮窗
 │   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间）
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
@@ -43,29 +43,45 @@ Mazmot/
 │   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
 │   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│   │       └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
+│   │       └── test/                 # sibyl-test 单元测试（_install-nos.sb.html / app-runner.sb.html / share-mgr.sb.html）
 │   │
-│   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?p=...
-│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">
+│   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?u=...&h=...
+│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">（不校验模块，Core 由页面模块自己装）
 │   │   ├── app-config.js     # 声明 home = ./run-app.html（不 init 文件系统，Core 未装时不可用）
-│   │   └── run-app.html      # 页面模块：内嵌 <nos-version auto-install> 装 Core → 验签 → 已装弹确认 → 安装 → location.replace
+│   │   ├── run-app.html      # 页面模块（壳）：内嵌 <nos-version auto-install> 装 Core → 加载 lib/*.js → 编排验签 / 确认 / 安装 / 跳转
+│   │   └── lib/              # run-app 的模块化拆分（run-app.html 只做 UI / 状态编排）
+│   │       ├── run-app-utils.js      # 纯工具函数（formatStatus / buildErrorDetail / mapAppProgress 等，便于单测）
+│   │       ├── install-flow.js       # 安装流程（fetchSharePayload / findInstalled / installAppPackage）
+│   │       ├── connection.js         # 连接层（waitForRtcReady / requestChunkWithRetry）
+│   │       ├── diag.js               # 诊断信息采集器（出错时把 timeline / 路径 / 事件拼进 errorDetail）
+│   │       └── test/
+│   │           └── run-app-utils.sb.html  # run-app-utils 的 sibyl-test 单测
 │   │
-│   └── network/              # 网络应用（服务器/用户连接状态与后续网络配置），URL = /apps/network/
+│   └── network/              # 网络应用（服务器/用户连接状态与流量监控），URL = /apps/network/
 │       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
 │       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
 │       ├── home.html         # 首页：上部服务器网格 + 下部已连接 RemoteUser 网格，点击跳转详情
 │       ├── server-detail.html # 服务器详情：连接状态 / 版本 / 延迟 / 连接·断开·测试延迟
-│       └── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
+│       ├── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
+│       └── traffic.html      # 流量监控：汇总卡片 + 服务器/用户的实时带宽与连接统计
 │
-├── scripts/
-│   ├── static.js             # 启动 http-server：Main(30031)
-│   └── ...                   # generate-capabilities / update-skill / update-files-json
-│
-├── comps/                    # 系统级公共组件（rdn-network / rnd-box）
+├── comps/                    # 系统级公共组件（ercode / rdn-network / rnd-box），详见 comps/CONTEXT.md
+│   ├── ercode/               # <m-ercode> 二维码组件（被主应用分享弹窗使用）
+│   ├── rdn-network/          # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
+│   ├── rnd-box/              # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │   └── CONTEXT.md            # 组件上下文说明
 │
-├── ai/                       # AI 相关：deepseek、kimi、assistant
-└── old/                      # v1/v2/v3 历史版本（不参与新逻辑）
+├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
+│   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
+│   ├── supplier/             # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
+│   ├── demo/                 # 独立 ofa.js demo 应用（api-keys / chat / layout）
+│   └── README.md             # 完整 API 文档
+│
+├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
+│
+├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
+│
+└── old/                      # v1/v2/v3/v4 历史版本（不参与新逻辑，含废弃的 container 模式）
 ```
 
 ## 关键架构：应用直接在主域运行
@@ -133,18 +149,65 @@ clearOpened → 关闭窗口
 
 ### ever-cache `apps` 数组结构
 
+#### 持久化字段（写入 `EverCache("mazmot").apps`）
+
 ```javascript
 {
-  name: "my-app",           // 唯一名称（字母/数字/_-，不含空格）
+  name: "my-app",           // 唯一 recordName（字母/数字/_-，不含空格）；运行时常被映射到 _recordName
   desc: "描述",
   handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录为 null
-  dirName: "选择的目录名 / 虚拟命名空间",
+  dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "mazmot-apps/<name>"
   source: "local" | "virtual",
   namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
+  autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   createdAt: timestamp
 }
 ```
+
+#### 运行时字段（[home.html](apps/main/home.html) 的 `loadApps()` 在内存里拼装出来，不持久化）
+
+```javascript
+{
+  // —— 持久化字段的镜像 ——
+  ...上述持久化字段,
+
+  // —— 句柄 / 路径相关 ——
+  _handle: DirHandle,        // 重建后的目录句柄（虚拟走 init+get，本地走 new DirHandle(handle)）
+  _recordName: app.name,     // 与持久化的 name 同值，给 lib 函数用的一致 key
+  virtualDirName: "my-app",  // 从 dirName 去掉 namespace 前缀后的纯目录名，getRunUrl 优先用它
+
+  // —— 来自 client/app.json 的展示元数据（manifest 缺失时回退） ——
+  icon: "📦",
+  name: "我的应用",           // 显示名（manifest.displayName || manifest.name || app.name），覆盖持久化的 name
+  desc: "...",
+  version: "0.1.0",
+
+  // —— UI 状态 ——
+  source: "local" | "virtual",
+  namespace: "...",
+  appId: "...",
+  isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」
+  opened: boolean,           // 窗口是否存活（BroadcastChannel + window 引用判定）
+  autoShareValue: "on" | "off",   // 供 sync:value 双向绑定用
+  autoShareUrl: "",          // 已发布的短链接；空字符串表示尚未就绪
+  autoShareState: "idle" | "pending" | "publishing" | "ready" | "error",
+  autoShareStatus: "已关闭 / 等待发布 / 发布中... / 已发布，对方可直接连接 / 错误描述",
+}
+```
+
+> 注意：`app-runner.js` 的 `getRunUrl(app)` 读取的是**运行时对象**：`source` + `namespace` + `virtualDirName || name` + `_handle`。`share-mgr.js` 的 `publishApp(app)` 读取的是 `_handle` + `_recordName` + `name` + `version` + `desc` + `icon` + `appId`。
+
+### 应用数据模型约束（强约定）
+
+以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](apps/main/lib/app-runner.js) / [share-mgr.js](apps/main/lib/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+
+- **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
+- **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
+- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
+- **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`。新增字段必须同步更新 [share-mgr.js](apps/main/lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
 
@@ -184,17 +247,32 @@ npm run static
 ### 首次访问
 
 1. 访问 30031 根路径 → 根 `index.html` 加载 `nos-version` 自动安装/升级 NoneOS Core；完成后根据 `?redirect=` 跳转，默认进入 `/apps/main/`
-2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）
+2. 进入 `apps/main/index.html` → 先动态导入 `/nos/fs/main.js` 校验 Core 模块；若缺失则回根入口升级，再装载 `./app-config.js`（`init("mazmot")` 初始化文件系统）。同时 `<l-m>` 加载并挂载 `<rdn-network>` 浮动网络面板（可拖拽 / 收起为气泡），让用户在主应用内直接查看网络状态。
 3. `apps/main/home.html` 加载显示应用列表（初始为空）
 
-> 直接打开分享链接（`/apps/run-app/?p=...`）时，`run-app/index.html` 会先校验 `/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js`、`/nos/crypto/crypto-verify.js`；任一模块缺失都会先回根入口升级，再返回继续安装。
+> 直接打开分享链接（`/apps/run-app/?u=...&h=...`）时，`run-app/index.html` 只作为 ofa.js 外壳，不主动校验 Core 模块。`run-app.html` 页面模块内部内嵌 `<nos-version auto-install>` 自动装/升级 Core；Core 就绪后才通过 `load(...)` 并行加载 `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 等模块（任一加载失败即进入错误页）。
 
 ### 运行测试
 
 使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
 
+**主应用工具库测试**（[apps/main/lib/test/](apps/main/lib/test/)）
+
+- `http://localhost:30031/apps/main/lib/test/_install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（其他测试依赖 Core 已就绪）
 - `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 [app-runner.js](apps/main/lib/app-runner.js) 的 URL 生成与文件读取
 - `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](apps/main/lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
+
+**run-app 工具库测试**（[apps/run-app/lib/test/](apps/run-app/lib/test/)）
+
+- `http://localhost:30031/apps/run-app/lib/test/run-app-utils.sb.html` — 测试 [run-app-utils.js](apps/run-app/lib/run-app-utils.js) 的 `formatStatus` 步骤前缀、`buildErrorDetail` 错误拼装、`mapAppProgress` 进度映射等纯函数
+
+**快速调试单文件**：
+
+```bash
+npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
+```
+
+**CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵。
 
 ### 添加并运行第一个应用
 
@@ -219,10 +297,12 @@ npm run static
 
 用于「分享 → 一键进入」场景，全流程静默；若本地已装其他应用则弹窗确认，其余步骤自动完成：
 
-1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`。
+> 架构说明：`run-app.html` 只负责 UI / 状态编排 / 事件绑定。所有纯逻辑都拆到了 [run-app/lib/](apps/run-app/lib/) 下四个模块（`run-app-utils.js` / `install-flow.js` / `connection.js` / `diag.js`），页面模块在顶部一次性 `load(...)` 拿到工具函数后调用。这样 `run-app-utils` / `connection` 等纯函数可以单独跑 sibyl-test 单测，详见 [run-app/lib/test/run-app-utils.sb.html](apps/run-app/lib/test/run-app-utils.sb.html)。
+
+1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`，也不会校验任何 `/nos/*` 模块。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
-3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀，通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；`connectUser(userId)` 后 `publisher.requestManifest(remoteUser, payloadHash)` 拉分享清单，用 `isPublicKeyOfUser(pmf.publicKey, userId)` 核对签发者，再 `requestChunk` × N + `assembleFile` 得到 payload JSON。
+3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀（由 `run-app-utils.js` 的 `formatStatus` 生成），通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
 5. `findInstalled(payload)`：
    - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
    - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。
@@ -275,11 +355,15 @@ npm run static
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [apps/main/lib/share-mgr.js](apps/main/lib/share-mgr.js) |
-| 分享接收页 | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
-| 分享一键跳转页 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
-| 静态服务器配置 | [scripts/static.js](scripts/static.js) |
+| 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
+| 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
+| 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
+| 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
-| 连接状态应用（服务器/用户网格 + 详情页） | [apps/network/](apps/network/) |
+| 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
+| 二维码组件（分享弹窗用） | [comps/ercode/ercode.html](comps/ercode/ercode.html) |
+| 浮窗式网络面板（主应用挂载） | [comps/rdn-network/rdn-network.html](comps/rdn-network/rdn-network.html) |
 | 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
+| AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
