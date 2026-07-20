@@ -209,10 +209,10 @@ npm run static
 
 ### 分享（发布端）
 
-1. 在应用列表折叠子项中点击"分享应用" → [apps/main/home.html](apps/main/home.html) 的 `handleShare`；或在折叠子项开启"自动分享"开关 → `handleAutoShareToggle` → `autoShareApp`。两条路径最终都调用 [share-mgr.js](apps/main/lib/share-mgr.js) 中的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。
+1. 分享入口只剩一个：在应用列表折叠子项开启「自动分享」开关 → `handleAutoShareToggle` → `autoShareApp` → [share-mgr.js](apps/main/lib/share-mgr.js) 的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。操作行不再有独立的「分享应用」按钮。
 2. `publishApp` 内部：`readAppFiles(handle)` 读 `client/` 下所有文件 → `ensurePublisher()` 拿到 `LocalUser("mazmot")` + `DataPublisher` 单例 → `buildPackageFile(files, meta)` 打成 UTF-8 JSON `File` → `publisher.publish(file)` 得到应用包 `manifest.fileHash` → 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`）→ `buildSharePayloadFile(payloadData)` → `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`（core manifest 已带 ECDSA 签名）→ `buildRunUrl(origin, userId, payloadHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`。
-3. 「分享应用」按钮：弹窗展示只读链接 + 二维码 + "复制链接"。
-4. 「自动分享」开关：字段持久化在 `storage.apps[i].autoShare`；首次开启立即触发 `publishApp`，折叠子项内仅展示开关 + 状态文字（不再内嵌 URL 输入框，需要复制链接时用户点「分享应用」按钮，在弹窗中复制）。`home.html` 的 `attached()` 与 `refreshApps()` 都会调 `_runAutoShareAll()`，对所有 `autoShare=true` 的应用重新执行一次 `publishApp`，保证进入 home 页时对端可直接连接、无需再点击分享。
+3. 「分享链接」行：开关开启后额外显示（`<o-if :value="$data.autoShare">`），行内含只读链接文本 + 复制按钮（`copyAutoShareUrl`） + 二维码按钮（`showShareQrCode`，弹出仅显示 `<m-ercode>` 二维码 + 链接文本 + 「复制链接」的 `shareDialogOpen` 弹窗）。链接未就绪时两个按钮均 `disabled`。
+4. `home.html` 的 `attached()` 与 `refreshApps()` 都会调 `_runAutoShareAll()`，对所有 `autoShare=true` 的应用重新执行一次 `publishApp`，保证进入 home 页时对端可直接连接、无需再点击分享。
 5. P2P 依赖发布者在线：只要 main 所在标签页保持打开（`_publisherCache` 常驻），对方即可通过短链接从本机拉取应用；关闭该标签页即断供。
 
 ### 接收（`/apps/run-app/?u=...&h=...` → [run-app/index.html](apps/run-app/index.html) → [run-app.html](apps/run-app/run-app.html)）

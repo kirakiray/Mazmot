@@ -113,40 +113,6 @@
       gap: 8px;
       flex-wrap: wrap;
     }
-    .share-url-input {
-      margin-top: 4px;
-      width: 100%;
-    }
-    .share-progress-bar {
-      width: 100%;
-      height: 8px;
-      background-color: var(--md-sys-color-surface-variant);
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 12px;
-    }
-    .share-progress-fill {
-      height: 100%;
-      background-color: var(--md-sys-color-primary);
-      transition: width 0.2s;
-    }
-    .share-progress-text {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-top: 8px;
-    }
-    .share-error {
-      color: var(--md-sys-color-error);
-      font-size: 13px;
-      padding: 8px 0;
-    }
-    .share-hint {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      opacity: 0.75;
-      margin-top: 12px;
-      line-height: 1.5;
-    }
     .share-qr {
       display: flex;
       flex-direction: column;
@@ -155,12 +121,24 @@
       margin: 16px 0;
     }
     .share-qr m-ercode {
-      width: 160px;
-      height: 160px;
+      width: 200px;
+      height: 200px;
     }
-    .share-qr-label {
-      font-size: 13px;
+    .share-qr-url {
+      font-family: monospace;
+      font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+      text-align: center;
+      max-width: 100%;
+    }
+    .share-hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.75;
+      margin-top: 12px;
+      line-height: 1.5;
+      text-align: center;
     }
     .sub-info {
       display: flex;
@@ -239,7 +217,6 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/comps/ercode/ercode.html"></l-m>
@@ -257,49 +234,25 @@
   <p-dialog
     sync:open="shareDialogOpen"
     auto-close
-    style="--dialog-max-width: 480px"
+    style="--dialog-max-width: 360px"
   >
-    <span slot="title">分享应用</span>
+    <span slot="title">分享二维码</span>
     <div style="padding: 4px 0">
-      <o-if :value="shareStep === 'publishing'">
-        <div class="share-progress-bar">
-          <div
-            class="share-progress-fill"
-            :style.width="shareProgress + '%'"
-          ></div>
-        </div>
-        <div class="share-progress-text">{{shareProgressText}}</div>
-      </o-if>
-
-      <o-if :value="shareStep === 'ready'">
-        <p-input
-          class="share-url-input"
-          readonly
-          sync:value="shareUrl"
-          hang-label
-        >
-          <span slot="label">自动跳转链接（打开后自动安装并进入应用）</span>
-        </p-input>
-        <div class="share-qr">
+      <div class="share-qr">
+        <o-if :value="shareUrl">
           <m-ercode :content="shareUrl"></m-ercode>
-          <span class="share-qr-label">扫描二维码安装并打开应用</span>
-        </div>
-        <div class="share-hint">
-          请保持本页面开启：应用文件是通过点对点方式分发的，关闭页面后对方将无法拉取。
-        </div>
-      </o-if>
-
-      <o-if :value="shareStep === 'error'">
-        <div class="share-error">{{shareError}}</div>
-      </o-if>
+        </o-if>
+        <span class="share-qr-url">{{shareUrl}}</span>
+      </div>
+      <div class="share-hint">
+        对方扫码即可自动安装并进入应用。请保持本页面开启，关闭后对方将无法拉取。
+      </div>
     </div>
     <div slot="bottom">
-      <o-if :value="shareStep === 'ready'">
-        <p-button color="primary" on:click="copyShareLink">
-          <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
-          复制链接
-        </p-button>
-      </o-if>
+      <p-button color="primary" on:click="copyShareLink">
+        <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
+        复制链接
+      </p-button>
       <p-button variant="text" on:click="closeShareDialog">关闭</p-button>
     </div>
   </p-dialog>
@@ -428,21 +381,51 @@
                         </div>
                       </div>
                     </div>
+                    <o-if :value="$data.autoShare">
+                      <div class="sub-info-row">
+                        <span class="sub-info-label">分享链接：</span>
+                        <span
+                          class="sub-info-value app-id-value"
+                          attr:title="$data.autoShareUrl"
+                        >
+                          <o-if :value="$data.autoShareUrl">
+                            {{$data.autoShareUrl}}
+                          </o-if>
+                          <o-if :value="!$data.autoShareUrl">
+                            <span style="opacity: 0.6">
+                              {{$data.autoShareStatus || '等待发布...'}}
+                            </span>
+                          </o-if>
+                        </span>
+                        <p-button
+                          class="icon-btn"
+                          variant="text"
+                          color="primary"
+                          icon
+                          size="s"
+                          attr:disabled="!$data.autoShareUrl"
+                          on:click="$host.copyAutoShareUrl($event, $data)"
+                          title="复制分享链接"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </p-button>
+                        <p-button
+                          class="icon-btn"
+                          variant="text"
+                          color="primary"
+                          icon
+                          size="s"
+                          attr:disabled="!$data.autoShareUrl"
+                          on:click="$host.showShareQrCode($event, $data)"
+                          title="查看二维码"
+                        >
+                          <n-icon icon="mdi:qrcode"></n-icon>
+                        </p-button>
+                      </div>
+                    </o-if>
                     <div class="sub-info-row">
                       <span class="sub-info-label">操作：</span>
                       <div class="action-row">
-                        <p-button
-                          variant="outlined"
-                          color="primary"
-                          size="s"
-                          on:click="$host.handleShare($event, $data)"
-                        >
-                          <n-icon
-                            icon="mdi:share-variant"
-                            slot="prefix"
-                          ></n-icon>
-                          分享应用
-                        </p-button>
                         <p-button
                           variant="outlined"
                           color="error"
@@ -487,16 +470,11 @@
       clearOpened,
       focusIfOpened,
     } from "./home/app-status.js";
-    import { getRunUrl, readAppFiles } from "./lib/app-runner.js";
+    import { getRunUrl } from "./lib/app-runner.js";
     import {
-      ensurePublisher,
       ensureUser,
       generateAppId,
-      buildPackageFile,
-      buildSharePayloadFile,
-      buildRunUrl,
       publishApp,
-      SHARE_PAYLOAD_VERSION,
     } from "./lib/share-mgr.js";
 
     async function loadApps() {
@@ -604,11 +582,7 @@
           dialogOpen: false,
           appList: initialApps,
           shareDialogOpen: false,
-          shareStep: "publishing", // publishing | ready | error
-          shareProgress: 0,
-          shareProgressText: "",
           shareUrl: "",
-          shareError: "",
         },
         attached() {
           // 启动广播监听 + 定时探测
@@ -768,62 +742,18 @@
             });
           },
 
-          // 打开分享弹窗并开始发布应用到 P2P 网络
-          async handleShare(event, app) {
+          // 打开分享二维码弹窗（链接已由自动分享发布好）
+          showShareQrCode(event, app) {
             if (event) {
               event.stopPropagation();
               if (event.preventDefault) event.preventDefault();
             }
-            if (!app || !app._handle) {
-              toast({ content: "无法分享：缺少应用句柄", color: "error" });
+            if (!app || !app.autoShareUrl) {
+              toast({ content: "分享链接尚未生成", color: "warning" });
               return;
             }
-
-            // 初始化弹窗状态
-            this.shareStep = "publishing";
-            this.shareProgress = 5;
-            this.shareProgressText = "正在准备分享...";
-            this.shareUrl = "";
-            this.shareError = "";
+            this.shareUrl = app.autoShareUrl;
             this.shareDialogOpen = true;
-
-            try {
-              // 兼容老数据：补写 appId 并持久化
-              let appId = app.appId;
-              if (!appId) {
-                appId = await generateAppId(app._recordName);
-                await this._persistAppField(app._recordName, { appId });
-                app.appId = appId;
-              }
-
-              const { shareUrl } = await publishApp(app, {
-                appId,
-                onProgress: ({ progress, text }) => {
-                  this.shareProgress = progress;
-                  if (text) this.shareProgressText = text;
-                },
-              });
-
-              this.shareUrl = shareUrl;
-              this.shareStep = "ready";
-              this.shareProgressText = "";
-
-              // 弹窗流程也顺便同步一份到列表里的自动分享 URL
-              const target = this.appList.find(
-                (a) => a._recordName === app._recordName,
-              );
-              if (target) {
-                target.autoShareUrl = shareUrl;
-                if (target.autoShare) {
-                  target.autoShareState = "ready";
-                  target.autoShareStatus = "已发布，对方可直接连接";
-                }
-              }
-            } catch (err) {
-              console.error("分享失败：", err);
-              this.shareError = err.message || String(err);
-              this.shareStep = "error";
-            }
           },
 
           // 切换某个应用的"自动分享"开关（sync:value 已把新值写回 app.autoShareValue）
@@ -913,6 +843,26 @@
             }
           },
 
+          async copyAutoShareUrl(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app.autoShareUrl) {
+              toast({ content: "分享链接尚未生成", color: "warning" });
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(app.autoShareUrl);
+              toast({ content: "分享链接已复制", color: "success" });
+            } catch (err) {
+              toast({
+                content: "复制失败，请手动复制",
+                color: "error",
+              });
+            }
+          },
+
           async copyShareLink() {
             if (!this.shareUrl) return;
             try {
@@ -928,10 +878,6 @@
 
           closeShareDialog() {
             this.shareDialogOpen = false;
-            // 保留 shareUrl，等再次打开会清空；仅重置错误状态
-            if (this.shareStep === "error") {
-              this.shareError = "";
-            }
           },
 
           async handleDelete(event, app) {
