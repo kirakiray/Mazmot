@@ -364,6 +364,16 @@
         collectSessionIds,
         collectConnectedUrls,
       } = diagMod;
+      const connMod = await load("./lib/connection.js");
+      const {
+        waitForRtcReady,
+        requestChunkWithRetry,
+        formatPathHint,
+        readHandshakeStatus,
+      } = connMod;
+      const installFlow = await load("./lib/install-flow.js");
+      const { fetchSharePayload, findInstalled, installAppPackage } =
+        installFlow;
       const diag = createDiag();
       diag.mark("page module ready");
 
@@ -673,17 +683,13 @@
               // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
               // 如果 3s 内没升上来，就继续走 relay，不阻塞。
               this.appProgress(9, "等待建立直连通道...");
-              const waited = await this.waitForRtcReady(
-                remoteUser,
-                ctx.user,
-                3000,
-              );
+              const waited = await waitForRtcReady(remoteUser, 3000);
               diag.mark("waitForRtcReady done", waited);
 
               const rttInfo = remoteUser.getRTT && remoteUser.getRTT();
               diag.snapshot("pathOnConnect", pathInfoOf(remoteUser));
               // 初次连上时同步一次 pathHint（后续由 rtt_update 事件驱动更新）
-              this.pathHint = this.formatPathHint(rttInfo);
+              this.pathHint = formatPathHint(rttInfo);
               if (rttInfo) {
                 if (rttInfo.via === "rtc") {
                   this.appProgress(10, "已连接发布者（RTC 直连）");
@@ -694,46 +700,36 @@
 
               this.appProgress(14, "拉取分享清单...");
               diag.mark("payload requestManifest start");
-              const pmf = await publisher.requestManifest(
+              payload = await fetchSharePayload({
+                publisher,
                 remoteUser,
                 payloadHash,
-              );
-              diag.mark("payload requestManifest done");
-              diag.snapshot("payloadManifest", {
-                chunks: pmf.chunkHashes ? pmf.chunkHashes.length : 0,
-                fileSize: pmf.fileSize,
-              });
-
-              // 核对签发者：manifest.publicKey 必须能哈希回 URL 的 userId
-              const isOwner = await isPublicKeyOfUser(
-                pmf.publicKey,
                 publisherUserId,
-              );
-              if (!isOwner) {
-                this.fail(
-                  "签发者身份不匹配",
-                  new Error("分享清单的签名者与链接中的 userId 不一致。"),
-                );
-                return;
-              }
-
-              this.appProgress(18, "下载分享清单内容...");
-              const pTotal = pmf.chunkHashes.length;
-              for (let i = 0; i < pTotal; i++) {
-                await this.requestChunkWithRetry(
-                  publisher,
-                  remoteUser,
-                  pmf.chunkHashes[i],
-                  `payload chunk ${i + 1}/${pTotal}`,
-                );
-              }
-              const { blob } = await publisher.assembleFile(payloadHash);
-              payload = JSON.parse(await blob.text());
-              // 显式带上发布者 userId，便于后续兼容旧逻辑
-              payload.publisherUserId = publisherUserId;
+                isPublicKeyOfUser,
+                onEvent: (evt) => {
+                  if (evt.type === "manifest") {
+                    diag.mark("payload requestManifest done");
+                    diag.snapshot("payloadManifest", {
+                      chunks: evt.chunks,
+                      fileSize: evt.fileSize,
+                    });
+                    this.appProgress(18, "下载分享清单内容...");
+                  } else if (evt.type === "chunk-retry") {
+                    diag.logEvent("chunk retry", {
+                      label: evt.label,
+                      attempt: evt.attempt,
+                      msg: String((evt.err && evt.err.message) || evt.err),
+                    });
+                  }
+                },
+              });
               diag.mark("payload assembled");
             } catch (err) {
-              this.fail("获取分享清单失败", err);
+              if (err && err.code === "PAYLOAD_SIGNER_MISMATCH") {
+                this.fail("签发者身份不匹配", err);
+              } else {
+                this.fail("获取分享清单失败", err);
+              }
               return;
             }
             this._payload = payload;
@@ -746,7 +742,11 @@
             this.appProgress(22, "检查本地已装应用...");
             let installed = null;
             try {
-              installed = await this.findInstalled(payload);
+              installed = await findInstalled(payload, {
+                storage,
+                init: this._modules.init,
+                findAppRecord,
+              });
               diag.mark("findInstalled done", {
                 found: !!installed,
                 installedVersion:
@@ -814,10 +814,52 @@
 
             // 步骤 7 / 8：拉取应用清单 → 下载并写入
             try {
-              const recordName = await this.installOrUpdate(
+              this.enterStep(7);
+              this.appProgress(30, "拉取应用清单...");
+              diag.mark("app requestManifest start", {
+                pathNow: pathInfoOf(this._remoteUser),
+              });
+              const recordName = await installAppPackage({
+                publisher: this._publisher,
+                remoteUser: this._remoteUser,
                 payload,
-                installed ? installed.record : null,
-              );
+                existingRecord: installed ? installed.record : null,
+                storage,
+                init: this._modules.init,
+                PACKAGE_VERSION: shareMgr.PACKAGE_VERSION,
+                onEvent: (evt) => {
+                  if (evt.type === "app-manifest") {
+                    diag.mark("app requestManifest done");
+                    diag.snapshot("appManifest", {
+                      chunks: evt.chunks,
+                      fileSize: evt.fileSize,
+                    });
+                  } else if (evt.type === "chunk-progress") {
+                    this.appProgress(
+                      30 + Math.floor((evt.index / evt.total) * 45),
+                      `下载文件块 ${evt.index} / ${evt.total}...`,
+                    );
+                  } else if (evt.type === "chunk-retry") {
+                    diag.logEvent("chunk retry", {
+                      label: evt.label,
+                      attempt: evt.attempt,
+                      msg: String((evt.err && evt.err.message) || evt.err),
+                    });
+                  } else if (evt.type === "assemble") {
+                    this.enterStep(8);
+                    this.appProgress(78, "组装应用包...");
+                  } else if (evt.type === "write") {
+                    this.appProgress(
+                      82,
+                      evt.isUpdate
+                        ? "覆盖写入应用文件..."
+                        : "写入虚拟文件系统...",
+                    );
+                  } else if (evt.type === "record") {
+                    this.appProgress(92, "记录应用信息...");
+                  }
+                },
+              });
               // 步骤 9：启动应用
               this.enterStep(TOTAL_STEPS);
               this.setProgress(100, "启动应用...");
@@ -825,52 +867,6 @@
             } catch (err) {
               this.fail("安装失败", err);
             }
-          },
-
-          // 等待 RTC 直连就绪，最多等 timeout 毫秒
-          async waitForRtcReady(remoteUser, user, timeout) {
-            const start = Date.now();
-            const check = () => {
-              try {
-                const info = remoteUser.getRTT && remoteUser.getRTT();
-                return info && info.via === "rtc";
-              } catch (_) {
-                return false;
-              }
-            };
-            if (check()) return { ready: true, waited: 0 };
-            return new Promise((resolve) => {
-              const timer = setInterval(() => {
-                if (check()) {
-                  clearInterval(timer);
-                  resolve({ ready: true, waited: Date.now() - start });
-                } else if (Date.now() - start >= timeout) {
-                  clearInterval(timer);
-                  resolve({ ready: false, waited: Date.now() - start });
-                }
-              }, 100);
-            });
-          },
-
-          // 请求单个 chunk，失败时自动重试
-          async requestChunkWithRetry(publisher, remoteUser, chunkHash, label, retries = 3) {
-            let lastErr = null;
-            for (let attempt = 1; attempt <= retries; attempt++) {
-              try {
-                return await publisher.requestChunk(remoteUser, chunkHash);
-              } catch (err) {
-                lastErr = err;
-                diag.logEvent("chunk retry", {
-                  label,
-                  attempt,
-                  msg: String((err && err.message) || err),
-                });
-                if (attempt < retries) {
-                  await new Promise((r) => setTimeout(r, 300 * attempt));
-                }
-              }
-            }
-            throw lastErr || new Error(`获取 ${label} 失败`);
           },
 
           bindCoreEvents(user) {
@@ -905,7 +901,7 @@
                   d.userId &&
                   d.userId === this._remoteUser.userId
                 ) {
-                  this.pathHint = this.formatPathHint(
+                  this.pathHint = formatPathHint(
                     this._remoteUser.getRTT && this._remoteUser.getRTT(),
                   );
                 }
@@ -919,45 +915,17 @@
 
           // 更新握手服务器状态：取配置列表中的第一个地址，或当前已连接的地址
           async updateHandshakeStatus() {
-            if (!this._userRef || !this._userRef.server) return;
             try {
-              const connected = Array.isArray(this._userRef.server.connectedUrls)
-                ? this._userRef.server.connectedUrls
-                : [];
-              let urls = [];
-              try {
-                urls = (await this._userRef.server.getServers()) || [];
-              } catch (_) {}
-              const url =
-                urls[0] ||
-                connected[0] ||
-                "";
+              const { url, connected } = await readHandshakeStatus(
+                this._userRef,
+              );
               this.handshakeUrl = url;
-              this.handshakeConnected =
-                !!url && connected.includes(url);
+              this.handshakeConnected = connected;
             } catch (err) {
               diag.logEvent("updateHandshakeStatus error", {
                 msg: String((err && err.message) || err),
               });
             }
-          },
-
-          // 把 getRTT() 结果格式化成一行简短提示；返回空字符串表示未知
-          formatPathHint(info) {
-            if (!info || !info.via) return "";
-            const rttMs =
-              typeof info.rtt === "number" ? `${Math.round(info.rtt)}ms` : "?";
-            if (info.via === "rtc") {
-              return `连接：RTC 直连 · RTT ${rttMs}`;
-            }
-            if (info.via === "server") {
-              let host = info.url || "?";
-              try {
-                host = new URL(info.url).host;
-              } catch (_) {}
-              return `连接：中继 ${host} · RTT ${rttMs}`;
-            }
-            return `连接：${info.via} · RTT ${rttMs}`;
           },
 
           agreeInstall() {
@@ -966,154 +934,6 @@
 
           cancelInstall() {
             if (this._confirmResolver) this._confirmResolver(false);
-          },
-
-          // 查找已安装应用（按 appId 匹配，兼容按 name 匹配的老数据）
-          async findInstalled(payload) {
-            const { storage, init } = this._modules;
-            const apps = (await storage.apps) || [];
-            const existing = findAppRecord(apps, payload);
-            if (!existing) return null;
-            let installedVersion = "";
-            try {
-              if (existing.source === "virtual") {
-                const namespace = existing.namespace || "mazmot-apps";
-                const rootDir = await init(namespace);
-                const appDir = await rootDir.get(existing.name, {
-                  create: "dir",
-                });
-                let jsonFile = null;
-                try {
-                  const clientDir = await appDir.get("client");
-                  jsonFile = await clientDir.get("app.json");
-                } catch (e) {
-                  jsonFile = await appDir.get("app.json");
-                }
-                if (jsonFile) {
-                  const manifest = await jsonFile.json();
-                  installedVersion = (manifest && manifest.version) || "";
-                }
-              }
-            } catch (err) {
-              console.warn("读取已安装应用版本失败：", err);
-            }
-            return { record: existing, installedVersion };
-          },
-
-          // 下载 → 组装 → 写文件 → 更新 storage.apps
-          async installOrUpdate(payload, existingRecord) {
-            const { storage, init, shareMgr } = this._modules;
-            const { PACKAGE_VERSION } = shareMgr;
-
-            // 复用 runInstall 阶段已经建立好的 publisher / remoteUser
-            const publisher = this._publisher;
-            const remoteUser = this._remoteUser;
-            if (!publisher || !remoteUser) {
-              throw new Error("发布者连接尚未建立");
-            }
-
-            // 步骤 7：拉取应用清单
-            this.enterStep(7);
-            this.appProgress(30, "拉取应用清单...");
-            diag.mark("app requestManifest start", {
-              pathNow: pathInfoOf(remoteUser),
-            });
-            const manifest = await publisher.requestManifest(
-              remoteUser,
-              payload.fileHash,
-            );
-            diag.mark("app requestManifest done");
-            if (!manifest || !Array.isArray(manifest.chunkHashes)) {
-              throw new Error("无法获取应用清单");
-            }
-            diag.snapshot("appManifest", {
-              chunks: manifest.chunkHashes.length,
-              fileSize: manifest.fileSize,
-            });
-
-            // 步骤 8：下载并写入应用文件
-            this.enterStep(8);
-            const total = manifest.chunkHashes.length;
-            for (let i = 0; i < total; i++) {
-              this.appProgress(
-                30 + Math.floor(((i + 1) / total) * 45),
-                `下载文件块 ${i + 1} / ${total}...`,
-              );
-              await this.requestChunkWithRetry(
-                publisher,
-                remoteUser,
-                manifest.chunkHashes[i],
-                `app chunk ${i + 1}/${total}`,
-              );
-            }
-
-            this.appProgress(78, "组装应用包...");
-            const result = await publisher.assembleFile(payload.fileHash);
-            const pkg = JSON.parse(await result.blob.text());
-
-            if (!pkg || pkg.mazmotPackage !== PACKAGE_VERSION) {
-              throw new Error(
-                `应用包格式不匹配（版本 ${pkg && pkg.mazmotPackage}）`,
-              );
-            }
-            if (!pkg.meta || pkg.meta.appId !== payload.appId) {
-              throw new Error("应用包内容与分享链接不一致");
-            }
-            if (!Array.isArray(pkg.files) || !pkg.files.length) {
-              throw new Error("应用包为空");
-            }
-
-            const isUpdate = !!existingRecord;
-            const recordName = isUpdate ? existingRecord.name : payload.appId;
-
-            this.appProgress(
-              82,
-              isUpdate ? "覆盖写入应用文件..." : "写入虚拟文件系统...",
-            );
-            const rootDir = await init("mazmot-apps");
-            const targetDir = await rootDir.get(recordName, { create: "dir" });
-            if (isUpdate) {
-              try {
-                const oldClient = await targetDir.get("client");
-                if (oldClient) await oldClient.remove();
-              } catch (e) {
-                // 旧目录不存在时忽略
-              }
-            }
-            const clientDir = await targetDir.get("client", { create: "dir" });
-            for (const file of pkg.files) {
-              const fh = await clientDir.get(file.path, { create: "file" });
-              await fh.write(file.content);
-            }
-
-            this.appProgress(92, "记录应用信息...");
-            const apps = (await storage.apps) || [];
-            if (isUpdate) {
-              const target = apps.find(
-                (a) =>
-                  (a.appId && a.appId === payload.appId) ||
-                  (a.name && a.name === existingRecord.name),
-              );
-              if (target) {
-                target.desc = pkg.meta.description || target.desc || "";
-                if (!target.appId) target.appId = payload.appId;
-                await storage.setItem("apps", apps);
-              }
-            } else {
-              apps.push({
-                name: recordName,
-                desc: pkg.meta.description || "",
-                handle: null,
-                dirName: `mazmot-apps/${recordName}`,
-                source: "virtual",
-                namespace: "mazmot-apps",
-                appId: pkg.meta.appId,
-                createdAt: Date.now(),
-              });
-              await storage.setItem("apps", apps);
-            }
-
-            return recordName;
           },
         },
       };
