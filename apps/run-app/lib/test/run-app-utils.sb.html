@@ -398,6 +398,46 @@
       </template>
     </sb-test>
 
+    <!-- ================= findByPayloadHash ================= -->
+    <sb-test name="findByPayloadHash 命中 payloadHash">
+      <template>
+        <script type="module">
+          import { findByPayloadHash } from "../run-app-utils.js";
+          {
+            const apps = [
+              { name: "a", payloadHash: "h1" },
+              { name: "b", payloadHash: "h2" },
+            ];
+            const found = findByPayloadHash(apps, "h2");
+            return {
+              assert: found && found.name === "b",
+              content: { found },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="findByPayloadHash 未命中 / 空输入返回 null">
+      <template>
+        <script type="module">
+          import { findByPayloadHash } from "../run-app-utils.js";
+          {
+            const apps = [{ name: "a", payloadHash: "h1" }];
+            const r1 = findByPayloadHash(apps, "hX");
+            const r2 = findByPayloadHash(apps, "");
+            const r3 = findByPayloadHash(null, "h1");
+            const r4 = findByPayloadHash([{ name: "a" }], "h1");
+            return {
+              assert:
+                r1 === null && r2 === null && r3 === null && r4 === null,
+              content: { r1, r2, r3, r4 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <!-- ================= shouldSkipInstall ================= -->
     <sb-test name="shouldSkipInstall 已装版本与分享版本一致 → true">
       <template>

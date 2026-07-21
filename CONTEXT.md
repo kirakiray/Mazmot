@@ -161,6 +161,8 @@ clearOpened → 关闭窗口
   namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
+  fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
+  payloadHash: "",           // 仅经 run-app 安装的应用有值：分享清单内容哈希（= URL 的 h），用于"无改动秒跳"
   createdAt: timestamp
 }
 ```
@@ -206,7 +208,7 @@ clearOpened → 关闭窗口
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
 - **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
-- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`。新增字段必须同步更新 [share-mgr.js](apps/main/lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](apps/main/lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
@@ -302,9 +304,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`，也不会校验任何 `/nos/*` 模块。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
 3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀（由 `run-app-utils.js` 的 `formatStatus` 生成），通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；**`ensurePublisher` 后先调用 `ensureServerConnected` 等待信令服务器握手完成，防止 `connectedUrls` 为空导致 `connectUser` 立即抛错**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
+3.5. **前置秒跳（`tryFastJump`，在 Core 检测之前）**：`startFlow` 第一步先跑 `tryFastJump`——内联解析 URL 的 `h`（不加载 `share-mgr.js`，因其顶层 import `/nos/*` 会牵连 Core 依赖），只加载 `ever-cache`（CDN 直连、不需要 Core SW）读 `storage.apps`，`findByPayloadHash` 命中且 `appDirExists(hit, fsMod.init)` 校验目录仍在 → 直接 `goApp` 跳转。这样"已装过该应用"的老用户绕过了 nos-version 的版本检测（含网络请求，主要延迟来源）。未命中（含全新用户，`storage.apps` 为空立即返回、不碰 `/nos/fs`）或任何异常都静默退回下方正常流程，绝不阻断。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`。（无改动秒跳已在步骤 3.5 前置处理；此处进入正常联网安装流程。）**`ensurePublisher` 后先调用 `ensureServerConnected` 等待信令服务器握手完成，防止 `connectedUrls` 为空导致 `connectUser` 立即抛错**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
 5. `findInstalled(payload)`：
-   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
+   - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。安装时把 `payload.fileHash` 与 URL 的 `payloadHash` 一并写进 app 记录，供下次秒跳比对。
    - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。
 6. 若本地已存在至少一个"其他"应用（同 appId 视为自身，会走覆盖升级不算），下载前把 `step` 切到 `confirm` 步骤：页面以 `<o-fill>` 列出已装应用 + 数据可互通的安全提示，让用户「确认安装 / 取消」。逻辑通过 `_confirmResolver` 缓存的 Promise resolver 实现，取消即停止流程。
 7. 无论走哪条分支，最后 `location.replace("/$mazmot-apps/{recordName}/client/index.html")` 在同一标签页替换到应用地址。

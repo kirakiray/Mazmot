@@ -356,6 +356,7 @@
         filterOtherApps,
         formatOtherAppEntry,
         shouldSkipInstall,
+        findByPayloadHash,
       } = utils;
       const diagMod = await load("./lib/diag.js");
       const {
@@ -524,6 +525,22 @@
             const url = `/$mazmot-apps/${recordName}/client/index.html`;
             window.location.replace(url);
           },
+          // 校验某条本地记录对应的应用目录是否仍然存在（避免记录残留但文件已被删）
+          // init 可注入（前置秒跳时 this._modules 尚未就绪）
+          async appDirExists(record, init) {
+            const initFn = init || (this._modules && this._modules.init);
+            if (!record || record.source !== "virtual" || !initFn) return false;
+            try {
+              const namespace = record.namespace || "mazmot-apps";
+              const rootDir = await initFn(namespace);
+              const appDir = await rootDir.get(record.name);
+              if (!appDir) return false;
+              const clientDir = await appDir.get("client");
+              return !!clientDir;
+            } catch (_) {
+              return false;
+            }
+          },
           goHome() {
             window.location.href = "/";
           },
@@ -590,8 +607,48 @@
           },
 
           // ============ 主流程 ============
+          // 前置秒跳：尽早判断本地是否已装过同一 payloadHash 的应用，命中即直接跳转。
+          // 返回 true 表示已跳转，调用方应立即结束。
+          async tryFastJump() {
+            // 内联解析 URL，避免加载 share-mgr.js（其顶层 import /nos/*，会牵连 Core 依赖）
+            const params = new URLSearchParams(window.location.search || "");
+            const payloadHash = params.get("h");
+            if (!payloadHash) return false;
+
+            // 只加载 ever-cache（CDN 直连，不依赖 Core Service Worker）读本地应用列表
+            const cacheMod = await load(
+              "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+            );
+            const storage = cacheMod.storage;
+            const apps = (await storage.apps) || [];
+            const hit = findByPayloadHash(apps, payloadHash);
+            if (!hit) return false; // 未命中（含全新用户）→ 走正常流程
+
+            // 命中后才加载 /nos/fs 校验目录仍在（命中=老用户，SW 必已就绪）
+            const fsMod = await load("/nos/fs/main.js");
+            if (!(await this.appDirExists(hit, fsMod.init))) return false;
+
+            diag.mark("fastJump hit", { name: hit.name });
+            this.enterStep(TOTAL_STEPS);
+            this.setProgress(100, "内容无变化，正在跳转...");
+            this.goApp(hit.name);
+            return true;
+          },
           async startFlow() {
             diag.mark("startFlow");
+
+            // 前置秒跳：对"已安装过该应用"的老用户，绕过 Core 版本检测（含网络请求，
+            // 是主要延迟来源）直接跳转。只依赖 ever-cache（CDN 直连，不需要 Core SW），
+            // 命中后才加载 /nos/fs 校验目录（此时必是老用户，SW 已就绪，很快）。
+            // 任何异常都静默退回正常流程，绝不阻断。
+            try {
+              if (await this.tryFastJump()) return;
+            } catch (err) {
+              diag.logEvent("fastJump failed", {
+                msg: String((err && err.message) || err),
+              });
+            }
+
             // 步骤 1：检测 / 安装 NoneOS Core
             this.enterStep(1);
             try {
@@ -869,6 +926,7 @@
                 publisher: this._publisher,
                 remoteUser: this._remoteUser,
                 payload,
+                payloadHash,
                 existingRecord: installed ? installed.record : null,
                 storage,
                 init: this._modules.init,

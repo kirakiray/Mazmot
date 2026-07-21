@@ -157,6 +157,17 @@ export function formatOtherAppEntry(app) {
 }
 
 /**
+ * 在 apps 列表里查找 payloadHash 匹配的记录。
+ * @param {Array} apps
+ * @param {string} payloadHash
+ * @returns {object|null}
+ */
+export function findByPayloadHash(apps, payloadHash) {
+  if (!Array.isArray(apps) || !payloadHash) return null;
+  return apps.find((a) => a.payloadHash === payloadHash) || null;
+}
+
+/**
  * 判断是否可以跳过下载安装、直接跳转到已装应用。
  * 命中条件：
  *  1) 已装记录存在，且已装版本与分享版本完全一致；
