@@ -13,14 +13,23 @@
 
 ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片化。
 
-- **ofa.js**：统一使用 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`
-  - 必须走 `/gh/` 前缀（由 NoneOS Core Service Worker 拦截，离线可用、跨域安全）
+- **ofa.js**：入口 HTML 与页面/组件模块的前缀不同，见下方「按加载位置区分前缀」。
   - 必须带 `#debug`，开发期保留调试信息
   - 顶层入口 HTML（如 `index.html` / `apps/*/index.html`）可酌情锁定具体版本（如 `@4.7.1`）；组件 / 页面模块 / 测试页一律用 `@latest`
-- **ofa.js router**：`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库）
+- **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
 - **Punch-UI**：统一使用 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`（CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`）
 
-> 禁止混用 `cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs`（无版本）等历史写法。
+### 按加载位置区分前缀（重要）
+
+同一份 ofa.js 仓库资源，**加载位置不同，前缀不同**：
+
+- **顶层入口 HTML**（`index.html` / `apps/*/index.html`）：必须使用 `https://cdn.jsdelivr.net/gh/ofajs/...`
+  - 入口 HTML 加载时 NoneOS Core Service Worker 可能尚未注册，`/gh/`、`/npm/` 本地前缀不可用，因此走 jsdelivr 完整 URL。
+  - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug`
+- **页面模块 / 组件模块 / 普通模块 / 测试页**：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
+  - 例：`/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`、`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`
+
+> ofa.js 仓库资源（`ofa.mjs` / router 等）版本必须统一（入口锁版本、模块用 `@latest`），禁止使用 `cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs`（无版本）等历史写法；也禁止在页面/组件模块里写死 jsdelivr 完整 URL。
 
 ## NoneOS Core 依赖加载
 
