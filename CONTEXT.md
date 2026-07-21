@@ -52,7 +52,7 @@ Mazmot/
 │   │   └── lib/              # run-app 的模块化拆分（run-app.html 只做 UI / 状态编排）
 │   │       ├── run-app-utils.js      # 纯工具函数（formatStatus / buildErrorDetail / mapAppProgress 等，便于单测）
 │   │       ├── install-flow.js       # 安装流程（fetchSharePayload / findInstalled / installAppPackage）
-│   │       ├── connection.js         # 连接层（waitForRtcReady / requestChunkWithRetry）
+│   │       ├── connection.js         # 连接层（ensureServerConnected / waitForRtcReady / requestChunkWithRetry）
 │   │       ├── diag.js               # 诊断信息采集器（出错时把 timeline / 路径 / 事件拼进 errorDetail）
 │   │       └── test/
 │   │           └── run-app-utils.sb.html  # run-app-utils 的 sibyl-test 单测
@@ -302,7 +302,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`，也不会校验任何 `/nos/*` 模块。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
 3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀（由 `run-app-utils.js` 的 `formatStatus` 生成），通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`；**`ensurePublisher` 后先调用 `ensureServerConnected` 等待信令服务器握手完成，防止 `connectedUrls` 为空导致 `connectUser` 立即抛错**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
 5. `findInstalled(payload)`：
    - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。
    - 已安装且版本一致，或来自本人分享 → 跳过下载直接跳转。

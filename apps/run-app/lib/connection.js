@@ -32,6 +32,92 @@ export async function waitForRtcReady(remoteUser, timeout) {
 }
 
 /**
+ * 确保本地用户已连上至少一台信令服务器，然后才能 connectUser。
+ *
+ * `user.ready()` 只是发起连接，握手可能尚未完成；若此时 connectedUrls 为空
+ * 就直接 connectUser，会立刻抛 "User X is not online on any connected server"。
+ * 这里先轮询等待自动连接就绪，超时后再主动 connect 配置里的服务器兜底。
+ *
+ * @param {object} user - LocalUser
+ * @param {object} [options]
+ * @param {number} [options.timeout=8000] - 等待自动连接的总超时（毫秒）
+ * @param {number} [options.pollInterval=100] - 轮询间隔（毫秒）
+ * @returns {Promise<{ connected: boolean, urls: string[], servers: string[], errors: Array<{url:string, msg:string}> }>}
+ */
+export async function ensureServerConnected(
+  user,
+  { timeout = 8000, pollInterval = 100 } = {},
+) {
+  if (!user || !user.server) {
+    return { connected: false, urls: [], servers: [], errors: [] };
+  }
+  const connectedUrls = () =>
+    Array.isArray(user.server.connectedUrls) ? user.server.connectedUrls : [];
+
+  // 已连上直接返回
+  if (connectedUrls().length > 0) {
+    return {
+      connected: true,
+      urls: connectedUrls(),
+      servers: [],
+      errors: [],
+    };
+  }
+
+  const start = Date.now();
+  // 先等 ready() 发起的自动连接完成（约一半超时时间）
+  const passiveDeadline = start + Math.floor(timeout / 2);
+  while (Date.now() < passiveDeadline) {
+    if (connectedUrls().length > 0) {
+      return {
+        connected: true,
+        urls: connectedUrls(),
+        servers: [],
+        errors: [],
+      };
+    }
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+
+  // 仍未连上：主动连接配置里的服务器兜底，并记录每台的失败原因
+  let servers = [];
+  try {
+    servers = (await user.server.getServers()) || [];
+  } catch (err) {
+    return {
+      connected: connectedUrls().length > 0,
+      urls: connectedUrls(),
+      servers: [],
+      errors: [{ url: "(getServers)", msg: String((err && err.message) || err) }],
+    };
+  }
+  const errors = [];
+  await Promise.all(
+    servers.map((url) =>
+      user.server.connect(url).catch((err) => {
+        // 单台失败记录原因，靠其它服务器兜底
+        errors.push({ url, msg: String((err && err.message) || err) });
+      }),
+    ),
+  );
+
+  // 主动连接后再等剩余时间
+  while (Date.now() - start < timeout) {
+    if (connectedUrls().length > 0) {
+      return { connected: true, urls: connectedUrls(), servers, errors };
+    }
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+
+  return {
+    connected: connectedUrls().length > 0,
+    urls: connectedUrls(),
+    servers,
+    errors,
+  };
+}
+
+/**
  * 请求单个 chunk，失败时自动重试。
  * @param {object} publisher
  * @param {object} remoteUser
