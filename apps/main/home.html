@@ -800,7 +800,7 @@
                 await this._persistAppField(target._recordName, { appId });
                 target.appId = appId;
               }
-              const { shareUrl } = await publishApp(target, {
+              const { shareUrl, payloadHash } = await publishApp(target, {
                 appId,
                 onProgress: ({ text }) => {
                   if (text) target.autoShareStatus = text;
@@ -809,6 +809,11 @@
               target.autoShareUrl = shareUrl;
               target.autoShareState = "ready";
               target.autoShareStatus = "已发布，对方可直接连接";
+              // 持久化 payloadHash 到自己的记录，让 run-app 打开自分享链接时能秒定位自有应用
+              if (payloadHash) {
+                target.payloadHash = payloadHash;
+                await this._persistAppField(target._recordName, { payloadHash });
+              }
             } catch (err) {
               console.error("自动分享失败：", err);
               target.autoShareState = "error";

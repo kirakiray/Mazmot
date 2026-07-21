@@ -162,7 +162,7 @@ clearOpened → 关闭窗口
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
-  payloadHash: "",           // 仅经 run-app 安装的应用有值：分享清单内容哈希（= URL 的 h），用于"无改动秒跳"
+  payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
   createdAt: timestamp
 }
 ```
@@ -304,7 +304,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`，也不会校验任何 `/nos/*` 模块。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
 3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀（由 `run-app-utils.js` 的 `formatStatus` 生成），通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-3.5. **前置秒跳（`tryFastJump`，在 Core 检测之前）**：`startFlow` 第一步先跑 `tryFastJump`——内联解析 URL 的 `h`（不加载 `share-mgr.js`，因其顶层 import `/nos/*` 会牵连 Core 依赖），只加载 `ever-cache`（CDN 直连、不需要 Core SW）读 `storage.apps`，`findByPayloadHash` 命中且 `appDirExists(hit, fsMod.init)` 校验目录仍在 → 直接 `goApp` 跳转。这样"已装过该应用"的老用户绕过了 nos-version 的版本检测（含网络请求，主要延迟来源）。未命中（含全新用户，`storage.apps` 为空立即返回、不碰 `/nos/fs`）或任何异常都静默退回下方正常流程，绝不阻断。
+3.5. **前置秒跳（`tryFastJump`，在 Core 检测之前）**：`startFlow` 第一步先跑 `tryFastJump`——内联解析 URL 的 `h`（不加载 `share-mgr.js`，因其顶层 import `/nos/*` 会牵连 Core 依赖），只加载 `ever-cache`（CDN 直连、不需要 Core SW）读 `storage.apps`，`findByPayloadHash` 命中后调 `resolveRunUrl(hit)` 解析运行 URL → `location.replace` 同标签跳转。`resolveRunUrl` 按 source 分流：**virtual** 用 `appDirExists` 校验目录仍在后拼 `/$namespace/{dirName}/client/index.html`；**local**（含开发者自分享的应用）重建 `DirHandle` 后走 `app-runner.js` 的 `getRunUrl`（mount client 子目录）。这样"已装过该应用"的老用户、以及**打开自己分享链接的开发者**都绕过了 nos-version 的版本检测（含网络请求，主要延迟来源）。未命中（含全新用户，`storage.apps` 为空立即返回、不碰 `/nos/*`）、目录失效或任何异常都静默退回下方正常流程，绝不阻断。自我分享能命中的前提：`home.html` 的 `autoShareApp` 在 `publishApp` 成功后把 `payloadHash` 持久化到发布者自己的 app 记录。
 4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`。（无改动秒跳已在步骤 3.5 前置处理；此处进入正常联网安装流程。）**`ensurePublisher` 后先调用 `ensureServerConnected` 等待信令服务器握手完成，防止 `connectedUrls` 为空导致 `connectUser` 立即抛错**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。
 5. `findInstalled(payload)`：
    - 未安装 or 已安装但版本不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。安装时把 `payload.fileHash` 与 URL 的 `payloadHash` 一并写进 app 记录，供下次秒跳比对。

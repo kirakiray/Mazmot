@@ -624,15 +624,48 @@
             const hit = findByPayloadHash(apps, payloadHash);
             if (!hit) return false; // 未命中（含全新用户）→ 走正常流程
 
-            // 命中后才加载 /nos/fs 校验目录仍在（命中=老用户，SW 必已就绪）
-            const fsMod = await load("/nos/fs/main.js");
-            if (!(await this.appDirExists(hit, fsMod.init))) return false;
+            // 命中后解析运行 URL（virtual 走固定路径校验目录；local/自有应用重建句柄 + mount）
+            // 命中即老用户，Core SW 已就绪，加载 /nos/* 很快
+            const url = await this.resolveRunUrl(hit);
+            if (!url) return false; // 目录失效 / 无法解析 → 退回正常流程
 
-            diag.mark("fastJump hit", { name: hit.name });
+            diag.mark("fastJump hit", { name: hit.name, source: hit.source });
             this.enterStep(TOTAL_STEPS);
             this.setProgress(100, "内容无变化，正在跳转...");
-            this.goApp(hit.name);
+            window.location.replace(url);
             return true;
+          },
+          // 解析一条本地应用记录的运行 URL；无法解析（目录失效等）返回 ""。
+          // - virtual：/$namespace/{dirName}/client/index.html（需校验目录仍在）
+          // - local：重建 DirHandle → getRunUrl（mount client 子目录）
+          async resolveRunUrl(record) {
+            if (!record) return "";
+            try {
+              if (record.source === "virtual") {
+                const fsMod = await load("/nos/fs/main.js");
+                if (!(await this.appDirExists(record, fsMod.init))) return "";
+                const ns = record.namespace || "mazmot-apps";
+                const dirName = record.virtualDirName || record.name;
+                return `/$${ns}/${dirName}/client/index.html`;
+              }
+              if (record.source === "local" && record.handle) {
+                const [{ DirHandle }, runnerMod] = await Promise.all([
+                  load("/nos/fs/handle/dir.js"),
+                  load("../main/lib/app-runner.js"),
+                ]);
+                const runApp = {
+                  ...record,
+                  _handle: new DirHandle(record.handle),
+                };
+                return await runnerMod.getRunUrl(runApp);
+              }
+            } catch (err) {
+              diag.logEvent("resolveRunUrl failed", {
+                source: record.source,
+                msg: String((err && err.message) || err),
+              });
+            }
+            return "";
           },
           async startFlow() {
             diag.mark("startFlow");
