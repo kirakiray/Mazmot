@@ -370,6 +370,7 @@
         requestChunkWithRetry,
         formatPathHint,
         readHandshakeStatus,
+        ensureServerConnected,
       } = connMod;
       const installFlow = await load("./lib/install-flow.js");
       const { fetchSharePayload, findInstalled, installAppPackage } =
@@ -666,6 +667,33 @@
               this.bindCoreEvents(ctx.user);
               this.updateHandshakeStatus();
               diag.mark("ensurePublisher done");
+
+              // 等待本地用户连上信令服务器后再 connectUser，
+              // 否则 connectedUrls 为空会立刻抛 "not online on any connected server"。
+              this.appProgress(8, "连接信令服务器...");
+              const srv = await ensureServerConnected(ctx.user);
+              this.updateHandshakeStatus();
+              diag.mark("ensureServerConnected done", {
+                connected: srv.connected,
+                count: srv.urls.length,
+                servers: srv.servers,
+              });
+              // 记录每台服务器的连接失败原因，便于排查"连不上服务器"的根因
+              (srv.errors || []).forEach((e) => {
+                diag.logEvent("server_connect_failed", {
+                  url: e.url,
+                  msg: e.msg,
+                });
+              });
+              if (!srv.connected) {
+                const reason = (srv.errors || [])
+                  .map((e) => `${e.url}: ${e.msg}`)
+                  .join("；");
+                throw new Error(
+                  "无法连接到任何信令服务器，请检查网络后重试。" +
+                    (reason ? `（${reason}）` : ""),
+                );
+              }
 
               remoteUser = await ctx.user.connectUser(publisherUserId);
               diag.mark("connectUser done");
