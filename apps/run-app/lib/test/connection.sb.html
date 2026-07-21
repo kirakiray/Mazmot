@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>run-app connection 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>run-app connection 单元测试</h1>
+
+    <!-- ================= ensureServerConnected ================= -->
+    <sb-test name="ensureServerConnected user 无 server 时返回未连接">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const r1 = await ensureServerConnected(null);
+            const r2 = await ensureServerConnected({});
+            const ok =
+              r1.connected === false &&
+              r1.urls.length === 0 &&
+              r1.servers.length === 0 &&
+              r1.errors.length === 0 &&
+              r2.connected === false &&
+              r2.urls.length === 0;
+            return { assert: ok, content: { r1, r2 } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected 已连上则立即返回，不尝试兜底">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            let connectCalled_a = false;
+            const user_a = {
+              server: {
+                connectedUrls: ["ws://already"],
+                async getServers() {
+                  return ["ws://x"];
+                },
+                async connect() {
+                  connectCalled_a = true;
+                  return { success: true };
+                },
+              },
+            };
+            const r = await ensureServerConnected(user_a, {
+              timeout: 400,
+              pollInterval: 20,
+            });
+            const ok =
+              r.connected === true &&
+              r.urls.length === 1 &&
+              r.urls[0] === "ws://already" &&
+              r.servers.length === 0 &&
+              r.errors.length === 0 &&
+              connectCalled_a === false;
+            return { assert: ok, content: { r, connectCalled_a } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected 被动等待 ready() 自动连上（不主动兜底）">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const connected_b = [];
+            let connectCalled_b = false;
+            // 模拟 ready() 发起的连接在 60ms 后握手完成
+            setTimeout(() => connected_b.push("ws://auto"), 60);
+            const user_b = {
+              server: {
+                connectedUrls: connected_b,
+                async getServers() {
+                  return ["ws://x"];
+                },
+                async connect() {
+                  connectCalled_b = true;
+                  return { success: true };
+                },
+              },
+            };
+            const r = await ensureServerConnected(user_b, {
+              timeout: 400,
+              pollInterval: 20,
+            });
+            const ok =
+              r.connected === true &&
+              r.urls[0] === "ws://auto" &&
+              r.servers.length === 0 &&
+              r.errors.length === 0 &&
+              connectCalled_b === false;
+            return { assert: ok, content: { r, connectCalled_b } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected 被动超时后主动连接兜底成功">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const connected_c = [];
+            const attempted_c = [];
+            const user_c = {
+              server: {
+                connectedUrls: connected_c,
+                async getServers() {
+                  return ["ws://x", "ws://y"];
+                },
+                async connect(url) {
+                  attempted_c.push(url);
+                  // 只有 ws://y 连得上
+                  if (url === "ws://y") {
+                    connected_c.push(url);
+                    return { success: true };
+                  }
+                  throw new Error("ECONNREFUSED");
+                },
+              },
+            };
+            const r = await ensureServerConnected(user_c, {
+              timeout: 400,
+              pollInterval: 20,
+            });
+            const ok =
+              r.connected === true &&
+              r.urls.includes("ws://y") &&
+              r.servers.length === 2 &&
+              r.errors.length === 1 &&
+              r.errors[0].url === "ws://x" &&
+              attempted_c.length === 2;
+            return { assert: ok, content: { r, attempted_c } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected 全部服务器失败：connected=false 且记录每台原因">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const connected_d = [];
+            const user_d = {
+              server: {
+                connectedUrls: connected_d,
+                async getServers() {
+                  return ["ws://a", "ws://b"];
+                },
+                async connect(url) {
+                  throw new Error("refused:" + url);
+                },
+              },
+            };
+            const r = await ensureServerConnected(user_d, {
+              timeout: 300,
+              pollInterval: 20,
+            });
+            const urls = r.errors.map((e) => e.url).sort();
+            const ok =
+              r.connected === false &&
+              r.urls.length === 0 &&
+              r.servers.length === 2 &&
+              r.errors.length === 2 &&
+              urls[0] === "ws://a" &&
+              urls[1] === "ws://b" &&
+              r.errors.every((e) => e.msg.includes("refused:"));
+            return { assert: ok, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected getServers 抛错时记录 (getServers) 错误">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const user_e = {
+              server: {
+                connectedUrls: [],
+                async getServers() {
+                  throw new Error("boom-getServers");
+                },
+                async connect() {
+                  return { success: true };
+                },
+              },
+            };
+            const r = await ensureServerConnected(user_e, {
+              timeout: 200,
+              pollInterval: 20,
+            });
+            const ok =
+              r.connected === false &&
+              r.servers.length === 0 &&
+              r.errors.length === 1 &&
+              r.errors[0].url === "(getServers)" &&
+              r.errors[0].msg.includes("boom-getServers");
+            return { assert: ok, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= formatPathHint ================= -->
+    <sb-test name="formatPathHint RTC 直连显示 RTT">
+      <template>
+        <script type="module">
+          import { formatPathHint } from "../connection.js";
+          {
+            const s = formatPathHint({ via: "rtc", rtt: 32.6 });
+            return {
+              assert: s === "连接：RTC 直连 · RTT 33ms",
+              content: { s },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatPathHint 经中继显示 host">
+      <template>
+        <script type="module">
+          import { formatPathHint } from "../connection.js";
+          {
+            const s = formatPathHint({
+              via: "server",
+              url: "wss://relay.example.com:8081/ws",
+              rtt: 120,
+            });
+            return {
+              assert: s === "连接：中继 relay.example.com:8081 · RTT 120ms",
+              content: { s },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatPathHint 无 via / 空输入返回空串">
+      <template>
+        <script type="module">
+          import { formatPathHint } from "../connection.js";
+          {
+            const r1 = formatPathHint(null);
+            const r2 = formatPathHint({});
+            const r3 = formatPathHint({ rtt: 10 });
+            return {
+              assert: r1 === "" && r2 === "" && r3 === "",
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= readHandshakeStatus ================= -->
+    <sb-test name="readHandshakeStatus 配置的首台已在 connectedUrls 中 → connected">
+      <template>
+        <script type="module">
+          import { readHandshakeStatus } from "../connection.js";
+          {
+            const user_f = {
+              server: {
+                connectedUrls: ["ws://s1"],
+                async getServers() {
+                  return ["ws://s1", "ws://s2"];
+                },
+              },
+            };
+            const r = await readHandshakeStatus(user_f);
+            return {
+              assert: r.url === "ws://s1" && r.connected === true,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readHandshakeStatus 首台未连上 → connected=false">
+      <template>
+        <script type="module">
+          import { readHandshakeStatus } from "../connection.js";
+          {
+            const user_g = {
+              server: {
+                connectedUrls: [],
+                async getServers() {
+                  return ["ws://s1"];
+                },
+              },
+            };
+            const r = await readHandshakeStatus(user_g);
+            return {
+              assert: r.url === "ws://s1" && r.connected === false,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readHandshakeStatus user / server 缺失时安全降级">
+      <template>
+        <script type="module">
+          import { readHandshakeStatus } from "../connection.js";
+          {
+            const r1 = await readHandshakeStatus(null);
+            const r2 = await readHandshakeStatus({});
+            return {
+              assert:
+                r1.url === "" &&
+                r1.connected === false &&
+                r2.url === "" &&
+                r2.connected === false,
+              content: { r1, r2 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= waitForRtcReady ================= -->
+    <sb-test name="waitForRtcReady 已是 RTC 直连立即返回 waited=0">
+      <template>
+        <script type="module">
+          import { waitForRtcReady } from "../connection.js";
+          {
+            const remote_h = { getRTT: () => ({ via: "rtc", rtt: 20 }) };
+            const r = await waitForRtcReady(remote_h, 1000);
+            return {
+              assert: r.ready === true && r.waited === 0,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="waitForRtcReady 一段时间后升级为 RTC 直连">
+      <template>
+        <script type="module">
+          import { waitForRtcReady } from "../connection.js";
+          {
+            let via_i = "server";
+            setTimeout(() => {
+              via_i = "rtc";
+            }, 120);
+            const remote_i = { getRTT: () => ({ via: via_i, rtt: 40 }) };
+            const r = await waitForRtcReady(remote_i, 1000);
+            return {
+              assert: r.ready === true && r.waited > 0,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="waitForRtcReady 超时仍未直连返回 ready=false">
+      <template>
+        <script type="module">
+          import { waitForRtcReady } from "../connection.js";
+          {
+            const remote_j = { getRTT: () => ({ via: "server", rtt: 80 }) };
+            const r = await waitForRtcReady(remote_j, 200);
+            return {
+              assert: r.ready === false && r.waited >= 200,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
