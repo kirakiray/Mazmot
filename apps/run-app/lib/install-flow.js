@@ -113,6 +113,7 @@ export async function findInstalled(payload, { storage, init, findAppRecord }) {
  * @param {object} args.publisher
  * @param {object} args.remoteUser
  * @param {object} args.payload - 分享清单
+ * @param {string} [args.payloadHash] - URL 里的 h（分享清单内容哈希），存入记录用于"无改动秒跳"
  * @param {object|null} args.existingRecord - 已安装记录，null 表示全新安装
  * @param {{apps: Promise<Array>, setItem:(k:string,v:any)=>Promise<void>}} args.storage
  * @param {(namespace:string) => Promise<any>} args.init
@@ -131,6 +132,7 @@ export async function installAppPackage({
   publisher,
   remoteUser,
   payload,
+  payloadHash,
   existingRecord,
   storage,
   init,
@@ -215,6 +217,9 @@ export async function installAppPackage({
     if (target) {
       target.desc = pkg.meta.description || target.desc || "";
       if (!target.appId) target.appId = payload.appId;
+      // 记录本次安装内容对应的分享清单哈希，供"无改动秒跳"比对
+      target.fileHash = payload.fileHash || target.fileHash || "";
+      if (payloadHash) target.payloadHash = payloadHash;
       await storage.setItem("apps", apps);
     }
   } else {
@@ -226,6 +231,8 @@ export async function installAppPackage({
       source: "virtual",
       namespace: "mazmot-apps",
       appId: pkg.meta.appId,
+      fileHash: payload.fileHash || "",
+      payloadHash: payloadHash || "",
       createdAt: Date.now(),
     });
     await storage.setItem("apps", apps);
