@@ -165,6 +165,18 @@ export function formatDiag(state) {
   const snap = state.snapshots || {};
 
   // ---- 快照区 ----
+  if (snap.coreError) {
+    const ce = snap.coreError;
+    let line = `core error: phase=${ce.phase || "?"}`;
+    if (ce.message) line += ` message=${ce.message}`;
+    if (Array.isArray(ce.keys) && ce.keys.length > 0) {
+      line += ` detailKeys=[${ce.keys.join(", ")}]`;
+    }
+    lines.push(line);
+    if (ce.detail && Object.keys(ce.detail).length > 0) {
+      lines.push("  detail: " + inlineExtra(ce.detail));
+    }
+  }
   if (snap.appManifest) {
     lines.push(
       `app manifest: ${snap.appManifest.chunks} chunks, size=${formatSize(

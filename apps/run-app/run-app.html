@@ -564,11 +564,29 @@
             if (coreDone) return;
             coreDone = true;
             const d = (event && event.detail) || {};
-            coreReject(
-              new Error(
-                `NoneOS Core ${d.phase || "初始化"}失败：${d.message || "未知错误"}`,
-              ),
+            // nos-version 的 error detail 结构约定为 { message, phase }，
+            // 但实测有时 message 为空（组件把真实报错吞了），导致只显示"未知错误"。
+            // 这里尽量从 detail 里榨取更多线索，并把整个 detail 快照进诊断，
+            // 便于排查 Core 检测/安装阶段到底为什么失败。
+            const rawErr = d.error || d.err || d.cause;
+            const detailMsg =
+              d.message ||
+              (rawErr && (rawErr.message || String(rawErr))) ||
+              "";
+            try {
+              diag.snapshot("coreError", {
+                phase: d.phase || "",
+                message: d.message || "",
+                keys: Object.keys(d),
+                detail: d,
+              });
+            } catch (_) {}
+            const err = new Error(
+              `NoneOS Core ${d.phase || "初始化"}失败：${detailMsg || "未知错误（组件未提供错误详情，请展开诊断信息查看 coreError 快照）"}`,
             );
+            // 保留原始报错对象，让 buildErrorDetail 能打印其 stack / cause
+            if (rawErr) err.cause = rawErr;
+            coreReject(err);
           },
 
           // ============ 主流程 ============
