@@ -439,48 +439,60 @@
     </sb-test>
 
     <!-- ================= shouldSkipInstall ================= -->
-    <sb-test name="shouldSkipInstall 已装版本与分享版本一致 → true">
+    <sb-test name="shouldSkipInstall 本地记录 fileHash 与分享清单一致 → true">
       <template>
         <script type="module">
           import { shouldSkipInstall } from "../run-app-utils.js";
           {
             const installed = {
-              record: { name: "app-x" },
+              record: { name: "app-x", fileHash: "hash-abc" },
               installedVersion: "1.2.3",
             };
-            const r = shouldSkipInstall(installed, { version: "1.2.3" }, false);
+            const r = shouldSkipInstall(
+              installed,
+              { version: "1.2.3", fileHash: "hash-abc" },
+              false,
+            );
             return { assert: r === true, content: { r } };
           }
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="shouldSkipInstall 版本不一致 → false">
+    <sb-test name="shouldSkipInstall 版本相同但 fileHash 已变 → false（内容更新需重装）">
       <template>
         <script type="module">
           import { shouldSkipInstall } from "../run-app-utils.js";
           {
             const installed = {
-              record: { name: "app-x" },
-              installedVersion: "1.0.0",
+              record: { name: "app-x", fileHash: "hash-old" },
+              installedVersion: "1.2.3",
             };
-            const r = shouldSkipInstall(installed, { version: "1.2.3" }, false);
+            const r = shouldSkipInstall(
+              installed,
+              { version: "1.2.3", fileHash: "hash-new" },
+              false,
+            );
             return { assert: r === false, content: { r } };
           }
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="shouldSkipInstall 自我分享即使版本不同也 → true">
+    <sb-test name="shouldSkipInstall 自我分享即使 fileHash 不同也 → true">
       <template>
         <script type="module">
           import { shouldSkipInstall } from "../run-app-utils.js";
           {
             const installed = {
-              record: { name: "app-x" },
+              record: { name: "app-x", fileHash: "hash-old" },
               installedVersion: "1.0.0",
             };
-            const r = shouldSkipInstall(installed, { version: "2.0.0" }, true);
+            const r = shouldSkipInstall(
+              installed,
+              { version: "2.0.0", fileHash: "hash-new" },
+              true,
+            );
             return { assert: r === true, content: { r } };
           }
         </script>
@@ -499,16 +511,20 @@
       </template>
     </sb-test>
 
-    <sb-test name="shouldSkipInstall 已装但缺少版本号 → false（不认为一致）">
+    <sb-test name="shouldSkipInstall 已装但缺少 fileHash → false（无法确认内容一致）">
       <template>
         <script type="module">
           import { shouldSkipInstall } from "../run-app-utils.js";
           {
             const installed = {
-              record: { name: "app-x" },
-              installedVersion: "",
+              record: { name: "app-x", fileHash: "" },
+              installedVersion: "1.0.0",
             };
-            const r = shouldSkipInstall(installed, { version: "1.0.0" }, false);
+            const r = shouldSkipInstall(
+              installed,
+              { version: "1.0.0", fileHash: "hash-new" },
+              false,
+            );
             return { assert: r === false, content: { r } };
           }
         </script>

@@ -170,7 +170,9 @@ export function findByPayloadHash(apps, payloadHash) {
 /**
  * 判断是否可以跳过下载安装、直接跳转到已装应用。
  * 命中条件：
- *  1) 已装记录存在，且已装版本与分享版本完全一致；
+ *  1) 已装记录存在，且本地记录的应用包哈希（fileHash）与分享清单一致
+ *     —— 内容完全相同才跳过。不能用版本号判断：开发者更新内容却不改版本号时，
+ *     版本号相同但内容（fileHash / 短链接 h）已变，必须重新安装。
  *  2) 或者分享者就是当前用户（自我分享）。
  * @param {Object|null} installed - { record, installedVersion } | null
  * @param {Object} payload
@@ -179,12 +181,9 @@ export function findByPayloadHash(apps, payloadHash) {
  */
 export function shouldSkipInstall(installed, payload, isSelfShare) {
   if (!installed) return false;
-  const newVersion = (payload && payload.version) || "";
-  if (
-    installed.installedVersion &&
-    newVersion &&
-    installed.installedVersion === newVersion
-  ) {
+  const record = installed.record || {};
+  const newFileHash = (payload && payload.fileHash) || "";
+  if (record.fileHash && newFileHash && record.fileHash === newFileHash) {
     return true;
   }
   return !!isSelfShare;
