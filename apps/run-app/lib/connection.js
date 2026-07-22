@@ -32,54 +32,26 @@ export async function waitForRtcReady(remoteUser, timeout) {
 }
 
 /**
- * 确保本地用户已连上至少一台信令服务器，然后才能 connectUser。
+ * 并发连上所有配置的信令服务器，然后才能 connectUser。
  *
- * `user.ready()` 只是发起连接，握手可能尚未完成；若此时 connectedUrls 为空
- * 就直接 connectUser，会立刻抛 "User X is not online on any connected server"。
- * 这里先轮询等待自动连接就绪，超时后再主动 connect 配置里的服务器兜底。
+ * `user.ready()` 只会自动连默认（通常是列表第一台）服务器，若只连一台，
+ * core 后续 connectUser 时就没有多台可比，无法按 RTT 择优。这里主动并发
+ * `connect()` 所有服务器（对已连 URL 会复用，无副作用），让 core 能在多台
+ * 已连服务器间挑最快路径。最多等 `timeout`：全部 connect 完成（成功或失败）
+ * 就提前返回，超时则不再等待，只要至少一台连上即可继续。
  *
  * @param {object} user - LocalUser
  * @param {object} [options]
- * @param {number} [options.timeout=8000] - 等待自动连接的总超时（毫秒）
- * @param {number} [options.pollInterval=100] - 轮询间隔（毫秒）
+ * @param {number} [options.timeout=2000] - 等待所有服务器连接的总超时（毫秒）
  * @returns {Promise<{ connected: boolean, urls: string[], servers: string[], errors: Array<{url:string, msg:string}> }>}
  */
-export async function ensureServerConnected(
-  user,
-  { timeout = 8000, pollInterval = 100 } = {},
-) {
+export async function ensureServerConnected(user, { timeout = 2000 } = {}) {
   if (!user || !user.server) {
     return { connected: false, urls: [], servers: [], errors: [] };
   }
   const connectedUrls = () =>
     Array.isArray(user.server.connectedUrls) ? user.server.connectedUrls : [];
 
-  // 已连上直接返回
-  if (connectedUrls().length > 0) {
-    return {
-      connected: true,
-      urls: connectedUrls(),
-      servers: [],
-      errors: [],
-    };
-  }
-
-  const start = Date.now();
-  // 先等 ready() 发起的自动连接完成（约一半超时时间）
-  const passiveDeadline = start + Math.floor(timeout / 2);
-  while (Date.now() < passiveDeadline) {
-    if (connectedUrls().length > 0) {
-      return {
-        connected: true,
-        urls: connectedUrls(),
-        servers: [],
-        errors: [],
-      };
-    }
-    await new Promise((r) => setTimeout(r, pollInterval));
-  }
-
-  // 仍未连上：主动连接配置里的服务器兜底，并记录每台的失败原因
   let servers = [];
   try {
     servers = (await user.server.getServers()) || [];
@@ -91,23 +63,22 @@ export async function ensureServerConnected(
       errors: [{ url: "(getServers)", msg: String((err && err.message) || err) }],
     };
   }
+
   const errors = [];
-  await Promise.all(
+  // 并发连接所有服务器，单台失败只记录原因、不影响其它台。
+  const allSettled = Promise.all(
     servers.map((url) =>
       user.server.connect(url).catch((err) => {
-        // 单台失败记录原因，靠其它服务器兜底
         errors.push({ url, msg: String((err && err.message) || err) });
       }),
     ),
   );
 
-  // 主动连接后再等剩余时间
-  while (Date.now() - start < timeout) {
-    if (connectedUrls().length > 0) {
-      return { connected: true, urls: connectedUrls(), servers, errors };
-    }
-    await new Promise((r) => setTimeout(r, pollInterval));
-  }
+  // 全部完成或超时（取先到者）：2s 内全连上就直接下一步，超时就不再等。
+  await Promise.race([
+    allSettled,
+    new Promise((r) => setTimeout(r, timeout)),
+  ]);
 
   return {
     connected: connectedUrls().length > 0,
@@ -174,22 +145,45 @@ export function formatPathHint(info) {
 }
 
 /**
- * 读取当前握手服务器状态。返回 { url, connected }。
- * user.server 未就绪时返回 { url: "", connected: false }。
- * @param {object} user
+ * 读取当前握手服务器状态。返回 { url, connected, rtt }。
+ *
+ * 显示逻辑：优先采用 `remoteUser.getRTT()` 给出的实际路径——若经中继，
+ * `info.url` 就是 core 择优后实际使用的最快服务器，`info.rtt` 是其延迟。
+ * 无 remoteUser（尚未 connectUser）或走 RTC 直连时，退回显示已连上的第一台
+ * （`connectedUrls[0]`），而非配置列表的第一台（`getServers()[0]`）。
+ * user.server 未就绪时返回 { url: "", connected: false, rtt: null }。
+ *
+ * @param {object} user - LocalUser
+ * @param {object} [remoteUser] - 已连接的发布者 RemoteUser（可选）
  */
-export async function readHandshakeStatus(user) {
-  if (!user || !user.server) return { url: "", connected: false };
+export async function readHandshakeStatus(user, remoteUser) {
+  if (!user || !user.server) return { url: "", connected: false, rtt: null };
   const connected = Array.isArray(user.server.connectedUrls)
     ? user.server.connectedUrls
     : [];
+
+  // 优先采用 getRTT 的实际最快路径（经中继时 url 即实际使用的最快服务器）。
+  let rtt = null;
+  try {
+    const info = remoteUser && remoteUser.getRTT && remoteUser.getRTT();
+    if (info && info.via === "server" && info.url) {
+      return {
+        url: info.url,
+        connected: connected.includes(info.url) || connected.length > 0,
+        rtt: typeof info.rtt === "number" ? info.rtt : null,
+      };
+    }
+    if (info && typeof info.rtt === "number") rtt = info.rtt;
+  } catch (_) {}
+
   let urls = [];
   try {
     urls = (await user.server.getServers()) || [];
   } catch (_) {}
-  const url = urls[0] || connected[0] || "";
+  const url = connected[0] || urls[0] || "";
   return {
     url,
     connected: !!url && connected.includes(url),
+    rtt,
   };
 }

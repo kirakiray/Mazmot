@@ -32,79 +32,72 @@
       </template>
     </sb-test>
 
-    <sb-test name="ensureServerConnected 已连上则立即返回，不尝试兜底">
+    <sb-test name="ensureServerConnected 并发连上所有配置的服务器">
       <template>
         <script type="module">
           import { ensureServerConnected } from "../connection.js";
           {
-            let connectCalled_a = false;
+            const connected_a = [];
+            const attempted_a = [];
             const user_a = {
               server: {
-                connectedUrls: ["ws://already"],
+                connectedUrls: connected_a,
                 async getServers() {
-                  return ["ws://x"];
+                  return ["ws://s1", "ws://s2", "ws://s3"];
                 },
-                async connect() {
-                  connectCalled_a = true;
+                async connect(url) {
+                  attempted_a.push(url);
+                  connected_a.push(url);
                   return { success: true };
                 },
               },
             };
-            const r = await ensureServerConnected(user_a, {
-              timeout: 400,
-              pollInterval: 20,
-            });
+            const r = await ensureServerConnected(user_a, { timeout: 500 });
             const ok =
               r.connected === true &&
-              r.urls.length === 1 &&
-              r.urls[0] === "ws://already" &&
-              r.servers.length === 0 &&
+              r.urls.length === 3 &&
+              r.servers.length === 3 &&
               r.errors.length === 0 &&
-              connectCalled_a === false;
-            return { assert: ok, content: { r, connectCalled_a } };
+              attempted_a.length === 3;
+            return { assert: ok, content: { r, attempted_a } };
           }
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="ensureServerConnected 被动等待 ready() 自动连上（不主动兜底）">
+    <sb-test name="ensureServerConnected 即使已连一台仍会连其它台（供 core 择优）">
       <template>
         <script type="module">
           import { ensureServerConnected } from "../connection.js";
           {
-            const connected_b = [];
-            let connectCalled_b = false;
-            // 模拟 ready() 发起的连接在 60ms 后握手完成
-            setTimeout(() => connected_b.push("ws://auto"), 60);
+            const connected_b = ["ws://already"];
+            const attempted_b = [];
             const user_b = {
               server: {
                 connectedUrls: connected_b,
                 async getServers() {
-                  return ["ws://x"];
+                  return ["ws://already", "ws://s2"];
                 },
-                async connect() {
-                  connectCalled_b = true;
+                async connect(url) {
+                  attempted_b.push(url);
+                  if (!connected_b.includes(url)) connected_b.push(url);
                   return { success: true };
                 },
               },
             };
-            const r = await ensureServerConnected(user_b, {
-              timeout: 400,
-              pollInterval: 20,
-            });
+            const r = await ensureServerConnected(user_b, { timeout: 500 });
             const ok =
               r.connected === true &&
-              r.urls[0] === "ws://auto" &&
-              r.servers.length === 0 &&
-              r.errors.length === 0 &&
-              connectCalled_b === false;
-            return { assert: ok, content: { r, connectCalled_b } };
+              r.urls.length === 2 &&
+              attempted_b.includes("ws://already") &&
+              attempted_b.includes("ws://s2");
+            return { assert: ok, content: { r, attempted_b } };
           }
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="ensureServerConnected 被动超时后主动连接兜底成功">
+    <sb-test name="ensureServerConnected 部分失败：连上的算成功并记录失败原因">
       <template>
         <script type="module">
           import { ensureServerConnected } from "../connection.js";
@@ -128,10 +121,7 @@
                 },
               },
             };
-            const r = await ensureServerConnected(user_c, {
-              timeout: 400,
-              pollInterval: 20,
-            });
+            const r = await ensureServerConnected(user_c, { timeout: 500 });
             const ok =
               r.connected === true &&
               r.urls.includes("ws://y") &&
@@ -162,10 +152,7 @@
                 },
               },
             };
-            const r = await ensureServerConnected(user_d, {
-              timeout: 300,
-              pollInterval: 20,
-            });
+            const r = await ensureServerConnected(user_d, { timeout: 500 });
             const urls = r.errors.map((e) => e.url).sort();
             const ok =
               r.connected === false &&
@@ -176,6 +163,44 @@
               urls[1] === "ws://b" &&
               r.errors.every((e) => e.msg.includes("refused:"));
             return { assert: ok, content: { r } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected 超时提前返回（慢服务器不阻塞）">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../connection.js";
+          {
+            const connected_t = [];
+            const user_t = {
+              server: {
+                connectedUrls: connected_t,
+                async getServers() {
+                  return ["ws://fast", "ws://slow"];
+                },
+                async connect(url) {
+                  if (url === "ws://fast") {
+                    connected_t.push(url);
+                    return { success: true };
+                  }
+                  // ws://slow 迟迟不返回
+                  await new Promise((r) => setTimeout(r, 5000));
+                  connected_t.push(url);
+                  return { success: true };
+                },
+              },
+            };
+            const start = Date.now();
+            const r = await ensureServerConnected(user_t, { timeout: 200 });
+            const elapsed = Date.now() - start;
+            const ok =
+              r.connected === true &&
+              r.urls.includes("ws://fast") &&
+              !r.urls.includes("ws://slow") &&
+              elapsed < 1000;
+            return { assert: ok, content: { r, elapsed } };
           }
         </script>
       </template>
@@ -197,10 +222,7 @@
                 },
               },
             };
-            const r = await ensureServerConnected(user_e, {
-              timeout: 200,
-              pollInterval: 20,
-            });
+            const r = await ensureServerConnected(user_e, { timeout: 200 });
             const ok =
               r.connected === false &&
               r.servers.length === 0 &&
@@ -266,22 +288,76 @@
     </sb-test>
 
     <!-- ================= readHandshakeStatus ================= -->
-    <sb-test name="readHandshakeStatus 配置的首台已在 connectedUrls 中 → connected">
+    <sb-test name="readHandshakeStatus 优先采用 getRTT 的实际最快服务器与延迟">
       <template>
         <script type="module">
           import { readHandshakeStatus } from "../connection.js";
           {
             const user_f = {
               server: {
-                connectedUrls: ["ws://s1"],
+                connectedUrls: ["ws://s1", "ws://s2"],
                 async getServers() {
                   return ["ws://s1", "ws://s2"];
                 },
               },
             };
-            const r = await readHandshakeStatus(user_f);
+            // core 择优后实际走 s2
+            const remote_f = {
+              getRTT: () => ({ via: "server", url: "ws://s2", rtt: 42 }),
+            };
+            const r = await readHandshakeStatus(user_f, remote_f);
             return {
-              assert: r.url === "ws://s1" && r.connected === true,
+              assert:
+                r.url === "ws://s2" && r.connected === true && r.rtt === 42,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readHandshakeStatus 无 remoteUser 时退回已连接的第一台">
+      <template>
+        <script type="module">
+          import { readHandshakeStatus } from "../connection.js";
+          {
+            const user_g = {
+              server: {
+                connectedUrls: ["ws://c1"],
+                async getServers() {
+                  return ["ws://s1", "ws://c1"];
+                },
+              },
+            };
+            const r = await readHandshakeStatus(user_g);
+            return {
+              assert:
+                r.url === "ws://c1" && r.connected === true && r.rtt === null,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readHandshakeStatus RTC 直连时退回已连服务器但带 rtt">
+      <template>
+        <script type="module">
+          import { readHandshakeStatus } from "../connection.js";
+          {
+            const user_h = {
+              server: {
+                connectedUrls: ["ws://c1"],
+                async getServers() {
+                  return ["ws://c1"];
+                },
+              },
+            };
+            const remote_h = { getRTT: () => ({ via: "rtc", rtt: 15 }) };
+            const r = await readHandshakeStatus(user_h, remote_h);
+            return {
+              assert:
+                r.url === "ws://c1" && r.connected === true && r.rtt === 15,
               content: { r },
             };
           }
@@ -294,7 +370,7 @@
         <script type="module">
           import { readHandshakeStatus } from "../connection.js";
           {
-            const user_g = {
+            const user_i = {
               server: {
                 connectedUrls: [],
                 async getServers() {
@@ -302,7 +378,7 @@
                 },
               },
             };
-            const r = await readHandshakeStatus(user_g);
+            const r = await readHandshakeStatus(user_i);
             return {
               assert: r.url === "ws://s1" && r.connected === false,
               content: { r },

@@ -804,6 +804,7 @@
               }
 
               remoteUser = await ctx.user.connectUser(publisherUserId);
+              this._remoteUser = remoteUser;
               diag.mark("connectUser done");
 
               // 探测一次连接路径，让历史里能看到走的是 RTC 直连还是哪台服务器
@@ -815,6 +816,8 @@
                   msg: String((e && e.message) || e),
                 });
               }
+              // ping 后 getRTT 已有数据，刷新握手状态显示实际最快服务器
+              this.updateHandshakeStatus();
 
               // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
               // 如果 3s 内没升上来，就继续走 relay，不阻塞。
@@ -1050,13 +1053,18 @@
             }
           },
 
-          // 更新握手服务器状态：取配置列表中的第一个地址，或当前已连接的地址
+          // 更新握手服务器状态：优先显示 getRTT 的实际最快路径，
+          // 否则退回已连接的第一台服务器。
           async updateHandshakeStatus() {
             try {
-              const { url, connected } = await readHandshakeStatus(
+              const { url, connected, rtt } = await readHandshakeStatus(
                 this._userRef,
+                this._remoteUser,
               );
-              this.handshakeUrl = url;
+              this.handshakeUrl =
+                url && typeof rtt === "number"
+                  ? `${url} · ${Math.round(rtt)}ms`
+                  : url;
               this.handshakeConnected = connected;
             } catch (err) {
               diag.logEvent("updateHandshakeStatus error", {
