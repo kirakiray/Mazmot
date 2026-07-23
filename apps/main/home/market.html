@@ -1,84 +1,123 @@
 <template page>
   <style>
     :host {
-      display: block;
-    }
-    .market-content {
-      padding: 0 16px;
-    }
-    .market-header {
-      padding: 8px 0 16px;
-    }
-    .market-desc {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      opacity: 0.7;
-      line-height: 1.5;
-    }
-
-    /* 应用网格 */
-    .app-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
-    }
-    .app-card {
       display: flex;
       flex-direction: column;
+      min-height: 80vh;
+    }
+    .market-body {
+      flex: 1;
+      padding: 0 16px;
+      overflow-y: auto;
+    }
+
+    /* ===== 列表视图 ===== */
+    .app-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .app-row {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 20px 16px;
-      border: 1px solid var(--md-sys-color-surface-variant);
-      border-radius: 16px;
-      background-color: var(--md-sys-color-surface);
-      transition: border-color 0.15s, box-shadow 0.15s;
-      text-align: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--md-sys-color-surface-variant);
+      cursor: pointer;
+      transition: opacity 0.15s;
     }
-    .app-card:hover {
-      border-color: var(--md-sys-color-primary);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    .app-row:hover {
+      opacity: 0.8;
     }
-    .app-icon {
-      font-size: 48px;
+    .app-row:last-child {
+      border-bottom: none;
+    }
+    .row-icon {
+      font-size: 28px;
       line-height: 1;
-      width: 64px;
-      height: 64px;
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 16px;
+      border-radius: 12px;
       background-color: var(--md-sys-color-surface-variant);
     }
-    .app-info {
-      width: 100%;
+    .row-info {
+      flex: 1;
+      min-width: 0;
     }
-    .app-name {
+    .row-name {
       font-size: 14px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .row-tag {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
+    .row-btn {
+      flex-shrink: 0;
+    }
+
+    /* ===== 详情视图 ===== */
+    .detail-view {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 8px;
+    }
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .detail-icon {
+      font-size: 56px;
+      line-height: 1;
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .detail-title-area {
+      flex: 1;
+      min-width: 0;
+    }
+    .detail-name {
+      font-size: 20px;
       font-weight: 600;
       color: var(--md-sys-color-on-surface);
       margin-bottom: 4px;
     }
-    .app-desc {
-      font-size: 12px;
+    .detail-tag {
+      font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.4;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
     }
-    .app-actions {
-      margin-top: auto;
-      padding-top: 4px;
+    .detail-actions {
+      margin-top: 8px;
+    }
+    .detail-desc {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
     }
 
-    /* 加载态 */
+    /* ===== 通用 ===== */
     .market-loading {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 32px 16px;
+      padding: 48px 16px;
       justify-content: center;
       font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
@@ -92,15 +131,14 @@
       to { transform: rotate(360deg); }
     }
 
-    /* 安装进度 */
     .install-progress {
-      padding: 8px 0 16px;
+      padding: 16px 0;
     }
     .progress-bar {
       width: 100%;
-      height: 8px;
+      height: 6px;
       background-color: var(--md-sys-color-surface-variant);
-      border-radius: 4px;
+      border-radius: 3px;
       overflow: hidden;
     }
     .progress-fill {
@@ -118,10 +156,10 @@
 
     .footer {
       display: flex;
-      justify-content: flex-end;
-      padding: 16px;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
       border-top: 1px solid var(--md-sys-color-surface-variant);
-      margin-top: 12px;
     }
 
     .empty-state {
@@ -135,13 +173,7 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
-  <div class="market-content">
-    <div class="market-header">
-      <div class="market-desc">
-        浏览官方收录的应用，一键安装到虚拟目录。
-      </div>
-    </div>
-
+  <div class="market-body">
     <!-- 加载中 -->
     <o-if :value="loading">
       <div class="market-loading">
@@ -150,45 +182,27 @@
       </div>
     </o-if>
 
-    <!-- 安装进度 -->
-    <o-if :value="installing">
-      <div class="install-progress">
-        <div class="progress-bar">
-          <div class="progress-fill" :style.width="progress + '%'"></div>
-        </div>
-        <div class="progress-text">
-          <span>{{progressText}}</span>
-          <span>{{progress}}%</span>
-        </div>
-      </div>
-    </o-if>
-
-    <!-- 应用列表 -->
-    <o-if :value="!loading && !installing">
+    <!-- ===== 列表视图 ===== -->
+    <o-if :value="!loading && view === 'list'">
       <o-if :value="apps.length > 0">
-        <div class="app-grid">
+        <div class="app-list">
           <o-fill :value="apps">
-            <div class="app-card">
-              <div class="app-icon">{{$data.icon}}</div>
-              <div class="app-info">
-                <div class="app-name">{{$data.name}}</div>
-                <o-if :value="$data.desc">
-                  <div class="app-desc">{{$data.desc}}</div>
-                </o-if>
+            <div class="app-row" on:click="$host.openDetail($data)">
+              <div class="row-icon">{{$data.icon}}</div>
+              <div class="row-info">
+                <div class="row-name">{{$data.name}}</div>
+                <div class="row-tag">官方应用</div>
               </div>
-              <div class="app-actions">
+              <div class="row-btn">
                 <p-button
                   color="primary"
+                  variant="tonal"
                   size="s"
-                  on:click="$host.installApp($data)"
+                  on:click="$host.quickInstall($event, $data)"
                   attr:disabled="$data.installed"
                 >
-                  <o-if :value="$data.installed">
-                    已安装
-                  </o-if>
-                  <o-if :value="!$data.installed">
-                    安装
-                  </o-if>
+                  <o-if :value="$data.installed">已安装</o-if>
+                  <o-if :value="!$data.installed">获取</o-if>
                 </p-button>
               </div>
             </div>
@@ -199,9 +213,56 @@
         <div class="empty-state">暂无官方应用</div>
       </o-if>
     </o-if>
+
+    <!-- ===== 详情视图 ===== -->
+    <o-if :value="!loading && view === 'detail' && selectedApp.id">
+      <div class="detail-view">
+        <div class="detail-header">
+          <div class="detail-icon">{{selectedApp.icon}}</div>
+          <div class="detail-title-area">
+            <div class="detail-name">{{selectedApp.name}}</div>
+            <div class="detail-tag">官方应用</div>
+          </div>
+        </div>
+
+        <o-if :value="installing">
+          <div class="install-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style.width="progress + '%'"></div>
+            </div>
+            <div class="progress-text">
+              <span>{{progressText}}</span>
+              <span>{{progress}}%</span>
+            </div>
+          </div>
+        </o-if>
+
+        <div class="detail-actions">
+          <p-button
+            color="primary"
+            on:click="installSelected"
+            attr:disabled="selectedApp.installed || installing"
+          >
+            <o-if :value="selectedApp.installed">已安装</o-if>
+            <o-if :value="!selectedApp.installed">安装</o-if>
+          </p-button>
+        </div>
+
+        <o-if :value="selectedApp.desc">
+          <div class="detail-desc">{{selectedApp.desc}}</div>
+        </o-if>
+      </div>
+    </o-if>
   </div>
 
   <div class="footer">
+    <o-if :value="view === 'detail'">
+      <p-button variant="text" on:click="backToList">
+        <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
+        返回
+      </p-button>
+    </o-if>
+    <div style="flex: 1"></div>
     <p-button variant="text" on:click="closeDialog">关闭</p-button>
   </div>
 
@@ -219,7 +280,9 @@
       return {
         data: {
           loading: true,
+          view: "list", // "list" | "detail"
           apps: [],
+          selectedApp: {},
           installing: false,
           progress: 0,
           progressText: "",
@@ -232,7 +295,6 @@
             this.loading = true;
             try {
               const officialApps = await loadOfficialApps();
-              // 检查哪些已安装
               const installedIds = new Set();
               try {
                 const storedApps = (await storage.apps) || [];
@@ -241,9 +303,7 @@
                     installedIds.add(app.officialId);
                   }
                 }
-              } catch (e) {
-                // 忽略
-              }
+              } catch (e) {}
               this.apps = officialApps.map((app) => ({
                 ...app,
                 installed: installedIds.has(app.id),
@@ -257,6 +317,32 @@
             } finally {
               this.loading = false;
             }
+          },
+
+          // 进入详情页
+          openDetail(appMeta) {
+            this.selectedApp = appMeta;
+            this.view = "detail";
+          },
+
+          backToList() {
+            this.view = "list";
+            this.selectedApp = {};
+          },
+
+          // 列表里的快速安装按钮（需要阻止冒泡，避免进入详情）
+          async quickInstall(event, appMeta) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            await this.installApp(appMeta);
+          },
+
+          // 详情页的安装按钮
+          async installSelected() {
+            if (!this.selectedApp) return;
+            await this.installApp(this.selectedApp);
           },
 
           async installApp(appMeta) {
@@ -273,7 +359,6 @@
             const appName = appMeta.id;
 
             try {
-              // 检查重名
               const existingApps = (await storage.apps) || [];
               if (existingApps.some((a) => a.name === appName)) {
                 alert({
@@ -282,12 +367,10 @@
                 return;
               }
 
-              // 创建虚拟目录
               const namespace = "mazmot-apps";
               const rootDir = await init(namespace);
               const vHandle = await rootDir.get(appName, { create: "dir" });
 
-              // 写入应用文件
               await installOfficialApp({
                 dirHandle: vHandle,
                 appId: appMeta.id,
@@ -300,7 +383,6 @@
                 },
               });
 
-              // 注册到 storage
               const appId = await generateAppId(appName);
               existingApps.push({
                 name: appName,
@@ -315,7 +397,6 @@
               });
               await storage.setItem("apps", existingApps);
 
-              // 更新 UI 状态
               appMeta.installed = true;
               this.progressText = "安装完成";
               toast({ content: `${appMeta.name} 安装成功`, type: "success" });
