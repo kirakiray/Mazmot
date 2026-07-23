@@ -158,6 +158,22 @@
       color: var(--md-sys-color-on-surface-variant);
       line-height: 1.4;
     }
+    .template-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 12px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .template-loading n-icon {
+      font-size: 18px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
     .footer {
       display: flex;
       justify-content: flex-end;
@@ -365,18 +381,26 @@
       <div class="form-field">
         <div class="template-label">选择模板 *</div>
         <div class="template-list">
-          <o-fill :value="templates">
-            <div
-              class="template-card"
-              attr:active="$data.id === $host.templateId"
-              on:click="$host.selectTemplate($data.id)"
-            >
-              <div class="template-card-name">{{$data.name}}</div>
-              <o-if :value="$data.desc">
-                <div class="template-card-desc">{{$data.desc}}</div>
-              </o-if>
+          <o-if :value="templatesLoading">
+            <div class="template-loading">
+              <n-icon icon="mdi:loading"></n-icon>
+              <span>加载模板中...</span>
             </div>
-          </o-fill>
+          </o-if>
+          <o-if :value="!templatesLoading">
+            <o-fill :value="templates">
+              <div
+                class="template-card"
+                attr:active="$data.id === $host.templateId"
+                on:click="$host.selectTemplate($data.id)"
+              >
+                <div class="template-card-name">{{$data.name}}</div>
+                <o-if :value="$data.desc">
+                  <div class="template-card-desc">{{$data.desc}}</div>
+                </o-if>
+              </div>
+            </o-fill>
+          </o-if>
         </div>
       </div>
 
@@ -471,14 +495,6 @@
     import { generateAppId } from "../lib/share-mgr.js";
 
     export default async () => {
-      let templates = [];
-      try {
-        templates = await loadTemplates();
-      } catch (err) {
-        console.warn("加载模板列表失败：", err);
-      }
-      const defaultTemplateId = templates.length > 0 ? templates[0].id : "base";
-
       return {
         data: {
           step: 1,
@@ -492,13 +508,17 @@
           appName: "",
           appDesc: "",
           nameError: "",
-          templates,
-          templateId: defaultTemplateId,
+          templates: [],
+          templatesLoading: true,
+          templateId: "base",
           submitting: false,
           progress: 0,
           progressText: "准备中...",
           fileLogs: [],
           finished: false,
+        },
+        async ready() {
+          await this.loadTemplatesData();
         },
         proto: {
           // Step 1: 选择本地目录
@@ -688,6 +708,20 @@
           selectTemplate(id) {
             if (!id) return;
             this.templateId = id;
+          },
+
+          async loadTemplatesData() {
+            this.templatesLoading = true;
+            try {
+              const templates = await loadTemplates();
+              this.templates = templates;
+              this.templateId =
+                templates.length > 0 ? templates[0].id : "base";
+            } catch (err) {
+              console.warn("加载模板列表失败：", err);
+            } finally {
+              this.templatesLoading = false;
+            }
           },
 
           async confirmAppInfo() {

@@ -16,6 +16,8 @@ const TEMPLATES_ROOT = new URL("./templates/", import.meta.url);
 
 /**
  * 加载模板列表清单。
+ * manifest.json 只存放模板 id 列表，每个模板的 name/desc
+ * 从对应模板目录下的 __files.json 读取。
  * @returns {Promise<Array<{ id: string, name: string, desc?: string }>>}
  */
 export async function loadTemplates() {
@@ -25,7 +27,32 @@ export async function loadTemplates() {
     throw new Error(`加载模板清单失败：${res.status}`);
   }
   const data = await res.json();
-  return Array.isArray(data.templates) ? data.templates : [];
+  const entries = Array.isArray(data.templates) ? data.templates : [];
+
+  const templates = [];
+  for (const entry of entries) {
+    const id = typeof entry === "string" ? entry : entry.id;
+    if (!id) continue;
+    const templateRoot = new URL(`${id}/`, TEMPLATES_ROOT);
+    try {
+      const metaRes = await fetch(new URL("__files.json", templateRoot));
+      if (!metaRes.ok) {
+        console.warn(`模板 ${id} 缺少 __files.json`);
+        templates.push({ id, name: id, desc: "" });
+        continue;
+      }
+      const meta = await metaRes.json();
+      templates.push({
+        id,
+        name: meta.name || id,
+        desc: meta.desc || "",
+      });
+    } catch (err) {
+      console.warn(`加载模板 ${id} 元数据失败：`, err);
+      templates.push({ id, name: id, desc: "" });
+    }
+  }
+  return templates;
 }
 
 function escapeHtml(str) {
