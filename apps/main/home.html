@@ -504,6 +504,7 @@
       generateAppId,
       publishApp,
     } from "./lib/share-mgr.js";
+    import { syncOfficialAppState } from "./lib/official-app-state.js";
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -998,6 +999,9 @@
                 (a) => !(a.name === (app._recordName || app.name)),
               );
               await storage.setItem("apps", next);
+
+              // 同步共享 stanz 状态，应用市场页面会自动收到通知
+              await syncOfficialAppState();
 
               await this.refreshApps();
               toast({ content: "已删除", color: "success" });
