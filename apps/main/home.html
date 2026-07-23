@@ -378,6 +378,16 @@
                           >
                             {{$data.autoShareStatus}}
                           </span>
+                          <o-if :value="$data.autoSharePermissionError">
+                            <p-button
+                              variant="text"
+                              color="primary"
+                              size="xs"
+                              on:click="$host.requestPermissionAndRetry($event, $data)"
+                            >
+                              点击重新获取权限
+                            </p-button>
+                          </o-if>
                         </div>
                       </div>
                     </div>
@@ -568,6 +578,7 @@
             autoShareUrl: "",
             autoShareState: app.autoShare ? "pending" : "idle",
             autoShareStatus: app.autoShare ? "等待发布..." : "已关闭",
+            autoSharePermissionError: false,
           };
         }),
       );
@@ -819,6 +830,43 @@
               target.autoShareState = "error";
               target.autoShareStatus =
                 "发布失败：" + (err.message || String(err));
+              target.autoSharePermissionError = /not allowed by the user agent or the platform/i.test(
+                err.message || "",
+              );
+            }
+          },
+
+          // 重新获取目录句柄权限并重试自动分享
+          async requestPermissionAndRetry(event, target) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!target || !target._handle) return;
+            try {
+              // 取出原生 FileSystemDirectoryHandle（DirHandle 包装在 _handle 属性上）
+              const rawHandle = target._handle._handle || target._handle;
+              if (!rawHandle || !rawHandle.requestPermission) {
+                toast({ content: "当前浏览器不支持重新获取权限", color: "error" });
+                return;
+              }
+              // 先查询权限状态，不 granted 则请求重新授权
+              let state = await rawHandle.queryPermission({ mode: "readwrite" });
+              if (state !== "granted") {
+                state = await rawHandle.requestPermission({ mode: "readwrite" });
+              }
+              if (state === "granted") {
+                target.autoSharePermissionError = false;
+                await this.autoShareApp(target);
+              } else {
+                toast({ content: "权限未授予，请重试", color: "warning" });
+              }
+            } catch (err) {
+              console.error("重新获取权限失败：", err);
+              toast({
+                content: "重新获取权限失败：" + (err.message || err),
+                color: "error",
+              });
             }
           },
 
