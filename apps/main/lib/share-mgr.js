@@ -80,16 +80,40 @@ export function buildSharePayloadFile(payload) {
 }
 
 /**
+ * run-app 内部保留使用的 query 参数名；应用层不会被这些参数名干扰。
+ * 凡是不在这个列表里的 query 参数，都属于"应用业务参数"。
+ */
+export const RESERVED_SHARE_KEYS = ["u", "h"];
+
+/**
  * 构造"自动安装并跳转到应用"的一键分享链接。
+ *
+ * 除 run-app 自身使用的 u/h 两个保留参数外，可通过 `appParams` 携带任意
+ * 应用业务参数。这些业务参数会原样追加到链接上，run-app 在跳转最终应用入口时
+ * 会把它们透传给应用（u/h 不会带给应用）。
+ *
  * @param {string} origin - 当前域名（location.origin）
  * @param {string} publisherUserId - 发布者 userId（公钥哈希）
  * @param {string} payloadHash - publish 分享清单后得到的 manifest.fileHash
+ * @param {Object<string,string|number>} [appParams] - 应用业务参数（可选）
  * @returns {string}
  */
-export function buildRunUrl(origin, publisherUserId, payloadHash) {
-  return `${origin}/apps/run-app/?u=${encodeURIComponent(
+export function buildRunUrl(origin, publisherUserId, payloadHash, appParams) {
+  let url = `${origin}/apps/run-app/?u=${encodeURIComponent(
     publisherUserId,
   )}&h=${encodeURIComponent(payloadHash)}`;
+  if (appParams && typeof appParams === "object") {
+    const sp = new URLSearchParams();
+    for (const [key, value] of Object.entries(appParams)) {
+      // 过滤 undefined / null，避免出现 "key=undefined"
+      if (value !== undefined && value !== null) {
+        sp.append(key, String(value));
+      }
+    }
+    const extra = sp.toString();
+    if (extra) url += "&" + extra;
+  }
+  return url;
 }
 
 /**
@@ -105,6 +129,35 @@ export function parseShareUrl(search) {
   const h = params.get("h");
   if (!u || !h) return null;
   return { userId: u, payloadHash: h };
+}
+
+/**
+ * 把 URL search 拆分为「run-app 保留参数」与「应用业务参数」两部分。
+ *
+ * u/h 属于 run-app 自身使用（判定发布者身份 / 拉取分享清单），不会透传给应用；
+ * 其余所有 query 参数都被视为应用业务参数，由 run-app 在跳转应用入口时原样带给应用。
+ *
+ * 与 `parseShareUrl` 的区别：parseShareUrl 只关心 u/h 且缺失时返回 null；
+ * splitShareQuery 永远返回完整结构，方便 run-app 端统一处理。
+ *
+ * @param {string} search - location.search（带或不带 "?" 均可，空串也安全）
+ * @returns {{ userId: string, payloadHash: string, appParams: Object<string,string> }}
+ */
+export function splitShareQuery(search) {
+  if (!search) return { userId: "", payloadHash: "", appParams: {} };
+  const query = search.startsWith("?") ? search.slice(1) : search;
+  const params = new URLSearchParams(query);
+  const appParams = {};
+  for (const [key, value] of params.entries()) {
+    if (!RESERVED_SHARE_KEYS.includes(key)) {
+      appParams[key] = value;
+    }
+  }
+  return {
+    userId: params.get("u") || "",
+    payloadHash: params.get("h") || "",
+    appParams,
+  };
 }
 
 /**
@@ -127,6 +180,7 @@ export async function isPublicKeyOfUser(publicKey, expectedUserId) {
  * @param {Object} [options]
  * @param {string} [options.appId] - 可提前生成的 appId，若未传则自动生成
  * @param {string} [options.origin] - 拼接 URL 用的 origin，默认 window.location.origin
+ * @param {Object<string,string|number>} [options.appParams] - 附加到分享链接上的应用业务参数
  * @param {(step: {phase: string, progress: number, text: string}) => void} [options.onProgress]
  * @returns {Promise<{ shareUrl: string, appId: string, payloadHash: string }>}
  */
@@ -184,7 +238,7 @@ export async function publishApp(app, options = {}) {
   const payloadFile = buildSharePayloadFile(payloadData);
   const payloadManifest = await publisher.publish(payloadFile);
   const origin = options.origin || window.location.origin;
-  const shareUrl = buildRunUrl(origin, user.userId, payloadManifest.fileHash);
+  const shareUrl = buildRunUrl(origin, user.userId, payloadManifest.fileHash, options.appParams);
 
   report("done", 100, "");
   return { shareUrl, appId, payloadHash: payloadManifest.fileHash };

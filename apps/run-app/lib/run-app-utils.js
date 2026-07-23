@@ -188,3 +188,27 @@ export function shouldSkipInstall(installed, payload, isSelfShare) {
   }
   return !!isSelfShare;
 }
+
+/**
+ * 把应用业务参数拼接到应用入口 URL 上。
+ *
+ * run-app 在跳转到最终应用入口时调用：u/h 已被剥离，这里只把 `appParams`
+ * 透传给应用。baseUrl 可能已有自己的 query（极少见），此时用 `&` 衔接。
+ *
+ * @param {string} baseUrl - 应用入口 URL（如 /$ns/name/client/index.html）
+ * @param {Object<string,string|number>|null|undefined} appParams - 从分享链接分离出的业务参数
+ * @returns {string}
+ */
+export function buildAppUrlWithParams(baseUrl, appParams) {
+  if (!appParams || typeof appParams !== "object") return baseUrl;
+  const sp = new URLSearchParams();
+  for (const [key, value] of Object.entries(appParams)) {
+    if (value !== undefined && value !== null) {
+      sp.append(key, String(value));
+    }
+  }
+  const extra = sp.toString();
+  if (!extra) return baseUrl;
+  const sep = baseUrl.includes("?") ? "&" : "?";
+  return baseUrl + sep + extra;
+}

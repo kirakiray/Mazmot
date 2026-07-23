@@ -530,5 +530,137 @@
         </script>
       </template>
     </sb-test>
+
+    <!-- ================= buildAppUrlWithParams ================= -->
+    <sb-test name="buildAppUrlWithParams 拼接业务参数到应用入口">
+      <template>
+        <script type="module">
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            const url = buildAppUrlWithParams(
+              "/$mazmot-apps/myapp/client/index.html",
+              { role: "guest", host: "userABC" },
+            );
+            const sp = new URL("http://x" + url).searchParams;
+            return {
+              assert:
+                sp.get("role") === "guest" &&
+                sp.get("host") === "userABC" &&
+                sp.size === 2,
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildAppUrlWithParams 空参数返回原 URL">
+      <template>
+        <script type="module">
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            const base = "/$mazmot-apps/myapp/client/index.html";
+            const r1 = buildAppUrlWithParams(base, {});
+            const r2 = buildAppUrlWithParams(base, null);
+            const r3 = buildAppUrlWithParams(base, undefined);
+            return {
+              assert: r1 === base && r2 === base && r3 === base,
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildAppUrlWithParams 过滤 undefined / null 值">
+      <template>
+        <script type="module">
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            const url = buildAppUrlWithParams("/app/index.html", {
+              a: "1",
+              b: undefined,
+              c: null,
+            });
+            const sp = new URL("http://x" + url).searchParams;
+            return {
+              assert:
+                sp.get("a") === "1" && !sp.has("b") && !sp.has("c"),
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildAppUrlWithParams 特殊字符正确编码">
+      <template>
+        <script type="module">
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            const url = buildAppUrlWithParams("/app/index.html", {
+              q: "a b&c=d",
+            });
+            const sp = new URL("http://x" + url).searchParams;
+            return {
+              assert:
+                sp.get("q") === "a b&c=d" && !url.includes("a b&c=d"),
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildAppUrlWithParams baseUrl 已有 query 时用 & 衔接">
+      <template>
+        <script type="module">
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            const url = buildAppUrlWithParams(
+              "/app/index.html?existing=1",
+              { role: "guest" },
+            );
+            const sp = new URL("http://x" + url).searchParams;
+            return {
+              assert:
+                sp.get("existing") === "1" &&
+                sp.get("role") === "guest" &&
+                !url.includes("??"),
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="端到端：splitShareQuery → buildAppUrlWithParams 只透传业务参数，剥离 u/h">
+      <template>
+        <script type="module">
+          import { splitShareQuery } from "../../../main/lib/share-mgr.js";
+          import { buildAppUrlWithParams } from "../run-app-utils.js";
+          {
+            // 分享链接：带 run-app 保留参数 u/h + 业务参数 role/host
+            const shareSearch =
+              "?u=publisher&h=hashXYZ&role=guest&host=hostUser";
+            const { appParams } = splitShareQuery(shareSearch);
+            // run-app 跳转到应用入口时只透传业务参数
+            const finalUrl = buildAppUrlWithParams(
+              "/$mazmot-apps/cs/client/index.html",
+              appParams,
+            );
+            const sp = new URL("http://x" + finalUrl).searchParams;
+            return {
+              assert:
+                !sp.has("u") &&
+                !sp.has("h") &&
+                sp.get("role") === "guest" &&
+                sp.get("host") === "hostUser",
+              content: { finalUrl, appParams },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>
