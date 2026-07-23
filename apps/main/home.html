@@ -226,9 +226,23 @@
     auto-close
     style="--dialog-max-width: 800px"
     on:close-dialog="handleDialogClose"
+    on:open-market="handleOpenMarket"
   >
     <span slot="title">添加应用</span>
     <o-page src="./home/add-app.html" style="width: 100%"></o-page>
+  </p-dialog>
+
+  <p-dialog
+    sync:open="marketDialogOpen"
+    auto-close
+    style="--dialog-max-width: 800px"
+    on:close-dialog="handleMarketClose"
+  >
+    <span slot="title">应用市场</span>
+    <o-page
+      src="./home/market.html"
+      style="width: 100%; min-height: 80vh"
+    ></o-page>
   </p-dialog>
 
   <p-dialog
@@ -332,6 +346,10 @@
                         <o-if :value="$data.source === 'virtual'">
                           <n-icon icon="mdi:database-outline"></n-icon>
                           虚拟目录
+                        </o-if>
+                        <o-if :value="$data.source === 'official'">
+                          <n-icon icon="mdi:store-outline"></n-icon>
+                          应用市场
                         </o-if>
                       </span>
                     </div>
@@ -503,14 +521,16 @@
         apps.map(async (app) => {
           let manifest = null;
           // 根据 source 类型构造 handle：
-          // - virtual：通过 init(namespace) 重新拿到虚拟根目录
+          // - virtual / official：通过 init(namespace) 重新拿到虚拟根目录
           // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
           let handle = null;
           // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
+          const isVirtualLike =
+            app.source === "virtual" || app.source === "official";
           const namespaceForApp = app.namespace || "mazmot-apps";
           const namespacePrefix = namespaceForApp + "/";
           let virtualDirName = "";
-          if (app.source === "virtual") {
+          if (isVirtualLike) {
             if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
               virtualDirName = app.dirName.slice(namespacePrefix.length);
             } else if (app.dirName) {
@@ -520,7 +540,7 @@
             }
           }
           try {
-            if (app.source === "virtual") {
+            if (isVirtualLike) {
               const rootDir = await init(namespaceForApp);
               handle = await rootDir.get(virtualDirName, { create: "dir" });
             } else if (app.handle) {
@@ -591,6 +611,7 @@
       return {
         data: {
           dialogOpen: false,
+          marketDialogOpen: false,
           appList: initialApps,
           shareDialogOpen: false,
           shareUrl: "",
@@ -733,6 +754,18 @@
 
           async handleDialogClose() {
             this.dialogOpen = false;
+            await this.refreshApps();
+          },
+
+          // 从添加应用弹窗切换到应用市场弹窗
+          handleOpenMarket() {
+            this.dialogOpen = false;
+            this.marketDialogOpen = true;
+          },
+
+          // 应用市场关闭时刷新列表
+          async handleMarketClose() {
+            this.marketDialogOpen = false;
             await this.refreshApps();
           },
           async refreshApps() {
@@ -979,6 +1012,11 @@
         },
         watch: {
           async dialogOpen(val) {
+            if (!val) {
+              await this.refreshApps();
+            }
+          },
+          async marketDialogOpen(val) {
             if (!val) {
               await this.refreshApps();
             }

@@ -35,10 +35,15 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
+│   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用并安装到虚拟目录）
 │   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
+│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从 official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
 │   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
+│   │   │   ├── official-apps/        # 官方应用资源目录（应用市场）
+│   │   │   │   ├── manifest.json     # 官方应用清单（只登记 app id）
+│   │   │   │   └── <id>/             # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
 │   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
@@ -155,11 +160,12 @@ clearOpened → 关闭窗口
 {
   name: "my-app",           // 唯一 recordName（字母/数字/_-，不含空格）；运行时常被映射到 _recordName
   desc: "描述",
-  handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录为 null
+  handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录/官方应用为 null
   dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "mazmot-apps/<name>"
-  source: "local" | "virtual",
-  namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
+  source: "local" | "virtual" | "official",
+  namespace: "mazmot-apps",  // virtual / official 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
+  officialId: "hello-world", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
@@ -186,7 +192,7 @@ clearOpened → 关闭窗口
   version: "0.1.0",
 
   // —— UI 状态 ——
-  source: "local" | "virtual",
+  source: "local" | "virtual" | "official",
   namespace: "...",
   appId: "...",
   isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」

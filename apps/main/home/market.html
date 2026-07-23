@@ -1,0 +1,340 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+    }
+    .market-content {
+      padding: 0 16px;
+    }
+    .market-header {
+      padding: 8px 0 16px;
+    }
+    .market-desc {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      line-height: 1.5;
+    }
+
+    /* 应用网格 */
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .app-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 20px 16px;
+      border: 1px solid var(--md-sys-color-surface-variant);
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      text-align: center;
+    }
+    .app-card:hover {
+      border-color: var(--md-sys-color-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .app-icon {
+      font-size: 48px;
+      line-height: 1;
+      width: 64px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .app-info {
+      width: 100%;
+    }
+    .app-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 4px;
+    }
+    .app-desc {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .app-actions {
+      margin-top: auto;
+      padding-top: 4px;
+    }
+
+    /* 加载态 */
+    .market-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 32px 16px;
+      justify-content: center;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .market-loading n-icon {
+      font-size: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* 安装进度 */
+    .install-progress {
+      padding: 8px 0 16px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: flex-end;
+      padding: 16px;
+      border-top: 1px solid var(--md-sys-color-surface-variant);
+      margin-top: 12px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="market-content">
+    <div class="market-header">
+      <div class="market-desc">
+        浏览官方收录的应用，一键安装到虚拟目录。
+      </div>
+    </div>
+
+    <!-- 加载中 -->
+    <o-if :value="loading">
+      <div class="market-loading">
+        <n-icon icon="mdi:loading"></n-icon>
+        <span>加载应用列表中...</span>
+      </div>
+    </o-if>
+
+    <!-- 安装进度 -->
+    <o-if :value="installing">
+      <div class="install-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" :style.width="progress + '%'"></div>
+        </div>
+        <div class="progress-text">
+          <span>{{progressText}}</span>
+          <span>{{progress}}%</span>
+        </div>
+      </div>
+    </o-if>
+
+    <!-- 应用列表 -->
+    <o-if :value="!loading && !installing">
+      <o-if :value="apps.length > 0">
+        <div class="app-grid">
+          <o-fill :value="apps">
+            <div class="app-card">
+              <div class="app-icon">{{$data.icon}}</div>
+              <div class="app-info">
+                <div class="app-name">{{$data.name}}</div>
+                <o-if :value="$data.desc">
+                  <div class="app-desc">{{$data.desc}}</div>
+                </o-if>
+              </div>
+              <div class="app-actions">
+                <p-button
+                  color="primary"
+                  size="s"
+                  on:click="$host.installApp($data)"
+                  attr:disabled="$data.installed"
+                >
+                  <o-if :value="$data.installed">
+                    已安装
+                  </o-if>
+                  <o-if :value="!$data.installed">
+                    安装
+                  </o-if>
+                </p-button>
+              </div>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
+      <o-if :value="apps.length === 0">
+        <div class="empty-state">暂无官方应用</div>
+      </o-if>
+    </o-if>
+  </div>
+
+  <div class="footer">
+    <p-button variant="text" on:click="closeDialog">关闭</p-button>
+  </div>
+
+  <script>
+    import { init } from "/nos/fs/main.js";
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import {
+      toast,
+      alert,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import { loadOfficialApps, installOfficialApp } from "./official-app-writer.js";
+    import { generateAppId } from "../lib/share-mgr.js";
+
+    export default async () => {
+      return {
+        data: {
+          loading: true,
+          apps: [],
+          installing: false,
+          progress: 0,
+          progressText: "",
+        },
+        async ready() {
+          await this.loadAppsData();
+        },
+        proto: {
+          async loadAppsData() {
+            this.loading = true;
+            try {
+              const officialApps = await loadOfficialApps();
+              // 检查哪些已安装
+              const installedIds = new Set();
+              try {
+                const storedApps = (await storage.apps) || [];
+                for (const app of storedApps) {
+                  if (app.source === "official" && app.officialId) {
+                    installedIds.add(app.officialId);
+                  }
+                }
+              } catch (e) {
+                // 忽略
+              }
+              this.apps = officialApps.map((app) => ({
+                ...app,
+                installed: installedIds.has(app.id),
+              }));
+            } catch (err) {
+              console.warn("加载官方应用列表失败：", err);
+              toast({
+                content: "加载应用列表失败：" + (err.message || err),
+                type: "error",
+              });
+            } finally {
+              this.loading = false;
+            }
+          },
+
+          async installApp(appMeta) {
+            if (this.installing) return;
+            if (appMeta.installed) {
+              toast({ content: "该应用已安装", type: "info" });
+              return;
+            }
+
+            this.installing = true;
+            this.progress = 0;
+            this.progressText = "准备安装...";
+
+            const appName = appMeta.id;
+
+            try {
+              // 检查重名
+              const existingApps = (await storage.apps) || [];
+              if (existingApps.some((a) => a.name === appName)) {
+                alert({
+                  content: `已存在同名应用「${appName}」，无法重复安装。`,
+                });
+                return;
+              }
+
+              // 创建虚拟目录
+              const namespace = "mazmot-apps";
+              const rootDir = await init(namespace);
+              const vHandle = await rootDir.get(appName, { create: "dir" });
+
+              // 写入应用文件
+              await installOfficialApp({
+                dirHandle: vHandle,
+                appId: appMeta.id,
+                onProgress: ({ path, status, progress }) => {
+                  this.progress = progress;
+                  this.progressText =
+                    status === "writing"
+                      ? `正在写入 ${path} ...`
+                      : `已写入 ${path}`;
+                },
+              });
+
+              // 注册到 storage
+              const appId = await generateAppId(appName);
+              existingApps.push({
+                name: appName,
+                desc: appMeta.desc,
+                handle: null,
+                dirName: `${namespace}/${appName}`,
+                source: "official",
+                namespace: namespace,
+                appId,
+                officialId: appMeta.id,
+                createdAt: Date.now(),
+              });
+              await storage.setItem("apps", existingApps);
+
+              // 更新 UI 状态
+              appMeta.installed = true;
+              this.progressText = "安装完成";
+              toast({ content: `${appMeta.name} 安装成功`, type: "success" });
+            } catch (err) {
+              console.error("安装失败：", err);
+              this.progressText = "安装失败：" + (err.message || err);
+              alert({
+                content: "安装失败：" + (err.message || err),
+              });
+            } finally {
+              this.installing = false;
+            }
+          },
+
+          closeDialog() {
+            this.emit("close-dialog", { bubbles: true, composed: true });
+          },
+        },
+      };
+    };
+  </script>
+</template>
