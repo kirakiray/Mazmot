@@ -35,10 +35,10 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __files.json 的 replacements 清单替换后写入 client/）
+│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
-│   │   │   │   ├── manifest.json     # 模板清单（添加新模板时登记 id/name/desc）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json（文件清单 + 替换规则）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
+│   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
 │   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL

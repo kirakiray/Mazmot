@@ -1,10 +1,10 @@
 // ofa.js 应用模板加载与写入
-// 模板文件位于同目录下的 `templates/<id>/`，通过各模板下的 `__files.json`
-// 描述文件清单。模板源文件使用符合自身文件格式的正常字符串作为默认值，
-// 可直接通过静态服务器运行调试；写入时根据 `__files.json` 中的 replacements
+// 模板文件位于同目录下的 `templates/<id>/`，通过各模板下的 `__template.json`
+// 描述模板元数据与文件清单。模板源文件使用符合自身文件格式的正常字符串作为默认值，
+// 可直接通过静态服务器运行调试；写入时根据 `__template.json` 中的 replacements
 // 清单，把指定字符串替换为实际的应用信息。
 //
-// __files.json 中 replacements 的 `to` 支持以下模板变量：
+// __template.json 中 replacements 的 `to` 支持以下模板变量：
 //   APP_NAME       - 应用名（原样）
 //   APP_NAMESPACE  - 应用命名空间（原样，通常同 APP_NAME）
 //   APP_DESC       - 应用描述（原样）
@@ -17,7 +17,7 @@ const TEMPLATES_ROOT = new URL("./templates/", import.meta.url);
 /**
  * 加载模板列表清单。
  * manifest.json 只存放模板 id 列表，每个模板的 name/desc
- * 从对应模板目录下的 __files.json 读取。
+ * 从对应模板目录下的 __template.json 读取。
  * @returns {Promise<Array<{ id: string, name: string, desc?: string }>>}
  */
 export async function loadTemplates() {
@@ -35,9 +35,9 @@ export async function loadTemplates() {
     if (!id) continue;
     const templateRoot = new URL(`${id}/`, TEMPLATES_ROOT);
     try {
-      const metaRes = await fetch(new URL("__files.json", templateRoot));
+      const metaRes = await fetch(new URL("__template.json", templateRoot));
       if (!metaRes.ok) {
-        console.warn(`模板 ${id} 缺少 __files.json`);
+        console.warn(`模板 ${id} 缺少 __template.json`);
         templates.push({ id, name: id, desc: "" });
         continue;
       }
@@ -108,7 +108,7 @@ function applyReplacements(content, replacements, ctx) {
  */
 export async function buildTemplateFiles({ name, desc, templateId = "base" }) {
   const templateRoot = new URL(`${templateId}/`, TEMPLATES_ROOT);
-  const filesRes = await fetch(new URL("__files.json", templateRoot));
+  const filesRes = await fetch(new URL("__template.json", templateRoot));
   if (!filesRes.ok) {
     throw new Error(`加载模板 ${templateId} 失败：${filesRes.status}`);
   }
