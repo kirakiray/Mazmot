@@ -7,6 +7,7 @@
 import { getUser } from "/nos/user/main.js";
 import { DataPublisher } from "/nos/publish/data-publisher.js";
 import { getHash } from "/nos/util/hash/main.js";
+import { deleteManifest } from "/nos/publish/db.js";
 import { readAppFiles } from "./app-runner.js";
 
 export const PACKAGE_VERSION = "1.0.0";
@@ -182,7 +183,7 @@ export async function isPublicKeyOfUser(publicKey, expectedUserId) {
  * @param {string} [options.origin] - 拼接 URL 用的 origin，默认 window.location.origin
  * @param {Object<string,string|number>} [options.appParams] - 附加到分享链接上的应用业务参数
  * @param {(step: {phase: string, progress: number, text: string}) => void} [options.onProgress]
- * @returns {Promise<{ shareUrl: string, appId: string, payloadHash: string }>}
+ * @returns {Promise<{ shareUrl: string, appId: string, payloadHash: string, fileHash: string }>}
  */
 export async function publishApp(app, options = {}) {
   const { onProgress } = options;
@@ -241,5 +242,48 @@ export async function publishApp(app, options = {}) {
   const shareUrl = buildRunUrl(origin, user.userId, payloadManifest.fileHash, options.appParams);
 
   report("done", 100, "");
-  return { shareUrl, appId, payloadHash: payloadManifest.fileHash };
+  return { shareUrl, appId, payloadHash: payloadManifest.fileHash, fileHash: manifest.fileHash };
+}
+
+/**
+ * 撤销一次已发布的应用分享（方案 1：只删两级 manifest，不动 chunks）。
+ *
+ * 之所以不删 chunks：`file_chunks` 是按内容寻址（同一 128KB 内容全库只存一份），
+ * 多个应用的分享很可能共用相同 chunk（模板文件、未改动增量等）。
+ * 若删掉可能"通用"的 chunk，其他仍开启分享的应用在被拉取时会因缺块而组装失败。
+ *
+ * 只删 manifest 已足以让链接失效：接收端 `requestManifest` 拉不到 manifest 就无法进入下一步。
+ * 保留的 chunks 属于本地冗余，用户再次开启分享同一应用时 `saveChunk` 幂等复用、几乎瞬时完成。
+ *
+ * @param {Object} target - 应用记录，至少提供 `payloadHash`；若同时提供 `fileHash`
+ *   则一并删除应用包 manifest（更彻底）。老数据没有 `fileHash` 也没关系：payload
+ *   manifest 一旦删掉，接收端在第一步 `requestManifest(payloadHash)` 就会失败，
+ *   根本走不到应用包 manifest 的下载。
+ * @returns {Promise<{ payloadDeleted: boolean, fileDeleted: boolean }>}
+ */
+export async function unpublishApp(target) {
+  const result = { payloadDeleted: false, fileDeleted: false };
+  const payloadHash = target && target.payloadHash;
+  if (!payloadHash) return result;
+
+  // deleteManifest 需要 namespace（数据库按 namespace 隔离），
+  // 我们的分享全部在 SHARE_NAMESPACE 下发布，直接复用即可。
+  try {
+    await deleteManifest(SHARE_NAMESPACE, payloadHash);
+    result.payloadDeleted = true;
+  } catch (err) {
+    console.warn("删除分享清单 manifest 失败：", err);
+  }
+
+  const fileHash = target && target.fileHash;
+  if (fileHash) {
+    try {
+      await deleteManifest(SHARE_NAMESPACE, fileHash);
+      result.fileDeleted = true;
+    } catch (err) {
+      console.warn("删除应用包 manifest 失败：", err);
+    }
+  }
+
+  return result;
 }
