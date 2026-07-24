@@ -357,6 +357,7 @@
         formatOtherAppEntry,
         shouldSkipInstall,
         findByPayloadHash,
+        buildAppUrlWithParams,
       } = utils;
       const diagMod = await load("./lib/diag.js");
       const {
@@ -414,6 +415,7 @@
           _publisher: null, // DataPublisher 实例
           _userRef: null, // LocalUser（诊断用）
           _coreEventsBound: false,
+          _appParams: {}, // 从分享链接解析出的应用业务参数（透传给应用入口，不含 u/h）
         },
         attached() {
           this.startFlow();
@@ -522,7 +524,8 @@
             }, 2000);
           },
           goApp(recordName) {
-            const url = `/$mazmot-apps/${recordName}/client/index.html`;
+            const base = `/$mazmot-apps/${recordName}/client/index.html`;
+            const url = buildAppUrlWithParams(base, this._appParams);
             window.location.replace(url);
           },
           // 校验某条本地记录对应的应用目录是否仍然存在（避免记录残留但文件已被删）
@@ -615,6 +618,13 @@
             const payloadHash = params.get("h");
             if (!payloadHash) return false;
 
+            // 解析出应用业务参数（排除 run-app 保留的 u/h），供跳转时透传给应用入口
+            const appParams = {};
+            for (const [k, v] of params.entries()) {
+              if (k !== "u" && k !== "h") appParams[k] = v;
+            }
+            this._appParams = appParams;
+
             // 只加载 ever-cache（CDN 直连，不依赖 Core Service Worker）读本地应用列表
             const cacheMod = await load(
               "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
@@ -632,7 +642,7 @@
             diag.mark("fastJump hit", { name: hit.name, source: hit.source });
             this.enterStep(TOTAL_STEPS);
             this.setProgress(100, "内容无变化，正在跳转...");
-            window.location.replace(url);
+            window.location.replace(buildAppUrlWithParams(url, this._appParams));
             return true;
           },
           // 解析一条本地应用记录的运行 URL；无法解析（目录失效等）返回 ""。
@@ -669,6 +679,20 @@
           },
           async startFlow() {
             diag.mark("startFlow");
+
+            // 兜底解析应用业务参数：fastJump 内部已解析过，但如果 fastJump 未命中
+            // （无 h 或未安装），走正常流程时 _appParams 仍为初始空对象，这里补一次。
+            if (
+              !this._appParams ||
+              Object.keys(this._appParams).length === 0
+            ) {
+              const sp = new URLSearchParams(window.location.search || "");
+              const appParams = {};
+              for (const [k, v] of sp.entries()) {
+                if (k !== "u" && k !== "h") appParams[k] = v;
+              }
+              this._appParams = appParams;
+            }
 
             // 前置秒跳：对"已安装过该应用"的老用户，绕过 Core 版本检测（含网络请求，
             // 是主要延迟来源）直接跳转。只依赖 ever-cache（CDN 直连，不需要 Core SW），

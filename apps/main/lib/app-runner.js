@@ -56,8 +56,16 @@ export async function getRunUrl(app) {
     throw new Error("缺少应用信息");
   }
 
-  if (app.source === "virtual" && app.namespace) {
-    const dirName = app.virtualDirName || app.name;
+  // 虚拟目录应用（含 official）直接走 /$namespace/{dirName}/client/index.html
+  const isVirtualLike =
+    app.source === "virtual" || app.source === "official";
+  if (isVirtualLike && app.namespace) {
+    // 去掉 dirName 里可能的 namespace 前缀（official 记录的 dirName 形如 "mazmot-apps/hello-world"）
+    const nsPrefix = app.namespace + "/";
+    const dirName = app.virtualDirName ||
+      (app.dirName && app.dirName.startsWith(nsPrefix)
+        ? app.dirName.slice(nsPrefix.length)
+        : app.dirName || app.name);
     return `/$${app.namespace}/${dirName}/${CLIENT_DIR}/${ENTRY_FILE}`;
   }
 
