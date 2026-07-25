@@ -1,6 +1,6 @@
-# AI 开发指南 — Service Chat 模板
+# AI 开发指南 — Ping-Pong 通信模板
 
-本目录是由 Mazmot 的 **service-chat（服务聊天）模板** 创建的 ofa.js 应用，演示服务商 / 客户双角色点对点聊天。请按以下规则修改代码，避免引入与 Mazmot 主系统冲突的写法。
+本目录是由 Mazmot 的 **ping-pong（应用间通信演示）模板** 创建的 ofa.js 应用，演示发起方 / 接收方双角色通过点对点通道彼此定时互发 ping / pong + 时间字符串，用来展示应用之间的数据通信能力。请按以下规则修改代码，避免引入与 Mazmot 主系统冲突的写法。
 
 ## 文档职责划分（重要）
 
@@ -17,7 +17,7 @@
 | UI       | 原生 HTML + CSS           | 手写样式，使用 `index.html` 中定义的 Material 主题变量 `--md-sys-color-*`，按钮 / 列表等直接用原生标签实现               |
 | 图标     | `<n-icon icon="mdi:xxx">` | 依赖 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，**禁止**直接使用 `iconify-icon`                                        |
 | 存储     | ever-cache                | 需要持久化时用 `storage.xxx`，勿裸用 `localStorage`                                                                      |
-| 联机     | NoneOS Core user          | 服务商 / 客户通过 `registerService` / `connectUser` / `sendToService` 通信，**禁止**绕开 Core 自建信令                  |
+| 联机     | NoneOS Core user          | 发起方 / 接收方通过 `registerService` / `connectUser` / `sendToService` 通信，**禁止**绕开 Core 自建信令                  |
 
 ## 依赖 URL 规范（重要）
 

@@ -171,7 +171,7 @@ const list = await loadTemplates(); // [{ id, name, desc }]
 const files = await buildTemplateFiles({
   name: "my-app",
   desc: "描述",
-  templateId: "base",  // "base" | "share-link" | "service-chat"
+  templateId: "base",  // "base" | "share-link" | "ping-pong"
 });
 
 // 写入目标目录（自动创建 client/）
