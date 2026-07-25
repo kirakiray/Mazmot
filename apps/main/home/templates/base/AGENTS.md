@@ -7,7 +7,7 @@
 | 层 | 技术 | 备注 |
 | --- | --- | --- |
 | 应用框架 | **ofa.js** | 使用 `<template page>`、`<o-if>`、`<o-fill>`、`on:click`、`sync:value`、`proto`/`data` 等语法，**禁止 Vue / React 语法** |
-| UI | 原生 HTML + CSS | 手写样式，使用 `index.html` 中定义的 Material 主题变量 `--md-sys-color-*`；**本模板不依赖 Punch-UI**，需要按钮 / 列表等直接用原生标签实现 |
+| UI | 原生 HTML + CSS | 手写样式，使用 `index.html` 中定义的 Material 主题变量 `--md-sys-color-*`，按钮 / 列表等直接用原生标签实现 |
 | 图标 | `<n-icon icon="mdi:xxx">` | 依赖 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，**禁止**直接使用 `iconify-icon` |
 | 存储 | ever-cache | 需要持久化时用 `storage.xxx`，勿裸用 `localStorage` |
 

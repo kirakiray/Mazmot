@@ -7,7 +7,7 @@
 | 层 | 技术 | 备注 |
 | --- | --- | --- |
 | 应用框架 | ofa.js | `<template page>` + `proto` / `data`；禁止 Vue / React 语法 |
-| UI | 原生 HTML + CSS | 使用 `index.html` 中的 `--md-sys-color-*` 主题变量；**本模板不依赖 Punch-UI**，聊天气泡、输入框等直接用原生标签手写样式实现 |
+| UI | 原生 HTML + CSS | 使用 `index.html` 中的 `--md-sys-color-*` 主题变量，聊天气泡、输入框等直接用原生标签手写样式实现 |
 | 图标 | `<n-icon icon="mdi:xxx">` | 依赖 `<l-m src="/nos/n-icon/n-icon.html"></l-m>` |
 | 存储 | ever-cache | `storage.xxx` 而非 `localStorage` |
 
