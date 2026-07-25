@@ -1014,6 +1014,15 @@
             if (!ok) return;
 
             try {
+              // 删除前若已发布，先撤销发布让分享链接失效
+              if (app.autoShareUrl) {
+                try {
+                  await unpublishApp(app);
+                } catch (err) {
+                  console.warn("撤销分享失败（可忽略）：", err);
+                }
+              }
+
               // 关闭对应打开的窗口 + 清理状态
               clearOpened(app._recordName);
 

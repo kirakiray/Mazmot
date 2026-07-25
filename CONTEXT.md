@@ -146,6 +146,7 @@ window.open(runUrl)
 ### 3. 删除应用
 
 ```
+（已发布 autoShareUrl）→ unpublishApp 撤销发布，让旧分享链接失效
 clearOpened → 关闭窗口
 （虚拟目录）app._handle.remove() → 移除虚拟子目录
 从 ever-cache.apps 移除记录
