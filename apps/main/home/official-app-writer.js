@@ -1,10 +1,10 @@
 // 官方应用市场 - 应用加载与安装
-// 官方应用位于同目录下的 `official-apps/<id>/`，通过各应用下的 `__app.json`
+// 官方应用位于仓库根目录下的 `official-apps/<id>/`，通过各应用下的 `__app.json`
 // 描述应用元数据（name/icon/desc）与文件清单。
 // 安装时根据 __app.json 中的 replacements 清单替换变量（如 CREATED_AT），
 // 然后写入虚拟目录的 client/ 子目录。
 
-const OFFICIAL_APPS_ROOT = new URL("./official-apps/", import.meta.url);
+const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
 
 /**
  * 加载官方应用列表。

@@ -78,7 +78,7 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 - **新应用**：放在 [apps/](apps/) 下，目录名即 URL 路径（`apps/<name>/` = `/apps/<name>/`）；同时更新 [CONTEXT.md](CONTEXT.md) 目录树。
 - **新系统级组件**：放在 [comps/](comps/) 下，独立子目录 + `<tag>.html` + `README.md`（推荐带 `demo.html`）；**必须同步更新 [comps/CONTEXT.md](comps/CONTEXT.md)** 的目录树与组件说明，若被主系统使用也需更新根 [CONTEXT.md](CONTEXT.md)。
 - **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__template.json`（模板元数据 name/desc + 文件清单）+ 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id。
-- **新官方应用（应用市场）**：在 [apps/main/home/official-apps/](apps/main/home/official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](apps/main/home/official-apps/manifest.json) 里登记** id。
+- **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
 - **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/](apps/main/lib/)、[apps/run-app/lib/](apps/run-app/lib/)），与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）、[ai/](ai/)（独立子项目）。修改这些目录前请先与开发者确认，AI 默认应忽略。

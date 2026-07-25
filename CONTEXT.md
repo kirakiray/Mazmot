@@ -37,13 +37,10 @@ Mazmot/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用并安装到虚拟目录）
 │   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
-│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从 official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
+│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
 │   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、service-chat（服务商/客户聊天）
-│   │   │   ├── official-apps/        # 官方应用资源目录（应用市场）
-│   │   │   │   ├── manifest.json     # 官方应用清单（只登记 app id）
-│   │   │   │   └── <id>/             # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
 │   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
@@ -75,6 +72,10 @@ Mazmot/
 │   ├── rdn-network/          # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
 │   ├── rnd-box/              # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │   └── CONTEXT.md            # 组件上下文说明
+│
+├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
+│   ├── manifest.json         # 官方应用清单（只登记 app id）
+│   └── <id>/                 # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
