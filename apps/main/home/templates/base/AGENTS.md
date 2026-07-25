@@ -13,8 +13,10 @@
 
 ## 依赖 URL 规范（重要）
 
-- **入口 HTML**（[index.html](index.html)）加载 ofa.js 用 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`，由 NoneOS Core Service Worker 拦截解析，**禁止**改成 `https://cdn.jsdelivr.net/...` 完整 URL。
-- **页面 / 组件模块**同样只用 `/gh/` 或 `/npm/` 前缀。
+同一份仓库资源，**加载位置不同，前缀不同**：
+
+- **能独立运行的 HTML 文件**（如 [index.html](index.html)、以及任何脱离 Mazmot / NoneOS Core 环境也能被浏览器直接打开的入口 HTML）：必须使用完整 URL `https://cdn.jsdelivr.net/gh/ofajs/...`。因为此时 NoneOS Core Service Worker 未必已注册，`/gh/`、`/npm/` 本地前缀不可用。
+- **页面模块 / 组件模块 / 普通模块**（`<template page>` / `<template component>` / 普通 `.js` 模块）：必须使用 `/gh/` 或 `/npm/` 前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。
 - `#debug` 后缀不要去掉，保留调试信息。
 
 ## 开发指令
@@ -29,7 +31,8 @@
 7. **较大逻辑改动后必须同步 [CONTEXT.md](CONTEXT.md)**：文件结构、公开 API、数据字段、关键流程、模块职责等发生变化时，立即更新对应章节，不得事后补。
 8. **发现不一致立即修正 [CONTEXT.md](CONTEXT.md)**：查阅 CONTEXT.md 后再去读具体逻辑模块，若发现 CONTEXT 中的描述与实际代码不符（旧描述、字段过期、路径错误、流程改动未同步等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
 9. **组件 / 独立模块开发完成后建立测试**：开发完一个组件或相对独立的逻辑模块后，使用 `sibyl-test` 为该模块建立对应的 `.sb.html` 测试文件（推荐放在模块所在目录的 `test/` 子目录，文件名与被测模块同名），编写前先查阅 `sibyl-test` 技能文档。
-10. 只做被要求的事，避免过度设计与冗余抽象。
+10. **sibyl-test 执行方式**：写完 `.sb.html` 测试文件后**不要自动执行测试**，先询问开发者是否让 AI 跑自动化测试；开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速验证，根据结果动态修复；完整多浏览器测试用 `npm test`。
+11. 只做被要求的事，避免过度设计与冗余抽象。
 
 ## 技能资源与导入 (Skill Resources)
 
