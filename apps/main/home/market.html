@@ -1,0 +1,432 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      min-height: 80vh;
+    }
+    .market-body {
+      flex: 1;
+      padding: 0 16px;
+      overflow-y: auto;
+    }
+
+    /* ===== 列表视图 ===== */
+    .app-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .app-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--md-sys-color-surface-variant);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .app-row:hover {
+      opacity: 0.8;
+    }
+    .app-row:last-child {
+      border-bottom: none;
+    }
+    .row-icon {
+      font-size: 28px;
+      line-height: 1;
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .row-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .row-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .row-tag {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
+    .row-btn {
+      flex-shrink: 0;
+    }
+
+    /* ===== 详情视图 ===== */
+    .detail-view {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 8px;
+    }
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .detail-icon {
+      font-size: 56px;
+      line-height: 1;
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .detail-title-area {
+      flex: 1;
+      min-width: 0;
+    }
+    .detail-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 4px;
+    }
+    .detail-tag {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .detail-actions {
+      margin-top: 8px;
+    }
+    .detail-desc {
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+
+    /* ===== 通用 ===== */
+    .market-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 48px 16px;
+      justify-content: center;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .market-loading n-icon {
+      font-size: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .install-progress {
+      padding: 16px 0;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--md-sys-color-surface-variant);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="market-body">
+    <!-- 加载中 -->
+    <o-if :value="loading">
+      <div class="market-loading">
+        <n-icon icon="mdi:loading"></n-icon>
+        <span>加载应用列表中...</span>
+      </div>
+    </o-if>
+
+    <!-- ===== 列表视图 ===== -->
+    <o-if :value="!loading && view === 'list'">
+      <o-if :value="apps.length > 0">
+        <div class="app-list">
+          <o-fill :value="apps">
+            <div class="app-row" on:click="$host.openDetail($data)">
+              <div class="row-icon">{{$data.icon}}</div>
+              <div class="row-info">
+                <div class="row-name">{{$data.name}}</div>
+                <div class="row-tag">官方应用</div>
+              </div>
+              <div class="row-btn">
+                <p-button
+                  color="primary"
+                  variant="tonal"
+                  size="s"
+                  on:click="$host.quickInstall($event, $data)"
+                  attr:disabled="$host.isInstalled($data.id)"
+                >
+                  <o-if :value="$host.isInstalled($data.id)">已安装</o-if>
+                  <o-if :value="!$host.isInstalled($data.id)">获取</o-if>
+                </p-button>
+              </div>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
+      <o-if :value="apps.length === 0">
+        <div class="empty-state">暂无官方应用</div>
+      </o-if>
+    </o-if>
+
+    <!-- ===== 详情视图 ===== -->
+    <o-if :value="!loading && view === 'detail' && selectedApp.id">
+      <div class="detail-view">
+        <div class="detail-header">
+          <div class="detail-icon">{{selectedApp.icon}}</div>
+          <div class="detail-title-area">
+            <div class="detail-name">{{selectedApp.name}}</div>
+            <div class="detail-tag">官方应用</div>
+          </div>
+        </div>
+
+        <o-if :value="installing">
+          <div class="install-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style.width="progress + '%'"></div>
+            </div>
+            <div class="progress-text">
+              <span>{{progressText}}</span>
+              <span>{{progress}}%</span>
+            </div>
+          </div>
+        </o-if>
+
+        <div class="detail-actions">
+          <p-button
+            color="primary"
+            on:click="installSelected"
+            attr:disabled="isInstalled(selectedApp.id) || installing"
+          >
+            <o-if :value="isInstalled(selectedApp.id)">已安装</o-if>
+            <o-if :value="!isInstalled(selectedApp.id)">安装</o-if>
+          </p-button>
+        </div>
+
+        <o-if :value="selectedApp.desc">
+          <div class="detail-desc">{{selectedApp.desc}}</div>
+        </o-if>
+      </div>
+    </o-if>
+  </div>
+
+  <div class="footer">
+    <o-if :value="view === 'detail'">
+      <p-button variant="text" on:click="backToList">
+        <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
+        返回
+      </p-button>
+    </o-if>
+    <div style="flex: 1"></div>
+    <p-button variant="text" on:click="closeDialog">关闭</p-button>
+  </div>
+
+  <script>
+    import { init } from "/nos/fs/main.js";
+    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import {
+      toast,
+      alert,
+    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import { loadOfficialApps, installOfficialApp } from "./official-app-writer.js";
+    import { generateAppId } from "/lib/share-mgr.js";
+    import {
+      officialAppState,
+      syncOfficialAppState,
+    } from "../lib/official-app-state.js";
+
+    export default async () => {
+      return {
+        data: {
+          loading: true,
+          view: "list", // "list" | "detail"
+          apps: [],
+          selectedApp: {},
+          installing: false,
+          progress: 0,
+          progressText: "",
+          officialState: officialAppState, // 直接挂载共享 stanz 状态
+        },
+        async ready() {
+          await syncOfficialAppState();
+          await this.loadAppsData();
+        },
+        attached() {
+          // 重新挂载共享状态（组件可能被 detached 后重新插入 DOM）
+          this.officialState = officialAppState;
+        },
+        detached() {
+          // 组件销毁时清空引用，防止内存泄漏
+          this.officialState = {};
+        },
+        proto: {
+          // 判断指定应用是否已安装（直接读取响应式共享状态中的已安装应用列表）
+          isInstalled(appId) {
+            return this.officialState.installedApps.some(
+              (app) => app.officialId === appId,
+            );
+          },
+
+          async loadAppsData() {
+            this.loading = true;
+            try {
+              const officialApps = await loadOfficialApps();
+              // apps 只存原始数据，installed 状态由 officialState 派生
+              this.apps = officialApps;
+            } catch (err) {
+              console.warn("加载官方应用列表失败：", err);
+              toast({
+                content: "加载应用列表失败：" + (err.message || err),
+                type: "error",
+              });
+            } finally {
+              this.loading = false;
+            }
+          },
+
+          // 进入详情页
+          openDetail(appMeta) {
+            this.selectedApp = appMeta;
+            this.view = "detail";
+          },
+
+          backToList() {
+            this.view = "list";
+            this.selectedApp = {};
+          },
+
+          // 列表里的快速安装按钮（需要阻止冒泡，避免进入详情）
+          async quickInstall(event, appMeta) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            await this.installApp(appMeta);
+          },
+
+          // 详情页的安装按钮
+          async installSelected() {
+            if (!this.selectedApp) return;
+            await this.installApp(this.selectedApp);
+          },
+
+          async installApp(appMeta) {
+            if (this.installing) return;
+            if (this.isInstalled(appMeta.id)) {
+              toast({ content: "该应用已安装", type: "info" });
+              return;
+            }
+
+            this.installing = true;
+            this.progress = 0;
+            this.progressText = "准备安装...";
+
+            const appName = appMeta.id;
+
+            try {
+              const existingApps = (await storage.apps) || [];
+              if (existingApps.some((a) => a.name === appName)) {
+                alert({
+                  content: `已存在同名应用「${appName}」，无法重复安装。`,
+                });
+                return;
+              }
+
+              const namespace = "mazmot-apps";
+              const rootDir = await init(namespace);
+              const vHandle = await rootDir.get(appName, { create: "dir" });
+
+              await installOfficialApp({
+                dirHandle: vHandle,
+                appId: appMeta.id,
+                onProgress: ({ path, status, progress }) => {
+                  this.progress = progress;
+                  this.progressText =
+                    status === "writing"
+                      ? `正在写入 ${path} ...`
+                      : `已写入 ${path}`;
+                },
+              });
+
+              const appId = await generateAppId(appName);
+              existingApps.push({
+                name: appName,
+                desc: appMeta.desc,
+                handle: null,
+                dirName: `${namespace}/${appName}`,
+                source: "official",
+                namespace: namespace,
+                appId,
+                officialId: appMeta.id,
+                createdAt: Date.now(),
+              });
+              await storage.setItem("apps", existingApps);
+
+              // 同步共享 stanz 状态，挂载的模板会自动更新
+              await syncOfficialAppState();
+              this.progressText = "安装完成";
+              toast({ content: `${appMeta.name} 安装成功`, type: "success" });
+            } catch (err) {
+              console.error("安装失败：", err);
+              this.progressText = "安装失败：" + (err.message || err);
+              alert({
+                content: "安装失败：" + (err.message || err),
+              });
+            } finally {
+              this.installing = false;
+            }
+          },
+
+          closeDialog() {
+            this.emit("close-dialog", { bubbles: true, composed: true });
+          },
+        },
+      };
+    };
+  </script>
+</template>

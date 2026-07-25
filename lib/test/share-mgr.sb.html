@@ -108,6 +108,196 @@
       </template>
     </sb-test>
 
+    <!-- ================= buildRunUrl + appParams ================= -->
+    <sb-test name="buildRunUrl 带应用业务参数时追加到 URL">
+      <template>
+        <script type="module">
+          import { buildRunUrl } from "../share-mgr.js";
+          {
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              "userA",
+              "hashA",
+              { role: "guest", host: "userB" },
+            );
+            const parsed = new URL(url);
+            return {
+              assert:
+                parsed.searchParams.get("u") === "userA" &&
+                parsed.searchParams.get("h") === "hashA" &&
+                parsed.searchParams.get("role") === "guest" &&
+                parsed.searchParams.get("host") === "userB" &&
+                Array.from(parsed.searchParams.keys()).length === 4,
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildRunUrl appParams 缺省时不影响旧链接（向后兼容）">
+      <template>
+        <script type="module">
+          import { buildRunUrl } from "../share-mgr.js";
+          {
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              "userA",
+              "hashA",
+            );
+            const keys = Array.from(new URL(url).searchParams.keys());
+            return {
+              assert:
+                keys.length === 2 &&
+                keys.includes("u") &&
+                keys.includes("h"),
+              content: { url, keys },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildRunUrl 过滤 appParams 中的 undefined / null">
+      <template>
+        <script type="module">
+          import { buildRunUrl } from "../share-mgr.js";
+          {
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              "userA",
+              "hashA",
+              { keep: "yes", drop1: undefined, drop2: null },
+            );
+            const sp = new URL(url).searchParams;
+            return {
+              assert:
+                sp.get("keep") === "yes" &&
+                !sp.has("drop1") &&
+                !sp.has("drop2"),
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildRunUrl appParams 支持数字值与特殊字符编码">
+      <template>
+        <script type="module">
+          import { buildRunUrl } from "../share-mgr.js";
+          {
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              "userA",
+              "hashA",
+              { page: 3, q: "a b&c" },
+            );
+            const sp = new URL(url).searchParams;
+            return {
+              assert:
+                sp.get("page") === "3" &&
+                sp.get("q") === "a b&c" &&
+                !url.includes("a b&c"),
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ================= splitShareQuery ================= -->
+    <sb-test name="splitShareQuery 把 u/h 与业务参数分离">
+      <template>
+        <script type="module">
+          import { splitShareQuery } from "../share-mgr.js";
+          {
+            const r = splitShareQuery(
+              "?u=hostUser&h=hash123&role=guest&host=hostUser",
+            );
+            return {
+              assert:
+                r.userId === "hostUser" &&
+                r.payloadHash === "hash123" &&
+                r.appParams.role === "guest" &&
+                r.appParams.host === "hostUser" &&
+                Object.keys(r.appParams).length === 2,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="splitShareQuery 无业务参数时 appParams 为空对象">
+      <template>
+        <script type="module">
+          import { splitShareQuery } from "../share-mgr.js";
+          {
+            const r = splitShareQuery("?u=a&h=b");
+            return {
+              assert:
+                r.userId === "a" &&
+                r.payloadHash === "b" &&
+                Object.keys(r.appParams).length === 0,
+              content: { r },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="splitShareQuery 空/缺 u/h 时也返回完整结构（不返回 null）">
+      <template>
+        <script type="module">
+          import { splitShareQuery } from "../share-mgr.js";
+          {
+            const r1 = splitShareQuery("");
+            const r2 = splitShareQuery("?role=guest");
+            const r3 = splitShareQuery("?u=a&role=x");
+            return {
+              assert:
+                r1.userId === "" &&
+                r1.payloadHash === "" &&
+                Object.keys(r1.appParams).length === 0 &&
+                r2.appParams.role === "guest" &&
+                r3.userId === "a" &&
+                r3.payloadHash === "" &&
+                r3.appParams.role === "x",
+              content: { r1, r2, r3 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="splitShareQuery 与 buildRunUrl 往返一致（端到端）">
+      <template>
+        <script type="module">
+          import { buildRunUrl, splitShareQuery } from "../share-mgr.js";
+          {
+            const appParams = { role: "guest", host: "userHost", token: "a&b=c" };
+            const url = buildRunUrl(
+              "http://localhost:30031",
+              "publisher",
+              "payloadHash",
+              appParams,
+            );
+            const split = splitShareQuery(new URL(url).search);
+            return {
+              assert:
+                split.userId === "publisher" &&
+                split.payloadHash === "payloadHash" &&
+                split.appParams.role === "guest" &&
+                split.appParams.host === "userHost" &&
+                split.appParams.token === "a&b=c",
+              content: { url, split },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <!-- ================= buildPackageFile ================= -->
     <sb-test name="buildPackageFile 结构正确且文件名使用 recordName">
       <template>

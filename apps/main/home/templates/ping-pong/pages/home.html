@@ -1,0 +1,807 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+    }
+
+    /* ===== 顶部标题栏 ===== */
+    .header {
+      padding: 14px 20px;
+      background: var(--md-sys-color-surface-container);
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      text-align: center;
+      flex-shrink: 0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      letter-spacing: 0.3px;
+    }
+    .header .status-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 4px;
+    }
+
+    /* ===== 日志区域 ===== */
+    .log-box {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .log-box::-webkit-scrollbar {
+      width: 6px;
+    }
+    .log-box::-webkit-scrollbar-thumb {
+      background: var(--md-sys-color-outline);
+      border-radius: 3px;
+    }
+    .log-box::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .log-line {
+      font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      animation: logIn 0.15s ease-out;
+      word-break: break-all;
+    }
+    @keyframes logIn {
+      from {
+        opacity: 0;
+        transform: translateY(2px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .log-line[type="sent"] {
+      align-self: flex-end;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    .log-line[type="received"] {
+      align-self: flex-start;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface);
+    }
+    .log-line[type="system"] {
+      align-self: center;
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    /* ===== 居中区域（发起方等待界面）===== */
+    .center-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .link-bar {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 12px;
+    }
+    .link-bar input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 24px;
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .link-bar input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .copy-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 24px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity 0.15s ease;
+    }
+    .copy-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .copy-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .gen-status {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+      min-height: 18px;
+    }
+    .my-id {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 20px;
+      padding: 6px 12px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 8px;
+      word-break: break-all;
+      max-width: 320px;
+    }
+    .tip {
+      margin-top: 16px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-tertiary-container);
+      background: var(--md-sys-color-tertiary-container);
+      border-radius: 12px;
+      max-width: 360px;
+      text-align: left;
+    }
+
+    /* ===== 底部统计栏 ===== */
+    .stats-bar {
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 16px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container);
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .stats-bar span {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* ===== 连接状态徽章 ===== */
+    .link-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .link-badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+    }
+    .link-badge[type="rtc"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .link-badge[type="rtc"]::before {
+      background: #34a853;
+    }
+    .link-badge[type="relay"] {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .link-badge[type="relay"]::before {
+      background: #ea8a00;
+    }
+    .link-badge[type="offline"]::before {
+      background: var(--md-sys-color-error);
+    }
+
+    /* ===== 空状态提示 ===== */
+    .empty-hint {
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 40px;
+      opacity: 0.8;
+    }
+  </style>
+
+  <!-- 发起方模式（host）-->
+  <o-if :value="role === 'host'">
+    <div class="header">
+      <h2>🏓 Mazmot Ping-Pong（发起方）</h2>
+      <div class="status-text">
+        {{hostStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
+    </div>
+
+    <!-- 还没有接收方连进来：显示分享链接输入框 + 复制按钮 -->
+    <o-if :value="!connected">
+      <div class="center-area">
+        <div class="link-bar">
+          <input
+            type="text"
+            readonly
+            :value="shareUrl"
+            attr:placeholder="generating ? '正在自动生成链接...' : (shareUrl ? '链接已生成，可点击右侧按钮复制' : '等待自动生成链接...')"
+            on:click="selectLinkInput($event)"
+          />
+          <button
+            class="copy-btn"
+            on:click="handleCopyLink"
+            attr:disabled="generating || !shareUrl"
+          >
+            {{generating ? '生成中' : '复制'}}
+          </button>
+        </div>
+        <div class="gen-status">{{genStatus}}</div>
+        <div class="my-id">你的ID：{{myUserId}}</div>
+        <div class="tip">
+          进入应用后会自动生成通信链接并展示在上方输入框。把链接分享给对方，对方打开后会以接收方身份与你建立点对点连接，随后双方将每 {{pingIntervalSec}} 秒互发一条随机 emoji，演示应用之间的数据通信。
+          <br />注意：你需要保持此应用打开，对方才能连接到你。
+        </div>
+      </div>
+    </o-if>
+
+    <!-- 已连接：显示通信日志 -->
+    <o-if :value="connected">
+      <div id="log-box" class="log-box">
+        <o-fill :value="logs">
+          <div class="log-line" attr:type="$data.type">{{$data.text}}</div>
+        </o-fill>
+      </div>
+      <div class="stats-bar">
+        <span>↑ 已发送 {{sentCount}}</span>
+        <span>↓ 已接收 {{receivedCount}}</span>
+      </div>
+    </o-if>
+  </o-if>
+
+  <!-- 接收方模式（customer）-->
+  <o-if :value="role === 'customer'">
+    <div class="header">
+      <h2>🏓 应用间通信演示（接收方）</h2>
+      <div class="status-text">
+        {{customerStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
+    </div>
+    <div id="log-box" class="log-box">
+      <o-fill :value="logs">
+        <div class="log-line" attr:type="$data.type">{{$data.text}}</div>
+      </o-fill>
+      <o-if :value="logs.length === 0">
+        <div class="empty-hint">等待与发起方建立通信...</div>
+      </o-if>
+    </div>
+    <div class="stats-bar">
+      <span>↑ 已发送 {{sentCount}}</span>
+      <span>↓ 已接收 {{receivedCount}}</span>
+    </div>
+  </o-if>
+
+  <!-- 加载中 -->
+  <o-if :value="role === 'loading'">
+    <div class="center-area">
+      <div class="gen-status">正在初始化...</div>
+    </div>
+  </o-if>
+
+  <script>
+    export default async ({ load }) => {
+      // 发起方与接收方必须使用同一个 namespace 才能互相发现
+      // 这里直接沿用项目默认命名空间 "mazmot"（与 lib/share-mgr.js 一致）
+      const NAMESPACE = "mazmot";
+      const SERVICE_ID = "ping-pong";
+      const PING_INTERVAL = 2000; // 双方各自每 2 秒发一条
+      // 对话内容候选 emoji（每次发送随机选一个）
+      const EMOJIS = [
+        "😀", "😂", "🥰", "😎", "🤔", "😴", "🤯", "🥳",
+        "😺", "🐶", "🦊", "🐼", "🐨", "🦁", "🐮", "🐸",
+        "🍎", "🍌", "🍉", "🍇", "🍓", "🍑", "🥑", "🍍",
+        "⚽", "🏀", "🎮", "🎸", "🚀", "🌈", "⭐", "🔥",
+        "💖", "🎉", "🎁", "🍀", "🌸", "🍦", "🍕", "🍣",
+      ];
+
+      // 角色判断：URL 带 host 参数 → 接收方模式
+      const sp = new URLSearchParams(location.search);
+      const hostUserId = sp.get("host") || "";
+      const isCustomer = !!hostUserId;
+
+      return {
+        data: {
+          role: "loading",
+          myUserId: "",
+          hostUserId,
+          connected: false, // 发起方是否已与接收方建立连接
+          logs: [], // 通信日志，每项 { text, type: "sent" | "received" | "system" }
+          // 收发计数
+          sentCount: 0,
+          receivedCount: 0,
+          // 模板展示用
+          pingIntervalSec: PING_INTERVAL / 1000,
+          // 发起方状态
+          hostStatus: "",
+          generating: false,
+          genStatus: "",
+          shareUrl: "",
+          // 接收方状态
+          customerStatus: "正在连接发起方...",
+          // 连接方式与对端在线状态（双方共用）
+          myLinkType: "", // "" / "rtc" / "relay"
+          peerOnline: true, // 对端是否在线（默认 true，事件触发后再修正）
+          peerUserId: "", // 对端 userId，用于事件匹配
+        },
+
+        proto: {
+          // ===== 工具：格式化当前时间字符串 =====
+          formatTime() {
+            return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+          },
+
+          // ===== 工具：从 EMOJIS 中随机挑一个 =====
+          randomEmoji() {
+            return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+          },
+
+          // ===== 从 sendToService 返回值或 via 字段更新本地连接方式 =====
+          setLinkTypeFromVia(via) {
+            // NoneOS Core: via="rtc" 表示 WebRTC 直连，via="server" 表示服务器中转
+            const next = via === "rtc" ? "rtc" : via ? "relay" : "";
+            if (next && next !== this.myLinkType) {
+              this.myLinkType = next;
+            }
+          },
+
+          // ===== 推送一条通信日志（最新置顶，无需滚动）=====
+          pushLog(text, type) {
+            this.logs.unshift({ text, type });
+          },
+
+          // ===== 发起方：每 PING_INTERVAL 毫秒向接收方发一条 ping + 随机 emoji =====
+          startPingLoop() {
+            const send = async () => {
+              if (!this._customerRemote) return;
+              const time = this.formatTime();
+              const emoji = this.randomEmoji();
+              try {
+                const results = await this._customerRemote.sendToService(
+                  SERVICE_ID,
+                  { kind: "ping", time, emoji },
+                );
+                // 通过返回结果刷新连接方式与对端在线状态
+                this.applySendResults(results);
+                this.pushLog(`[${time}] → ${emoji}`, "sent");
+                this.sentCount++;
+              } catch (err) {
+                console.error("发送 ping 失败：", err);
+              }
+            };
+            send(); // 立即发一次，再按周期发
+            this._timer = setInterval(send, PING_INTERVAL);
+          },
+
+          // ===== 接收方：每 PING_INTERVAL 毫秒向发起方发一条 pong + 随机 emoji =====
+          startPongLoop() {
+            const send = async () => {
+              if (!this._remoteUser) return;
+              const time = this.formatTime();
+              const emoji = this.randomEmoji();
+              try {
+                const results = await this._remoteUser.sendToService(
+                  SERVICE_ID,
+                  { kind: "pong", time, emoji },
+                );
+                this.applySendResults(results);
+                this.pushLog(`[${time}] → ${emoji}`, "sent");
+                this.sentCount++;
+              } catch (err) {
+                console.error("发送 pong 失败：", err);
+              }
+            };
+            this._timer = setInterval(send, PING_INTERVAL);
+          },
+
+          // ===== 根据 sendToService 的返回结果更新连接方式 / 检测对端在线状态 =====
+          applySendResults(results) {
+            if (!Array.isArray(results) || results.length === 0) return;
+            const okResult = results.find((r) => r && r.status === "ok");
+            if (okResult) {
+              if (okResult.via) this.setLinkTypeFromVia(okResult.via);
+              if (!this.peerOnline) this.markPeerOnline(true);
+            } else {
+              // 所有结果均未送达：可能是 offline / no_receiver / discovery_failed / error
+              const offline = results.some(
+                (r) =>
+                  r &&
+                  (r.status === "offline" ||
+                    r.status === "error" ||
+                    r.status === "discovery_failed"),
+              );
+              if (offline && this.peerOnline) this.markPeerOnline(false);
+            }
+          },
+
+          // ===== 标记对端上线 / 下线，并推一条系统日志 =====
+          markPeerOnline(online) {
+            if (this.peerOnline === online) return;
+            this.peerOnline = online;
+            const time = this.formatTime();
+            this.pushLog(
+              online
+                ? `[${time}] 对方已上线`
+                : `[${time}] 对方已下线`,
+              "system",
+            );
+          },
+
+          // ===== 发起方初始化 =====
+          initHost() {
+            this.role = "host";
+            this.hostStatus = "正在自动生成连接...";
+
+            const self = this;
+            this._svc = this._user.registerService(SERVICE_ID, {
+              onMessage(data, ctx) {
+                // 第一条消息到达时记录对端，并启动 ping 循环
+                if (!self._customerUserId) {
+                  self._customerUserId = ctx.fromUserId;
+                  self._customerRemote = ctx.remoteUser;
+                  self.peerUserId = ctx.fromUserId;
+                  self.hostStatus = "接收方已连接，正在定时通信";
+                  self.connected = true;
+                  // 上线系统消息（只推一次）
+                  const time = self.formatTime();
+                  self.pushLog(
+                    `[${time}] 对方（接收方）已上线`,
+                    "system",
+                  );
+                  self.bindPeerEvents();
+                  self.startPingLoop();
+                }
+                const emoji = (data && data.emoji) || "";
+                const time = (data && data.time) || self.formatTime();
+                self.pushLog(
+                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
+                  "received",
+                );
+                self.receivedCount++;
+                // 收到消息说明对方在线，纠正一下状态
+                if (!self.peerOnline) self.markPeerOnline(true);
+              },
+            });
+
+            // 后台自动生成连接链接（不阻塞服务注册）
+            // 注意：浏览器剪贴板 API 要求用户手势，自动调用可能无法写入剪贴板，
+            // 因此生成后只展示链接，复制动作仍由用户点击「复制」按钮完成。
+            this.generateLink().catch((err) => {
+              console.error("自动生成链接失败：", err);
+            });
+          },
+
+          // ===== 接收方初始化 =====
+          async initCustomer() {
+            this.role = "customer";
+
+            // 先注册服务，接收发起方发来的 ping
+            const self = this;
+            this._svc = this._user.registerService(SERVICE_ID, {
+              onMessage(data, ctx) {
+                const emoji = (data && data.emoji) || "";
+                const time = (data && data.time) || self.formatTime();
+                self.pushLog(
+                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
+                  "received",
+                );
+                self.receivedCount++;
+                if (!self.peerOnline) self.markPeerOnline(true);
+              },
+            });
+
+            // 连接发起方
+            try {
+              this.customerStatus = "正在连接发起方...";
+              const remote = await this._user.connectUser(this.hostUserId);
+              this._remoteUser = remote;
+              this.peerUserId = this.hostUserId;
+
+              const online = await this._user.isRemoteUserOnline(
+                this.hostUserId,
+              );
+              if (online) {
+                this.customerStatus = "已连接，正在定时通信";
+                this.connected = true;
+                const time = this.formatTime();
+                this.pushLog(
+                  `[${time}] 已连接到发起方`,
+                  "system",
+                );
+                this.bindPeerEvents();
+                this.startPongLoop();
+              } else {
+                this.customerStatus = "发起方不在线，请稍后再试";
+                this.peerOnline = false;
+                const time = this.formatTime();
+                this.pushLog(
+                  `[${time}] 发起方不在线`,
+                  "system",
+                );
+              }
+            } catch (err) {
+              console.error("连接发起方失败：", err);
+              this.customerStatus = "连接失败：" + (err.message || err);
+            }
+          },
+
+          // ===== 绑定对端上线 / 下线事件（双方共用）=====
+          bindPeerEvents() {
+            if (this._eventsBound || !this._user || !this.peerUserId) return;
+            const self = this;
+            const peerId = this.peerUserId;
+
+            this._unbindConnected = this._user.bind(
+              "remote_user_connected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  // 主动 connect 成功或对端重新发消息过来都会触发
+                  if (!self.peerOnline) self.markPeerOnline(true);
+                }
+              },
+            );
+
+            this._unbindDisconnected = this._user.bind(
+              "remote_user_disconnected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  // 仅在并非主动断开时提示下线
+                  if (self.peerOnline) self.markPeerOnline(false);
+                }
+              },
+            );
+
+            // 监听 RTT 更新，实时刷新连接方式
+            this._unbindRtt = this._user.bind("rtt_update", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId === peerId && detail.via) {
+                self.setLinkTypeFromVia(detail.via);
+              }
+            });
+
+            // 监听 WebRTC 连接状态：RTC 协商成功后立即把徽章切到 rtc
+            // NoneOS Core 会在后台静默升级，state === "connected" 即 DataChannel 已 open
+            this._unbindRtcState = this._user.bind("rtc_state", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId !== peerId) return;
+              if (detail.state === "connected") {
+                self.setLinkTypeFromVia("rtc");
+                if (!self.peerOnline) self.markPeerOnline(true);
+              } else if (
+                detail.state === "disconnected" ||
+                detail.state === "failed" ||
+                detail.state === "closed"
+              ) {
+                // RTC 断开时回退到服务器中转显示，不直接判定对端下线
+                //（下线由 sendToService 返回 offline / remote_user_disconnected 判定）
+                if (self.myLinkType === "rtc") self.myLinkType = "relay";
+              }
+            });
+
+            this._eventsBound = true;
+          },
+
+          // ===== 生成通信链接（发起方专用）=====
+          async generateLink() {
+            this.generating = true;
+            this.genStatus = "准备中...";
+
+            try {
+              const self = this.parseSelfIdentity();
+              if (!self) {
+                throw new Error("无法识别当前应用的目录路径");
+              }
+
+              this.genStatus = "加载依赖...";
+              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+                load("/nos/fs/main.js"),
+                load(
+                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+                ),
+                load("/lib/share-mgr.js"),
+              ]);
+              const { init } = fsMod;
+              const { storage } = cacheMod;
+              const { publishApp, generateAppId } = shareMgr;
+
+              const apps = (await storage.apps) || [];
+              const { dirName } = self;
+              const record =
+                apps.find(
+                  (a) =>
+                    a.name === dirName || a.virtualDirName === dirName,
+                ) ||
+                apps.find((a) =>
+                  a.dirName ? a.dirName.endsWith("/" + dirName) : false,
+                ) ||
+                null;
+
+              this.genStatus = "获取应用目录...";
+              const rootDir = await init(self.namespace);
+              const handle = await rootDir.get(dirName);
+
+              let appId = (record && record.appId) || "";
+              if (!appId) {
+                appId = await generateAppId(dirName);
+                if (record) {
+                  record.appId = appId;
+                  await storage.setItem("apps", apps);
+                }
+              }
+
+              const app = {
+                _handle: handle,
+                _recordName: dirName,
+                name: (record && record.name) || "Mazmot Ping-Pong",
+                version: (record && record.version) || "0.1.0",
+                desc: (record && record.desc) || "",
+                icon: (record && record.icon) || "🏓",
+                appId,
+              };
+
+              // 关键：把发起方的 userId 作为 host 参数带到链接里
+              this.genStatus = "发布到分享网络...";
+              const { shareUrl, payloadHash } = await publishApp(app, {
+                appId,
+                appParams: { host: this.myUserId },
+                onProgress: ({ text }) => {
+                  if (text) this.genStatus = text;
+                },
+              });
+
+              if (record && payloadHash) {
+                record.payloadHash = payloadHash;
+                await storage.setItem("apps", apps);
+              }
+
+              this.shareUrl = shareUrl;
+              this.genStatus = "链接已生成，点击「复制」按钮分享给对方";
+            } catch (err) {
+              console.error("生成通信链接失败：", err);
+              this.genStatus = "失败：" + (err.message || err);
+            } finally {
+              this.generating = false;
+            }
+          },
+
+          // ===== 复制按钮点击：把已生成的链接复制到剪贴板 =====
+          async handleCopyLink() {
+            if (this.generating || !this.shareUrl) return;
+            await this.copyToClipboard(this.shareUrl);
+            this.genStatus = "已复制到剪贴板";
+          },
+
+          // ===== 点击链接输入框时全选，方便手动复制 =====
+          selectLinkInput(event) {
+            const el = event && event.target;
+            if (el && typeof el.select === "function") {
+              try {
+                el.select();
+              } catch (_) {}
+            }
+          },
+
+          // ===== 工具方法 =====
+          parseSelfIdentity() {
+            const m = location.pathname.match(
+              /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
+            );
+            if (!m) return null;
+            return { namespace: m[1], dirName: m[2] };
+          },
+
+          async copyToClipboard(text) {
+            try {
+              if (
+                navigator.clipboard &&
+                navigator.clipboard.writeText
+              ) {
+                await navigator.clipboard.writeText(text);
+              } else {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+              }
+            } catch (_) {
+              // 忽略复制失败
+            }
+          },
+        },
+
+        // ===== 生命周期 =====
+        async ready() {
+          try {
+            const { getUser } = await load("/nos/user/main.js");
+            const user = await getUser(NAMESPACE);
+            this._user = user; // 非响应式对象，必须用 _ 前缀
+            this.myUserId = user.userId;
+
+            if (isCustomer) {
+              await this.initCustomer();
+            } else {
+              await this.initHost();
+            }
+          } catch (err) {
+            console.error("初始化失败：", err);
+            this.role = "host";
+            this.hostStatus = "初始化失败：" + (err.message || err);
+          }
+        },
+
+        detached() {
+          if (this._timer) {
+            clearInterval(this._timer);
+            this._timer = null;
+          }
+          // 解绑对端事件监听
+          [
+            this._unbindConnected,
+            this._unbindDisconnected,
+            this._unbindRtt,
+            this._unbindRtcState,
+          ].forEach((fn) => {
+            if (typeof fn === "function") {
+              try {
+                fn();
+              } catch (_) {}
+            }
+          });
+          this._eventsBound = false;
+          if (this._svc) {
+            try {
+              this._svc.unregister();
+            } catch (_) {}
+          }
+        },
+      };
+    };
+  </script>
+</template>

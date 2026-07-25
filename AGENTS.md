@@ -59,17 +59,18 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 ## 开发指令
 
 1. **先读 Skill**：在编写代码或提供建议前，必须先检索并阅读上述对应的 Skill 文档。
-2. **遵循模式**：优先采用框架推荐的最佳实践，确保与现有代码库的风格一致。
-3. **架构对齐**：所有改动需符合 `noneos-core` 与 `ofa.js` 的设计哲学。更多项目细节请参考 [CONTEXT.md](CONTEXT.md)。
-4. **同步更新 Context（强制）**：发生以下任一变更时，**必须同步更新** [CONTEXT.md](CONTEXT.md) 对应章节，不得事后补：
+2. **页面 / 组件开发强制读 ofa.js Skill**：**只要涉及新增或修改 `.html` 页面模块 / 组件模块（`<template page>` / `<template component>`）**，动手前**必须**先调用 `Skill` 工具加载 `ofajs-docs` 知识库，确认模板语法（如属性值内 `{{...}}` 不解析、`attr:` / `:prop` / `class:` / `:style.` 的正确用法等）。**禁止**凭记忆直接编写或修改模板；违反本规则的常见后果是把 `{{expr}}` 塞进 `title` / `placeholder` / `href` 等属性值里被浏览器当字面字符串渲染。
+3. **遵循模式**：优先采用框架推荐的最佳实践，确保与现有代码库的风格一致。
+4. **架构对齐**：所有改动需符合 `noneos-core` 与 `ofa.js` 的设计哲学。更多项目细节请参考 [CONTEXT.md](CONTEXT.md)。
+5. **同步更新 Context（强制）**：发生以下任一变更时，**必须同步更新** [CONTEXT.md](CONTEXT.md) 对应章节，不得事后补：
    - 新增 / 删除 / 重命名任何文件或目录（→ 同步目录树与"关键代码文件速查"表）
    - 修改公开 API / 模块导出 / 页面 proto 方法签名（→ 同步"关键代码文件速查"或新增小节）
    - 修改数据结构字段（`apps[]` 持久化字段、payload 结构、manifest 字段等）（→ 同步"数据模型"）
    - 修改关键流程（应用生命周期、分享接收流程、Core 加载顺序等）（→ 同步对应流程图/步骤描述）
    - 新增 / 删除一个应用（apps/<name>/）或组件（comps/<name>/）
-5. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
-6. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
-7. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
+6. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
+7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
+8. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
 
 ## 目录与文件放置规则
 
@@ -77,9 +78,11 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 
 - **新应用**：放在 [apps/](apps/) 下，目录名即 URL 路径（`apps/<name>/` = `/apps/<name>/`）；同时更新 [CONTEXT.md](CONTEXT.md) 目录树。
 - **新系统级组件**：放在 [comps/](comps/) 下，独立子目录 + `<tag>.html` + `README.md`（推荐带 `demo.html`）；**必须同步更新 [comps/CONTEXT.md](comps/CONTEXT.md)** 的目录树与组件说明，若被主系统使用也需更新根 [CONTEXT.md](CONTEXT.md)。
-- **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__files.json` + 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id / name / desc。
+- **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__template.json`（模板元数据 name/desc + 文件清单）+ 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id。
+- **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
-- **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/](apps/main/lib/)、[apps/run-app/lib/](apps/run-app/lib/)），与 UI 页面模块分离，便于单测。
+- **跨应用公共工具库**：`lib/`（参考 [lib/app-runner.js](lib/app-runner.js)、[lib/share-mgr.js](lib/share-mgr.js)），被多个应用（含模板）共享的纯逻辑模块；引用一律用绝对路径 `/lib/xxx.js`。
+- **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/official-app-state.js](apps/main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）、[ai/](ai/)（独立子项目）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
 
@@ -99,9 +102,9 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 
 应用分享基于 NoneOS Core `DataPublisher`（点对点，无后端）。修改分享相关代码必须遵守：
 
-- **只支持 UTF-8 文本文件**：[share-mgr.js](apps/main/lib/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
+- **只支持 UTF-8 文本文件**：[share-mgr.js](lib/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
 - **发布者必须在线**：接收端通过 `?u=<userId>&h=<payloadHash>` 短链接从发布者 IndexedDB 拉取 chunk。发布者标签页（`apps/main/`）一旦关闭，未拉完的 chunk 无法继续。设计分享相关 UI（如关闭提醒、断网重试）时以此为前提。
-- **URL 字段固定**：分享链接**只有 `u` 和 `h` 两个 query 参数**，其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `buildRunUrl` / `parseShareUrl` 前请先评估向后兼容。
+- **URL 字段固定**：分享链接**只有 `u` 和 `h` 两个 query 参数**，其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](lib/share-mgr.js) 的 `buildRunUrl` / `parseShareUrl` 前请先评估向后兼容。
 - **签名链不可省**：接收端验证顺序为 `connectUser` → `requestManifest`（内部 `verifyData`）→ `requestChunk`（内部 SHA-256）→ 显式 `isPublicKeyOfUser`。任何一步失败即进错误页，**不要**用 try/catch 吞错。
 
 

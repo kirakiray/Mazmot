@@ -107,6 +107,23 @@
     .mine-badge n-icon {
       font-size: 12px;
     }
+    .official-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      vertical-align: middle;
+    }
+    .official-badge n-icon {
+      font-size: 12px;
+    }
     .action-row {
       display: flex;
       align-items: center;
@@ -226,9 +243,23 @@
     auto-close
     style="--dialog-max-width: 800px"
     on:close-dialog="handleDialogClose"
+    on:open-market="handleOpenMarket"
   >
     <span slot="title">添加应用</span>
     <o-page src="./home/add-app.html" style="width: 100%"></o-page>
+  </p-dialog>
+
+  <p-dialog
+    sync:open="marketDialogOpen"
+    auto-close
+    style="--dialog-max-width: 800px"
+    on:close-dialog="handleMarketClose"
+  >
+    <span slot="title">应用市场</span>
+    <o-page
+      src="./home/market.html"
+      style="width: 100%; min-height: 80vh"
+    ></o-page>
   </p-dialog>
 
   <p-dialog
@@ -278,6 +309,12 @@
                 <span class="mine-badge" title="由当前账号开发发布">
                   <n-icon icon="mdi:account-hard-hat"></n-icon>
                   我开发的
+                </span>
+              </o-if>
+              <o-if :value="$data.source === 'official'">
+                <span class="official-badge" title="来自应用市场">
+                  <n-icon icon="mdi:store-outline"></n-icon>
+                  官方应用
                 </span>
               </o-if>
               <div secondary>{{$data.desc}}</div>
@@ -332,6 +369,10 @@
                         <o-if :value="$data.source === 'virtual'">
                           <n-icon icon="mdi:database-outline"></n-icon>
                           虚拟目录
+                        </o-if>
+                        <o-if :value="$data.source === 'official'">
+                          <n-icon icon="mdi:store-outline"></n-icon>
+                          应用市场
                         </o-if>
                       </span>
                     </div>
@@ -480,12 +521,14 @@
       clearOpened,
       focusIfOpened,
     } from "./home/app-status.js";
-    import { getRunUrl } from "./lib/app-runner.js";
+    import { getRunUrl } from "/lib/app-runner.js";
     import {
       ensureUser,
       generateAppId,
       publishApp,
-    } from "./lib/share-mgr.js";
+      unpublishApp,
+    } from "/lib/share-mgr.js";
+    import { syncOfficialAppState } from "./lib/official-app-state.js";
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -503,14 +546,16 @@
         apps.map(async (app) => {
           let manifest = null;
           // 根据 source 类型构造 handle：
-          // - virtual：通过 init(namespace) 重新拿到虚拟根目录
+          // - virtual / official：通过 init(namespace) 重新拿到虚拟根目录
           // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
           let handle = null;
           // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
+          const isVirtualLike =
+            app.source === "virtual" || app.source === "official";
           const namespaceForApp = app.namespace || "mazmot-apps";
           const namespacePrefix = namespaceForApp + "/";
           let virtualDirName = "";
-          if (app.source === "virtual") {
+          if (isVirtualLike) {
             if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
               virtualDirName = app.dirName.slice(namespacePrefix.length);
             } else if (app.dirName) {
@@ -520,7 +565,7 @@
             }
           }
           try {
-            if (app.source === "virtual") {
+            if (isVirtualLike) {
               const rootDir = await init(namespaceForApp);
               handle = await rootDir.get(virtualDirName, { create: "dir" });
             } else if (app.handle) {
@@ -591,6 +636,7 @@
       return {
         data: {
           dialogOpen: false,
+          marketDialogOpen: false,
           appList: initialApps,
           shareDialogOpen: false,
           shareUrl: "",
@@ -735,6 +781,18 @@
             this.dialogOpen = false;
             await this.refreshApps();
           },
+
+          // 从添加应用弹窗切换到应用市场弹窗
+          handleOpenMarket() {
+            this.dialogOpen = false;
+            this.marketDialogOpen = true;
+          },
+
+          // 应用市场关闭时刷新列表
+          async handleMarketClose() {
+            this.marketDialogOpen = false;
+            await this.refreshApps();
+          },
           async refreshApps() {
             const apps = await loadApps();
             this.appList.length = 0;
@@ -785,6 +843,10 @@
             });
 
             if (!nextChecked) {
+              // 关闭时撤销发布，让旧的分享链接失效
+              unpublishApp(target).catch((err) =>
+                console.warn("撤销分享失败：", err),
+              );
               target.autoShareUrl = "";
               target.autoShareState = "idle";
               target.autoShareStatus = "已关闭";
@@ -811,7 +873,7 @@
                 await this._persistAppField(target._recordName, { appId });
                 target.appId = appId;
               }
-              const { shareUrl, payloadHash } = await publishApp(target, {
+              const { shareUrl, payloadHash, fileHash } = await publishApp(target, {
                 appId,
                 onProgress: ({ text }) => {
                   if (text) target.autoShareStatus = text;
@@ -820,10 +882,14 @@
               target.autoShareUrl = shareUrl;
               target.autoShareState = "ready";
               target.autoShareStatus = "已发布，对方可直接连接";
-              // 持久化 payloadHash 到自己的记录，让 run-app 打开自分享链接时能秒定位自有应用
+              // 持久化 payloadHash 和 fileHash 到记录，供秒跳和撤销分享时使用
               if (payloadHash) {
                 target.payloadHash = payloadHash;
-                await this._persistAppField(target._recordName, { payloadHash });
+                target.fileHash = fileHash || "";
+                await this._persistAppField(target._recordName, {
+                  payloadHash,
+                  fileHash: fileHash || "",
+                });
               }
             } catch (err) {
               console.error("自动分享失败：", err);
@@ -948,6 +1014,15 @@
             if (!ok) return;
 
             try {
+              // 删除前若已发布，先撤销发布让分享链接失效
+              if (app.autoShareUrl) {
+                try {
+                  await unpublishApp(app);
+                } catch (err) {
+                  console.warn("撤销分享失败（可忽略）：", err);
+                }
+              }
+
               // 关闭对应打开的窗口 + 清理状态
               clearOpened(app._recordName);
 
@@ -966,6 +1041,9 @@
               );
               await storage.setItem("apps", next);
 
+              // 同步共享 stanz 状态，应用市场页面会自动收到通知
+              await syncOfficialAppState();
+
               await this.refreshApps();
               toast({ content: "已删除", color: "success" });
             } catch (err) {
@@ -979,6 +1057,11 @@
         },
         watch: {
           async dialogOpen(val) {
+            if (!val) {
+              await this.refreshApps();
+            }
+          },
+          async marketDialogOpen(val) {
             if (!val) {
               await this.refreshApps();
             }

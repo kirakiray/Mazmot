@@ -35,15 +35,16 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __files.json 的 replacements 清单替换后写入 client/）
+│   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用并安装到虚拟目录）
+│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
+│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
-│   │   │   │   ├── manifest.json     # 模板清单（添加新模板时登记 id/name/desc）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __files.json（文件清单 + 替换规则）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
+│   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、ping-pong（应用间定时 ping/pong 通信）、tic-tac-toe（应用间井字棋联机对战）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
-│   │   └── lib/              # 主应用工具库，同时被 run-app 反向引用
-│   │       ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
-│   │       ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│   │       └── test/                 # sibyl-test 单元测试（_install-nos.sb.html / app-runner.sb.html / share-mgr.sb.html）
+│   │   └── lib/              # 主应用专属工具库
+│   │       ├── official-app-state.js  # 官方应用 stanz 状态（仅主应用使用）
+│   │       └── test/                 # sibyl-test 单元测试（_install-nos.sb.html）
 │   │
 │   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?u=...&h=...
 │   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">（不校验模块，Core 由页面模块自己装）
@@ -65,11 +66,20 @@ Mazmot/
 │       ├── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │       └── traffic.html      # 流量监控：汇总卡片 + 服务器/用户的实时带宽与连接统计
 │
+├── lib/                      # 跨应用公共工具库（被 main / run-app / 模板共享，URL = /lib/*.js）
+│   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
+│   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
+│   └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
+│
 ├── comps/                    # 系统级公共组件（ercode / rdn-network / rnd-box），详见 comps/CONTEXT.md
 │   ├── ercode/               # <m-ercode> 二维码组件（被主应用分享弹窗使用）
 │   ├── rdn-network/          # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
 │   ├── rnd-box/              # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │   └── CONTEXT.md            # 组件上下文说明
+│
+├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
+│   ├── manifest.json         # 官方应用清单（只登记 app id）
+│   └── <id>/                 # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
@@ -140,6 +150,7 @@ window.open(runUrl)
 ### 3. 删除应用
 
 ```
+（已发布 autoShareUrl）→ unpublishApp 撤销发布，让旧分享链接失效
 clearOpened → 关闭窗口
 （虚拟目录）app._handle.remove() → 移除虚拟子目录
 从 ever-cache.apps 移除记录
@@ -155,11 +166,12 @@ clearOpened → 关闭窗口
 {
   name: "my-app",           // 唯一 recordName（字母/数字/_-，不含空格）；运行时常被映射到 _recordName
   desc: "描述",
-  handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录为 null
+  handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录/官方应用为 null
   dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "mazmot-apps/<name>"
-  source: "local" | "virtual",
-  namespace: "mazmot-apps",  // 仅 virtual 有值，(await init(namespace)).get(name) 即可重建 handle
+  source: "local" | "virtual" | "official",
+  namespace: "mazmot-apps",  // virtual / official 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
+  officialId: "hello-world", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
@@ -186,7 +198,7 @@ clearOpened → 关闭窗口
   version: "0.1.0",
 
   // —— UI 状态 ——
-  source: "local" | "virtual",
+  source: "local" | "virtual" | "official",
   namespace: "...",
   appId: "...",
   isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」
@@ -202,13 +214,13 @@ clearOpened → 关闭窗口
 
 ### 应用数据模型约束（强约定）
 
-以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](apps/main/lib/app-runner.js) / [share-mgr.js](apps/main/lib/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](lib/app-runner.js) / [share-mgr.js](lib/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
-- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
+- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
-- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](apps/main/lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
@@ -261,8 +273,8 @@ npm run static
 **主应用工具库测试**（[apps/main/lib/test/](apps/main/lib/test/)）
 
 - `http://localhost:30031/apps/main/lib/test/_install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（其他测试依赖 Core 已就绪）
-- `http://localhost:30031/apps/main/lib/test/app-runner.sb.html` — 测试 [app-runner.js](apps/main/lib/app-runner.js) 的 URL 生成与文件读取
-- `http://localhost:30031/apps/main/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](apps/main/lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
+- `http://localhost:30031/lib/test/app-runner.sb.html` — 测试 [app-runner.js](lib/app-runner.js) 的 URL 生成与文件读取
+- `http://localhost:30031/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
 
 **run-app 工具库测试**（[apps/run-app/lib/test/](apps/run-app/lib/test/)）
 
@@ -289,7 +301,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 
 ### 分享（发布端）
 
-1. 分享入口只剩一个：在应用列表折叠子项开启「自动分享」开关 → `handleAutoShareToggle` → `autoShareApp` → [share-mgr.js](apps/main/lib/share-mgr.js) 的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。操作行不再有独立的「分享应用」按钮。
+1. 分享入口只剩一个：在应用列表折叠子项开启「自动分享」开关 → `handleAutoShareToggle` → `autoShareApp` → [share-mgr.js](lib/share-mgr.js) 的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。操作行不再有独立的「分享应用」按钮。
 2. `publishApp` 内部：`readAppFiles(handle)` 读 `client/` 下所有文件 → `ensurePublisher()` 拿到 `LocalUser("mazmot")` + `DataPublisher` 单例 → `buildPackageFile(files, meta)` 打成 UTF-8 JSON `File` → `publisher.publish(file)` 得到应用包 `manifest.fileHash` → 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`）→ `buildSharePayloadFile(payloadData)` → `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`（core manifest 已带 ECDSA 签名）→ `buildRunUrl(origin, userId, payloadHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`。
 3. 「分享链接」行：开关开启后额外显示（`<o-if :value="$data.autoShare">`），行内含只读链接文本 + 复制按钮（`copyAutoShareUrl`） + 二维码按钮（`showShareQrCode`，弹出仅显示 `<m-ercode>` 二维码 + 链接文本 + 「复制链接」的 `shareDialogOpen` 弹窗）。链接未就绪时两个按钮均 `disabled`。
 4. `home.html` 的 `attached()` 与 `refreshApps()` 都会调 `_runAutoShareAll()`，对所有 `autoShare=true` 的应用重新执行一次 `publishApp`，保证进入 home 页时对端可直接连接、无需再点击分享。
@@ -354,10 +366,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | ---- | -------- |
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
 | 修改添加应用流程 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
-| 应用运行 URL 生成 / 文件读取 | [apps/main/lib/app-runner.js](apps/main/lib/app-runner.js) |
+| 应用运行 URL 生成 / 文件读取 | [lib/app-runner.js](lib/app-runner.js) |
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
-| 分享工具（发布/验签） | [apps/main/lib/share-mgr.js](apps/main/lib/share-mgr.js) |
+| 分享工具（发布/验签） | [lib/share-mgr.js](lib/share-mgr.js) |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
