@@ -4,12 +4,12 @@
 
 ## 技术栈
 
-| 层 | 技术 | 备注 |
-| --- | --- | --- |
-| 应用框架 | **ofa.js** | 使用 `<template page>`、`<o-if>`、`<o-fill>`、`on:click`、`sync:value`、`proto`/`data` 等语法，**禁止 Vue / React 语法** |
-| UI | 原生 HTML + CSS | 手写样式，使用 `index.html` 中定义的 Material 主题变量 `--md-sys-color-*`，按钮 / 列表等直接用原生标签实现 |
-| 图标 | `<n-icon icon="mdi:xxx">` | 依赖 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，**禁止**直接使用 `iconify-icon` |
-| 存储 | ever-cache | 需要持久化时用 `storage.xxx`，勿裸用 `localStorage` |
+| 层       | 技术                      | 备注                                                                                                                     |
+| -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 应用框架 | **ofa.js**                | 使用 `<template page>`、`<o-if>`、`<o-fill>`、`on:click`、`sync:value`、`proto`/`data` 等语法，**禁止 Vue / React 语法** |
+| UI       | 原生 HTML + CSS           | 手写样式，使用 `index.html` 中定义的 Material 主题变量 `--md-sys-color-*`，按钮 / 列表等直接用原生标签实现               |
+| 图标     | `<n-icon icon="mdi:xxx">` | 依赖 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，**禁止**直接使用 `iconify-icon`                                        |
+| 存储     | ever-cache                | 需要持久化时用 `storage.xxx`，勿裸用 `localStorage`                                                                      |
 
 ## 依赖 URL 规范（重要）
 
@@ -19,16 +19,35 @@
 
 ## 开发指令
 
-0. **开发前必读**：先查阅 `ofajs-docs` 技能文档，掌握 ofa.js 组件 / 页面 / 路由 / 状态管理的最新用法后再动手，避免写出不符合框架规范的代码。
-1. 页面模块采用 `<template page>` + `<script>export default async ({ load }) => { ... }</script>` 结构，见 [pages/home.html](pages/home.html)。
-2. **异步依赖加载**：需要 NoneOS Core 模块（`/nos/*`）时，只能通过 `const load = lm(import.meta); await load("/nos/xxx/main.js")` 或页面 `export default` 参数里的 `load` 按需加载；**顶层禁止 `import "/nos/*"`**，否则 Core 未就绪会白屏。
-3. 新增路由/子页面时在 [app-config.js](app-config.js) 中导出（如 `export const about = "./pages/about.html"`）。
-4. **每次改动后**都要检查是否需要同步 [CONTEXT.md](CONTEXT.md)（文件结构 / 公开 API / 数据字段 / 关键流程有变化就要更新）。
-5. 若发现 [CONTEXT.md](CONTEXT.md) 与实际代码不符（旧描述、字段过期、路径错误等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
-6. 只做被要求的事，避免过度设计与冗余抽象。
+0. **开发前必读（框架）**：先查阅 `ofajs-docs` 技能文档，掌握 ofa.js 组件 / 页面 / 路由 / 状态管理的最新用法后再动手，避免写出不符合框架规范的代码。
+1. **开发前必读（项目）**：动手前先阅读 [CONTEXT.md](CONTEXT.md)，可以快速掌握本模板的项目结构、目录用途、关键模块与数据流，避免盲改。
+2. 页面模块采用 `<template page>` + `<script>export default async ({ load }) => { ... }</script>` 结构，见 [pages/home.html](pages/home.html)。
+3. **异步依赖加载**：需要 NoneOS Core 模块（`/nos/*`）时，只能通过 `const load = lm(import.meta); await load("/nos/xxx/main.js")` 或页面 `export default` 参数里的 `load` 按需加载；**顶层禁止 `import "/nos/*"`**，否则 Core 未就绪会白屏。
+4. **涉及 NoneOS Core 能力必读**：需要使用文件系统（`fs`）、用户通信 / 联机、用户管理等 NoneOS Core 相关能力时，必须先查阅 `noneos-core-docs` 技能文档，按官方 API 调用，禁止凭记忆写。
+5. **涉及数据存储必读**：需要持久化数据时，必须先查阅 `ever-cache` 技能文档，使用 EverCache（`storageName`）进行存储，禁止裸用 `localStorage`。
+6. 新增路由/子页面时在 [app-config.js](app-config.js) 中导出（如 `export const about = "./pages/about.html"`）。
+7. **较大逻辑改动后必须同步 [CONTEXT.md](CONTEXT.md)**：文件结构、公开 API、数据字段、关键流程、模块职责等发生变化时，立即更新对应章节，不得事后补。
+8. **发现不一致立即修正 [CONTEXT.md](CONTEXT.md)**：查阅 CONTEXT.md 后再去读具体逻辑模块，若发现 CONTEXT 中的描述与实际代码不符（旧描述、字段过期、路径错误、流程改动未同步等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
+9. 只做被要求的事，避免过度设计与冗余抽象。
 
-## 常见坑
+## 技能资源与导入 (Skill Resources)
 
-- ofa.js 页面 `data` 中的非响应式对象请以 `_` 前缀存放（例：`this._user = ...`），否则会被代理后失去原型方法。
-- CSS 引用图标节点用 `n-icon` 选择器，不要直接选 `iconify-icon`。
-- 若要接入分享 / 联机能力，参考 Mazmot 主仓库的 `share-link` 或 `service-chat` 模板。
+若本地环境中缺少相关知识库，请通过以下链接获取最新版本：
+
+- **ofa.js-docs**
+  - [GitHub 在线源码](https://github.com/ofajs/ofa.js/tree/main/skills/ofajs-docs)
+  - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/ofa.js/refs/heads/main/skills/ofajs-docs.zip)
+- **punch-ui-docs**
+  - [GitHub 在线源码](https://github.com/ofajs/Punch-UI/tree/v2/skills/punch-ui)
+  - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/Punch-UI/refs/heads/v2/skills/punch-ui.zip)
+- **noneos-core-docs**
+  - [GitHub 在线源码](https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs)
+  - [ZIP 离线包下载](https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/skills/noneos-core-docs.zip)
+- **ever-cache**
+  - 涉及存储数据（如 localStorage）时，应优先使用 EverCache 替代原生存储方案。
+  - 使用前请检查本地是否有 ever-cache Skill，若无则需导入。
+  - [Skill 在线文件](https://github.com/kirakiray/ever-cache/blob/main/skills/ever-cache/SKILL.md)
+- **sibyl-test**
+  - 该项目使用 `sibyl-test` 作为测试模块。
+  - 使用前请检查本地是否有 sibyl-test Skill，若无则需导入。
+  - [Skill 在线文件](https://raw.githubusercontent.com/ofajs/sibyl-test/refs/heads/main/skills/sibyl-test/SKILL.md)
