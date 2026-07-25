@@ -77,6 +77,14 @@
       background: var(--md-sys-color-surface-container-high);
       color: var(--md-sys-color-on-surface);
     }
+    .log-line[type="system"] {
+      align-self: center;
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
 
     /* ===== 居中区域（发起方等待界面）===== */
     .center-area {
@@ -176,6 +184,46 @@
       align-items: center;
     }
 
+    /* ===== 连接状态徽章 ===== */
+    .link-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .link-badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+    }
+    .link-badge[type="rtc"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .link-badge[type="rtc"]::before {
+      background: #34a853;
+    }
+    .link-badge[type="relay"] {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .link-badge[type="relay"]::before {
+      background: #ea8a00;
+    }
+    .link-badge[type="offline"]::before {
+      background: var(--md-sys-color-error);
+    }
+
     /* ===== 空状态提示 ===== */
     .empty-hint {
       color: var(--md-sys-color-on-surface-variant);
@@ -190,7 +238,12 @@
   <o-if :value="role === 'host'">
     <div class="header">
       <h2>🏓 Mazmot Ping-Pong（发起方）</h2>
-      <div class="status-text">{{hostStatus}}</div>
+      <div class="status-text">
+        {{hostStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
     </div>
 
     <!-- 还没有接收方连进来：显示分享链接输入框 + 复制按钮 -->
@@ -239,7 +292,12 @@
   <o-if :value="role === 'customer'">
     <div class="header">
       <h2>🏓 应用间通信演示（接收方）</h2>
-      <div class="status-text">{{customerStatus}}</div>
+      <div class="status-text">
+        {{customerStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
     </div>
     <div id="log-box" class="log-box">
       <o-fill :value="logs">
@@ -281,7 +339,7 @@
           myUserId: "",
           hostUserId,
           connected: false, // 发起方是否已与接收方建立连接
-          logs: [], // 通信日志，每项 { text, type: "sent" | "received" }
+          logs: [], // 通信日志，每项 { text, type: "sent" | "received" | "system" }
           // 收发计数
           sentCount: 0,
           receivedCount: 0,
@@ -294,12 +352,25 @@
           shareUrl: "",
           // 接收方状态
           customerStatus: "正在连接发起方...",
+          // 连接方式与对端在线状态（双方共用）
+          myLinkType: "", // "" / "rtc" / "relay"
+          peerOnline: true, // 对端是否在线（默认 true，事件触发后再修正）
+          peerUserId: "", // 对端 userId，用于事件匹配
         },
 
         proto: {
           // ===== 工具：格式化当前时间字符串 =====
           formatTime() {
             return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+          },
+
+          // ===== 从 sendToService 返回值或 via 字段更新本地连接方式 =====
+          setLinkTypeFromVia(via) {
+            // NoneOS Core: via="rtc" 表示 WebRTC 直连，via="server" 表示服务器中转
+            const next = via === "rtc" ? "rtc" : via ? "relay" : "";
+            if (next && next !== this.myLinkType) {
+              this.myLinkType = next;
+            }
           },
 
           // ===== 推送一条通信日志 =====
@@ -314,10 +385,12 @@
               if (!this._customerRemote) return;
               const time = this.formatTime();
               try {
-                await this._customerRemote.sendToService(SERVICE_ID, {
-                  kind: "ping",
-                  time,
-                });
+                const results = await this._customerRemote.sendToService(
+                  SERVICE_ID,
+                  { kind: "ping", time },
+                );
+                // 通过返回结果刷新连接方式与对端在线状态
+                this.applySendResults(results);
                 this.pushLog(`[${time}] → ping`, "sent");
                 this.sentCount++;
               } catch (err) {
@@ -334,10 +407,11 @@
               if (!this._remoteUser) return;
               const time = this.formatTime();
               try {
-                await this._remoteUser.sendToService(SERVICE_ID, {
-                  kind: "pong",
-                  time,
-                });
+                const results = await this._remoteUser.sendToService(
+                  SERVICE_ID,
+                  { kind: "pong", time },
+                );
+                this.applySendResults(results);
                 this.pushLog(`[${time}] → pong`, "sent");
                 this.sentCount++;
               } catch (err) {
@@ -345,6 +419,39 @@
               }
             };
             this._timer = setInterval(send, PING_INTERVAL);
+          },
+
+          // ===== 根据 sendToService 的返回结果更新连接方式 / 检测对端在线状态 =====
+          applySendResults(results) {
+            if (!Array.isArray(results) || results.length === 0) return;
+            const okResult = results.find((r) => r && r.status === "ok");
+            if (okResult) {
+              if (okResult.via) this.setLinkTypeFromVia(okResult.via);
+              if (!this.peerOnline) this.markPeerOnline(true);
+            } else {
+              // 所有结果均未送达：可能是 offline / no_receiver / discovery_failed / error
+              const offline = results.some(
+                (r) =>
+                  r &&
+                  (r.status === "offline" ||
+                    r.status === "error" ||
+                    r.status === "discovery_failed"),
+              );
+              if (offline && this.peerOnline) this.markPeerOnline(false);
+            }
+          },
+
+          // ===== 标记对端上线 / 下线，并推一条系统日志 =====
+          markPeerOnline(online) {
+            if (this.peerOnline === online) return;
+            this.peerOnline = online;
+            const time = this.formatTime();
+            this.pushLog(
+              online
+                ? `[${time}] 对方已上线`
+                : `[${time}] 对方已下线`,
+              "system",
+            );
           },
 
           // ===== 发起方初始化 =====
@@ -359,14 +466,24 @@
                 if (!self._customerUserId) {
                   self._customerUserId = ctx.fromUserId;
                   self._customerRemote = ctx.remoteUser;
+                  self.peerUserId = ctx.fromUserId;
                   self.hostStatus = "接收方已连接，正在定时通信";
                   self.connected = true;
+                  // 上线系统消息（只推一次）
+                  const time = self.formatTime();
+                  self.pushLog(
+                    `[${time}] 对方（接收方）已上线`,
+                    "system",
+                  );
+                  self.bindPeerEvents();
                   self.startPingLoop();
                 }
                 const kind = (data && data.kind) || "data";
                 const time = (data && data.time) || self.formatTime();
                 self.pushLog(`[${time}] ← ${kind}`, "received");
                 self.receivedCount++;
+                // 收到消息说明对方在线，纠正一下状态
+                if (!self.peerOnline) self.markPeerOnline(true);
               },
             });
           },
@@ -383,6 +500,7 @@
                 const time = (data && data.time) || self.formatTime();
                 self.pushLog(`[${time}] ← ${kind}`, "received");
                 self.receivedCount++;
+                if (!self.peerOnline) self.markPeerOnline(true);
               },
             });
 
@@ -391,20 +509,73 @@
               this.customerStatus = "正在连接发起方...";
               const remote = await this._user.connectUser(this.hostUserId);
               this._remoteUser = remote;
+              this.peerUserId = this.hostUserId;
 
               const online = await this._user.isRemoteUserOnline(
                 this.hostUserId,
               );
               if (online) {
                 this.customerStatus = "已连接，正在定时通信";
+                this.connected = true;
+                const time = this.formatTime();
+                this.pushLog(
+                  `[${time}] 已连接到发起方`,
+                  "system",
+                );
+                this.bindPeerEvents();
                 this.startPongLoop();
               } else {
                 this.customerStatus = "发起方不在线，请稍后再试";
+                this.peerOnline = false;
+                const time = this.formatTime();
+                this.pushLog(
+                  `[${time}] 发起方不在线`,
+                  "system",
+                );
               }
             } catch (err) {
               console.error("连接发起方失败：", err);
               this.customerStatus = "连接失败：" + (err.message || err);
             }
+          },
+
+          // ===== 绑定对端上线 / 下线事件（双方共用）=====
+          bindPeerEvents() {
+            if (this._eventsBound || !this._user || !this.peerUserId) return;
+            const self = this;
+            const peerId = this.peerUserId;
+
+            this._unbindConnected = this._user.bind(
+              "remote_user_connected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  // 主动 connect 成功或对端重新发消息过来都会触发
+                  if (!self.peerOnline) self.markPeerOnline(true);
+                }
+              },
+            );
+
+            this._unbindDisconnected = this._user.bind(
+              "remote_user_disconnected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  // 仅在并非主动断开时提示下线
+                  if (self.peerOnline) self.markPeerOnline(false);
+                }
+              },
+            );
+
+            // 监听 RTT 更新，实时刷新连接方式
+            this._unbindRtt = this._user.bind("rtt_update", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId === peerId && detail.via) {
+                self.setLinkTypeFromVia(detail.via);
+              }
+            });
+
+            this._eventsBound = true;
           },
 
           // ===== 生成通信链接（发起方专用）=====
@@ -577,6 +748,19 @@
             clearInterval(this._timer);
             this._timer = null;
           }
+          // 解绑对端事件监听
+          [
+            this._unbindConnected,
+            this._unbindDisconnected,
+            this._unbindRtt,
+          ].forEach((fn) => {
+            if (typeof fn === "function") {
+              try {
+                fn();
+              } catch (_) {}
+            }
+          });
+          this._eventsBound = false;
           if (this._svc) {
             try {
               this._svc.unregister();
