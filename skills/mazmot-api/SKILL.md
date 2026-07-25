@@ -1,318 +1,331 @@
 ---
 name: "mazmot-api"
-description: "Mazmot 环境 API 速查：告诉 AI 如何在 Mazmot（noneos-core + ofa.js）代码里正确加载依赖、调用文件系统 / 用户 / P2P 分享 / 应用运行 / 模板写入 / 系统组件等 API。当用户在 Mazmot 仓库内编写或修改代码时调用。"
+description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
 ---
 
-# Mazmot 环境 API 速查
+# Mazmot 能力 API 速查
 
-面向在 Mazmot 仓库内写代码的 AI。只讲**怎么调 API**，不讲项目背景。项目结构、数据模型、流程叙述请查 [CONTEXT.md](../../CONTEXT.md) 与 [AGENTS.md](../../AGENTS.md)。
+本技能**只讲 Mazmot 自身提供的能力**。底层能力请查对应技能：
 
-## 0. 依赖 URL 前缀（决定成败）
+- 文件系统（`/nos/fs/main.js`）、用户 / 联机（`/nos/user/main.js`）、P2P 发布（`/nos/publish/*`）、图标（`/nos/n-icon/*`）等 → 查 **noneos-core-docs** 技能。
+- `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
+- 持久化存储 → 查 **ever-cache** 技能。
+- 测试框架本身 → 查 **sibyl-test** 技能。
 
-同一份资源，**加载位置不同前缀不同**：
+## 1. 应用结构 —— `app.json`
 
-| 位置 | ofa.js / router | Punch-UI | `/nos/*` 模块 |
-| ---- | --------------- | -------- | ------------- |
-| 顶层入口 HTML（`index.html` / `apps/*/index.html`） | `https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug` | 只有在**已确认 Core 就绪**时才能 `import "/nos/*"`，否则 `try { await import("/nos/fs/main.js") } catch { location.href = "/?redirect=..." }` |
-| 页面模块 / 组件 / 普通模块 / 测试页 | `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`、`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs` | 同上 | **禁止**顶层 `import "/nos/*"`；使用 `const load = lm(import.meta); await load("/nos/fs/main.js")` 在 `attached` 内按需加载 |
+Mazmot 里的每一个应用都遵循统一的目录结构：
 
-- ofa.js 必须带 `#debug`；顶层入口可锁版本，模块位置一律 `@latest`。
-- 主入口 [apps/main/app-config.js](../../apps/main/app-config.js) 顶层可 `await init("mazmot")`（前提是 [apps/main/index.html](../../apps/main/index.html) 已校验 Core）；[apps/run-app/app-config.js](../../apps/run-app/app-config.js) **禁止** `init()`（Core 由页面自装）。
-
-## 1. NoneOS Core 文件系统
-
-```js
-import { init, mount } from "/nos/fs/main.js";
-
-// 初始化命名空间，返回根 DirHandle
-const root = await init("mazmot-apps");
-
-// 目录 / 文件读写
-const dir  = await root.get("my-app",     { create: "dir"  });
-const file = await dir.get("app.json",    { create: "file" });
-await file.write(JSON.stringify({ name: "my-app" }));
-const text = await file.text();
-const json = await file.json();
-
-// 平铺读取所有文件（含子目录）
-const flat = await dir.flat();  // [{ path, text(), ... }, ...]
-
-// 挂载本地目录到主域，得到可 fetch 的路径
-const mounted = await mount(clientHandle);
-window.open(`/${mounted.path}/index.html`);
-
-// 删除
-await file.remove();
+```
+<app-root>/
+├── app.json          # 应用元数据（必需）
+├── index.html        # 入口 HTML（必需，挂载 <o-app src="./app-config.js">）
+├── app-config.js     # ofa.js app 配置（导出 home / 各路由页面）
+├── pages/            # 页面模块（<template page>）
+└── ...
 ```
 
-约定：Mazmot 主命名空间为 `mazmot`；应用虚拟目录命名空间为 `mazmot-apps`；每个应用必须有 `client/` 子目录，`client/` 内必须至少含 `app.json` + `index.html`。
+运行时 Mazmot 要求应用文件放在 **`client/`** 子目录下（安装流程会自动创建）。`client/` 内必须至少包含 `app.json` + `index.html`。
 
-## 2. NoneOS 用户 / 分享 API
+### `app.json` 字段
 
-```js
-import { getUser } from "/nos/user/main.js";
-import { DataPublisher } from "/nos/publish/data-publisher.js";
-import { getHash } from "/nos/util/hash/main.js";
-import { deleteManifest } from "/nos/publish/db.js";
-
-const user = await getUser("mazmot");       // LocalUser，userId = sha256_hex(publicKey)
-const publisher = new DataPublisher(user);
-publisher.start();
-
-// 发布一个 File → 得到内容 manifest（含 fileHash / chunkHashes / publicKey）
-const manifest = await publisher.publish(file);
-
-// 接收端：先连服务器 → connectUser → 请求 manifest → 逐块 → 组装
-await user.server.connect(url);
-const remoteUser = await user.connectUser(publisherUserId);
-const mf = await publisher.requestManifest(remoteUser, hash);
-await publisher.requestChunk(remoteUser, chunkHash);
-const { blob } = await publisher.assembleFile(hash);
-
-// 校验签名者身份
-const ok = (await getHash(mf.publicKey)) === expectedUserId;
-
-// 撤销分享（只删 manifest，保留 chunks 用于秒回复）
-await deleteManifest("mazmot", payloadHash);
+```json
+{
+  "name": "my-app",
+  "displayName": "My App",
+  "version": "0.1.0",
+  "description": "应用描述",
+  "author": "",
+  "icon": "📦",
+  "entry": "./index.html",
+  "appConfig": "./app-config.js",
+  "permissions": [],
+  "capabilities": [],
+  "createdAt": 1704067200000,
+  "mazmot": {
+    "source": "self-created"
+  }
+}
 ```
 
-> Mazmot 里请使用 [share-mgr.js](../../lib/share-mgr.js) 已封装的函数，不要直接重复实现（见 §4）。
+| 字段 | 说明 |
+| ---- | ---- |
+| `name` | 应用唯一标识，需匹配 `/^[A-Za-z0-9_-]+$/` |
+| `displayName` | 展示名 |
+| `version` | 语义化版本号 |
+| `description` | 应用描述 |
+| `icon` | 图标，可用 emoji 字符串或图标 URL |
+| `entry` | 入口 HTML 相对路径，固定 `./index.html` |
+| `appConfig` | ofa.js app 配置相对路径，固定 `./app-config.js` |
+| `createdAt` | 创建时间（毫秒时间戳） |
+| `mazmot.source` | 来源标记：`self-created`（用户自建）/ `official-market`（官方市场安装）/ `share`（P2P 分享安装） |
 
-## 3. `app-runner.js` — 应用运行 URL / 文件读取
+`app.json` 在分享时会被读取并打包进 P2P payload，安装时由 `installAppPackage` 写入虚拟目录。
 
-[lib/app-runner.js](../../lib/app-runner.js)
+## 2. `apps[]` 持久化记录
+
+Mazmot 把应用列表存在 ever-cache 的 `mazmot` 命名空间下，`storage.apps` 是一个数组，每条记录至少包含：
+
+| 字段 | 说明 |
+| ---- | ---- |
+| `name` | 记录名（recordName），用作目录名与应用标识 |
+| `desc` | 应用描述 |
+| `source` | `"local"`（本地目录）/ `"virtual"`（虚拟目录，含分享安装）/ `"official"`（官方市场） |
+| `namespace` | 虚拟目录命名空间（虚拟/官方为 `mazmot-apps`） |
+| `handle` | 本地目录句柄（本地应用为原生 handle，虚拟/官方为 `null`） |
+| `dirName` | 虚拟目录全路径（如 `mazmot-apps/my-app`） |
+| `appId` | `` `${name}-${publisherUserId}` ``，用于判定分享归属 |
+| `fileHash` | 应用包内容哈希（分享安装记录） |
+| `payloadHash` | 分享清单哈希（分享安装记录，即短链接里的 `h`） |
+| `officialId` | 官方应用 ID（官方市场记录） |
+| `createdAt` | 创建时间戳 |
+
+读写示例：
+
+```js
+import { storage } from "/nos/storage/main.js"; // 或 ever-cache 直接实例化
+const apps = (await storage.apps) || [];
+apps.push({ name: "my-app", source: "local", /* ... */ });
+await storage.setItem("apps", apps);
+```
+
+## 3. 应用运行 —— `/lib/app-runner.js`
 
 ```js
 import { getRunUrl, readAppFiles } from "/lib/app-runner.js";
 
-// 生成运行 URL：virtual/official → /$<ns>/<name>/client/index.html
-//                local           → mount(client) → /<mounted>/index.html
-const url = await getRunUrl(app); // 传运行时 app 对象（source/namespace/_handle/name/virtualDirName）
+// 生成运行 URL：
+//   virtual/official → /$mazmot-apps/{name}/client/index.html
+//   local           → mount(client/) → /{mounted}/index.html
+const url = await getRunUrl(app);
 
-// 递归读取应用文件（优先 client/，回退根目录），返回 [{path, content}]
+// 递归读取应用文件（优先 client/，回退根目录）
+// 返回 [{ path, content }]，path 已剥离 client/ 前缀
 const files = await readAppFiles(app._handle);
 ```
 
-`app` 对象至少需要：`source`（`"local"|"virtual"|"official"`）、`namespace`（虚拟）、`_handle`（本地/虚拟句柄）、`name` 或 `virtualDirName`。
+`getRunUrl` 的 `app` 参数需要：`source`、`namespace`（虚拟）、`_handle`（本地）以及 `name` / `virtualDirName` / `dirName` 之一。
 
-## 4. `share-mgr.js` — 分享发布 / 验签 / URL
+`readAppFiles` 是分享打包的前置步骤：它把应用目录平铺成 `{ path, content }` 数组。**只支持 UTF-8 文本文件**——二进制资源（图片 / 字体 / 音视频）无法进入分享 payload。
 
-[lib/share-mgr.js](../../lib/share-mgr.js)
+## 4. 应用分享（P2P）—— `/lib/share-mgr.js`
+
+基于 noneos-core `DataPublisher` 封装的"一键分享"层。
 
 ```js
 import {
-  PACKAGE_VERSION, SHARE_NAMESPACE, RESERVED_SHARE_KEYS,
   ensureUser, ensurePublisher, generateAppId,
-  buildPackageFile, buildSharePayloadFile,
   buildRunUrl, parseShareUrl, splitShareQuery,
   isPublicKeyOfUser,
   publishApp, unpublishApp,
 } from "/lib/share-mgr.js";
 
-// 一步发布：读文件→打包→publish 内容→publish 清单→拼短链接
+// 一步发布：读文件 → 打包 → publish 内容 → publish 分享清单 → 拼短链接
 const { shareUrl, appId, payloadHash, fileHash } =
   await publishApp(app, {
-    appId,                         // 可选，未传则自动 generateAppId
-    origin: location.origin,       // 可选
-    appParams: { room: "abc" },    // 应用业务参数（透传给应用，禁止用保留键 u/h）
-    onProgress: ({ phase, progress, text }) => { /* ... */ },
+    appId,                       // 可选，未传则自动 generateAppId
+    origin: location.origin,     // 可选
+    appParams: { room: "abc" },  // 应用业务参数（透传给应用）
+    onProgress: ({ phase, progress, text }) => {},
   });
 
-// URL 结构：{origin}/apps/run-app/?u=<userId>&h=<payloadHash>[&业务参数...]
-const parsed = parseShareUrl(location.search);           // { userId, payloadHash } | null
-const split  = splitShareQuery(location.search);         // { userId, payloadHash, appParams }
-
-// 撤销分享（只删 manifest，chunks 保留幂等复用）
+// 撤销分享（只删 manifest，保留 chunks 做幂等复用）
 await unpublishApp({ payloadHash, fileHash });
 ```
 
-**关键约束**：
+### 短链接结构
 
-- URL 保留键固定 `u` / `h`，其它 query 视为应用业务参数；`buildRunUrl` 的第 4 参数 `appParams` 即为透传参数。
-- `appId` = `` `${name}-${LocalUser.userId}` ``；`appId.endsWith("-" + currentUserId)` 判定 `isMine`。
-- 只支持 **UTF-8 文本文件**。二进制未来通过 `encoding: "base64"` 扩展，禁止私自塞 base64。
-- 发布者标签页必须保持在线，否则接收端拉不到剩余 chunk。
+```
+{origin}/apps/run-app/?u=<publisherUserId>&h=<payloadHash>[&应用业务参数...]
+```
 
-## 5. `run-app/lib/*` — 接收端工具函数
-
-只在 [apps/run-app/run-app.html](../../apps/run-app/run-app.html) 内使用；写测试时可直接 import 纯函数。
+- **保留键固定为 `u` / `h`**，其它 query 视为应用业务参数。
+- `u` = 发布者 userId（公钥 sha256_hex）；`h` = 分享清单内容哈希。
+- 接收端按 `connectUser → requestManifest(h) → 校验签名者 → 逐块下载 → 组装写入` 的顺序处理，任何一步失败即进错误页。
 
 ```js
-// run-app-utils.js —— 纯函数
-import { formatStatus, buildErrorDetail, mapAppProgress,
-         mapCoreInstallProgress } from "/apps/run-app/lib/run-app-utils.js";
+// URL 解析
+parseShareUrl(location.search);   // { userId, payloadHash } | null（缺一即 null）
+splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远完整返回）
+```
 
-formatStatus("下载中...", 3, 9);    // "3/9 · 下载中..."
-buildErrorDetail(err);              // 拼装 name/message/code/cause/stack 多行文本
-mapAppProgress(oldPct, coreEnd);    // 把 5-100 映射到 coreEnd-100
-mapCoreInstallProgress(step, total, coreEnd);
+### 关键约束
 
-// connection.js
-import { ensureServerConnected, waitForRtcReady,
-         requestChunkWithRetry, formatPathHint,
-         readHandshakeStatus } from "/apps/run-app/lib/connection.js";
+- **只支持 UTF-8 文本文件**。二进制未来通过 `app.json` 加 `encoding: "base64"` 字段扩展，禁止私自塞 base64。
+- **发布者必须在线**。接收端从发布者 IndexedDB 拉 chunk，发布者标签页关闭后未拉完的 chunk 无法继续。
+- `appId` = `` `${name}-${userId}` ``；`appId.endsWith("-" + currentUserId)` 用于判定"是不是我自己分享的"（自我分享可跳过安装）。
 
-await ensureServerConnected(user, { timeout: 2000 });
-await waitForRtcReady(remoteUser, 3000);
-await requestChunkWithRetry(publisher, remoteUser, hash,
-  { retries: 3, onAttemptFail: ({attempt, err}) => {} });
-const status = await readHandshakeStatus(user, remoteUser); // { url, connected, rtt }
+## 5. 应用模板（创建新应用）
 
-// install-flow.js
-import { fetchSharePayload, findInstalled,
-         installAppPackage } from "/apps/run-app/lib/install-flow.js";
+Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。
+
+```js
+import {
+  loadTemplates, buildTemplateFiles, writeTemplateFiles,
+} from "/apps/main/home/template-writer.js";
+
+// 加载模板列表（读 templates/manifest.json + 各 __template.json）
+const list = await loadTemplates(); // [{ id, name, desc }]
+
+// 生成文件列表（不写盘）
+const files = await buildTemplateFiles({
+  name: "my-app",
+  desc: "描述",
+  templateId: "base",  // "base" | "share-link" | "service-chat"
+});
+
+// 写入目标目录（自动创建 client/）
+await writeTemplateFiles({
+  dirHandle,           // noneos-core DirHandle
+  name, desc,
+  templateId: "base",
+  onProgress: p => {}, // { index, total, path, status, progress }
+});
+```
+
+`__template.json` 的 `replacements[].to` 支持变量：`APP_NAME` / `APP_NAMESPACE` / `APP_DESC` / `APP_DESC_HTML` / `APP_DESC_JSON` / `CREATED_AT`。
+
+**新增模板必须在 `templates/manifest.json` 登记 id。**
+
+## 6. 官方应用（应用市场）
+
+官方应用位于 `official-apps/<id>/`，结构同模板，清单文件名为 `__app.json`。
+
+```js
+import {
+  loadOfficialApps, installOfficialApp,
+} from "/apps/main/home/official-app-writer.js";
+
+const list = await loadOfficialApps(); // [{ id, name, icon, desc }]
+
+const result = await installOfficialApp({
+  dirHandle,     // 虚拟目录句柄
+  appId: "hello-world",
+  onProgress: p => {},
+});
+// 返回 { name, desc, icon, files }
+```
+
+官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
+
+## 7. 应用打开状态追踪 —— `/apps/main/home/app-status.js`
+
+跨标签页追踪"哪些应用窗口还活着"，基于 `BroadcastChannel("mazmot-app-status")`。
+
+```js
+import {
+  startAppStatusWatcher,
+  markOpened, clearOpened, focusIfOpened, isWindowAlive,
+} from "/apps/main/home/app-status.js";
+
+const stop = startAppStatusWatcher({
+  onAlive: name => {},        // 收到 alive/pong
+  onBye:   name => {},        // 收到 bye
+  onTick:  aliveNames => {},  // 每 2s 探测后回调
+});
+
+const win = window.open(runUrl);
+markOpened(app.name, win);           // 记录窗口引用
+if (focusIfOpened(app.name)) return; // 已打开则聚焦
+clearOpened(app.name);               // 删除时清理
+```
+
+这是 Mazmot 唯一允许直连 `localStorage`（键 `mazmot-opened-apps`）的场景，用于跨刷新恢复 UI 状态。其它持久化请用 ever-cache。
+
+## 8. run-app 接收端工具函数
+
+仅在 `/apps/run-app/` 内使用，写测试时可 import 纯函数：
+
+```js
+// /apps/run-app/lib/run-app-utils.js —— 纯函数（不依赖 DOM / 网络）
+import {
+  formatStatus, buildErrorDetail,
+  mapAppProgress, mapCoreInstallProgress,
+  findAppRecord, filterOtherApps, formatOtherAppEntry,
+  findByPayloadHash, shouldSkipInstall,
+  buildAppUrlWithParams,
+} from "/apps/run-app/lib/run-app-utils.js";
+
+formatStatus("下载中", 3, 9);          // "3/9 · 下载中"
+buildAppUrlWithParams(baseUrl, appParams); // 把业务参数拼到应用入口 URL
+shouldSkipInstall(installed, payload, isSelfShare); // 是否可跳过安装
+```
+
+```js
+// /apps/run-app/lib/install-flow.js —— 安装流程（依赖通过参数注入）
+import {
+  fetchSharePayload, findInstalled, installAppPackage,
+} from "/apps/run-app/lib/install-flow.js";
 
 const payload = await fetchSharePayload({
   publisher, remoteUser, payloadHash, publisherUserId,
   isPublicKeyOfUser, onEvent: e => {},
 });
-const hit = await findInstalled(payload, { storage, init, findAppRecord });
+
 const recordName = await installAppPackage({
   publisher, remoteUser, payload, payloadHash,
-  existingRecord: hit?.record, storage, init,
-  PACKAGE_VERSION, onEvent: e => {},
+  existingRecord: hit?.record,
+  storage, init, PACKAGE_VERSION,
+  onEvent: e => {},
 });
+
 location.replace(`/$mazmot-apps/${recordName}/client/index.html`);
 ```
 
-**不要吞错**：任何步骤抛错都应交给 `fail(title, err)` 进入错误页并 `console.error(err)`；禁止用 try/catch 静默。
+**不要吞错**：任何步骤抛错都应交给 `fail(title, err)` 进入错误页并 `console.error(err)`，禁止 try/catch 静默。
 
-## 6. 模板 / 官方应用写入
+## 9. 测试（sibyl-test）
 
-```js
-// template-writer.js
-import { loadTemplates, buildTemplateFiles,
-         writeTemplateFiles } from "/apps/main/home/template-writer.js";
-
-const list  = await loadTemplates();  // 读 templates/manifest.json + 每个 __template.json
-const files = await buildTemplateFiles({ name, desc, templateId: "base" });
-await writeTemplateFiles({
-  dirHandle,           // 目标目录（本地或虚拟），会自动创建 client/
-  name, desc,
-  templateId: "base",  // "base" | "share-link" | "service-chat"
-  onProgress: p => {}, // { index, total, path, status, progress }
-});
-```
-
-`__template.json` 中 `replacements[].to` 支持变量：`APP_NAME` / `APP_NAMESPACE` / `APP_DESC` / `APP_DESC_HTML` / `APP_DESC_JSON` / `CREATED_AT`。
-
-官方应用（应用市场）用法类似，见 [official-app-writer.js](../../apps/main/home/official-app-writer.js)。**新增模板/官方应用必须在对应 `manifest.json` 登记 id。**
-
-## 7. 应用打开状态追踪
-
-```js
-import {
-  getBroadcast, startAppStatusWatcher,
-  markOpened, clearOpened, focusIfOpened, isWindowAlive,
-} from "/apps/main/home/app-status.js";
-
-const stop = startAppStatusWatcher({
-  onAlive: name => {},
-  onBye:   name => {},
-  onTick:  aliveNames => {},   // 每 2s
-});
-
-const win = window.open(runUrl);
-markOpened(app.name, win);
-if (focusIfOpened(app.name)) return;
-clearOpened(app.name);
-```
-
-底层依赖 `BroadcastChannel("mazmot-app-status")` + `localStorage["mazmot-opened-apps"]`。**这是唯一允许直连 `localStorage` 的场景**；其它持久化必须用 `ever-cache`。
-
-## 8. 本地存储 —— EverCache
-
-```js
-import { EverCache } from "https://cdn.jsdelivr.net/npm/ever-cache/dist/ever-cache.mjs";
-const storage = new EverCache("mazmot");
-const apps = (await storage.apps) || [];
-await storage.setItem("apps", apps);
-```
-
-Mazmot 使用的 namespace：
-
-| namespace | 用途 |
-| --------- | ---- |
-| `mazmot` | 主 `apps[]` 列表等核心数据 |
-| `mazmot-rnd-box` | `<m-rnd-box>` 位置/尺寸/focus 持久化 |
-| `mazmot-rdn-network` | `<rdn-network>` collapsed 状态 |
-
-**新增组件请用独立 namespace（`mazmot-<组件名>`），禁止污染 `mazmot`。**
-
-## 9. `apps[]` 记录字段（写入前必读）
-
-持久化时至少包含：`name`（`/^[A-Za-z0-9_-]+$/`）、`desc`、`handle`（本地存原生 handle，虚拟/官方为 null）、`dirName`、`source`（`"local"|"virtual"|"official"`）、`namespace`、`appId`、`autoShare`、`createdAt`。经 run-app 安装的另带 `fileHash`、`payloadHash`。官方应用另带 `officialId`。
-
-**新增字段必须同步**：`share-mgr.js` 的 payload `meta`（若参与分享）、[home.html](../../apps/main/home.html) `loadApps` 运行时装配、[add-app.html](../../apps/main/home/add-app.html) 写入、[CONTEXT.md](../../CONTEXT.md) 数据模型章节。
-
-## 10. UI 组件
+Mazmot 的每个库模块都配有 `.sb.html` 测试，测试 API 形如：
 
 ```html
-<!-- 图标：业务只用 n-icon，禁止直接调 iconify-icon -->
-<l-m src="/nos/n-icon/n-icon.html"></l-m>
-<n-icon icon="mdi:share-variant"></n-icon>
-
-<!-- 二维码 -->
-<l-m src="/comps/ercode/ercode.html"></l-m>
-<m-ercode content="https://..."></m-ercode>
-
-<!-- 可拖拽缩放浮盒 -->
-<l-m src="/comps/rnd-box/rnd-box.html"></l-m>
-<m-rnd-box movable resizable auto-save-id="my-panel"
-           x="20" y="20" width="360" height="240"></m-rnd-box>
-
-<!-- 浮窗式网络面板（主应用挂载） -->
-<l-m src="/comps/rdn-network/rdn-network.html"></l-m>
-<rdn-network></rdn-network>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>xxx 单元测试</title>
+    <script type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
+  </head>
+  <body>
+    <sb-test name="用例标题">
+      <template>
+        <script type="module">
+          import { getRunUrl } from "../app-runner.js";
+          {
+            const url = await getRunUrl({
+              source: "virtual",
+              namespace: "mazmot-apps",
+              name: "demo-app",
+            });
+            return {
+              assert: url === "/$mazmot-apps/demo-app/client/index.html",
+              content: { url },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
 ```
 
-CSS 选择器统一用 `n-icon`（不要选 `iconify-icon`）。Punch-UI 组件按需 `<l-m>` 加载，遵循 §0 URL 规范。
+### Mazmot 测试约定
 
-## 11. ofa.js 主入口配置
+- **位置**：被测模块同级 `test/` 子目录，文件名与被测模块同名（如 `app-runner.js` → `test/app-runner.sb.html`）。
+- **结构**：每个 `<sb-test name="...">` 内一个 `<template><script type="module">`，返回 `{ assert: boolean, content: any }`。
+- **import 路径**：从测试文件相对引用被测模块（`../app-runner.js`）；如需 noneos-core 能力（如 `init`），顶层 `import "/nos/fs/main.js"` 在测试页可用（测试页打开时 Core 应已就绪）。
+- **运行**：`npx sb-test -f <路径>.sb.html --browsers chrome`（快速）/ `npm test`（多浏览器）。
+- **前置条件**：测试页需要 Core 已装才能打开涉及 `/nos/*` 的用例；先访问 `/` 让 `<nos-version auto-install>` 装完再进测试页。
 
-```js
-// apps/main/app-config.js  —— Core 已就绪时可以顶层 init
-import { init } from "/nos/fs/main.js";
-await init("mazmot");
-export const home = "./home.html";
-export const pageAnime = { current: {...}, next: {...}, previous: {...} };
-```
+### 测试 Mazmot API 的典型模式
 
-```js
-// apps/run-app/app-config.js —— 不 init，Core 由 run-app.html 自装
-export const home = "./run-app.html";
-```
+- **纯函数**（`run-app-utils.js`、`share-mgr.js` 的 URL 拼装 / 解析）：直接 import，断言返回值。
+- **依赖文件系统的函数**（`readAppFiles`）：在测试内 `await init("mazmot-test-apps")` 建临时目录、写文件、调被测函数、断言结果。
+- **依赖 P2P 网络的函数**（`publishApp`、`fetchSharePayload`）：拆成纯函数 + 注入依赖的形式单测，端到端流程留给手动验证。
 
-## 12. 测试（sibyl-test）
+## 10. 能力边界（什么不做）
 
-- 测试文件形如 `xxx.sb.html`，跟随被测模块放到同级 `test/` 子目录，与被测模块同名。
-- 测试页头必须引 `sibyl-test`：
-  ```html
-  <script type="module"
-    src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
-  ```
-- 单个测试用 `<sb-test name="..."><template><script type="module">...</script></template></sb-test>`，返回 `{ assert, content }`。
-- 运行：`npx sb-test -f <路径>.sb.html --browsers chrome`（快速）/ `npm test`（多浏览器）。
-- **CI 跑三浏览器矩阵**（Chrome/Firefox/WebKit），一种通过不等于全绿。
-- 测试页需要 **Core 已装** 才可打开；先访问 `/` 让 `<nos-version auto-install>` 装完再进测试页。
-- 写测试前必须查 `sibyl-test` 技能。
-
-## 13. 硬约束（AI 必须遵守）
-
-1. 语法只能是 **ofa.js**：`<o-if>` / `<o-fill>` / `on:click` / `proto` / `data` / `sync:` / `:style.`，禁止 Vue / React 语法。
-2. 依赖 URL 严格遵守 §0；违反 → 首次访问白屏。
-3. 存储只能用 EverCache（唯一例外见 §7）；图标只能用 `<n-icon>`。
-4. 分享保留键固定 `u/h`，不得新增；只支持 UTF-8 文本文件。
-5. 修改文件 / API / 数据结构 / 流程 / 应用 / 组件 → **必须同步** [CONTEXT.md](../../CONTEXT.md)（目录树 / 速查 / 数据模型 / 流程图）。
-6. 只记当前架构，不写"改造前 / 已废弃 / 未来"等冗余；历史进 git commit。
-7. 文档 / 注释 / 配置里禁用 `file://` 路径，用仓库相对路径。
-8. 写完测试前先询问是否运行；测试前必查 `sibyl-test` 技能；触及 ofa.js / Punch-UI / NoneOS Core / ever-cache 前查各自技能。
-
-## 14. 上游技能包（本地缺失时导入）
-
-- ofajs-docs: https://github.com/ofajs/ofa.js/tree/main/skills/ofajs-docs
-- noneos-core-docs: https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs
-- ever-cache: https://github.com/kirakiray/ever-cache/blob/main/skills/ever-cache/SKILL.md
-- sibyl-test: https://raw.githubusercontent.com/ofajs/sibyl-test/refs/heads/main/skills/sibyl-test/SKILL.md
-
-导入 zip 时必须包含 `references/` 与 `assets/` 全部文件。
+- **不重新封装 noneos-core**：`fs` / `user` / `DataPublisher` / `n-icon` 等 API 直接按 noneos-core 文档调用，Mazmot 只在上层（`share-mgr.js` 等）做业务编排。
+- **不支持二进制分享**：当前只支持 UTF-8 文本文件（见 §3 / §4）。
+- **应用不跑在沙箱**：应用直接在主域通过 NoneOS 挂载路径运行，没有 iframe 容器。
