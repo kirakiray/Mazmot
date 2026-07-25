@@ -20,7 +20,7 @@
 
 | 角色       | 进入方式                       | 职责                                                                                  |
 | ---------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| 发起方 host | 直接打开应用（URL 无 `host` 参数） | 注册服务 → 生成分享链接（带 `appParams.host = myUserId`）→ 收到对端首条消息后启动 ping 循环 |
+| 发起方 host | 直接打开应用（URL 无 `host` 参数） | 注册服务 → **自动生成**分享链接（带 `appParams.host = myUserId`）→ 收到对端首条消息后启动 ping 循环 |
 | 接收方 customer | 打开带 `?host=<userId>` 的链接   | 注册服务 → `connectUser(hostUserId)` → 在线检测通过后启动 pong 循环                    |
 
 - 消息载荷固定为 `{ kind: "ping" \| "pong", time: <HH:MM:SS>, emoji: <随机 emoji> }`，host 发 ping，customer 发 pong。`kind` 是角色标识（协议层），`emoji` 是实际展示的对话内容，从内置 `EMOJIS` 数组（40 个常用表情/动物/水果/活动 emoji）中随机挑选。
@@ -125,14 +125,19 @@
 ### 2. 发起方初始化（`initHost`）
 
 1. `registerService(SERVICE_ID, { onMessage })`。
-2. UI 显示"生成链接"按钮，等待接收方第一条消息到达。
-3. 首条消息到达时：
+2. **自动触发** `generateLink()`（fire-and-forget，不阻塞服务注册）：
+   - `hostStatus` 切到「正在自动生成连接...」；
+   - 生成期间输入框 placeholder 显示「正在自动生成链接...」，按钮文案固定为「复制」并禁用；
+   - 生成完成后 `shareUrl` 写入输入框展示；
+   - 失败时 `genStatus` 显示错误信息（不影响服务注册与消息接收）。
+3. UI 等待接收方第一条消息到达。
+4. 首条消息到达时：
    - 写入 `_customerUserId` / `_customerRemote` / `peerUserId`；
    - 置 `connected = true`、`hostStatus` 切到"已连接"；
    - 调用 `bindPeerEvents()` 绑定 `remote_user_*` / `rtt_update`；
    - 推一条 `[time] 对方（接收方）已上线` 的 `system` 日志；
    - `startPingLoop()` 启动心跳。
-4. 后续每条入站消息都推入日志、累加 `receivedCount`，并纠正 `peerOnline = true`。
+5. 后续每条入站消息都推入日志、累加 `receivedCount`，并纠正 `peerOnline = true`。
 
 ### 3. 接收方初始化（`initCustomer`）
 
@@ -164,14 +169,15 @@
 - `markPeerOnline(online)` 通过比较旧值避免重复推日志，状态切换时同步更新 `peerOnline` 与一条 `system` 类型日志。
 - 顶部徽章文案与样式由模板内联表达式根据 `peerOnline` + `myLinkType` 计算得出（`offline` / `rtc` / `relay` / 连接中）。
 
-### 6. 生成通信链接（`generateLink`，发起方专用）
+### 6. 生成通信链接（`generateLink`，发起方专用，自动触发）
 
 1. `parseSelfIdentity()` 从 `location.pathname`（格式 `/$<namespace>/<dirName>/client/index.html`）解析自身身份。
 2. 并行加载 `fs` / `ever-cache` / `share-mgr`。
 3. 从 `storage.apps` 找记录、缺 `appId` 则 `generateAppId` 并写回。
 4. `rootDir.get(dirName)` 取目录句柄，组装 `app` 对象。
 5. `publishApp(app, { appId, appParams: { host: myUserId }, onProgress })`。
-6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 复制到剪贴板并展示。
+6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 写入输入框展示，`genStatus` 提示「链接已生成，点击「复制」按钮分享给对方」。
+7. **不自动复制到剪贴板**——复制动作完全交给用户点击「复制」按钮触发（由 `handleCopyLink` 调用 `copyToClipboard`）。
 
 ### 7. 销毁（`detached`）
 

@@ -254,21 +254,21 @@
             type="text"
             readonly
             :value="shareUrl"
-            attr:placeholder="generating ? '正在生成链接...' : '点击右侧按钮生成通信链接'"
+            attr:placeholder="generating ? '正在自动生成链接...' : (shareUrl ? '链接已生成，可点击右侧按钮复制' : '等待自动生成链接...')"
             on:click="selectLinkInput($event)"
           />
           <button
             class="copy-btn"
             on:click="handleCopyLink"
-            attr:disabled="generating"
+            attr:disabled="generating || !shareUrl"
           >
-            {{generating ? '生成中' : (shareUrl ? '复制' : '生成链接')}}
+            {{generating ? '生成中' : '复制'}}
           </button>
         </div>
         <div class="gen-status">{{genStatus}}</div>
         <div class="my-id">你的ID：{{myUserId}}</div>
         <div class="tip">
-          点击「生成链接」会生成通信链接并自动复制到剪贴板。把链接分享给对方，对方打开后会以接收方身份与你建立点对点连接，随后双方将每 {{pingIntervalSec}} 秒互发一条 ping / pong + 时间字符串，演示应用之间的数据通信。
+          进入应用后会自动生成通信链接并展示在上方输入框。把链接分享给对方，对方打开后会以接收方身份与你建立点对点连接，随后双方将每 {{pingIntervalSec}} 秒互发一条随机 emoji，演示应用之间的数据通信。
           <br />注意：你需要保持此应用打开，对方才能连接到你。
         </div>
       </div>
@@ -386,10 +386,9 @@
             }
           },
 
-          // ===== 推送一条通信日志 =====
+          // ===== 推送一条通信日志（最新置顶，无需滚动）=====
           pushLog(text, type) {
-            this.logs.push({ text, type });
-            this.scrollToBottom();
+            this.logs.unshift({ text, type });
           },
 
           // ===== 发起方：每 PING_INTERVAL 毫秒向接收方发一条 ping + 随机 emoji =====
@@ -472,7 +471,7 @@
           // ===== 发起方初始化 =====
           initHost() {
             this.role = "host";
-            this.hostStatus = "等待接收方连接...";
+            this.hostStatus = "正在自动生成连接...";
 
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
@@ -503,6 +502,13 @@
                 // 收到消息说明对方在线，纠正一下状态
                 if (!self.peerOnline) self.markPeerOnline(true);
               },
+            });
+
+            // 后台自动生成连接链接（不阻塞服务注册）
+            // 注意：浏览器剪贴板 API 要求用户手势，自动调用可能无法写入剪贴板，
+            // 因此生成后只展示链接，复制动作仍由用户点击「复制」按钮完成。
+            this.generateLink().catch((err) => {
+              console.error("自动生成链接失败：", err);
             });
           },
 
@@ -691,10 +697,8 @@
                 await storage.setItem("apps", apps);
               }
 
-              // 复制到剪贴板
-              await this.copyToClipboard(shareUrl);
               this.shareUrl = shareUrl;
-              this.genStatus = "链接已复制到剪贴板，快去分享吧！";
+              this.genStatus = "链接已生成，点击「复制」按钮分享给对方";
             } catch (err) {
               console.error("生成通信链接失败：", err);
               this.genStatus = "失败：" + (err.message || err);
@@ -703,15 +707,11 @@
             }
           },
 
-          // ===== 复制按钮点击：已有链接直接复制，否则先生成 =====
+          // ===== 复制按钮点击：把已生成的链接复制到剪贴板 =====
           async handleCopyLink() {
-            if (this.generating) return;
-            if (this.shareUrl) {
-              await this.copyToClipboard(this.shareUrl);
-              this.genStatus = "已复制到剪贴板";
-              return;
-            }
-            await this.generateLink();
+            if (this.generating || !this.shareUrl) return;
+            await this.copyToClipboard(this.shareUrl);
+            this.genStatus = "已复制到剪贴板";
           },
 
           // ===== 点击链接输入框时全选，方便手动复制 =====
@@ -753,13 +753,6 @@
             } catch (_) {
               // 忽略复制失败
             }
-          },
-
-          scrollToBottom() {
-            setTimeout(() => {
-              const box = this.shadow.$("#log-box");
-              if (box) box.ele.scrollTop = box.ele.scrollHeight;
-            }, 50);
           },
         },
 
