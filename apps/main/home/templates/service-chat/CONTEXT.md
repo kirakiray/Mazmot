@@ -17,7 +17,7 @@
 
 ## 常量
 
-- `NAMESPACE = "service-chat"`：服务商与客户必须一致的 NoneOS Core 用户命名空间。
+- `NAMESPACE = "mazmot"`：服务商与客户必须一致的 NoneOS Core 用户命名空间，直接复用项目默认命名空间。
 - `SERVICE_ID = "chat"`：消息服务 ID；`registerService` / `sendToService` 均使用它。
 
 ## 角色判定

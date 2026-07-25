@@ -18,7 +18,7 @@
 
 聊天基于 `getUser(NAMESPACE)` 拿到的 NoneOS Core 用户对象。修改 [pages/home.html](pages/home.html) 时注意：
 
-1. **NAMESPACE 必须一致**：模板默认 `"service-chat"`。服务商与客户必须处于同一 namespace 才能互相发现。改 namespace 就要两端同改，否则 `connectUser` 会失败。
+1. **NAMESPACE 必须一致**：模板默认 `"mazmot"`（项目默认命名空间）。服务商与客户必须处于同一 namespace 才能互相发现。改 namespace 就要两端同改，否则 `connectUser` 会失败。
 2. **SERVICE_ID 必须一致**：模板默认 `"chat"`。`registerService(SERVICE_ID, { onMessage })` 与 `sendToService(SERVICE_ID, ...)` 需成对匹配。
 3. **user 对象非响应式**：`this._user = user` 必须用 `_` 前缀，否则会被 ofa.js 代理后丢失原型方法（同理 `_remoteUser` / `_customerRemote` / `_svc`）。
 4. **detached 必须反注册**：模板已在 `detached()` 里调用 `this._svc.unregister()`；新增服务时保持同一模式，避免僵尸监听。
