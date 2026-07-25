@@ -1,0 +1,814 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+    }
+
+    /* ===== 顶部标题栏 ===== */
+    .header {
+      padding: 14px 20px;
+      background: var(--md-sys-color-surface-container);
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      text-align: center;
+      flex-shrink: 0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      letter-spacing: 0.3px;
+    }
+    .header .status-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 4px;
+    }
+
+    /* ===== 居中区域（房间方等待界面）===== */
+    .center-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .link-bar {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 12px;
+    }
+    .link-bar input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 24px;
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .link-bar input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .copy-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 24px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity 0.15s ease;
+    }
+    .copy-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .copy-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .gen-status {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 8px;
+      min-height: 18px;
+    }
+    .my-id {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 20px;
+      padding: 6px 12px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 8px;
+      word-break: break-all;
+      max-width: 320px;
+    }
+    .tip {
+      margin-top: 16px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-tertiary-container);
+      background: var(--md-sys-color-tertiary-container);
+      border-radius: 12px;
+      max-width: 360px;
+      text-align: left;
+    }
+
+    /* ===== 游戏区 ===== */
+    .game-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      gap: 20px;
+    }
+
+    /* 回合指示器 */
+    .turn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 18px;
+      border-radius: 24px;
+      background: var(--md-sys-color-surface-container);
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .turn-indicator .mark-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .turn-indicator .mark-badge[type="X"] {
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    .turn-indicator .mark-badge[type="O"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .turn-indicator .my-badge {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+    }
+
+    /* 棋盘 */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
+      width: min(78vw, 320px);
+      height: min(78vw, 320px);
+    }
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--md-sys-color-surface-container);
+      border: 2px solid transparent;
+      border-radius: 14px;
+      font-size: 44px;
+      font-weight: 700;
+      cursor: pointer;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        transform 0.1s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cell:active:not([disabled]) {
+      transform: scale(0.97);
+    }
+    .cell[disabled] {
+      cursor: default;
+    }
+    .cell[type="X"] {
+      color: var(--md-sys-color-primary);
+    }
+    .cell[type="O"] {
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    /* 高亮获胜的三个格子 */
+    .cell.win {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      border-color: var(--md-sys-color-primary);
+    }
+
+    /* 重开按钮 */
+    .restart-btn {
+      padding: 12px 28px;
+      border: none;
+      border-radius: 24px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .restart-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .restart-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ===== 结果横幅 ===== */
+    .result-banner {
+      padding: 14px 20px;
+      border-radius: 16px;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 600;
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      animation: bannerIn 0.25s ease-out;
+    }
+    @keyframes bannerIn {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ===== 比分 ===== */
+    .score-bar {
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 16px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container);
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .score-bar span {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+  </style>
+
+  <!-- 房间方模式（host）-->
+  <o-if :value="role === 'host'">
+    <div class="header">
+      <h2>🎮 Mazmot Tic-Tac-Toe（房间方）</h2>
+      <div class="status-text">{{hostStatus}}</div>
+    </div>
+
+    <!-- 还没有对手：显示分享链接 -->
+    <o-if :value="!connected">
+      <div class="center-area">
+        <div class="link-bar">
+          <input
+            type="text"
+            readonly
+            :value="shareUrl"
+            attr:placeholder="generating ? '正在生成链接...' : '点击右侧按钮生成对战链接'"
+            on:click="selectLinkInput($event)"
+          />
+          <button
+            class="copy-btn"
+            on:click="handleCopyLink"
+            attr:disabled="generating"
+          >
+            {{generating ? '生成中' : (shareUrl ? '复制' : '生成链接')}}
+          </button>
+        </div>
+        <div class="gen-status">{{genStatus}}</div>
+        <div class="my-id">你的ID：{{myUserId}}（执 X，先手）</div>
+        <div class="tip">
+          点击「生成链接」生成对战链接并自动复制到剪贴板。把链接分享给对方，对方打开后会以加入方身份（执 O）与你进行一局井字棋对战，演示应用间的双向数据通信。
+          <br />注意：你需要保持此应用打开，对方才能与你对战。
+        </div>
+      </div>
+    </o-if>
+
+    <!-- 已连接：显示棋盘 -->
+    <o-if :value="connected">
+      <div class="game-area">
+        <div class="turn-indicator">
+          <span>当前回合：</span>
+          <span class="mark-badge" attr:type="currentTurn">{{currentTurn}}</span>
+          <span class="my-badge">（你执 X）</span>
+        </div>
+
+        <o-if :value="result">
+          <div class="result-banner">{{resultText}}</div>
+        </o-if>
+
+        <div class="board">
+          <o-fill :value="board">
+            <button
+              class="cell"
+              attr:type="$data || ''"
+              attr:disabled="!$host.canPlaceAt($index)"
+              class:win="$host.isWinCell($index)"
+              on:click="$host.placeAt($index)"
+            >{{$data}}</button>
+          </o-fill>
+        </div>
+
+        <button
+          class="restart-btn"
+          on:click="requestRestart"
+          attr:disabled="!result"
+        >再来一局</button>
+      </div>
+    </o-if>
+  </o-if>
+
+  <!-- 加入方模式（customer）-->
+  <o-if :value="role === 'customer'">
+    <div class="header">
+      <h2>🎮 应用间对战（加入方）</h2>
+      <div class="status-text">{{customerStatus}}</div>
+    </div>
+    <div class="game-area">
+      <div class="turn-indicator">
+        <span>当前回合：</span>
+        <span class="mark-badge" attr:type="currentTurn">{{currentTurn}}</span>
+        <span class="my-badge">（你执 O）</span>
+      </div>
+
+      <o-if :value="result">
+        <div class="result-banner">{{resultText}}</div>
+      </o-if>
+
+      <div class="board">
+        <o-fill :value="board">
+          <button
+            class="cell"
+            attr:type="$data || ''"
+            attr:disabled="!$host.canPlaceAt($index)"
+            class:win="$host.isWinCell($index)"
+            on:click="$host.placeAt($index)"
+          >{{$data}}</button>
+        </o-fill>
+      </div>
+
+      <button
+        class="restart-btn"
+        on:click="requestRestart"
+        attr:disabled="!result"
+      >再来一局</button>
+    </div>
+  </o-if>
+
+  <!-- 加载中 -->
+  <o-if :value="role === 'loading'">
+    <div class="center-area">
+      <div class="gen-status">正在初始化...</div>
+    </div>
+  </o-if>
+
+  <!-- 比分条（房间方连接后 / 加入方均显示）-->
+  <o-if :value="role !== 'loading' && connected">
+    <div class="score-bar">
+      <span>🏆 {{scoreText}}</span>
+      <span>局数：{{rounds}}</span>
+    </div>
+  </o-if>
+
+  <script>
+    export default async ({ load }) => {
+      // 房间方与加入方必须使用同一个 namespace 才能互相发现
+      // 沿用项目默认命名空间 "mazmot"（与 lib/share-mgr.js 一致）
+      const NAMESPACE = "mazmot";
+      const SERVICE_ID = "tic-tac-toe";
+
+      // 八条获胜线（行 / 列 / 对角）
+      const WIN_LINES = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+      ];
+
+      // 角色判断：URL 带 host 参数 → 加入方模式
+      const sp = new URLSearchParams(location.search);
+      const hostUserId = sp.get("host") || "";
+      const isCustomer = !!hostUserId;
+
+      return {
+        data: {
+          role: "loading",
+          myUserId: "",
+          hostUserId,
+          connected: false, // 是否已建立对战连接
+          // 棋盘：长度 9，元素为 "" / "X" / "O"
+          board: ["", "", "", "", "", "", "", "", ""],
+          // 当前回合 "X" / "O"
+          currentTurn: "X",
+          // 对局结果：null / "X" / "O" / "draw"
+          result: null,
+          // 我方棋子标记
+          myMark: "",
+          // 比分
+          scoreX: 0,
+          scoreO: 0,
+          rounds: 0,
+          // 房间方状态
+          hostStatus: "",
+          generating: false,
+          genStatus: "",
+          shareUrl: "",
+          // 加入方状态
+          customerStatus: "正在连接房间方...",
+        },
+
+        proto: {
+          // ===== 计算属性：结果文案 =====
+          get resultText() {
+            if (!this.result) return "";
+            if (this.result === "draw") return "平局！";
+            const isMine = this.result === this.myMark;
+            return isMine ? "你赢了 🎉" : "你输了 😅";
+          },
+
+          // ===== 计算属性：比分文案 =====
+          get scoreText() {
+            return `${this.scoreX} : ${this.scoreO}`;
+          },
+
+          // ===== 判断某格是否可落子 =====
+          canPlaceAt(index) {
+            // 已结束或未连接：全部不可点
+            if (!this.connected || this.result) return false;
+            // 只有自己的回合 + 空格可点
+            if (this.currentTurn !== this.myMark) return false;
+            return this.board[index] === "";
+          },
+
+          // ===== 判断某格是否属于获胜线（用于高亮）=====
+          isWinCell(index) {
+            return !!this.winLine && this.winLine.indexOf(index) !== -1;
+          },
+
+          // ===== 我方落子（UI 触发）=====
+          async placeAt(index) {
+            if (!this.canPlaceAt(index)) return;
+            const mark = this.myMark;
+
+            // 本地先落子
+            this.board[index] = mark;
+            this.applyAfterMove(mark);
+            // 棋盘变更后，ofa.js 会自动重新渲染
+
+            // 同步给对端
+            try {
+              if (this.role === "host" && this._customerRemote) {
+                await this._customerRemote.sendToService(SERVICE_ID, {
+                  kind: "move",
+                  index,
+                  mark,
+                });
+              } else if (this.role === "customer" && this._remoteUser) {
+                await this._remoteUser.sendToService(SERVICE_ID, {
+                  kind: "move",
+                  index,
+                  mark,
+                });
+              }
+            } catch (err) {
+              console.error("同步落子失败：", err);
+            }
+          },
+
+          // ===== 落子后统一处理：切换回合 + 判定胜负 =====
+          applyAfterMove(placedMark) {
+            // 判定胜负
+            const winner = this.checkWinner();
+            if (winner) {
+              this.finishGame(winner);
+              return;
+            }
+            // 平局
+            if (this.board.every((c) => c !== "")) {
+              this.finishGame("draw");
+              return;
+            }
+            // 切换回合
+            this.currentTurn = placedMark === "X" ? "O" : "X";
+          },
+
+          // ===== 检查是否有胜者，返回 "X"/"O"/null，同时记录获胜线 =====
+          checkWinner() {
+            for (const line of WIN_LINES) {
+              const [a, b, c] = line;
+              const v = this.board[a];
+              if (v && v === this.board[b] && v === this.board[c]) {
+                this.winLine = line;
+                return v;
+              }
+            }
+            this.winLine = null;
+            return null;
+          },
+
+          // ===== 结束当前对局 =====
+          finishGame(result) {
+            this.result = result;
+            if (result === "X") this.scoreX++;
+            else if (result === "O") this.scoreO++;
+            this.rounds++;
+          },
+
+          // ===== 接收对端落子消息 =====
+          onRemoteMove(data) {
+            const { index, mark } = data || {};
+            if (typeof index !== "number" || index < 0 || index > 8) return;
+            if (mark !== "X" && mark !== "O") return;
+            if (this.board[index] !== "") return; // 防重复落子
+
+            this.board[index] = mark;
+            this.applyAfterMove(mark);
+          },
+
+          // ===== 接收对端重开请求 =====
+          onRemoteRestart() {
+            this.resetBoard();
+            // 若发起方请求重开，我方直接就绪
+          },
+
+          // ===== 重置棋盘 =====
+          resetBoard() {
+            this.board = ["", "", "", "", "", "", "", "", ""];
+            this.currentTurn = "X"; // X 永远先手
+            this.result = null;
+            this._winLine = null;
+          },
+
+          // ===== 点击「再来一局」：通知对端并重置 =====
+          async requestRestart() {
+            this.resetBoard();
+            try {
+              if (this.role === "host" && this._customerRemote) {
+                await this._customerRemote.sendToService(SERVICE_ID, {
+                  kind: "restart",
+                });
+              } else if (this.role === "customer" && this._remoteUser) {
+                await this._remoteUser.sendToService(SERVICE_ID, {
+                  kind: "restart",
+                });
+              }
+            } catch (err) {
+              console.error("通知重开失败：", err);
+            }
+          },
+
+          // ===== 房间方初始化 =====
+          initHost() {
+            this.role = "host";
+            this.myMark = "X"; // 房间方执 X 先手
+            this.hostStatus = "等待对手加入...";
+
+            const self = this;
+            this._svc = this._user.registerService(SERVICE_ID, {
+              onMessage(data, ctx) {
+                // 第一条消息到达时记录对端
+                if (!self._customerUserId) {
+                  self._customerUserId = ctx.fromUserId;
+                  self._customerRemote = ctx.remoteUser;
+                  self.hostStatus = "对手已加入，开始对战";
+                  self.connected = true;
+                }
+                self.handleIncoming(data);
+              },
+            });
+          },
+
+          // ===== 加入方初始化 =====
+          async initCustomer() {
+            this.role = "customer";
+            this.myMark = "O"; // 加入方执 O 后手
+
+            const self = this;
+            this._svc = this._user.registerService(SERVICE_ID, {
+              onMessage(data, ctx) {
+                self.handleIncoming(data);
+              },
+            });
+
+            try {
+              this.customerStatus = "正在连接房间方...";
+              const remote = await this._user.connectUser(this.hostUserId);
+              this._remoteUser = remote;
+
+              const online = await this._user.isRemoteUserOnline(
+                this.hostUserId,
+              );
+              if (online) {
+                this.customerStatus = "已连接，开始对战";
+                this.connected = true;
+                // 主动发一条 hello 让房间方知道自己已加入
+                await this._remoteUser.sendToService(SERVICE_ID, {
+                  kind: "hello",
+                  mark: this.myMark,
+                });
+              } else {
+                this.customerStatus = "房间方不在线，请稍后再试";
+              }
+            } catch (err) {
+              console.error("连接房间方失败：", err);
+              this.customerStatus = "连接失败：" + (err.message || err);
+            }
+          },
+
+          // ===== 统一处理收到的消息 =====
+          handleIncoming(data) {
+            if (!data || typeof data !== "object") return;
+            const { kind } = data;
+            if (kind === "move") {
+              this.onRemoteMove(data);
+            } else if (kind === "restart") {
+              this.onRemoteRestart();
+            } else if (kind === "hello") {
+              // 加入方上线通知，房间方无需特殊处理（connected 已在首条消息时置位）
+            }
+          },
+
+          // ===== 生成对战链接（房间方专用）=====
+          async generateLink() {
+            this.generating = true;
+            this.genStatus = "准备中...";
+
+            try {
+              const self = this.parseSelfIdentity();
+              if (!self) {
+                throw new Error("无法识别当前应用的目录路径");
+              }
+
+              this.genStatus = "加载依赖...";
+              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+                load("/nos/fs/main.js"),
+                load(
+                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+                ),
+                load("/lib/share-mgr.js"),
+              ]);
+              const { init } = fsMod;
+              const { storage } = cacheMod;
+              const { publishApp, generateAppId } = shareMgr;
+
+              const apps = (await storage.apps) || [];
+              const { dirName } = self;
+              const record =
+                apps.find(
+                  (a) =>
+                    a.name === dirName || a.virtualDirName === dirName,
+                ) ||
+                apps.find((a) =>
+                  a.dirName ? a.dirName.endsWith("/" + dirName) : false,
+                ) ||
+                null;
+
+              this.genStatus = "获取应用目录...";
+              const rootDir = await init(self.namespace);
+              const handle = await rootDir.get(dirName);
+
+              let appId = (record && record.appId) || "";
+              if (!appId) {
+                appId = await generateAppId(dirName);
+                if (record) {
+                  record.appId = appId;
+                  await storage.setItem("apps", apps);
+                }
+              }
+
+              const app = {
+                _handle: handle,
+                _recordName: dirName,
+                name: (record && record.name) || "Mazmot Tic-Tac-Toe",
+                version: (record && record.version) || "0.1.0",
+                desc: (record && record.desc) || "",
+                icon: (record && record.icon) || "🎮",
+                appId,
+              };
+
+              // 关键：把房间方的 userId 作为 host 参数带到链接里
+              this.genStatus = "发布到分享网络...";
+              const { shareUrl, payloadHash } = await publishApp(app, {
+                appId,
+                appParams: { host: this.myUserId },
+                onProgress: ({ text }) => {
+                  if (text) this.genStatus = text;
+                },
+              });
+
+              if (record && payloadHash) {
+                record.payloadHash = payloadHash;
+                await storage.setItem("apps", apps);
+              }
+
+              await this.copyToClipboard(shareUrl);
+              this.shareUrl = shareUrl;
+              this.genStatus = "链接已复制到剪贴板，快去邀请对手吧！";
+            } catch (err) {
+              console.error("生成对战链接失败：", err);
+              this.genStatus = "失败：" + (err.message || err);
+            } finally {
+              this.generating = false;
+            }
+          },
+
+          // ===== 复制按钮点击：已有链接直接复制，否则先生成 =====
+          async handleCopyLink() {
+            if (this.generating) return;
+            if (this.shareUrl) {
+              await this.copyToClipboard(this.shareUrl);
+              this.genStatus = "已复制到剪贴板";
+              return;
+            }
+            await this.generateLink();
+          },
+
+          // ===== 点击链接输入框时全选 =====
+          selectLinkInput(event) {
+            const el = event && event.target;
+            if (el && typeof el.select === "function") {
+              try {
+                el.select();
+              } catch (_) {}
+            }
+          },
+
+          // ===== 工具方法 =====
+          parseSelfIdentity() {
+            const m = location.pathname.match(
+              /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
+            );
+            if (!m) return null;
+            return { namespace: m[1], dirName: m[2] };
+          },
+
+          async copyToClipboard(text) {
+            try {
+              if (
+                navigator.clipboard &&
+                navigator.clipboard.writeText
+              ) {
+                await navigator.clipboard.writeText(text);
+              } else {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+              }
+            } catch (_) {
+              // 忽略复制失败
+            }
+          },
+        },
+
+        // ===== 生命周期 =====
+        async ready() {
+          try {
+            const { getUser } = await load("/nos/user/main.js");
+            const user = await getUser(NAMESPACE);
+            this._user = user; // 非响应式对象，必须用 _ 前缀
+            this.myUserId = user.userId;
+
+            if (isCustomer) {
+              await this.initCustomer();
+            } else {
+              await this.initHost();
+            }
+          } catch (err) {
+            console.error("初始化失败：", err);
+            this.role = "host";
+            this.hostStatus = "初始化失败：" + (err.message || err);
+          }
+        },
+
+        detached() {
+          if (this._svc) {
+            try {
+              this._svc.unregister();
+            } catch (_) {}
+          }
+        },
+      };
+    };
+  </script>
+</template>
