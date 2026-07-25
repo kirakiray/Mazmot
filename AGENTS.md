@@ -81,7 +81,8 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 - **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__template.json`（模板元数据 name/desc + 文件清单）+ 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id。
 - **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
-- **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/](apps/main/lib/)、[apps/run-app/lib/](apps/run-app/lib/)），与 UI 页面模块分离，便于单测。
+- **跨应用公共工具库**：`lib/`（参考 [lib/app-runner.js](lib/app-runner.js)、[lib/share-mgr.js](lib/share-mgr.js)），被多个应用（含模板）共享的纯逻辑模块；引用一律用绝对路径 `/lib/xxx.js`。
+- **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/official-app-state.js](apps/main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）、[ai/](ai/)（独立子项目）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
 
@@ -101,9 +102,9 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 
 应用分享基于 NoneOS Core `DataPublisher`（点对点，无后端）。修改分享相关代码必须遵守：
 
-- **只支持 UTF-8 文本文件**：[share-mgr.js](apps/main/lib/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
+- **只支持 UTF-8 文本文件**：[share-mgr.js](lib/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
 - **发布者必须在线**：接收端通过 `?u=<userId>&h=<payloadHash>` 短链接从发布者 IndexedDB 拉取 chunk。发布者标签页（`apps/main/`）一旦关闭，未拉完的 chunk 无法继续。设计分享相关 UI（如关闭提醒、断网重试）时以此为前提。
-- **URL 字段固定**：分享链接**只有 `u` 和 `h` 两个 query 参数**，其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](apps/main/lib/share-mgr.js) 的 `buildRunUrl` / `parseShareUrl` 前请先评估向后兼容。
+- **URL 字段固定**：分享链接**只有 `u` 和 `h` 两个 query 参数**，其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](lib/share-mgr.js) 的 `buildRunUrl` / `parseShareUrl` 前请先评估向后兼容。
 - **签名链不可省**：接收端验证顺序为 `connectUser` → `requestManifest`（内部 `verifyData`）→ `requestChunk`（内部 SHA-256）→ 显式 `isPublicKeyOfUser`。任何一步失败即进错误页，**不要**用 try/catch 吞错。
 
 

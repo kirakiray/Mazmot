@@ -76,14 +76,14 @@ const ok = (await getHash(mf.publicKey)) === expectedUserId;
 await deleteManifest("mazmot", payloadHash);
 ```
 
-> Mazmot 里请使用 [share-mgr.js](../../apps/main/lib/share-mgr.js) 已封装的函数，不要直接重复实现（见 §4）。
+> Mazmot 里请使用 [share-mgr.js](../../lib/share-mgr.js) 已封装的函数，不要直接重复实现（见 §4）。
 
 ## 3. `app-runner.js` — 应用运行 URL / 文件读取
 
-[apps/main/lib/app-runner.js](../../apps/main/lib/app-runner.js)
+[lib/app-runner.js](../../lib/app-runner.js)
 
 ```js
-import { getRunUrl, readAppFiles } from "/apps/main/lib/app-runner.js";
+import { getRunUrl, readAppFiles } from "/lib/app-runner.js";
 
 // 生成运行 URL：virtual/official → /$<ns>/<name>/client/index.html
 //                local           → mount(client) → /<mounted>/index.html
@@ -97,7 +97,7 @@ const files = await readAppFiles(app._handle);
 
 ## 4. `share-mgr.js` — 分享发布 / 验签 / URL
 
-[apps/main/lib/share-mgr.js](../../apps/main/lib/share-mgr.js)
+[lib/share-mgr.js](../../lib/share-mgr.js)
 
 ```js
 import {
@@ -107,7 +107,7 @@ import {
   buildRunUrl, parseShareUrl, splitShareQuery,
   isPublicKeyOfUser,
   publishApp, unpublishApp,
-} from "/apps/main/lib/share-mgr.js";
+} from "/lib/share-mgr.js";
 
 // 一步发布：读文件→打包→publish 内容→publish 清单→拼短链接
 const { shareUrl, appId, payloadHash, fileHash } =
