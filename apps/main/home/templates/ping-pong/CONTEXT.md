@@ -23,9 +23,9 @@
 | 发起方 host | 直接打开应用（URL 无 `host` 参数） | 注册服务 → 生成分享链接（带 `appParams.host = myUserId`）→ 收到对端首条消息后启动 ping 循环 |
 | 接收方 customer | 打开带 `?host=<userId>` 的链接   | 注册服务 → `connectUser(hostUserId)` → 在线检测通过后启动 pong 循环                    |
 
-- 消息载荷固定为 `{ kind: "ping" \| "pong", time: <HH:MM:SS> }`，host 发 ping，customer 发 pong。
+- 消息载荷固定为 `{ kind: "ping" \| "pong", time: <HH:MM:SS>, emoji: <随机 emoji> }`，host 发 ping，customer 发 pong。`kind` 是角色标识（协议层），`emoji` 是实际展示的对话内容，从内置 `EMOJIS` 数组（40 个常用表情/动物/水果/活动 emoji）中随机挑选。
 - 双方各自独立计时（默认 `PING_INTERVAL = 2000ms`），不依赖对方回复触发下一帧。
-- 接收方收到消息后只做日志记录与计数，不回发确认（无 ACK 协议）。
+- 接收方收到消息后只做日志记录与计数，不回发确认（无 ACK 协议）。接收日志展示 `[time] ← emoji`，发送日志展示 `[time] → emoji`；老版本消息不带 `emoji` 字段时回退显示 `kind`。
 
 ## 关键约定
 
@@ -64,14 +64,15 @@
 - `this._customerRemote` / `this._customerUserId`（发起方侧）：对端引用，首条消息到达时写入。
 - `this._remoteUser`（接收方侧）：`connectUser` 返回的远端对象。
 - `this._timer`：`setInterval` 句柄，`detached` 时 `clearInterval`。
-- `this._eventsBound`：是否已绑定 `remote_user_*` / `rtt_update` 事件，避免重复绑定。
-- `this._unbindConnected` / `this._unbindDisconnected` / `this._unbindRtt`：对应事件的解绑函数，`detached` 时依次调用。
+- `this._eventsBound`：是否已绑定 `remote_user_*` / `rtt_update` / `rtc_state` 事件，避免重复绑定。
+- `this._unbindConnected` / `this._unbindDisconnected` / `this._unbindRtt` / `this._unbindRtcState`：对应事件的解绑函数，`detached` 时依次调用。
 
 ## 模块常量
 
 - `NAMESPACE = "mazmot"`：与项目默认命名空间一致（`lib/share-mgr.js` 同名）。
 - `SERVICE_ID = "ping-pong"`：双方共同注册的服务标识。
 - `PING_INTERVAL = 2000`：双方各自发送消息的周期（毫秒）。
+- `EMOJIS`：对话内容候选 emoji 数组（40 项，含表情 / 动物 / 水果 / 活动 / 符号等），由 `proto.randomEmoji()` 随机返回。
 
 ## 依赖的外部 API
 
@@ -86,10 +87,12 @@
 - `user.bind(eventName, handler)`：监听事件，返回解绑函数。本模板使用以下事件：
   - `remote_user_connected`：`event.detail.{ userId, remoteUser, initiatedBy }`，主动 `connectUser` 成功或对端首条消息被动建连时触发。
   - `remote_user_disconnected`：`event.detail.{ userId, reason, error }`，主动 `disconnectUser` 或连接异常时触发。
-  - `rtt_update`：`event.detail.{ userId, sessionId, rtt, via }`，底层测量出 RTT 后触发，用于实时刷新连接方式。
+  - `rtt_update`：`event.detail.{ userId, sessionId, rtt, via }`，底层测量出 RTT 后触发，用于刷新 `myLinkType`。
+  - `rtc_state`：`event.detail.{ userId, sessionId, state }`，WebRTC DataChannel 状态变化时触发。`state === "connected"` 表示 RTC 协商成功、DataChannel 已 open，此时把 `myLinkType` 立即切到 `rtc`（避免等下一次 `sendToService` 返回才刷新徽章）；`disconnected` / `failed` / `closed` 时回退为 `relay`。
 - `remote.sendToService(serviceId, data, options?)`：向对端服务发消息；返回**结果数组**，每项形如 `{ status, delivered?, sessionId?, via? }`：
   - `status: "ok"` + `delivered: true`：送达，`via` 为 `"rtc"`（WebRTC 直连）或 `"server"`（服务器中转 = relay），本模板据此更新 `myLinkType`。
   - `status: "offline"` / `"error"` / `"discovery_failed"`：未送达，本模板据此将对端标记为离线并推下线日志。
+- **RTC 触发机制（重要）**：NoneOS Core 默认让首次发送走服务器中转，从第二次开始**在后台静默尝试 WebRTC 直连**，DataChannel 就绪后自动切到 RTC。因此徽章在握手初期显示「服务器中转」属正常现象，需有数次 ping/pong 往返 + ICE 协商完成（通常几秒到十几秒）后才会切到「WebRTC 直连」。若长期停留在 relay，通常是 NAT 穿透失败（对称型 NAT / UDP 被防火墙阻断 / 双端在同一 localhost 等场景），与上层应用代码无关。
 
 ### share-mgr（仓库根 `lib/share-mgr.js`）
 
@@ -156,7 +159,8 @@
 - 在握手成功后绑定（仅绑定一次，用 `_eventsBound` 防重）：
   - `remote_user_connected`：对端 `userId === peerUserId` 时，若 `peerOnline` 为 false 则切换为 true 并推上线日志。
   - `remote_user_disconnected`：匹配 `peerUserId` 时，若当前在线则切换为 false 并推下线日志。
-  - `rtt_update`：匹配 `peerUserId` 且 `detail.via` 非空时调用 `setLinkTypeFromVia()`，让顶部徽章实时跟随底层连接方式。
+  - `rtt_update`：匹配 `peerUserId` 且 `detail.via` 非空时调用 `setLinkTypeFromVia()`。
+  - `rtc_state`：匹配 `peerUserId` 时，`state === "connected"` 立即把 `myLinkType` 设为 `rtc`（这是徽章由 relay 切到 rtc 的关键时机，不等下一次 `sendToService` 返回）；`disconnected` / `failed` / `closed` 时若当前是 rtc 则回退到 relay，但**不**据此判定对端下线（下线由 `remote_user_disconnected` 或 `sendToService` 返回 `offline` 判定）。
 - `markPeerOnline(online)` 通过比较旧值避免重复推日志，状态切换时同步更新 `peerOnline` 与一条 `system` 类型日志。
 - 顶部徽章文案与样式由模板内联表达式根据 `peerOnline` + `myLinkType` 计算得出（`offline` / `rtc` / `relay` / 连接中）。
 

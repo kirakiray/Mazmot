@@ -327,6 +327,14 @@
       const NAMESPACE = "mazmot";
       const SERVICE_ID = "ping-pong";
       const PING_INTERVAL = 2000; // 双方各自每 2 秒发一条
+      // 对话内容候选 emoji（每次发送随机选一个）
+      const EMOJIS = [
+        "😀", "😂", "🥰", "😎", "🤔", "😴", "🤯", "🥳",
+        "😺", "🐶", "🦊", "🐼", "🐨", "🦁", "🐮", "🐸",
+        "🍎", "🍌", "🍉", "🍇", "🍓", "🍑", "🥑", "🍍",
+        "⚽", "🏀", "🎮", "🎸", "🚀", "🌈", "⭐", "🔥",
+        "💖", "🎉", "🎁", "🍀", "🌸", "🍦", "🍕", "🍣",
+      ];
 
       // 角色判断：URL 带 host 参数 → 接收方模式
       const sp = new URLSearchParams(location.search);
@@ -364,6 +372,11 @@
             return new Date().toLocaleTimeString("zh-CN", { hour12: false });
           },
 
+          // ===== 工具：从 EMOJIS 中随机挑一个 =====
+          randomEmoji() {
+            return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+          },
+
           // ===== 从 sendToService 返回值或 via 字段更新本地连接方式 =====
           setLinkTypeFromVia(via) {
             // NoneOS Core: via="rtc" 表示 WebRTC 直连，via="server" 表示服务器中转
@@ -379,19 +392,20 @@
             this.scrollToBottom();
           },
 
-          // ===== 发起方：每 PING_INTERVAL 毫秒向接收方发一条 ping + 时间字符串 =====
+          // ===== 发起方：每 PING_INTERVAL 毫秒向接收方发一条 ping + 随机 emoji =====
           startPingLoop() {
             const send = async () => {
               if (!this._customerRemote) return;
               const time = this.formatTime();
+              const emoji = this.randomEmoji();
               try {
                 const results = await this._customerRemote.sendToService(
                   SERVICE_ID,
-                  { kind: "ping", time },
+                  { kind: "ping", time, emoji },
                 );
                 // 通过返回结果刷新连接方式与对端在线状态
                 this.applySendResults(results);
-                this.pushLog(`[${time}] → ping`, "sent");
+                this.pushLog(`[${time}] → ${emoji}`, "sent");
                 this.sentCount++;
               } catch (err) {
                 console.error("发送 ping 失败：", err);
@@ -401,18 +415,19 @@
             this._timer = setInterval(send, PING_INTERVAL);
           },
 
-          // ===== 接收方：每 PING_INTERVAL 毫秒向发起方发一条 pong + 时间字符串 =====
+          // ===== 接收方：每 PING_INTERVAL 毫秒向发起方发一条 pong + 随机 emoji =====
           startPongLoop() {
             const send = async () => {
               if (!this._remoteUser) return;
               const time = this.formatTime();
+              const emoji = this.randomEmoji();
               try {
                 const results = await this._remoteUser.sendToService(
                   SERVICE_ID,
-                  { kind: "pong", time },
+                  { kind: "pong", time, emoji },
                 );
                 this.applySendResults(results);
-                this.pushLog(`[${time}] → pong`, "sent");
+                this.pushLog(`[${time}] → ${emoji}`, "sent");
                 this.sentCount++;
               } catch (err) {
                 console.error("发送 pong 失败：", err);
@@ -478,9 +493,12 @@
                   self.bindPeerEvents();
                   self.startPingLoop();
                 }
-                const kind = (data && data.kind) || "data";
+                const emoji = (data && data.emoji) || "";
                 const time = (data && data.time) || self.formatTime();
-                self.pushLog(`[${time}] ← ${kind}`, "received");
+                self.pushLog(
+                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
+                  "received",
+                );
                 self.receivedCount++;
                 // 收到消息说明对方在线，纠正一下状态
                 if (!self.peerOnline) self.markPeerOnline(true);
@@ -496,9 +514,12 @@
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
               onMessage(data, ctx) {
-                const kind = (data && data.kind) || "data";
+                const emoji = (data && data.emoji) || "";
                 const time = (data && data.time) || self.formatTime();
-                self.pushLog(`[${time}] ← ${kind}`, "received");
+                self.pushLog(
+                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
+                  "received",
+                );
                 self.receivedCount++;
                 if (!self.peerOnline) self.markPeerOnline(true);
               },
@@ -572,6 +593,25 @@
               const detail = (event && event.detail) || {};
               if (detail.userId === peerId && detail.via) {
                 self.setLinkTypeFromVia(detail.via);
+              }
+            });
+
+            // 监听 WebRTC 连接状态：RTC 协商成功后立即把徽章切到 rtc
+            // NoneOS Core 会在后台静默升级，state === "connected" 即 DataChannel 已 open
+            this._unbindRtcState = this._user.bind("rtc_state", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId !== peerId) return;
+              if (detail.state === "connected") {
+                self.setLinkTypeFromVia("rtc");
+                if (!self.peerOnline) self.markPeerOnline(true);
+              } else if (
+                detail.state === "disconnected" ||
+                detail.state === "failed" ||
+                detail.state === "closed"
+              ) {
+                // RTC 断开时回退到服务器中转显示，不直接判定对端下线
+                //（下线由 sendToService 返回 offline / remote_user_disconnected 判定）
+                if (self.myLinkType === "rtc") self.myLinkType = "relay";
               }
             });
 
@@ -753,6 +793,7 @@
             this._unbindConnected,
             this._unbindDisconnected,
             this._unbindRtt,
+            this._unbindRtcState,
           ].forEach((fn) => {
             if (typeof fn === "function") {
               try {
