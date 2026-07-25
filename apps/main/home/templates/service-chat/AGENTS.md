@@ -41,7 +41,9 @@
 
 ## 开发指令
 
+0. **开发前必读**：先查阅 `ofajs-docs` 技能文档，掌握 ofa.js 组件 / 页面 / 路由 / 状态管理的最新用法后再动手，避免写出不符合框架规范的代码。
 1. 新增消息类型（如图片 / 富文本）时，注意 P2P payload 大小与文本编码限制。
 2. UI 状态（`role` / `hostStatus` / `customerStatus` 等）尽量放 `data`，业务对象放 `_` 前缀字段。
-3. 修改公开 proto 方法、`app.json` 元数据、`NAMESPACE` / `SERVICE_ID` 后，同步更新 [CONTEXT.md](CONTEXT.md)。
-4. 只做被要求的事，避免过度设计。
+3. **每次改动后**都要检查是否需要同步 [CONTEXT.md](CONTEXT.md)（文件结构 / 公开 proto 方法 / 数据字段 / `NAMESPACE` / `SERVICE_ID` / 关键流程有变化就要更新）。
+4. 若发现 [CONTEXT.md](CONTEXT.md) 与实际代码不符（旧描述、字段过期、路径错误等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
+5. 只做被要求的事，避免过度设计。

@@ -19,11 +19,13 @@
 
 ## 开发指令
 
+0. **开发前必读**：先查阅 `ofajs-docs` 技能文档，掌握 ofa.js 组件 / 页面 / 路由 / 状态管理的最新用法后再动手，避免写出不符合框架规范的代码。
 1. 页面模块采用 `<template page>` + `<script>export default async ({ load }) => { ... }</script>` 结构，见 [pages/home.html](pages/home.html)。
 2. **异步依赖加载**：需要 NoneOS Core 模块（`/nos/*`）时，只能通过 `const load = lm(import.meta); await load("/nos/xxx/main.js")` 或页面 `export default` 参数里的 `load` 按需加载；**顶层禁止 `import "/nos/*"`**，否则 Core 未就绪会白屏。
 3. 新增路由/子页面时在 [app-config.js](app-config.js) 中导出（如 `export const about = "./pages/about.html"`）。
-4. 修改文件结构、公开 API、数据字段后，同步更新 [CONTEXT.md](CONTEXT.md)。
-5. 只做被要求的事，避免过度设计与冗余抽象。
+4. **每次改动后**都要检查是否需要同步 [CONTEXT.md](CONTEXT.md)（文件结构 / 公开 API / 数据字段 / 关键流程有变化就要更新）。
+5. 若发现 [CONTEXT.md](CONTEXT.md) 与实际代码不符（旧描述、字段过期、路径错误等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
+6. 只做被要求的事，避免过度设计与冗余抽象。
 
 ## 常见坑
 

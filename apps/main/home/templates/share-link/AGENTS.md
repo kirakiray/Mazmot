@@ -30,7 +30,9 @@
 
 ## 开发指令
 
+0. **开发前必读**：先查阅 `ofajs-docs` 技能文档，掌握 ofa.js 组件 / 页面 / 路由 / 状态管理的最新用法后再动手，避免写出不符合框架规范的代码。
 1. 需要 `/nos/*` 模块时用 `load(...)` 按需加载，**顶层禁止** `import "/nos/*"`。
 2. `ever-cache` / `share-mgr.js` 通过 `load(url)` 加载，见 [pages/home.html](pages/home.html) 里的 `Promise.all([...])` 用法。
-3. 修改公开 API、数据字段、`app.json` 元数据后，同步更新 [CONTEXT.md](CONTEXT.md)。
-4. 只做被要求的事，避免为「未来需求」过度抽象。
+3. **每次改动后**都要检查是否需要同步 [CONTEXT.md](CONTEXT.md)（文件结构 / 公开 API / 数据字段 / 关键流程有变化就要更新）。
+4. 若发现 [CONTEXT.md](CONTEXT.md) 与实际代码不符（旧描述、字段过期、路径错误等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
+5. 只做被要求的事，避免为「未来需求」过度抽象。
