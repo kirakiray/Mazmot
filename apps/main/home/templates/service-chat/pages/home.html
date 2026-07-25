@@ -90,27 +90,45 @@
       padding: 24px 20px;
       text-align: center;
     }
-    .chat-btn {
-      padding: 16px 40px;
-      font-size: 16px;
-      font-weight: 500;
+    .link-bar {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 12px;
+    }
+    .link-bar input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 24px;
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .link-bar input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .copy-btn {
+      padding: 12px 20px;
       border: none;
-      border-radius: 28px;
+      border-radius: 24px;
       background: var(--md-sys-color-primary);
       color: var(--md-sys-color-on-primary);
+      font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
-      margin-bottom: 16px;
-      box-shadow: 0 2px 8px rgba(103, 80, 164, 0.25);
-      transition: all 0.15s ease;
+      flex-shrink: 0;
+      transition: opacity 0.15s ease;
     }
-    .chat-btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(103, 80, 164, 0.3);
+    .copy-btn:hover:not(:disabled) {
+      opacity: 0.9;
     }
-    .chat-btn:active:not(:disabled) {
-      transform: translateY(0);
-    }
-    .chat-btn:disabled {
+    .copy-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
@@ -205,16 +223,29 @@
       <div class="status-text">{{hostStatus}}</div>
     </div>
 
-    <!-- 还没有客户连进来：显示"与我聊天"按钮 -->
+    <!-- 还没有客户连进来：显示分享链接输入框 + 复制按钮 -->
     <o-if :value="messages.length === 0">
       <div class="center-area">
-        <button class="chat-btn" on:click="generateChatLink" attr:disabled="generating">
-          {{generating ? '生成中...' : '📋 与我聊天'}}
-        </button>
+        <div class="link-bar">
+          <input
+            type="text"
+            readonly
+            :value="shareUrl"
+            attr:placeholder="generating ? '正在生成链接...' : '点击右侧按钮生成聊天链接'"
+            on:click="selectLinkInput($event)"
+          />
+          <button
+            class="copy-btn"
+            on:click="handleCopyLink"
+            attr:disabled="generating"
+          >
+            {{generating ? '生成中' : (shareUrl ? '复制' : '生成链接')}}
+          </button>
+        </div>
         <div class="gen-status">{{genStatus}}</div>
         <div class="my-id">你的ID：{{myUserId}}</div>
         <div class="tip">
-          点击按钮会生成链接并自动复制到剪贴板。把链接分享给别人，对方打开后会以客户身份与你聊天。
+          点击「生成链接」会生成聊天链接并自动复制到剪贴板；再次点击「复制」可重新复制。把链接分享给别人，对方打开后会以客户身份与你聊天。
           <br />注意：你需要保持此应用打开，对方才能连接到你。
         </div>
       </div>
@@ -283,6 +314,7 @@
           hostStatus: "",
           generating: false,
           genStatus: "",
+          shareUrl: "",
           // 客户状态
           customerStatus: "正在连接服务商...",
         },
@@ -464,12 +496,34 @@
 
               // 复制到剪贴板
               await this.copyToClipboard(shareUrl);
+              this.shareUrl = shareUrl;
               this.genStatus = "链接已复制到剪贴板，快去分享吧！";
             } catch (err) {
               console.error("生成聊天链接失败：", err);
               this.genStatus = "失败：" + (err.message || err);
             } finally {
               this.generating = false;
+            }
+          },
+
+          // ===== 复制按钮点击：已有链接直接复制，否则先生成 =====
+          async handleCopyLink() {
+            if (this.generating) return;
+            if (this.shareUrl) {
+              await this.copyToClipboard(this.shareUrl);
+              this.genStatus = "已复制到剪贴板";
+              return;
+            }
+            await this.generateChatLink();
+          },
+
+          // ===== 点击链接输入框时全选，方便手动复制 =====
+          selectLinkInput(event) {
+            const el = event && event.target;
+            if (el && typeof el.select === "function") {
+              try {
+                el.select();
+              } catch (_) {}
             }
           },
 

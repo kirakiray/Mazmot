@@ -40,7 +40,7 @@ const isCustomer = !!hostUserId;
 
 1. `this._svc = user.registerService(SERVICE_ID, { onMessage })`。
 2. `onMessage` 里记录第一个连进来的客户 (`ctx.fromUserId` / `ctx.remoteUser`)，更新 `hostStatus`，把消息压进 `messages`。
-3. 未有客户时页面显示「与我聊天」按钮 → `generateChatLink()` 生成分享链接并复制到剪贴板。
+3. 未有客户时页面显示分享链接输入框 + 「生成链接 / 复制」按钮：首次点击调用 `generateChatLink()` 生成并复制，再次点击直接复制已生成的 `shareUrl`。
 
 ### 服务商 generateChatLink
 
@@ -68,7 +68,7 @@ const isCustomer = !!hostUserId;
 - `myUserId`：本机 `user.userId`。
 - `hostUserId`：客户端从 URL 读到的服务商 userId。
 - `messages`：`[{ text, type: "sent" | "received" }, ...]`。
-- `inputText` / `generating` / `genStatus` / `hostStatus` / `customerStatus`：UI 态。
+- `inputText` / `generating` / `genStatus` / `shareUrl` / `hostStatus` / `customerStatus`：UI 态。
 - 非响应式字段（`_` 前缀）：`_user` / `_svc` / `_remoteUser` / `_customerRemote` / `_customerUserId`。
 
 ## 扩展指引
