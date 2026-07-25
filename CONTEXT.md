@@ -40,7 +40,7 @@ Mazmot/
 │   │   │   ├── official-app-writer.js # 官方应用加载与安装（从 official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ .html/.json/.js 源文件；当前有 base（Hello World）和 chat（NoneOS Core P2P 聊天）
+│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、service-chat（服务商/客户聊天）
 │   │   │   ├── official-apps/        # 官方应用资源目录（应用市场）
 │   │   │   │   ├── manifest.json     # 官方应用清单（只登记 app id）
 │   │   │   │   └── <id>/             # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
