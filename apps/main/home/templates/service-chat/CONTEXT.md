@@ -21,6 +21,7 @@
 - **入口链路**：`index.html` → `<o-app src="./app-config.js">` → `app-config.js` 中 `export const home = "./pages/home.html"` → 加载首页模块。
 - **主题**：`index.html` 里以 CSS 变量定义 Material Design 3 亮 / 暗色调色板（`--md-sys-color-*`），页面样式统一引用这些变量。
 - **模板替换**：`__template.json` 声明 `app.json` / `index.html` / `pages/home.html` 中的 `Mazmot Service Chat` 字符串在生成实例时替换为 `APP_NAME`。
+- **P2P 无后端**：聊天基于点对点，服务商标签页一旦关闭，客户即无法送达消息。涉及关闭 / 切后台 / 断网提醒的 UI 均以此为前提。
 
 ## 首页模块数据字段（`pages/home.html`）
 

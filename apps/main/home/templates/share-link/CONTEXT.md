@@ -21,6 +21,8 @@
 - **入口链路**：`index.html` → `<o-app src="./app-config.js">` → `app-config.js` 中 `export const home = "./pages/home.html"` → 加载首页模块。
 - **主题**：`index.html` 里以 CSS 变量定义 Material Design 3 亮 / 暗色调色板（`--md-sys-color-*`）。
 - **模板替换**：`__template.json` 声明 `app.json` / `index.html` / `pages/home.html` 中的 `Mazmot Share Link Demo` 字符串在生成实例时替换为 `APP_NAME`。
+- **P2P 无后端**：分享基于点对点，接收端通过短链接从发布者 IndexedDB 拉 chunk；发布者标签页关闭则未拉完的 chunk 无法继续。涉及关闭 / 断网提醒的 UI 均以此为前提。
+- **"自动分享"提示文案**：生成链接卡片里保留一条固定提示——生成链接前需先在应用列表为本应用开启「自动分享」，否则他人打开链接会因本机未发布而失败。
 
 ## 首页模块数据字段（`pages/home.html`）
 

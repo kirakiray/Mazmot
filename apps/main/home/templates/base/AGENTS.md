@@ -33,12 +33,11 @@
 2. 页面模块采用 `<template page>` + `<script>export default async ({ load }) => { ... }</script>` 结构，见 [pages/home.html](pages/home.html)。
 3. **涉及 NoneOS Core 能力必读**：需要使用文件系统（`fs`）、用户通信 / 联机、用户管理等 NoneOS Core 相关能力时，必须先查阅 `noneos-core-docs` 技能文档，按官方 API 调用，禁止凭记忆写。
 4. **涉及数据存储必读**：需要持久化数据时，必须先查阅 `ever-cache` 技能文档，使用 EverCache（`storageName`）进行存储，禁止裸用 `localStorage`。
-5. 新增路由/子页面时在 [app-config.js](app-config.js) 中导出（如 `export const about = "./pages/about.html"`）。
-7. **较大逻辑改动后必须同步 [CONTEXT.md](CONTEXT.md)**：文件结构、公开 API、数据字段、关键流程、模块职责等发生变化时，立即更新对应章节，不得事后补。
-8. **发现不一致立即修正 [CONTEXT.md](CONTEXT.md)**：查阅 CONTEXT.md 后再去读具体逻辑模块，若发现 CONTEXT 中的描述与实际代码不符（旧描述、字段过期、路径错误、流程改动未同步等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
-9. **组件 / 独立模块开发完成后建立测试**：开发完一个组件或相对独立的逻辑模块后，使用 `sibyl-test` 为该模块建立对应的 `.sb.html` 测试文件（推荐放在模块所在目录的 `test/` 子目录，文件名与被测模块同名），编写前先查阅 `sibyl-test` 技能文档。
-10. **sibyl-test 执行方式**：写完 `.sb.html` 测试文件后**不要自动执行测试**，先询问开发者是否让 AI 跑自动化测试；开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速验证，根据结果动态修复；完整多浏览器测试用 `npm test`。
-11. 只做被要求的事，避免过度设计与冗余抽象。
+5. **较大逻辑改动后必须同步 [CONTEXT.md](CONTEXT.md)**：文件结构、公开 API、数据字段、关键流程、模块职责等发生变化时，立即更新对应章节，不得事后补。
+6. **发现不一致立即修正 [CONTEXT.md](CONTEXT.md)**：查阅 CONTEXT.md 后再去读具体逻辑模块，若发现 CONTEXT 中的描述与实际代码不符（旧描述、字段过期、路径错误、流程改动未同步等），**立即修正 CONTEXT 内容**，让上下文文档与代码保持一致。
+7. **组件 / 独立模块开发完成后建立测试**：开发完一个组件或相对独立的逻辑模块后，使用 `sibyl-test` 为该模块建立对应的 `.sb.html` 测试文件（推荐放在模块所在目录的 `test/` 子目录，文件名与被测模块同名），编写前先查阅 `sibyl-test` 技能文档。
+8. **sibyl-test 执行方式**：写完 `.sb.html` 测试文件后**不要自动执行测试**，先询问开发者是否让 AI 跑自动化测试；开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速验证，根据结果动态修复；完整多浏览器测试用 `npm test`。
+9. 只做被要求的事，避免过度设计与冗余抽象。
 
 ## 技能资源与导入 (Skill Resources)
 
