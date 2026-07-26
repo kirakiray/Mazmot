@@ -29,61 +29,53 @@
       margin-top: 4px;
     }
 
-    /* ===== 日志区域 ===== */
-    .log-box {
+    /* ===== 10x10 表格区域 ===== */
+    .grid-box {
       flex: 1;
-      overflow-y: auto;
-      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: 4px;
+      padding: 12px;
+      background: var(--md-sys-color-surface-container);
+      overflow: hidden;
+      min-height: 0;
+    }
+    .cell {
       display: flex;
-      flex-direction: column;
-      gap: 6px;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(16px, 3.5vw, 26px);
+      background: var(--md-sys-color-surface);
+      border-radius: 6px;
+      transition:
+        background 0.2s ease,
+        transform 0.15s ease;
+      user-select: none;
+      min-width: 0;
+      min-height: 0;
     }
-    .log-box::-webkit-scrollbar {
-      width: 6px;
+    .cell[side="self"] {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
     }
-    .log-box::-webkit-scrollbar-thumb {
-      background: var(--md-sys-color-outline);
-      border-radius: 3px;
+    .cell[side="peer"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
     }
-    .log-box::-webkit-scrollbar-track {
-      background: transparent;
+    .cell[side="self"],
+    .cell[side="peer"] {
+      animation: cellIn 0.2s ease-out;
     }
-    .log-line {
-      font-family:
-        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 13px;
-      padding: 6px 12px;
-      border-radius: 8px;
-      animation: logIn 0.15s ease-out;
-      word-break: break-all;
-    }
-    @keyframes logIn {
+    @keyframes cellIn {
       from {
         opacity: 0;
-        transform: translateY(2px);
+        transform: scale(0.6);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: scale(1);
       }
-    }
-    .log-line[type="sent"] {
-      align-self: flex-end;
-      background: var(--md-sys-color-primary);
-      color: var(--md-sys-color-on-primary);
-    }
-    .log-line[type="received"] {
-      align-self: flex-start;
-      background: var(--md-sys-color-surface-container-high);
-      color: var(--md-sys-color-on-surface);
-    }
-    .log-line[type="system"] {
-      align-self: center;
-      background: var(--md-sys-color-tertiary-container);
-      color: var(--md-sys-color-on-tertiary-container);
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 12px;
     }
 
     /* ===== 居中区域（发起方等待界面）===== */
@@ -224,14 +216,6 @@
       background: var(--md-sys-color-error);
     }
 
-    /* ===== 空状态提示 ===== */
-    .empty-hint {
-      color: var(--md-sys-color-on-surface-variant);
-      font-size: 13px;
-      text-align: center;
-      margin-top: 40px;
-      opacity: 0.8;
-    }
   </style>
 
   <!-- 发起方模式（host）-->
@@ -268,22 +252,20 @@
         <div class="gen-status">{{genStatus}}</div>
         <div class="my-id">你的ID：{{myUserId}}</div>
         <div class="tip">
-          进入应用后会自动生成通信链接并展示在上方输入框。把链接分享给对方，对方打开后会以接收方身份与你建立点对点连接，随后双方将每 {{pingIntervalSec}} 秒互发一条随机 emoji，演示应用之间的数据通信。
+          进入应用后会自动生成通信链接并展示在上方输入框。把链接分享给对方，对方打开后会以接收方身份与你建立点对点连接。随后双方像打乒乓球一样轮流填格：你先填第 1 格，对方收到后填第 2 格，你再填第 3 格……每次收到对方内容 1 秒后才填入自己那一格，按顺序填满 10×10 表格（底色区分是谁填的），满后自动清空循环。
           <br />注意：你需要保持此应用打开，对方才能连接到你。
         </div>
       </div>
     </o-if>
 
-    <!-- 已连接：显示通信日志 -->
+    <!-- 已连接：显示 10x10 表格，按顺序填入（底色区分自己/对方） -->
     <o-if :value="connected">
-      <div id="log-box" class="log-box">
-        <o-fill :value="logs">
-          <div class="log-line" attr:type="$data.type">{{$data.text}}</div>
-        </o-fill>
-      </div>
+      <o-fill class="grid-box" :value="cells">
+        <div class="cell" attr:side="$data.side">{{$data.emoji}}</div>
+      </o-fill>
       <div class="stats-bar">
-        <span>↑ 已发送 {{sentCount}}</span>
-        <span>↓ 已接收 {{receivedCount}}</span>
+        <span>↑ 你 {{selfCount}}</span>
+        <span>↓ 对方 {{peerCount}}</span>
       </div>
     </o-if>
   </o-if>
@@ -299,17 +281,12 @@
         </o-if>
       </div>
     </div>
-    <div id="log-box" class="log-box">
-      <o-fill :value="logs">
-        <div class="log-line" attr:type="$data.type">{{$data.text}}</div>
-      </o-fill>
-      <o-if :value="logs.length === 0">
-        <div class="empty-hint">等待与发起方建立通信...</div>
-      </o-if>
-    </div>
+    <o-fill class="grid-box" :value="cells">
+      <div class="cell" attr:side="$data.side">{{$data.emoji}}</div>
+    </o-fill>
     <div class="stats-bar">
-      <span>↑ 已发送 {{sentCount}}</span>
-      <span>↓ 已接收 {{receivedCount}}</span>
+      <span>↑ 你 {{selfCount}}</span>
+      <span>↓ 对方 {{peerCount}}</span>
     </div>
   </o-if>
 
@@ -326,7 +303,7 @@
       // 这里直接沿用项目默认命名空间 "mazmot"（与 lib/share-mgr.js 一致）
       const NAMESPACE = "mazmot";
       const SERVICE_ID = "ping-pong";
-      const PING_INTERVAL = 2000; // 双方各自每 2 秒发一条
+      const REPLY_DELAY = 1000; // 收到对方内容后，延迟 1 秒再填入自己的
       // 对话内容候选 emoji（每次发送随机选一个）
       const EMOJIS = [
         "😀", "😂", "🥰", "😎", "🤔", "😴", "🤯", "🥳",
@@ -347,12 +324,13 @@
           myUserId: "",
           hostUserId,
           connected: false, // 发起方是否已与接收方建立连接
-          logs: [], // 通信日志，每项 { text, type: "sent" | "received" | "system" }
-          // 收发计数
-          sentCount: 0,
-          receivedCount: 0,
-          // 模板展示用
-          pingIntervalSec: PING_INTERVAL / 1000,
+          // 10x10 表格：100 个格子，每项 { emoji, side: "" | "self" | "peer" }
+          // 按到达顺序从左上到右下依次填入（行优先：idx 0~9 第一行，10~19 第二行……）
+          // 格子底色按 side 区分：self=primary-container，peer=secondary-container
+          cells: Array.from({ length: 100 }, () => ({ emoji: "", side: "" })),
+          cellCursor: 0, // 下一个要填入的格子索引（0~99）
+          selfCount: 0, // 自己已填入的 emoji 数（仅用于统计）
+          peerCount: 0, // 对方已填入的 emoji 数（仅用于统计）
           // 发起方状态
           hostStatus: "",
           generating: false,
@@ -367,11 +345,6 @@
         },
 
         proto: {
-          // ===== 工具：格式化当前时间字符串 =====
-          formatTime() {
-            return new Date().toLocaleTimeString("zh-CN", { hour12: false });
-          },
-
           // ===== 工具：从 EMOJIS 中随机挑一个 =====
           randomEmoji() {
             return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
@@ -386,53 +359,79 @@
             }
           },
 
-          // ===== 推送一条通信日志（最新置顶，无需滚动）=====
-          pushLog(text, type) {
-            this.logs.unshift({ text, type });
+          // ===== 在 10x10 表格中按顺序填入一个 emoji 方块 =====
+          // 不管谁发的，都填到下一个空格（cellCursor），底色按 side 区分
+          // 满 100 格后自动清空循环
+          fillCell(emoji, side) {
+            if (this.cellCursor >= 100) {
+              this.resetCells();
+            }
+            const idx = this.cellCursor;
+            this.cells.splice(idx, 1, { emoji: emoji || "", side });
+            this.cellCursor++;
+            if (side === "self") {
+              this.selfCount++;
+            } else {
+              this.peerCount++;
+            }
           },
 
-          // ===== 发起方：每 PING_INTERVAL 毫秒向接收方发一条 ping + 随机 emoji =====
-          startPingLoop() {
-            const send = async () => {
-              if (!this._customerRemote) return;
-              const time = this.formatTime();
-              const emoji = this.randomEmoji();
-              try {
-                const results = await this._customerRemote.sendToService(
-                  SERVICE_ID,
-                  { kind: "ping", time, emoji },
-                );
-                // 通过返回结果刷新连接方式与对端在线状态
-                this.applySendResults(results);
-                this.pushLog(`[${time}] → ${emoji}`, "sent");
-                this.sentCount++;
-              } catch (err) {
-                console.error("发送 ping 失败：", err);
-              }
-            };
-            send(); // 立即发一次，再按周期发
-            this._timer = setInterval(send, PING_INTERVAL);
+          // ===== 清空整个表格 =====
+          resetCells() {
+            for (let i = 0; i < 100; i++) {
+              this.cells.splice(i, 1, { emoji: "", side: "" });
+            }
+            this.cellCursor = 0;
+            this.selfCount = 0;
+            this.peerCount = 0;
           },
 
-          // ===== 接收方：每 PING_INTERVAL 毫秒向发起方发一条 pong + 随机 emoji =====
-          startPongLoop() {
-            const send = async () => {
-              if (!this._remoteUser) return;
-              const time = this.formatTime();
-              const emoji = this.randomEmoji();
-              try {
-                const results = await this._remoteUser.sendToService(
-                  SERVICE_ID,
-                  { kind: "pong", time, emoji },
-                );
-                this.applySendResults(results);
-                this.pushLog(`[${time}] → ${emoji}`, "sent");
-                this.sentCount++;
-              } catch (err) {
-                console.error("发送 pong 失败：", err);
+          // ===== 回合制核心：收到对方内容后，延迟 REPLY_DELAY 毫秒再发送自己的 =====
+          // 这样填格顺序严格为：host 第1格 → customer 第2格 → host 第3格 …
+          scheduleNextSend() {
+            if (this._stopped) return;
+            if (this._timer) clearTimeout(this._timer);
+            this._timer = setTimeout(() => {
+              this._timer = null;
+              if (this._stopped) return;
+              if (this.role === "host") {
+                this.sendNextPing();
+              } else {
+                this.sendNextPong();
               }
-            };
-            this._timer = setInterval(send, PING_INTERVAL);
+            }, REPLY_DELAY);
+          },
+
+          // ===== 发起方：发一条 ping + 随机 emoji，发送成功后填入自己的格子 =====
+          async sendNextPing() {
+            if (this._stopped || !this._customerRemote) return;
+            const emoji = this.randomEmoji();
+            try {
+              const results = await this._customerRemote.sendToService(
+                SERVICE_ID,
+                { kind: "ping", emoji },
+              );
+              this.applySendResults(results);
+              this.fillCell(emoji, "self");
+            } catch (err) {
+              console.error("发送 ping 失败：", err);
+            }
+          },
+
+          // ===== 接收方：发一条 pong + 随机 emoji，发送成功后填入自己的格子 =====
+          async sendNextPong() {
+            if (this._stopped || !this._remoteUser) return;
+            const emoji = this.randomEmoji();
+            try {
+              const results = await this._remoteUser.sendToService(
+                SERVICE_ID,
+                { kind: "pong", emoji },
+              );
+              this.applySendResults(results);
+              this.fillCell(emoji, "self");
+            } catch (err) {
+              console.error("发送 pong 失败：", err);
+            }
           },
 
           // ===== 根据 sendToService 的返回结果更新连接方式 / 检测对端在线状态 =====
@@ -455,17 +454,10 @@
             }
           },
 
-          // ===== 标记对端上线 / 下线，并推一条系统日志 =====
+          // ===== 标记对端上线 / 下线（仅更新徽章状态，不再推日志）=====
           markPeerOnline(online) {
             if (this.peerOnline === online) return;
             this.peerOnline = online;
-            const time = this.formatTime();
-            this.pushLog(
-              online
-                ? `[${time}] 对方已上线`
-                : `[${time}] 对方已下线`,
-              "system",
-            );
           },
 
           // ===== 发起方初始化 =====
@@ -476,31 +468,23 @@
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
               onMessage(data, ctx) {
-                // 第一条消息到达时记录对端，并启动 ping 循环
+                // 第一条消息到达时记录对端，并立即发第一个 ping（填第 1 格）
                 if (!self._customerUserId) {
                   self._customerUserId = ctx.fromUserId;
                   self._customerRemote = ctx.remoteUser;
                   self.peerUserId = ctx.fromUserId;
-                  self.hostStatus = "接收方已连接，正在定时通信";
+                  self.hostStatus = "接收方已连接，正在轮流填格";
                   self.connected = true;
-                  // 上线系统消息（只推一次）
-                  const time = self.formatTime();
-                  self.pushLog(
-                    `[${time}] 对方（接收方）已上线`,
-                    "system",
-                  );
                   self.bindPeerEvents();
-                  self.startPingLoop();
+                  // 立即发第一个，开启回合制循环
+                  self.sendNextPing();
+                  return;
                 }
+                // 之后每收到对方 pong → 填对方格 → 延迟 1 秒后自己再发
                 const emoji = (data && data.emoji) || "";
-                const time = (data && data.time) || self.formatTime();
-                self.pushLog(
-                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
-                  "received",
-                );
-                self.receivedCount++;
-                // 收到消息说明对方在线，纠正一下状态
+                self.fillCell(emoji, "peer");
                 if (!self.peerOnline) self.markPeerOnline(true);
+                self.scheduleNextSend();
               },
             });
 
@@ -520,14 +504,11 @@
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
               onMessage(data, ctx) {
+                // 收到 host 的 ping → 填对方格 → 延迟 1 秒后自己再发 pong
                 const emoji = (data && data.emoji) || "";
-                const time = (data && data.time) || self.formatTime();
-                self.pushLog(
-                  `[${time}] ← ${emoji || (data && data.kind) || "data"}`,
-                  "received",
-                );
-                self.receivedCount++;
+                self.fillCell(emoji, "peer");
                 if (!self.peerOnline) self.markPeerOnline(true);
+                self.scheduleNextSend();
               },
             });
 
@@ -542,23 +523,20 @@
                 this.hostUserId,
               );
               if (online) {
-                this.customerStatus = "已连接，正在定时通信";
+                this.customerStatus = "已连接，正在轮流填格";
                 this.connected = true;
-                const time = this.formatTime();
-                this.pushLog(
-                  `[${time}] 已连接到发起方`,
-                  "system",
-                );
                 this.bindPeerEvents();
-                this.startPongLoop();
+                // 发送就绪信号，触发 host 填第 1 格（本端不填格）
+                try {
+                  await this._remoteUser.sendToService(SERVICE_ID, {
+                    kind: "ready",
+                  });
+                } catch (err) {
+                  console.error("发送就绪信号失败：", err);
+                }
               } else {
                 this.customerStatus = "发起方不在线，请稍后再试";
                 this.peerOnline = false;
-                const time = this.formatTime();
-                this.pushLog(
-                  `[${time}] 发起方不在线`,
-                  "system",
-                );
               }
             } catch (err) {
               console.error("连接发起方失败：", err);
@@ -777,8 +755,9 @@
         },
 
         detached() {
+          this._stopped = true; // 终止回合制循环
           if (this._timer) {
-            clearInterval(this._timer);
+            clearTimeout(this._timer);
             this._timer = null;
           }
           // 解绑对端事件监听
