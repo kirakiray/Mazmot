@@ -1,0 +1,403 @@
+<template page>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+    }
+
+    /* ===== 顶部栏 ===== */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: var(--md-sys-color-surface-container);
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      flex-shrink: 0;
+    }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--md-sys-color-on-surface);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s ease;
+    }
+    .icon-btn:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+    .header h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 20px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity 0.15s ease;
+    }
+    .refresh-btn:hover:not(:disabled) {
+      opacity: 0.85;
+    }
+    .refresh-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ===== 内容区 ===== */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tip {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 14px;
+      padding: 48px 20px;
+    }
+    .sub-tip {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 12px;
+      padding: 0 20px 16px;
+      line-height: 1.6;
+    }
+
+    /* ===== 服务器卡片 ===== */
+    .server-card {
+      padding: 14px 16px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 14px;
+      margin-bottom: 10px;
+    }
+    .url-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+      flex-shrink: 0;
+    }
+    .server-card[state="connected"] .dot {
+      background: #34a853;
+    }
+    .server-card[state="disconnected"] .dot {
+      background: var(--md-sys-color-error);
+    }
+    .url {
+      flex: 1;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+      font-family: monospace;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 8px;
+      font-size: 12px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .server-card[state="connected"] .status-tag {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .server-card[state="disconnected"] .status-tag {
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-error);
+    }
+    .tag[level="good"] {
+      color: #34a853;
+    }
+    .tag[level="medium"] {
+      color: #ea8a00;
+    }
+    .tag[level="high"] {
+      color: var(--md-sys-color-error);
+    }
+  </style>
+
+  <div class="header">
+    <button class="icon-btn" on:click="goBack" title="返回">←</button>
+    <h2>握手服务器</h2>
+    <button
+      class="refresh-btn"
+      attr:disabled="refreshing"
+      on:click="refreshAll"
+    >
+      <span>{{refreshing ? '刷新中…' : '↻ 刷新'}}</span>
+    </button>
+  </div>
+
+  <div class="content">
+    <o-if :value="loading">
+      <div class="tip">正在加载服务器信息…</div>
+    </o-if>
+
+    <o-if :value="!loading && servers.length === 0">
+      <div class="tip">暂无已配置的握手服务器</div>
+    </o-if>
+
+    <o-if :value="!loading && servers.length > 0">
+      <o-fill :value="servers">
+        <div
+          class="server-card"
+          attr:state="$data.connected ? 'connected' : 'disconnected'"
+        >
+          <div class="url-row">
+            <span class="dot"></span>
+            <span class="url">{{$data.url}}</span>
+          </div>
+          <div class="meta">
+            <span class="tag status-tag">
+              {{$data.connected ? '已连接' : '未连接'}}
+            </span>
+            <o-if :value="$data.connected">
+              <span
+                class="tag"
+                attr:level="$data.latencyLevel"
+              >{{$data.rtt == null ? '延迟 -' : '延迟 ' + $data.rtt + 'ms'}}</span>
+            </o-if>
+            <o-if :value="$data.connected && $data.version">
+              <span class="tag">v{{$data.version}}</span>
+            </o-if>
+          </div>
+        </div>
+      </o-fill>
+      <div class="sub-tip">
+        这里展示当前应用所属命名空间（mazmot）已配置的全部信令/握手服务器及其连接状态、延迟与版本。仅查看，不会主动发起新连接。
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      // 与 home.html 保持一致的命名空间，确保查看到同一身份的服务器连接
+      const NAMESPACE = "mazmot";
+
+      function getLatencyLevel(rtt) {
+        if (rtt === null || rtt === undefined) return null;
+        if (rtt < 100) return "good";
+        if (rtt < 300) return "medium";
+        return "high";
+      }
+
+      return {
+        data: {
+          loading: true,
+          refreshing: false,
+          // 每项：{ url, connected, rtt, latencyLevel, version }
+          servers: [],
+        },
+
+        proto: {
+          goBack() {
+            this.back();
+          },
+
+          async refreshAll() {
+            if (this.refreshing) return;
+            this.refreshing = true;
+            try {
+              await this.loadServers();
+            } finally {
+              this.refreshing = false;
+            }
+          },
+
+          // 拉取服务器列表 + 连接状态，并对已连接者探测版本与延迟
+          async loadServers() {
+            const user = this._user;
+            if (!user) return;
+            let urls = [];
+            try {
+              urls = await user.server.getServers();
+            } catch (err) {
+              console.error("获取服务器列表失败：", err);
+            }
+            const connectedUrls = Array.isArray(user.server.connectedUrls)
+              ? user.server.connectedUrls
+              : [];
+
+            const list = urls.map((url) => {
+              const connected = connectedUrls.includes(url);
+              // 尽量保留上一次的延迟/版本，避免刷新时闪烁
+              const old = this.servers.find((s) => s.url === url);
+              return {
+                url,
+                connected,
+                rtt: connected && old ? old.rtt : null,
+                latencyLevel:
+                  connected && old ? old.latencyLevel : null,
+                version: connected && old ? old.version : "",
+              };
+            });
+            this.servers = list;
+
+            // 对已连接的服务器：复用已有连接拿版本号 + 单独测延迟
+            // 注意：不会对未连接的服务器调用 connect()，以免被动建立新连接
+            list.forEach((_, i) => {
+              if (list[i].connected) this.probeAt(i);
+            });
+          },
+
+          async probeAt(index) {
+            const user = this._user;
+            const item = this.servers[index];
+            if (!user || !item || !item.connected) return;
+            // 复用已有连接拿版本号（对同一 URL 多次 connect 会复用，不会新建连接）
+            try {
+              const result = await user.server.connect(item.url);
+              if (result && result.success) {
+                this.updateItem(index, {
+                  connected: true,
+                  version: result.version || item.version || "",
+                });
+              }
+            } catch (err) {
+              console.warn("复用连接失败：", item.url, err);
+            }
+            // 单独测一次延迟
+            try {
+              const res = await user.server.testLatency(item.url);
+              const rtt =
+                res && typeof res.rtt === "number"
+                  ? Math.round(res.rtt)
+                  : null;
+              this.updateItem(index, {
+                rtt,
+                latencyLevel: getLatencyLevel(rtt),
+              });
+            } catch (err) {
+              console.warn("测试延迟失败：", item.url, err);
+            }
+          },
+
+          updateItem(index, patch) {
+            const cur = this.servers[index];
+            if (!cur) return;
+            this.servers.splice(index, 1, { ...cur, ...patch });
+          },
+
+          findByUrl(url) {
+            for (let i = 0; i < this.servers.length; i++) {
+              if (this.servers[i].url === url) return i;
+            }
+            return -1;
+          },
+
+          setConnected(url, connected, version) {
+            const i = this.findByUrl(url);
+            if (i === -1) {
+              // 列表里没有该 url（可能是外部新增），重新加载
+              this.loadServers();
+              return;
+            }
+            const patch = { connected };
+            if (connected) {
+              if (version) patch.version = version;
+            } else {
+              patch.rtt = null;
+              patch.latencyLevel = null;
+              patch.version = "";
+            }
+            this.updateItem(i, patch);
+            if (connected) this.probeAt(i);
+          },
+
+          applyLatency(url, rtt) {
+            const i = this.findByUrl(url);
+            if (i === -1) return;
+            const rounded =
+              typeof rtt === "number" ? Math.round(rtt) : null;
+            this.updateItem(i, {
+              rtt: rounded,
+              latencyLevel: getLatencyLevel(rounded),
+            });
+          },
+        },
+
+        async ready() {
+          try {
+            const { getUser } = await load("/nos/user/main.js");
+            const user = await getUser(NAMESPACE);
+            this._user = user; // 非响应式对象，必须用 _ 前缀
+            this.loading = false;
+            await this.loadServers();
+
+            // 监听服务器连接状态变化，实时刷新视图
+            const self = this;
+            this._unbindHandlers = [
+              user.bind("server_connected", (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.url)
+                  self.setConnected(detail.url, true, detail.version);
+              }),
+              user.bind("server_disconnected", (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.url) self.setConnected(detail.url, false);
+              }),
+              user.bind("latency_test", (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.url)
+                  self.applyLatency(detail.url, detail.rtt);
+              }),
+            ];
+          } catch (err) {
+            console.error("加载握手服务器失败：", err);
+            this.loading = false;
+          }
+        },
+
+        detached() {
+          if (this._unbindHandlers) {
+            this._unbindHandlers.forEach((off) => {
+              try {
+                off && off();
+              } catch (_) {}
+            });
+            this._unbindHandlers = null;
+          }
+        },
+      };
+    };
+  </script>
+</template>

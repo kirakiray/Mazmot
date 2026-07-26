@@ -13,7 +13,8 @@
 ├── index.html        # 入口 HTML：加载 ofa.js + Material 主题变量 + <o-router>/<o-app>
 ├── app-config.js     # 应用配置：导出 home 路由 + pageAnime 切换动画
 └── pages/
-    └── home.html     # 首页模块（<template page>）：双角色通信 UI + 全部业务逻辑
+    ├── home.html     # 首页模块（<template page>）：双角色通信 UI + 全部业务逻辑
+    └── servers.html  # 握手服务器查看页（<template page>）：列出已配置的信令/握手服务器及其连接状态 / 延迟 / 版本
 ```
 
 ## 角色与通信模型
@@ -66,6 +67,39 @@
 - `this._timer`：`setInterval` 句柄，`detached` 时 `clearInterval`。
 - `this._eventsBound`：是否已绑定 `remote_user_*` / `rtt_update` / `rtc_state` 事件，避免重复绑定。
 - `this._unbindConnected` / `this._unbindDisconnected` / `this._unbindRtt` / `this._unbindRtcState`：对应事件的解绑函数，`detached` 时依次调用。
+
+## 握手服务器查看页（`pages/servers.html`）
+
+独立页面模块，列出当前应用所属命名空间（`mazmot`）已配置的全部信令/握手服务器及其连接状态。仅查看，不主动发起新连接。
+
+**入口**：发起方在尚未与接收方建立连接时（`role === 'host' && !connected`），首页顶部右侧出现「查看握手服务器」按钮，点击 `this.goto("./pages/servers.html")` 跳转；页面左上角「←」调用 `this.back()` 返回首页。该按钮在已连接后自动隐藏，避免在通信进行中误离开（离开会 detach 首页并停止回合制循环）。
+
+**响应式数据字段**：
+
+| 字段          | 类型     | 用途                                                                 |
+| ------------- | -------- | -------------------------------------------------------------------- |
+| `loading`     | boolean  | 是否正在加载用户/服务器信息                                          |
+| `refreshing`  | boolean  | 「刷新」按钮是否执行中（禁用按钮 + 文案切换）                        |
+| `servers`     | array    | 服务器列表，每项 `{ url, connected, rtt, latencyLevel, version }`    |
+
+非响应式实例属性：`this._user`（NoneOS Core user 对象）、`this._unbindHandlers`（事件解绑函数数组）。
+
+**`latencyLevel` 取值**：`null` / `"good"`（<100ms，绿）/ `"medium"`（<300ms，橙）/ `"high"`（≥300ms，红），由 `getLatencyLevel(rtt)` 计算，驱动延迟标签颜色。
+
+**依赖的 NoneOS Core server API**（`user.server`）：
+
+- `await getServers()`：返回已配置的服务器 URL 字符串数组（持久化于 IndexedDB，同 namespace 共享）。
+- `connectedUrls`：只读 getter，当前已握手成功的 URL 数组。
+- `await connect(url)`：对同一 URL 复用已有连接，返回 `{ success, version }`。本页**仅对已在 `connectedUrls` 中的服务器调用**以获取版本号，不对未连接服务器调用，以免被动建立新连接。
+- `await testLatency(url)`：返回 `{ rtt, oneWayLatency }`（毫秒）。
+- 事件：`server_connected`（`detail.url` / `detail.version`）、`server_disconnected`（`detail.url`）、`latency_test`（`detail.url` / `detail.rtt` / `detail.oneWayLatency`），`ready` 时绑定、`detached` 时解绑。
+
+**关键流程**：
+
+1. `ready` 内 `load("/nos/user/main.js")` → `getUser(NAMESPACE)` 取得与首页同身份的 user 实例（同命名空间复用密钥与连接状态）。
+2. `loadServers()`：`getServers()` 取列表 → 与 `connectedUrls` 求交得到 `connected` → 对已连接者 `probeAt()`：`connect()` 复用连接拿版本 + `testLatency()` 测延迟。
+3. 绑定三个事件：连接建立 → `setConnected(url,true,version)` 并补测延迟；断开 → 清空延迟/版本；延迟事件 → `applyLatency()` 更新 rtt。
+4. 「刷新」按钮：重新执行 `loadServers()`（保留上次延迟/版本避免闪烁）。
 
 ## 模块常量
 

@@ -9,12 +9,32 @@
 
     /* ===== 顶部标题栏 ===== */
     .header {
+      position: relative;
       padding: 14px 20px;
       background: var(--md-sys-color-surface-container);
       border-bottom: 1px solid var(--md-sys-color-outline-variant);
       text-align: center;
       flex-shrink: 0;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    .header-action {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 18px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 12px;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .header-action:hover {
+      opacity: 0.8;
     }
     .header h2 {
       margin: 0;
@@ -228,6 +248,10 @@
           <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
         </o-if>
       </div>
+      <!-- 还没有接收方连进来：可跳转查看当前已连接的握手服务器 -->
+      <o-if :value="!connected">
+        <button class="header-action" on:click="goToServers">查看握手服务器</button>
+      </o-if>
     </div>
 
     <!-- 还没有接收方连进来：显示分享链接输入框 + 复制按钮 -->
@@ -348,6 +372,11 @@
           // ===== 工具：从 EMOJIS 中随机挑一个 =====
           randomEmoji() {
             return EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+          },
+
+          // ===== 跳转到握手服务器查看页（发起方等待连接时可用）=====
+          goToServers() {
+            this.goto("./servers.html");
           },
 
           // ===== 从 sendToService 返回值或 via 字段更新本地连接方式 =====
