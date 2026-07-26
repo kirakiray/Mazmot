@@ -58,6 +58,9 @@
 | `generating`     | boolean  | 是否正在生成分享链接                                       |
 | `genStatus`      | string   | 生成链接进度文案                                           |
 | `shareUrl`       | string   | 已生成的对战链接                                           |
+| `myLinkType`     | string   | 当前连接方式：`""`（未知）/ `"rtc"`（WebRTC 直连）/ `"relay"`（服务器中转） |
+| `peerOnline`     | boolean  | 对端是否在线（默认 `true`，事件触发后修正）                |
+| `peerUserId`     | string   | 对端 userId，用于事件匹配（房间方在首条消息到达时写入，加入方连接成功后写入） |
 
 非响应式实例属性（以 `_` 前缀，不参与模板渲染）：
 
@@ -65,10 +68,12 @@
 - `this._svc`：`registerService` 返回的服务句柄，`detached` 时 `unregister()`。
 - `this._customerRemote` / `this._customerUserId`（房间方侧）：对端引用，首条消息到达时写入。
 - `this._remoteUser`（加入方侧）：`connectUser` 返回的远端对象。
+- `this._eventsBound`：是否已绑定对端事件监听，避免重复绑定。
+- `this._unbindConnected` / `this._unbindDisconnected` / `this._unbindRtt` / `this._unbindRtcState`：四个事件解绑函数，`detached` 时调用。
 
 ## 模块常量
 
-- `NAMESPACE = "mazmot"`：与项目默认命名空间一致（`lib/share-mgr.js` 同名）。
+- `NAMESPACE = "default"`：与项目默认命名空间一致（`lib/share-mgr.js` 同名）。
 - `SERVICE_ID = "tic-tac-toe"`：双方共同注册的服务标识。
 - `WIN_LINES`：八条获胜线（行 3、列 3、对角 2），用于 `checkWinner()`。
 
@@ -92,7 +97,19 @@
 - `user.registerService(serviceId, { onMessage(data, ctx) })`：注册服务；返回含 `unregister()` 的句柄。`ctx.fromUserId` / `ctx.remoteUser` 标识发送方。
 - `user.connectUser(userId)`：连接远端用户，返回 remote 对象。
 - `user.isRemoteUserOnline(userId)`：返回 boolean，判断对端是否在线。
-- `remote.sendToService(serviceId, data, options?)`：向对端服务发消息；本模板不传 `waitForService`，直接异步发出。
+- `user.bind(eventName, handler)`：订阅全局事件，返回解绑函数。本模板订阅的事件见下文「对端事件」。
+- `remote.sendToService(serviceId, data, options?)`：向对端服务发消息；返回 `results` 数组，每项形如 `{ status, via }`，`status === "ok"` 表示送达，`via` 取值 `"rtc"` / `"server"` 等用于推断连接方式。本模板不传 `waitForService`，直接异步发出。
+
+#### 对端事件（`bindPeerEvents` 订阅）
+
+订阅时均会校验 `event.detail.userId === peerUserId`，仅响应本局对端：
+
+| 事件                        | detail 关键字段       | 用途                                                                                       |
+| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
+| `remote_user_connected`     | `userId`             | 对端上线 → `peerOnline = true`                                                             |
+| `remote_user_disconnected`  | `userId`             | 对端下线 → `peerOnline = false`                                                            |
+| `rtt_update`                | `userId`, `via`      | 实时刷新连接方式徽章（`via="rtc"` → WebRTC 直连，其他 → 服务器中转）                       |
+| `rtc_state`                 | `userId`, `state`    | WebRTC 协商状态：`connected` 切到 rtc，`disconnected`/`failed`/`closed` 回退到 relay       |
 
 ### share-mgr（仓库根 `lib/share-mgr.js`）
 
@@ -124,16 +141,17 @@
 
 ### 2. 房间方初始化（`initHost`）
 
-1. `myMark = "X"`。
+1. `myMark = "X"`，`hostStatus = "正在自动生成连接..."`。
 2. `registerService(SERVICE_ID, { onMessage })`。
-3. UI 显示"生成链接"按钮，等待加入方第一条消息到达时写入 `_customerUserId` / `_customerRemote`、置 `connected = true`。
+3. 立即在后台调用 `this.generateLink()` 自动生成对战链接（不阻塞服务注册；浏览器剪贴板 API 需用户手势，自动调用可能写不进剪贴板，故生成后只展示链接，复制动作仍由用户点击「复制」按钮完成）。
+4. UI 等待加入方第一条消息到达时写入 `_customerUserId` / `_customerRemote`、置 `peerUserId` / `connected = true`，并调用 `bindPeerEvents()` 绑定对端事件。
 
 ### 3. 加入方初始化（`initCustomer`）
 
 1. `myMark = "O"`。
 2. `registerService(SERVICE_ID, { onMessage })` 接收房间方的落子。
 3. `connectUser(hostUserId)` + `isRemoteUserOnline(hostUserId)` 双检。
-4. 在线即 `connected = true` 并主动发一条 `{ kind: "hello" }` 让房间方感知自己已加入。
+4. 在线即写入 `peerUserId` / `connected = true`，调用 `bindPeerEvents()`，并主动发一条 `{ kind: "hello" }` 让房间方感知自己已加入。`sendToService` 的返回值交给 `applySendResults` 推断初始连接方式。
 
 ### 4. 落子（`placeAt` → `applyAfterMove`）
 
@@ -151,16 +169,32 @@
 
 ### 6. 生成对战链接（`generateLink`，房间方专用）
 
+由 `initHost` 在后台自动触发（无需用户点击）。流程：
+
 1. `parseSelfIdentity()` 从 `location.pathname`（格式 `/$<namespace>/<dirName>/client/index.html`）解析自身身份。
 2. 并行加载 `fs` / `ever-cache` / `share-mgr`。
 3. 从 `storage.apps` 找记录、缺 `appId` 则 `generateAppId` 并写回。
 4. `rootDir.get(dirName)` 取目录句柄，组装 `app` 对象。
 5. `publishApp(app, { appId, appParams: { host: myUserId }, onProgress })`。
-6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 复制到剪贴板并展示。
+6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 展示在输入框。
+
+> 注：方法末尾仍会调用 `copyToClipboard(shareUrl)`，但因为是后台自动触发（无用户手势），浏览器剪贴板写入通常会被拒绝；真正的复制动作由用户点击「复制」按钮（`handleCopyLink`）完成。
 
 ### 7. 销毁（`detached`）
 
-`this._svc.unregister()` 反注册服务，避免泄漏句柄。
+依序调用四个事件解绑函数（`_unbindConnected` / `_unbindDisconnected` / `_unbindRtt` / `_unbindRtcState`）取消对端事件订阅，再 `this._svc.unregister()` 反注册服务，避免泄漏句柄。
+
+### 8. 连接方式徽章更新（双方共用）
+
+页面顶部状态文案旁的 `.link-badge` 实时显示当前对战通信用的是 **WebRTC 直连**（绿色）还是 **服务器中转**（橙色），或对端离线（红色）。状态来源（按优先级合并）：
+
+1. **sendToService 返回值**：`placeAt` / `requestRestart` / `initCustomer` 内的 hello 调用都会把 `results` 交给 `applySendResults`，命中 `status === "ok"` 时按 `via` 字段推断连接方式；全部失败（offline / error / discovery_failed）则把 `peerOnline` 置为 `false`。
+2. **`rtt_update` 事件**：Core 周期性上报 RTT 时附带 `via`，`bindPeerEvents` 监听后调用 `setLinkTypeFromVia` 实时刷新。
+3. **`rtc_state` 事件**：Core 后台静默升级 WebRTC，`state === "connected"` 立即把徽章切到 rtc；`disconnected` / `failed` / `closed` 回退到 relay。
+4. **`remote_user_connected` / `remote_user_disconnected` 事件**：仅更新 `peerOnline`，控制徽章是显示离线红点还是连接方式。
+5. **收消息兜底**：`onRemoteMove` 收到对端落子时强制把 `peerOnline` 置为 `true`（说明对端确实在线）。
+
+UI 文案：在线时按 `myLinkType` 显示「WebRTC 直连 / 服务器中转 / 连接中...」；离线时显示「对方离线」。
 
 ## 自身身份解析
 

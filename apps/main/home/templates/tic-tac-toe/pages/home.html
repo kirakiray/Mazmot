@@ -259,13 +259,58 @@
       gap: 6px;
       align-items: center;
     }
+
+    /* ===== 连接方式徽章 ===== */
+    .link-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .link-badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+    }
+    .link-badge[type="rtc"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .link-badge[type="rtc"]::before {
+      background: #34a853;
+    }
+    .link-badge[type="relay"] {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .link-badge[type="relay"]::before {
+      background: #ea8a00;
+    }
+    .link-badge[type="offline"]::before {
+      background: var(--md-sys-color-error);
+    }
   </style>
 
   <!-- 房间方模式（host）-->
   <o-if :value="role === 'host'">
     <div class="header">
       <h2>🎮 Mazmot Tic-Tac-Toe（房间方）</h2>
-      <div class="status-text">{{hostStatus}}</div>
+      <div class="status-text">
+        {{hostStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
     </div>
 
     <!-- 还没有对手：显示分享链接 -->
@@ -276,21 +321,21 @@
             type="text"
             readonly
             :value="shareUrl"
-            attr:placeholder="generating ? '正在生成链接...' : '点击右侧按钮生成对战链接'"
+            attr:placeholder="generating ? '正在自动生成链接...' : (shareUrl ? '链接已生成，可点击右侧按钮复制' : '等待自动生成链接...')"
             on:click="selectLinkInput($event)"
           />
           <button
             class="copy-btn"
             on:click="handleCopyLink"
-            attr:disabled="generating"
+            attr:disabled="generating || !shareUrl"
           >
-            {{generating ? '生成中' : (shareUrl ? '复制' : '生成链接')}}
+            {{generating ? '生成中' : '复制'}}
           </button>
         </div>
         <div class="gen-status">{{genStatus}}</div>
         <div class="my-id">你的ID：{{myUserId}}（执 X，先手）</div>
         <div class="tip">
-          点击「生成链接」生成对战链接并自动复制到剪贴板。把链接分享给对方，对方打开后会以加入方身份（执 O）与你进行一局井字棋对战，演示应用间的双向数据通信。
+          进入应用后会自动生成对战链接并展示在上方输入框。把链接分享给对方，对方打开后会以加入方身份（执 O）与你进行一局井字棋对战，演示应用间的双向数据通信。
           <br />注意：你需要保持此应用打开，对方才能与你对战。
         </div>
       </div>
@@ -334,7 +379,12 @@
   <o-if :value="role === 'customer'">
     <div class="header">
       <h2>🎮 应用间对战（加入方）</h2>
-      <div class="status-text">{{customerStatus}}</div>
+      <div class="status-text">
+        {{customerStatus}}
+        <o-if :value="connected">
+          <span class="link-badge" attr:type="peerOnline ? (myLinkType === 'rtc' ? 'rtc' : myLinkType ? 'relay' : 'offline') : 'offline'">{{peerOnline ? (myLinkType === 'rtc' ? 'WebRTC 直连' : myLinkType ? '服务器中转' : '连接中...') : '对方离线'}}</span>
+        </o-if>
+      </div>
     </div>
     <div class="game-area">
       <div class="turn-indicator">
@@ -385,8 +435,8 @@
   <script>
     export default async ({ load }) => {
       // 房间方与加入方必须使用同一个 namespace 才能互相发现
-      // 沿用项目默认命名空间 "mazmot"（与 lib/share-mgr.js 一致）
-      const NAMESPACE = "mazmot";
+      // 沿用项目默认命名空间 "default"（与 lib/share-mgr.js 一致）
+      const NAMESPACE = "default";
       const SERVICE_ID = "tic-tac-toe";
 
       // 八条获胜线（行 / 列 / 对角）
@@ -431,6 +481,10 @@
           shareUrl: "",
           // 加入方状态
           customerStatus: "正在连接房间方...",
+          // 连接方式与对端在线状态（双方共用）
+          myLinkType: "", // "" / "rtc" / "relay"
+          peerOnline: true, // 对端是否在线（默认 true，事件触发后再修正）
+          peerUserId: "", // 对端 userId，用于事件匹配
         },
 
         proto: {
@@ -445,6 +499,89 @@
           // ===== 计算属性：比分文案 =====
           get scoreText() {
             return `${this.scoreX} : ${this.scoreO}`;
+          },
+
+          // ===== 从 sendToService 返回值或 via 字段更新本地连接方式 =====
+          setLinkTypeFromVia(via) {
+            // NoneOS Core: via="rtc" 表示 WebRTC 直连，其余非空 via 视为服务器中转
+            const next = via === "rtc" ? "rtc" : via ? "relay" : "";
+            if (next && next !== this.myLinkType) {
+              this.myLinkType = next;
+            }
+          },
+
+          // ===== 根据 sendToService 的返回结果更新连接方式 / 对端在线状态 =====
+          applySendResults(results) {
+            if (!Array.isArray(results) || results.length === 0) return;
+            const okResult = results.find((r) => r && r.status === "ok");
+            if (okResult) {
+              if (okResult.via) this.setLinkTypeFromVia(okResult.via);
+              if (!this.peerOnline) this.peerOnline = true;
+            } else {
+              // 所有结果均未送达：可能是 offline / no_receiver / discovery_failed / error
+              const offline = results.some(
+                (r) =>
+                  r &&
+                  (r.status === "offline" ||
+                    r.status === "error" ||
+                    r.status === "discovery_failed"),
+              );
+              if (offline && this.peerOnline) this.peerOnline = false;
+            }
+          },
+
+          // ===== 绑定对端上线 / 下线 / RTT / RTC 状态事件（双方共用）=====
+          bindPeerEvents() {
+            if (this._eventsBound || !this._user || !this.peerUserId) return;
+            const self = this;
+            const peerId = this.peerUserId;
+
+            this._unbindConnected = this._user.bind(
+              "remote_user_connected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  if (!self.peerOnline) self.peerOnline = true;
+                }
+              },
+            );
+
+            this._unbindDisconnected = this._user.bind(
+              "remote_user_disconnected",
+              (event) => {
+                const detail = (event && event.detail) || {};
+                if (detail.userId === peerId) {
+                  if (self.peerOnline) self.peerOnline = false;
+                }
+              },
+            );
+
+            // 监听 RTT 更新，实时刷新连接方式
+            this._unbindRtt = this._user.bind("rtt_update", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId === peerId && detail.via) {
+                self.setLinkTypeFromVia(detail.via);
+              }
+            });
+
+            // 监听 WebRTC 连接状态：RTC 协商成功后立即把徽章切到 rtc
+            this._unbindRtcState = this._user.bind("rtc_state", (event) => {
+              const detail = (event && event.detail) || {};
+              if (detail.userId !== peerId) return;
+              if (detail.state === "connected") {
+                self.setLinkTypeFromVia("rtc");
+                if (!self.peerOnline) self.peerOnline = true;
+              } else if (
+                detail.state === "disconnected" ||
+                detail.state === "failed" ||
+                detail.state === "closed"
+              ) {
+                // RTC 断开时回退到服务器中转显示，不直接判定对端下线
+                if (self.myLinkType === "rtc") self.myLinkType = "relay";
+              }
+            });
+
+            this._eventsBound = true;
           },
 
           // ===== 判断某格是否可落子 =====
@@ -473,19 +610,24 @@
 
             // 同步给对端
             try {
+              let results;
               if (this.role === "host" && this._customerRemote) {
-                await this._customerRemote.sendToService(SERVICE_ID, {
-                  kind: "move",
-                  index,
-                  mark,
-                });
+                results = await this._customerRemote.sendToService(
+                  SERVICE_ID,
+                  {
+                    kind: "move",
+                    index,
+                    mark,
+                  },
+                );
               } else if (this.role === "customer" && this._remoteUser) {
-                await this._remoteUser.sendToService(SERVICE_ID, {
+                results = await this._remoteUser.sendToService(SERVICE_ID, {
                   kind: "move",
                   index,
                   mark,
                 });
               }
+              this.applySendResults(results);
             } catch (err) {
               console.error("同步落子失败：", err);
             }
@@ -537,6 +679,9 @@
             if (mark !== "X" && mark !== "O") return;
             if (this.board[index] !== "") return; // 防重复落子
 
+            // 收到对端消息说明对端在线
+            if (!this.peerOnline) this.peerOnline = true;
+
             this.board[index] = mark;
             this.applyAfterMove(mark);
           },
@@ -559,15 +704,20 @@
           async requestRestart() {
             this.resetBoard();
             try {
+              let results;
               if (this.role === "host" && this._customerRemote) {
-                await this._customerRemote.sendToService(SERVICE_ID, {
-                  kind: "restart",
-                });
+                results = await this._customerRemote.sendToService(
+                  SERVICE_ID,
+                  {
+                    kind: "restart",
+                  },
+                );
               } else if (this.role === "customer" && this._remoteUser) {
-                await this._remoteUser.sendToService(SERVICE_ID, {
+                results = await this._remoteUser.sendToService(SERVICE_ID, {
                   kind: "restart",
                 });
               }
+              this.applySendResults(results);
             } catch (err) {
               console.error("通知重开失败：", err);
             }
@@ -577,7 +727,7 @@
           initHost() {
             this.role = "host";
             this.myMark = "X"; // 房间方执 X 先手
-            this.hostStatus = "等待对手加入...";
+            this.hostStatus = "正在自动生成连接...";
 
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
@@ -586,11 +736,20 @@
                 if (!self._customerUserId) {
                   self._customerUserId = ctx.fromUserId;
                   self._customerRemote = ctx.remoteUser;
+                  self.peerUserId = ctx.fromUserId;
                   self.hostStatus = "对手已加入，开始对战";
                   self.connected = true;
+                  self.bindPeerEvents();
                 }
                 self.handleIncoming(data);
               },
+            });
+
+            // 后台自动生成对战链接（不阻塞服务注册）
+            // 注意：浏览器剪贴板 API 要求用户手势，自动调用可能无法写入剪贴板，
+            // 因此生成后只展示链接，复制动作仍由用户点击「复制」按钮完成。
+            this.generateLink().catch((err) => {
+              console.error("自动生成链接失败：", err);
             });
           },
 
@@ -610,6 +769,7 @@
               this.customerStatus = "正在连接房间方...";
               const remote = await this._user.connectUser(this.hostUserId);
               this._remoteUser = remote;
+              this.peerUserId = this.hostUserId;
 
               const online = await this._user.isRemoteUserOnline(
                 this.hostUserId,
@@ -617,13 +777,23 @@
               if (online) {
                 this.customerStatus = "已连接，开始对战";
                 this.connected = true;
+                this.bindPeerEvents();
                 // 主动发一条 hello 让房间方知道自己已加入
-                await this._remoteUser.sendToService(SERVICE_ID, {
-                  kind: "hello",
-                  mark: this.myMark,
-                });
+                try {
+                  const results = await this._remoteUser.sendToService(
+                    SERVICE_ID,
+                    {
+                      kind: "hello",
+                      mark: this.myMark,
+                    },
+                  );
+                  this.applySendResults(results);
+                } catch (err) {
+                  console.error("发送就绪信号失败：", err);
+                }
               } else {
                 this.customerStatus = "房间方不在线，请稍后再试";
+                this.peerOnline = false;
               }
             } catch (err) {
               console.error("连接房间方失败：", err);
@@ -802,6 +972,20 @@
         },
 
         detached() {
+          // 解绑对端事件监听
+          [
+            this._unbindConnected,
+            this._unbindDisconnected,
+            this._unbindRtt,
+            this._unbindRtcState,
+          ].forEach((fn) => {
+            if (typeof fn === "function") {
+              try {
+                fn();
+              } catch (_) {}
+            }
+          });
+          this._eventsBound = false;
           if (this._svc) {
             try {
               this._svc.unregister();
