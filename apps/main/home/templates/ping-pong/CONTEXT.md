@@ -103,7 +103,7 @@
 
 ## 模块常量
 
-- `NAMESPACE = "mazmot"`：与项目默认命名空间一致（`lib/share-mgr.js` 同名）。
+- `NAMESPACE = "default"`：与项目默认命名空间一致（`lib/share-mgr.js` 同名）。
 - `SERVICE_ID = "ping-pong"`：双方共同注册的服务标识。
 - `PING_INTERVAL = 2000`：双方各自发送消息的周期（毫秒）。
 - `EMOJIS`：对话内容候选 emoji 数组（40 项，含表情 / 动物 / 水果 / 活动 / 符号等），由 `proto.randomEmoji()` 随机返回。
