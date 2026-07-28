@@ -116,14 +116,14 @@
       max-width: 80%;
     }
 
-    .message.user {
+    .message[type="user"] {
       background: var(--md-sys-color-primary-container);
       color: var(--md-sys-color-on-primary-container);
       margin-left: auto;
       text-align: right;
     }
 
-    .message.assistant {
+    .message[type="assistant"] {
       background: var(--md-sys-color-neutral-container);
       color: var(--md-sys-color-on-neutral-container);
     }
@@ -157,7 +157,7 @@
       transition: transform 0.2s;
     }
 
-    .thinking-icon.expanded {
+    .thinking-icon[expanded] {
       transform: rotate(90deg);
     }
 
@@ -276,11 +276,11 @@
         </div>
       </o-if>
       <o-fill :value="messages">
-        <div class="message {{$data.role}}">
+        <div class="message" attr:type="$data.role">
           <o-if :value="$data.reasoningContent">
             <div class="thinking-section">
               <div class="thinking-header" on:click="$data.thinkingExpanded = !$data.thinkingExpanded">
-                <span class="thinking-icon {{$data.thinkingExpanded ? 'expanded' : ''}}">▶</span>
+                <span class="thinking-icon" attr:expanded="$data.thinkingExpanded ? '' : null">▶</span>
                 <span>思考过程</span>
               </div>
               <o-if :value="$data.thinkingExpanded">
@@ -319,7 +319,7 @@
     export const parent = "./layout.html";
 
     export default async ({ load }) => {
-      const { getAssistant, apiKeys } = await load("../main.js");
+      const { getAssistant, apiKeys } = await load("../../ai/main.js");
 
       return {
         data: {
