@@ -549,5 +549,307 @@
       </script>
     </template>
   </sb-test>
+
+  <!-- ============================== -->
+  <!-- main.js: API Key 管理接口测试   -->
+  <!-- 以下测试无需真实 API Key         -->
+  <!-- ============================== -->
+
+  <sb-test name="main.js: saveKey 添加后出现在 getApiKeys()">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getApiKeys, removeKey } = await import("../main.js");
+
+          const before = getApiKeys().length;
+          await saveKey("sk-test-savekey-abcdef", "deepseek");
+          const after = getApiKeys();
+
+          const newKey = after.find((k) => k.apiKey === "sk-test-savekey-abcdef");
+          const added = !!newKey && after.length === before + 1;
+
+          if (newKey) removeKey(newKey.id);
+
+          return {
+            assert: added,
+            content: { beforeCount: before, afterCount: after.length, newKey },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: saveKey 生成的数据结构完整">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getApiKeys, removeKey } = await import("../main.js");
+
+          await saveKey("sk-test-struct-abcdefgh", "kimi");
+          const key = getApiKeys().find((k) => k.apiKey === "sk-test-struct-abcdefgh");
+
+          const checks = {
+            hasId: typeof key?.id === "string" && key.id.length > 0,
+            providerIsKimi: key?.provider === "kimi",
+            maskedKeyFormat: key?.maskedKey === "sk-test-...efgh",
+            hasCreatedAt: typeof key?.createdAt === "string" && !isNaN(Date.parse(key.createdAt)),
+            hasFormattedDate: typeof key?.formattedDate === "string" && key.formattedDate.length > 0,
+          };
+
+          if (key) removeKey(key.id);
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { key, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: saveKey 返回对应 provider 的 Assistant 实例">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getApiKeys, removeKey } = await import("../main.js");
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+
+          const dsAssistant = await saveKey("sk-test-ret-ds0000000", "deepseek");
+          const kimiAssistant = await saveKey("sk-test-ret-kimi000000", "kimi");
+
+          const checks = {
+            dsIsDeepseek: dsAssistant instanceof DeepseekAssistant,
+            kimiIsKimi: kimiAssistant instanceof KimiAssistant,
+          };
+
+          const keys = getApiKeys();
+          keys.filter((k) => k.apiKey.startsWith("sk-test-ret-")).forEach((k) => removeKey(k.id));
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: removeKey 删除后不再出现在 getApiKeys()">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getApiKeys, removeKey } = await import("../main.js");
+
+          await saveKey("sk-test-remove-abcdefgh", "deepseek");
+          const keysBefore = getApiKeys();
+          const target = keysBefore.find((k) => k.apiKey === "sk-test-remove-abcdefgh");
+
+          const removeResult = removeKey(target.id);
+          const keysAfter = getApiKeys();
+          const stillExists = keysAfter.some((k) => k.id === target.id);
+
+          return {
+            assert: removeResult === true && !stillExists,
+            content: { removeResult, stillExists, keysAfterCount: keysAfter.length },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: removeKey 不存在的 id 返回 false">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { removeKey } = await import("../main.js");
+
+          const result = removeKey("non-existent-id-xyz");
+
+          return {
+            assert: result === false,
+            content: { result },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: getAssistant(id) 按 id 精确获取">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getAssistant, getApiKeys, removeKey } = await import("../main.js");
+
+          await saveKey("sk-test-ga-id-abcdefgh", "kimi");
+          const key = getApiKeys().find((k) => k.apiKey === "sk-test-ga-id-abcdefgh");
+
+          const assistant = await getAssistant(key.id);
+
+          const checks = {
+            sameId: assistant.id === key.id,
+            isObject: typeof assistant === "object" && assistant !== null,
+            hasChatMethod: typeof assistant.chat === "function",
+          };
+
+          removeKey(key.id);
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: getAssistant() 不传 id 返回某个实例">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getAssistant, getApiKeys, removeKey } = await import("../main.js");
+
+          await saveKey("sk-test-ga-random-abcdef", "deepseek");
+          const beforeCount = getApiKeys().length;
+
+          const assistant = await getAssistant();
+
+          const checks = {
+            returnsObject: typeof assistant === "object" && assistant !== null,
+            hasChatMethod: typeof assistant.chat === "function",
+          };
+
+          getApiKeys()
+            .filter((k) => k.apiKey.startsWith("sk-test-ga-random-"))
+            .forEach((k) => removeKey(k.id));
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks, beforeCount },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: getAssistant(不存在 id) 抛 key not found">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { getAssistant } = await import("../main.js");
+
+          let thrown = null;
+          try {
+            await getAssistant("definitely-not-exists-zzz");
+          } catch (e) {
+            thrown = e;
+          }
+
+          return {
+            assert: !!thrown && thrown.message.includes("key not found"),
+            content: { message: thrown?.message },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: onApiKeysChange 在 saveKey 时被触发">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, onApiKeysChange, getApiKeys, removeKey } = await import("../main.js");
+
+          let receivedKeys = null;
+          let callCount = 0;
+          const unsub = onApiKeysChange((keys) => {
+            receivedKeys = keys;
+            callCount++;
+          });
+
+          await saveKey("sk-test-watch-on-abcdef", "deepseek");
+          const added = getApiKeys().find((k) => k.apiKey === "sk-test-watch-on-abcdef");
+
+          const checks = {
+            callbackFired: callCount > 0,
+            receivedArrayIncludesNewKey:
+              !!receivedKeys && receivedKeys.some((k) => k.id === added?.id),
+          };
+
+          unsub();
+          if (added) removeKey(added.id);
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { callCount, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: onApiKeysChange 取消订阅后不再触发">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, onApiKeysChange, getApiKeys, removeKey } = await import("../main.js");
+
+          let callCount = 0;
+          const unsub = onApiKeysChange(() => {
+            callCount++;
+          });
+
+          unsub();
+
+          await saveKey("sk-test-watch-off-abcdef", "deepseek");
+          const added = getApiKeys().find((k) => k.apiKey === "sk-test-watch-off-abcdef");
+
+          if (added) removeKey(added.id);
+
+          return {
+            assert: callCount === 0,
+            content: { callCount },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="main.js: getApiKeys() 返回快照不可影响内部状态">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getApiKeys, removeKey } = await import("../main.js");
+
+          await saveKey("sk-test-snapshot-abcdef", "deepseek");
+          const keys1 = getApiKeys();
+          const targetIdx = keys1.findIndex((k) => k.apiKey === "sk-test-snapshot-abcdef");
+
+          // 篡改快照
+          if (targetIdx !== -1) {
+            keys1[targetIdx].provider = "tampered";
+            keys1.push({ id: "fake", provider: "fake" });
+          }
+
+          // 再次获取，内部应不受影响
+          const keys2 = getApiKeys();
+          const internalTarget = keys2.find((k) => k.apiKey === "sk-test-snapshot-abcdef");
+
+          const checks = {
+            providerUntampered: internalTarget?.provider === "deepseek",
+            noFakeKey: !keys2.some((k) => k.id === "fake"),
+            lengthConsistent: keys2.length === keys1.length - 1, // 减掉我们 push 的假数据
+          };
+
+          if (internalTarget) removeKey(internalTarget.id);
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
 </body>
 </html>
