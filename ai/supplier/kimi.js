@@ -15,6 +15,7 @@ export class KimiAssistant extends Assistant {
     messages,
     onStream = null,
     thinkingKeep = null, // 仅 kimi-k2.6 支持："all" 启用保留式思考
+    signal,
   }) {
     const requestBody = {
       model,
@@ -44,6 +45,7 @@ export class KimiAssistant extends Assistant {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok) {
@@ -51,7 +53,7 @@ export class KimiAssistant extends Assistant {
     }
 
     if (stream) {
-      return this.handleStreamResponse(response, onStream);
+      return this.handleStreamResponse(response, onStream, signal);
     }
 
     const data = await response.json();

@@ -11,6 +11,7 @@ export class DeepseekAssistant extends Assistant {
     stream = false,
     messages,
     onStream = null,
+    signal,
   }) {
     const requestBody = {
       model,
@@ -30,6 +31,7 @@ export class DeepseekAssistant extends Assistant {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok) {
@@ -37,7 +39,7 @@ export class DeepseekAssistant extends Assistant {
     }
 
     if (stream) {
-      return this.handleStreamResponse(response, onStream);
+      return this.handleStreamResponse(response, onStream, signal);
     }
 
     const data = await response.json();

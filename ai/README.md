@@ -176,6 +176,7 @@ const response = await assistant.chat({
 | onStream | function | null | 流式输出回调 |
 | reasoningEffort | string | "high" | DeepSeek / Kimi `kimi-k3` 专用，推理强度（DeepSeek：`high` / `max`；kimi-k3：`low` / `high` / `max`） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
+| signal | AbortSignal | null | 传入 `AbortSignal` 用于取消请求；abort 后 `chat` 会抛出 `AbortError`，底层连接和流读取立即释放 |
 
 > Kimi 不同模型的思考行为差异较大，详见 [Kimi 思考模型文档](https://platform.kimi.com/docs/guide/use-thinking-models)：
 > - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（官方默认 "max"，本库默认降为 "high"）
@@ -280,6 +281,32 @@ await assistant.chat({
     console.log("是否完成:", data.done);
   },
 });
+```
+
+## 取消请求
+
+`chat` 支持 `signal` 参数（标准 `AbortSignal`），用于中途取消请求。abort 后 `chat` 会抛出名为 `AbortError` 的异常，底层连接和流读取会立即释放，避免继续消耗 API 配额。
+
+```javascript
+const controller = new AbortController();
+
+// 某个按钮触发取消
+// cancelButton.onclick = () => controller.abort();
+
+try {
+  await assistant.chat({
+    messages: [{ role: "user", content: "写一篇长文" }],
+    stream: true,
+    signal: controller.signal,
+    onStream: (data) => console.log(data.delta),
+  });
+} catch (err) {
+  if (err.name === "AbortError") {
+    console.log("已取消");
+  } else {
+    throw err;
+  }
+}
 ```
 
 ## 测试
