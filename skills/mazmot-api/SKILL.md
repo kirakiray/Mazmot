@@ -11,6 +11,7 @@ description: "Mazmot 自身提供的能力速查：app.json 应用结构、应�
 - `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
 - 持久化存储 → 查 **ever-cache** 技能。
 - 测试框架本身 → 查 **sibyl-test** 技能。
+- AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
 
 ## 1. 应用结构 —— `app.json`
 
