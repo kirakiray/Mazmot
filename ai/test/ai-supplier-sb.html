@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Supplier 测试</title>
+  <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 16px; }
+  </style>
+</head>
+<body>
+  <h1>AI Supplier 测试套件</h1>
+  <sb-test name="DeepSeek: 普通对话 (deepseek-v4-flash, 非思考)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" }
+            };
+          }
+
+          try {
+            const assistant = new DeepseekAssistant("test-ds", apiKey);
+            const result = await assistant.chat({
+              model: "deepseek-v4-flash",
+              thinking: false,
+              messages: [{ role: "user", content: "请只回复两个字：你好" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasModel = !!result.model;
+            const hasUsage = !!result.usage;
+
+            return {
+              assert: hasContent && hasModel,
+              content: {
+                content: result.content,
+                model: result.model,
+                usage: result.usage,
+                checks: { hasContent, hasModel, hasUsage },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="DeepSeek: 思考模式 (deepseek-v4-flash + thinking)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" }
+            };
+          }
+
+          try {
+            const assistant = new DeepseekAssistant("test-ds-think", apiKey);
+            const result = await assistant.chat({
+              model: "deepseek-v4-flash",
+              thinking: true,
+              reasoningEffort: "high",
+              messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasReasoning = typeof result.reasoningContent === "string" && result.reasoningContent.length > 0;
+
+            return {
+              assert: hasContent && hasReasoning,
+              content: {
+                content: result.content,
+                reasoningContentPreview: result.reasoningContent?.slice(0, 200),
+                model: result.model,
+                checks: { hasContent, hasReasoning },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="DeepSeek: 流式输出">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" }
+            };
+          }
+
+          try {
+            const assistant = new DeepseekAssistant("test-ds-stream", apiKey);
+            const chunks = [];
+            const result = await assistant.chat({
+              model: "deepseek-v4-flash",
+              thinking: false,
+              stream: true,
+              messages: [{ role: "user", content: "从 1 数到 5" }],
+              onStream: (data) => {
+                if (data.delta) chunks.push(data.delta);
+              },
+            });
+
+            const streamedText = chunks.join("");
+            const hasStreamedContent = streamedText.length > 0;
+            const matchesFinal = result.content === streamedText;
+
+            return {
+              assert: hasStreamedContent && matchesFinal,
+              content: {
+                finalContent: result.content,
+                streamedLength: streamedText.length,
+                chunkCount: chunks.length,
+                checks: { hasStreamedContent, matchesFinal },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="DeepSeek: 获取模型列表">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" }
+            };
+          }
+
+          try {
+            const assistant = new DeepseekAssistant("test-ds-models", apiKey);
+            const models = await assistant.getModels();
+            const isArray = Array.isArray(models);
+
+            return {
+              assert: isArray && models.length > 0,
+              content: {
+                modelCount: models.length,
+                models: isArray ? models.map(m => m.id || m.name || m).slice(0, 10) : models,
+                checks: { isArray },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="DeepSeek: 余额查询">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" }
+            };
+          }
+
+          try {
+            const assistant = new DeepseekAssistant("test-ds-balance", apiKey);
+            const remaining = await assistant.getRemaining();
+            const hasField = typeof remaining.isAvailable === "boolean" || Array.isArray(remaining.balanceInfos);
+
+            return {
+              assert: hasField,
+              content: {
+                isAvailable: remaining.isAvailable,
+                balanceInfos: remaining.balanceInfos,
+                checks: { hasField },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: 普通对话 (kimi-k2.6, 非思考)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          try {
+            const assistant = new KimiAssistant("test-kimi", apiKey);
+            const result = await assistant.chat({
+              model: "kimi-k2.6",
+              thinking: false,
+              messages: [{ role: "user", content: "请只回复两个字：你好" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasModel = !!result.model;
+
+            return {
+              assert: hasContent && hasModel,
+              content: {
+                content: result.content,
+                model: result.model,
+                usage: result.usage,
+                checks: { hasContent, hasModel },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: 思考模式 (kimi-k2.6 + thinking)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          try {
+            const assistant = new KimiAssistant("test-kimi-think", apiKey);
+            const result = await assistant.chat({
+              model: "kimi-k2.6",
+              thinking: true,
+              messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasReasoning = typeof result.reasoningContent === "string" && result.reasoningContent.length > 0;
+
+            return {
+              assert: hasContent && hasReasoning,
+              content: {
+                content: result.content,
+                reasoningContentPreview: result.reasoningContent?.slice(0, 200),
+                model: result.model,
+                checks: { hasContent, hasReasoning },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: kimi-k3 推理强度参数 (reasoningEffort)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          try {
+            const assistant = new KimiAssistant("test-kimi-k3", apiKey);
+            const result = await assistant.chat({
+              model: "kimi-k3",
+              reasoningEffort: "low",
+              messages: [{ role: "user", content: "1+1=? 只回答数字" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasReasoning = typeof result.reasoningContent === "string";
+
+            return {
+              assert: hasContent,
+              content: {
+                content: result.content,
+                hasReasoning,
+                reasoningContentPreview: result.reasoningContent?.slice(0, 200),
+                model: result.model,
+                checks: { hasContent, hasReasoning },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: 流式输出">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          try {
+            const assistant = new KimiAssistant("test-kimi-stream", apiKey);
+            const chunks = [];
+            const reasoningChunks = [];
+            const result = await assistant.chat({
+              model: "kimi-k2.6",
+              thinking: false,
+              stream: true,
+              messages: [{ role: "user", content: "从 1 数到 5" }],
+              onStream: (data) => {
+                if (data.delta) chunks.push(data.delta);
+                if (data.deltaReasoning) reasoningChunks.push(data.deltaReasoning);
+              },
+            });
+
+            const streamedText = chunks.join("");
+            const matchesFinal = result.content === streamedText;
+            const hasStreamedContent = streamedText.length > 0;
+
+            return {
+              assert: hasStreamedContent && matchesFinal,
+              content: {
+                finalContent: result.content,
+                streamedLength: streamedText.length,
+                chunkCount: chunks.length,
+                reasoningChunkCount: reasoningChunks.length,
+                checks: { hasStreamedContent, matchesFinal },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: 获取模型列表">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          try {
+            const assistant = new KimiAssistant("test-kimi-models", apiKey);
+            const models = await assistant.getModels();
+            const isArray = Array.isArray(models);
+
+            return {
+              assert: isArray && models.length > 0,
+              content: {
+                modelCount: models.length,
+                models: isArray ? models.map(m => m.id || m.name || m).slice(0, 10) : models,
+                checks: { isArray },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Assistant 基类: 错误处理 (_buildError)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { Assistant } = await import("../supplier/assistant.js");
+
+          const fakeResponse = {
+            status: 401,
+            statusText: "Unauthorized",
+            json: async () => ({ error: { message: "Invalid API key" } }),
+          };
+
+          const a = new Assistant("test", "fake-key");
+          a.providerName = "TestProvider";
+
+          const error = await a._buildError(fakeResponse);
+
+          return {
+            assert: error instanceof Error && error.message.includes("TestProvider") && error.message.includes("401"),
+            content: {
+              message: error.message,
+              checks: {
+                isError: error instanceof Error,
+                hasProvider: error.message.includes("TestProvider"),
+                hasStatus: error.message.includes("401"),
+              },
+            },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="Kimi: 思考参数按模型分支构建">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { KimiAssistant } = await import("../supplier/kimi.js");
+          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("sk-your-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 Kimi API Key" }
+            };
+          }
+
+          // 通过拦截 fetch 验证最终请求体（不真正发请求）
+          const capturedBodies = [];
+          const originalFetch = globalThis.fetch;
+          globalThis.fetch = async (url, opts) => {
+            if (opts?.body) {
+              capturedBodies.push({ url, body: JSON.parse(opts.body) });
+            }
+            return new Response(JSON.stringify({
+              choices: [{ message: { content: "ok", reasoning_content: "thinking" } }],
+              model: "test",
+              usage: {},
+            }), { status: 200, headers: { "Content-Type": "application/json" } });
+          };
+
+          try {
+            const a = new KimiAssistant("test-branch", apiKey);
+            await a.chat({ model: "kimi-k3", reasoningEffort: "low", messages: [{ role: "user", content: "hi" }] });
+            await a.chat({ model: "kimi-k2.7-code", thinking: false, messages: [{ role: "user", content: "hi" }] });
+            await a.chat({ model: "kimi-k2.6", thinking: true, thinkingKeep: "all", messages: [{ role: "user", content: "hi" }] });
+            await a.chat({ model: "kimi-k2.6", thinking: false, messages: [{ role: "user", content: "hi" }] });
+          } finally {
+            globalThis.fetch = originalFetch;
+          }
+
+          const [k3, k27, k26On, k26Off] = capturedBodies.map(c => c.body);
+
+          const checks = {
+            k3_hasReasoningEffort: k3.reasoning_effort === "low",
+            k3_noThinking: k3.thinking === undefined,
+            k27_noThinking: k27.thinking === undefined,
+            k26On_type: k26On.thinking?.type === "enabled",
+            k26On_keep: k26On.thinking?.keep === "all",
+            k26Off_type: k26Off.thinking?.type === "disabled",
+            k26Off_noKeep: k26Off.thinking?.keep === undefined,
+          };
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { capturedBodies, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+</body>
+</html>
