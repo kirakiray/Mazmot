@@ -12,7 +12,7 @@
 ## 安装使用
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.min.mjs" type="module"></script>
+<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.min.mjs#debug" type="module"></script>
 ```
 
 ```javascript
@@ -124,7 +124,7 @@ const remaining = await assistant.getRemaining();
 运行演示应用：
 
 ```bash
-cd demo
+cd ../others/ai-manager-demo
 npx serve .
 ```
 
@@ -143,16 +143,17 @@ npx serve .
 ```
 ai/
 ├── main.js              # 主入口，API Key 管理和 Assistant 工厂
-├── supplier/            # AI 提供商实现
-│   ├── assistant.js     # Assistant 基类
-│   ├── deepseek.js      # DeepSeek 实现
-│   └── kimi.js          # Kimi 实现
-└── demo/                # 演示应用
-    ├── index.html       # 入口页面
-    ├── app-config.js    # 应用配置
-    ├── api-keys.html    # API Key 管理页面
-    ├── chat.html        # 聊天页面
-    └── layout.html      # 布局模板
+└── supplier/            # AI 提供商实现
+    ├── assistant.js     # Assistant 基类
+    ├── deepseek.js      # DeepSeek 实现
+    └── kimi.js          # Kimi 实现
+
+others/ai-manager-demo/  # 演示应用（引用 ../../ai/main.js）
+├── index.html           # 入口页面
+├── app-config.js        # 应用配置
+├── api-keys.html        # API Key 管理页面
+├── chat.html            # 聊天页面
+└── layout.html          # 布局模板
 ```
 
 ## 技术栈

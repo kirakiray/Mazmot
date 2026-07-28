@@ -64,6 +64,7 @@ export class KimiAssistant extends Assistant {
   async handleStreamResponse(response, onStream = null) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
     let result = {
       content: "",
       reasoningContent: "",
@@ -75,8 +76,16 @@ export class KimiAssistant extends Assistant {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+      buffer += decoder.decode(value, { stream: true });
+      // 只处理以换行结尾的完整行，剩余不完整行留到下次
+      const newlineIndex = buffer.lastIndexOf("\n");
+      if (newlineIndex === -1) continue;
+      const completeChunk = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+
+      const lines = completeChunk
+        .split("\n")
+        .filter((line) => line.trim() !== "");
 
       for (const line of lines) {
         if (line.startsWith("data: ")) {
