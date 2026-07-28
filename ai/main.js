@@ -2,21 +2,52 @@ import { storage } from "/gh/kirakiray/ever-cache/src/main.min.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
-export const apiKeys = $.stanz([]);
+// 内部私有数组，不再依赖 stanz；外部通过 getApiKeys / onApiKeysChange 访问
+const _apiKeys = [];
+const _listeners = new Set();
 
+const _snapshot = () => _apiKeys.map((item) => ({ ...item }));
+
+const _emit = () => {
+  const snap = _snapshot();
+  _listeners.forEach((fn) => {
+    try {
+      fn(snap);
+    } catch (e) {
+      console.error("apiKeys listener error:", e);
+    }
+  });
+};
+
+const _persist = () => {
+  storage.setItem("apiKeys", _snapshot()).catch((err) => {
+    console.error("Failed to persist apiKeys:", err);
+  });
+};
+
+/**
+ * 订阅 apiKeys 变化，回调收到只读快照数组。
+ * @param {(keys: Array) => void} callback
+ * @returns {() => void} 取消订阅函数
+ */
+export const onApiKeysChange = (callback) => {
+  _listeners.add(callback);
+  return () => _listeners.delete(callback);
+};
+
+/**
+ * 返回当前 apiKeys 的快照（浅拷贝，安全可读）。
+ * @returns {Array}
+ */
+export const getApiKeys = () => _snapshot();
+
+// 初始化：从 storage 加载已保存的 key
 await (async () => {
   const savedData = await storage.apiKeys;
   if (savedData && Array.isArray(savedData)) {
-    apiKeys.push(...savedData);
+    _apiKeys.push(...savedData);
   }
 })();
-
-apiKeys.watchTick(() => {
-  // 使用 setItem 而非代理语法，避免错误被静默吞掉
-  storage.setItem("apiKeys", apiKeys.toJSON()).catch((err) => {
-    console.error("Failed to persist apiKeys:", err);
-  });
-});
 
 export const testApiKey = async (apiKey, provider) => {
   let assistant;
@@ -45,7 +76,7 @@ export const saveKey = async (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
-  apiKeys.push({
+  _apiKeys.push({
     id,
     provider,
     apiKey,
@@ -54,20 +85,37 @@ export const saveKey = async (apiKey, provider) => {
     formattedDate: createdAt.toLocaleString(),
   });
 
+  _persist();
+  _emit();
+
   return getAssistant(id);
 };
 
+/**
+ * 按 id 删除一条 api key。
+ * @param {string} id
+ * @returns {boolean} 是否删除成功
+ */
+export const removeKey = (id) => {
+  const index = _apiKeys.findIndex((item) => item.id === id);
+  if (index === -1) return false;
+  _apiKeys.splice(index, 1);
+  _persist();
+  _emit();
+  return true;
+};
+
 export const getAssistant = async (id) => {
-  if (apiKeys.length === 0) {
+  if (_apiKeys.length === 0) {
     throw new Error("no api key available");
   }
 
   let item;
 
   if (!id) {
-    item = apiKeys[Math.floor(Math.random() * apiKeys.length)];
+    item = _apiKeys[Math.floor(Math.random() * _apiKeys.length)];
   } else {
-    item = apiKeys.find((item) => item.id === id);
+    item = _apiKeys.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");
     }

@@ -20,7 +20,7 @@
 ```
 
 ```javascript
-import { saveKey, getAssistant, apiKeys } from "./main.js";
+import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from "./main.js";
 ```
 
 ## API

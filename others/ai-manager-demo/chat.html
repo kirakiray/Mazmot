@@ -319,7 +319,7 @@
     export const parent = "./layout.html";
 
     export default async ({ load }) => {
-      const { getAssistant, apiKeys } = await load("../../ai/main.js");
+      const { getAssistant, getApiKeys, onApiKeysChange } = await load("../../ai/main.js");
 
       return {
         data: {
@@ -402,13 +402,21 @@
         },
 
         attached() {
-          this.apiKeys = apiKeys;
-          if (apiKeys.length > 0) {
-            this.selectedModel = apiKeys[0].id;
+          const keys = getApiKeys();
+          this.apiKeys = keys;
+          if (keys.length > 0) {
+            this.selectedModel = keys[0].id;
           }
+          this._unsub = onApiKeysChange((ks) => {
+            this.apiKeys = ks;
+            if (!this.selectedModel && ks.length > 0) {
+              this.selectedModel = ks[0].id;
+            }
+          });
         },
 
         detached() {
+          this._unsub?.();
           this.apiKeys = [];
         },
       };

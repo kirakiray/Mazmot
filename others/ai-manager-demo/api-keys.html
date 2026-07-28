@@ -144,7 +144,7 @@
             </div>
             <button
               class="delete-btn"
-              on:click="$host.apiKeys.splice($index, 1)"
+              on:click="$host.removeKey($data.id)"
             >
               删除
             </button>
@@ -169,7 +169,7 @@
     export const parent = "./layout.html";
     
     export default async ({ load }) => {
-      const { getAssistant, apiKeys, saveKey } = await load("../../ai/main.js");
+      const { getAssistant, getApiKeys, onApiKeysChange, saveKey, removeKey: _removeKey } = await load("../../ai/main.js");
 
       return {
         data: {
@@ -232,10 +232,18 @@
             }
           },
         },
+        removeKey(id) {
+          _removeKey(id);
+        },
+
         attached() {
-          this.apiKeys = apiKeys;
+          this.apiKeys = getApiKeys();
+          this._unsub = onApiKeysChange((keys) => {
+            this.apiKeys = keys;
+          });
         },
         detached() {
+          this._unsub?.();
           this.apiKeys = [];
         },
       };
