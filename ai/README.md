@@ -7,12 +7,16 @@
 | 提供商 | 模型 | 思考模式 | 流式输出 |
 |--------|------|----------|----------|
 | DeepSeek | deepseek-v4-flash, deepseek-v4-pro | ✅ | ✅ |
-| Kimi | kimi-k2.6, kimi-k2-thinking | ✅ | ✅ |
+| Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
+
+> 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
 
 ## 安装使用
 
+入口 HTML 引用 ofa.js（顶层入口走 jsdelivr 完整 URL，模块内用 `/gh/` 本地前缀，详见 [AGENTS.md](../AGENTS.md)）：
+
 ```html
-<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.min.mjs#debug" type="module"></script>
+<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
 ```
 
 ```javascript
@@ -85,11 +89,18 @@ const response = await assistant.chat({
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | messages | array | - | 消息数组，包含 role 和 content |
-| thinking | boolean | false | 是否启用思考模式 |
+| thinking | boolean | false | 是否启用思考模式（DeepSeek / Kimi k2.6 / k2.5 生效） |
 | stream | boolean | false | 是否启用流式输出 |
 | model | string | - | 模型名称 |
 | onStream | function | null | 流式输出回调 |
-| thinkingKeep | string | null | Kimi 专用，保留历史思考 |
+| reasoningEffort | string | "high" | DeepSeek / Kimi `kimi-k3` 专用，推理强度（DeepSeek：high/max；kimi-k3：low/high/max） |
+| thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
+
+> Kimi 不同模型的思考行为差异较大，详见 [Kimi 思考模型文档](https://platform.kimi.com/docs/guide/use-thinking-models)：
+> - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（默认 "max"，这里默认降为 "high"）
+> - `kimi-k2.7-code`：始终思考，`thinking` 参数无效
+> - `kimi-k2.6`：`thinking` 默认 true，支持 `thinkingKeep: "all"`
+> - `kimi-k2.5`：`thinking` 默认 true，不支持保留式思考
 
 #### 返回值
 

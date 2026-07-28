@@ -12,8 +12,10 @@ await (async () => {
 })();
 
 apiKeys.watchTick(() => {
-  const data = apiKeys.toJSON();
-  storage.apiKeys = data;
+  // 使用 setItem 而非代理语法，避免错误被静默吞掉
+  storage.setItem("apiKeys", apiKeys.toJSON()).catch((err) => {
+    console.error("Failed to persist apiKeys:", err);
+  });
 });
 
 export const testApiKey = async (apiKey, provider) => {
@@ -45,7 +47,6 @@ export const saveKey = async (apiKey, provider) => {
 
   apiKeys.push({
     id,
-    concurrent: 4,
     provider,
     apiKey,
     maskedKey: `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`,
@@ -57,6 +58,10 @@ export const saveKey = async (apiKey, provider) => {
 };
 
 export const getAssistant = async (id) => {
+  if (apiKeys.length === 0) {
+    throw new Error("no api key available");
+  }
+
   let item;
 
   if (!id) {

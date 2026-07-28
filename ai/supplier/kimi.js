@@ -1,37 +1,43 @@
 import { Assistant } from "./assistant.js";
 
-const BASE_URL = "https://api.moonshot.cn/v1";
+// 支持 thinking 参数控制的模型；kimi-k3 / kimi-k2.7-code 另有规则
+const THINKING_CONTROLLABLE = new Set(["kimi-k2.6", "kimi-k2.5"]);
 
 export class KimiAssistant extends Assistant {
-  id;
-  constructor(id, apiKey) {
-    super(id, apiKey);
-  }
+  BASE_URL = "https://api.moonshot.cn/v1";
+  providerName = "Kimi";
 
   async chat({
     thinking = false,
     model = "kimi-k2.6",
+    reasoningEffort = "high", // kimi-k3 专用："low" / "high" / "max"
     stream = false,
     messages,
     onStream = null,
-    thinkingKeep = null,
+    thinkingKeep = null, // 仅 kimi-k2.6 支持："all" 启用保留式思考
   }) {
     const requestBody = {
       model,
       stream,
       messages,
-      thinking: {
-        type: thinking ? "enabled" : "disabled",
-        ...(thinkingKeep && { keep: thinkingKeep }),
-      },
       max_tokens: 32000,
     };
 
-    if (model === "kimi-k2-thinking") {
-      delete requestBody.thinking;
+    if (model === "kimi-k3") {
+      // kimi-k3 始终进行推理、不支持 thinking 参数，通过 reasoning_effort 调节强度
+      requestBody.reasoning_effort = reasoningEffort;
+    } else if (model === "kimi-k2.7-code") {
+      // 始终开启思考，thinking.type 仅允许 "enabled"，thinking.keep 始终视为 "all"
+      // 不传 thinking 参数即可，模型按默认行为工作
+    } else if (THINKING_CONTROLLABLE.has(model)) {
+      requestBody.thinking = {
+        type: thinking ? "enabled" : "disabled",
+        ...(thinkingKeep && { keep: thinkingKeep }),
+      };
     }
+    // 其他未知模型：保持最小请求体，不强行注入 thinking 参数
 
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const response = await fetch(`${this.BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -41,10 +47,7 @@ export class KimiAssistant extends Assistant {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(
-        `Kimi API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
-      );
+      throw await this._buildError(response);
     }
 
     if (stream) {
@@ -61,89 +64,8 @@ export class KimiAssistant extends Assistant {
     };
   }
 
-  async handleStreamResponse(response, onStream = null) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let result = {
-      content: "",
-      reasoningContent: "",
-      model: "",
-      usage: null,
-    };
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      // 只处理以换行结尾的完整行，剩余不完整行留到下次
-      const newlineIndex = buffer.lastIndexOf("\n");
-      if (newlineIndex === -1) continue;
-      const completeChunk = buffer.slice(0, newlineIndex);
-      buffer = buffer.slice(newlineIndex + 1);
-
-      const lines = completeChunk
-        .split("\n")
-        .filter((line) => line.trim() !== "");
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices[0]?.delta;
-
-            if (delta?.content) {
-              result.content += delta.content;
-            }
-            if (delta?.reasoning_content) {
-              result.reasoningContent += delta.reasoning_content;
-            }
-            if (parsed.model) {
-              result.model = parsed.model;
-            }
-            if (parsed.usage) {
-              result.usage = parsed.usage;
-            }
-
-            if (onStream && typeof onStream === "function") {
-              onStream({
-                content: result.content,
-                reasoningContent: result.reasoningContent,
-                delta: delta?.content || "",
-                deltaReasoning: delta?.reasoning_content || "",
-                model: result.model,
-                usage: result.usage,
-                done: false,
-              });
-            }
-          } catch (e) {
-            console.warn("Failed to parse streaming chunk:", e);
-          }
-        }
-      }
-    }
-
-    if (onStream && typeof onStream === "function") {
-      onStream({
-        content: result.content,
-        reasoningContent: result.reasoningContent,
-        delta: "",
-        deltaReasoning: "",
-        model: result.model,
-        usage: result.usage,
-        done: true,
-      });
-    }
-
-    return result;
-  }
-
   async getModels() {
-    const response = await fetch(`${BASE_URL}/models`, {
+    const response = await fetch(`${this.BASE_URL}/models`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -151,10 +73,7 @@ export class KimiAssistant extends Assistant {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(
-        `Kimi API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
-      );
+      throw await this._buildError(response);
     }
 
     const data = await response.json();
@@ -162,7 +81,7 @@ export class KimiAssistant extends Assistant {
   }
 
   async getRemaining() {
-    const response = await fetch(`${BASE_URL}/users/me/balance`, {
+    const response = await fetch(`${this.BASE_URL}/users/me/balance`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -170,10 +89,7 @@ export class KimiAssistant extends Assistant {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(
-        `Kimi API error: ${response.status} ${response.statusText} - ${JSON.stringify(error)}`,
-      );
+      throw await this._buildError(response);
     }
 
     const data = await response.json();
