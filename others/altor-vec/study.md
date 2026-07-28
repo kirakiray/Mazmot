@@ -22,7 +22,7 @@
 await init();
 
 // 2. 加载嵌入模型（把文字变成向量的"翻译官"）
-extractor = await pipeline("feature-extraction", "Xenova/paraphrase-multilingual-MiniLM-L12-v2");
+extractor = await pipeline("feature-extraction", "Xenova/bge-base-zh-v1.5");
 ```
 
 **为什么需要两个东西？**  
@@ -31,24 +31,27 @@ extractor = await pipeline("feature-extraction", "Xenova/paraphrase-multilingual
 
 **位置**：[index.html](index.html#L247-L255)
 
+***注意**：BGE 查询侧要加前缀，文档侧不加，和模型用同一个 `extractor` 就行。*
+
 ---
 
 ### ② 字符串 → 向量数组（嵌入）
 
 ```js
 async function embed(text) {
-  const out = await extractor(text, { pooling: "mean", normalize: true });
-  return new Float32Array(out.data);  // → 384 个浮点数组成的数组
+  const out = await extractor(text, { pooling: "cls", normalize: true });
+  return new Float32Array(out.data);  // → 768 个浮点数组成的数组
 }
 ```
 
 **发生了什么？**  
-`"机器学习是人工智能的一个分支……"` 这个字符串，经过模型处理后，变成了一个 **384 维的 Float32Array**，里面是 384 个小数（如 `[0.021, -0.015, 0.087, ...]`）。
+`"机器学习是人工智能的一个分支……"` 这个字符串，经过模型处理后，变成了一个 **768 维的 Float32Array**，里面是 768 个小数（如 `[0.021, -0.015, 0.087, ...]`）。
 
 **关键点**：  
 - 相同语义的文字，生成的向量在空间中"距离近"  
 - 不同语义的文字，向量"距离远"  
-- 384 维是这只模型的能力，不同模型维度不同（1536、1024 等）
+- 768 维是 bge-base-zh 这只模型的能力，不同模型维度不同（384、1024、1536 等）  
+- BGE 用 `pooling: "cls"`（取 [CLS] 位置向量），而 MiniLM 类模型用 `pooling: "mean"`（平均池化），换模型时要注意
 
 **位置**：[index.html](index.html#L161-L166)
 
@@ -81,8 +84,8 @@ engine = WasmSearchEngine.from_vectors(flat, DIM, M, EF_CONSTRUCTION, EF_SEARCH)
 ### ④ 搜索（查询）
 
 ```js
-// 1. 把用户查询也变成向量
-const queryVec = await embed("人工智能");
+// 1. 把用户查询也变成向量（BGE 查询侧建议加指令前缀）
+const queryVec = await embed("为这个句子生成表示以用于检索相关文章：" + "人工智能");
 
 // 2. 去索引里找最近的 N 个邻居
 const raw = JSON.parse(engine.search(queryVec, 5));
@@ -158,9 +161,11 @@ HNSW = Hierarchical Navigable Small World（分层可导航小世界图）。
 
 ## 5. 初学者的常见疑问
 
-### Q: 为什么是 384 维？不是越多越好吗？
+### Q: 为什么是 768 维？不是越多越好吗？
 不同模型输出的维度不同：  
-- `all-MiniLM-L6-v2` → 384 维（轻量，浏览器友好）  
+- `bge-base-zh-v1.5`（当前）→ 768 维（中文优化，CLS 池化）  
+- `bge-small-zh-v1.5` → 512 维（更小更快，中文）  
+- `all-MiniLM-L6-v2` → 384 维（英文为主，mean 池化）  
 - `text-embedding-3-small` → 1536 维（OpenAI 的，更准但更大）  
 - 维度越高，信息越丰富，但计算越慢，存储越大
 
@@ -185,9 +190,9 @@ VecLite 存了，所以它 60KB+17KB。这是设计取舍：**功能越少，体
 ```
 用户输入 "人工智能"
         ↓
-  嵌入模型（transformers.js）
+  加查询前缀 + 嵌入模型（transformers.js / bge-base-zh）
         ↓
-  向量 [0.021, -0.015, 0.087, ...]  (384 个浮点数)
+  向量 [0.021, -0.015, 0.087, ...]  (768 个浮点数)
         ↓
   engine.search(queryVec, 5)  → 在 HNSW 图里找最近邻居
         ↓

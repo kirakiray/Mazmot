@@ -341,7 +341,7 @@
       import init, { WasmSearchEngine } from "https://esm.sh/altor-vec@0.1.3";
       // idb-keyval：极小的 IndexedDB 封装，用于持久化序列化后的索引与元数据
       import { get, set } from "https://esm.sh/idb-keyval@6";
-      // Transformers.js：本地生成多语言语义嵌入（384 维），保证中文效果
+      // Transformers.js：本地生成中文语义嵌入（bge-base-zh，768 维），中文检索效果更好
       import {
         pipeline,
         env,
@@ -349,15 +349,18 @@
 
       env.allowLocalModels = false;
 
-      const MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
-      const DIM = 384;
+      // BGE 中文模型：智源（BAAI）针对中文检索微调，768 维、CLS 池化
+      const MODEL = "Xenova/bge-base-zh-v1.5";
+      const DIM = 768;
+      // BGE 官方建议：查询侧加指令前缀以提升检索效果（文档侧不加）
+      const QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章：";
       // HNSW 构建参数（altor-vec 默认值）
       const M = 16;
       const EF_CONSTRUCTION = 200;
       const EF_SEARCH = 50;
-      // IndexedDB 持久化用的 key
-      const KEY_INDEX = "altor-demo-index";
-      const KEY_META = "altor-demo-meta";
+      // IndexedDB 持久化用的 key（带模型标识，避免与旧的 384 维索引冲突）
+      const KEY_INDEX = "altor-demo-index-bge-base-zh";
+      const KEY_META = "altor-demo-meta-bge-base-zh";
 
       // 示例文档库：与其它 demo 保持一致，便于横向对比
       const documents = [
@@ -401,9 +404,9 @@
         statEl.textContent = `索引向量数：${engine ? engine.len() : 0} ｜ 序列化大小：${kb} KB${extra ? " ｜ " + extra : ""}`;
       }
 
-      // 文本 -> 384 维 L2 归一化向量（altor-vec 依赖归一化向量，使点积等价于余弦相似度）
+      // 文本 -> 768 维 L2 归一化向量（BGE 用 CLS 池化；归一化后点积等价于余弦相似度）
       async function embed(text) {
-        const out = await extractor(text, { pooling: "mean", normalize: true });
+        const out = await extractor(text, { pooling: "cls", normalize: true });
         return new Float32Array(out.data);
       }
 
@@ -466,7 +469,8 @@
           '<div class="no-results">🔍 正在计算查询向量并检索…</div>';
 
         try {
-          const queryVec = await embed(query);
+          // BGE 查询侧加指令前缀（文档侧建库时不加）
+          const queryVec = await embed(QUERY_PREFIX + query);
           // search 返回 JSON 字符串："[[nodeId, distance], ...]"
           const raw = JSON.parse(engine.search(queryVec, topK));
 
@@ -492,7 +496,7 @@
           setStatus("正在加载 altor-vec WASM 内核（54KB）…");
           await init();
 
-          setStatus("正在下载嵌入模型（首次约 100MB，请耐心等待）…");
+          setStatus("正在下载嵌入模型 bge-base-zh（首次约 100MB，请耐心等待）…");
           extractor = await pipeline("feature-extraction", MODEL);
 
           // 优先尝试从 IndexedDB 恢复序列化索引，避免重复嵌入
