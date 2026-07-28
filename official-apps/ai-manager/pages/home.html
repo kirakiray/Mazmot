@@ -1,0 +1,604 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow-y: auto;
+      background-color: var(--md-sys-color-background);
+      color: var(--md-sys-color-on-background);
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .app-header {
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary),
+        var(--md-sys-color-tertiary)
+      );
+      color: var(--md-sys-color-on-primary);
+      font-size: 28px;
+      box-shadow: 0 4px 12px rgba(from var(--md-sys-color-primary) r g b / 0.3);
+    }
+
+    .brand-text h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .brand-text p {
+      margin: 4px 0 0;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .form-card,
+    .list-card {
+      background-color: var(--md-sys-color-surface-container);
+      border-radius: 24px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .section-title {
+      margin: 0 0 16px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-bottom: 16px;
+    }
+
+    .provider-field {
+      flex: 0 0 auto;
+      min-width: 160px;
+    }
+
+    .key-field {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 16px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-align: center;
+    }
+
+    .empty-state n-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.6;
+    }
+
+    .provider-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .provider-badge.deepseek {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+
+    .provider-badge.kimi {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+
+    .key-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .masked-key {
+      font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .key-meta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .item-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .detail-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .detail-icon.models-icon {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+
+    .detail-icon.balance-icon {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+
+    .detail-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .detail-suffix {
+      text-align: right;
+      max-width: 65%;
+      margin-left: 12px;
+    }
+
+    .detail-value {
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 14px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .loading-text {
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .brand-text h1 {
+        font-size: 20px;
+      }
+
+      .form-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .provider-field,
+      .key-field {
+        width: 100%;
+        min-width: auto;
+      }
+
+      .form-actions {
+        justify-content: stretch;
+      }
+
+      .form-actions p-button {
+        flex: 1;
+      }
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <main class="container">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <n-icon icon="mdi:key"></n-icon>
+        </div>
+        <div class="brand-text">
+          <h1>AI 密钥管理器</h1>
+          <p>集中管理 DeepSeek / Kimi 的 API Key</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="form-card">
+      <h2 class="section-title">添加 API Key</h2>
+      <div class="form-row">
+        <div class="provider-field">
+          <p-select sync:value="provider">
+            <span slot="label">提供商</span>
+            <p-option value="deepseek">DeepSeek</p-option>
+            <p-option value="kimi">Kimi</p-option>
+          </p-select>
+        </div>
+        <div class="key-field">
+          <p-input
+            sync:value="apiKey"
+            attr:type="showPassword ? 'text' : 'password'"
+            placeholder="请输入 API Key"
+          >
+            <span slot="label">API Key</span>
+            <p-button
+              slot="suffix"
+              variant="text"
+              icon
+              size="s"
+              on:click="togglePassword"
+            >
+              <n-icon
+                attr:icon="showPassword ? 'mdi:eye-off' : 'mdi:eye'"
+              ></n-icon>
+            </p-button>
+          </p-input>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <p-button
+          variant="outlined"
+          :disabled="!apiKey || submitting"
+          on:click="handleValidate"
+        >
+          <span slot="prefix">
+            <n-icon icon="mdi:check-circle-outline"></n-icon>
+          </span>
+          验证
+        </p-button>
+        <p-button
+          color="primary"
+          :disabled="!apiKey || submitting"
+          on:click="handleSave"
+        >
+          <span slot="prefix">
+            <n-icon icon="mdi:content-save-outline"></n-icon>
+          </span>
+          保存
+        </p-button>
+      </div>
+    </section>
+
+    <section class="list-card">
+      <div class="section-header">
+        <h2 class="section-title">已保存的 Key</h2>
+        <span class="count-badge">{{apiKeys.length}}</span>
+      </div>
+
+      <o-if :value="apiKeys.length === 0">
+        <div class="empty-state">
+          <n-icon icon="mdi:key-outline"></n-icon>
+          <p>暂无保存的 API Key</p>
+        </div>
+      </o-if>
+
+      <o-if :value="apiKeys.length > 0">
+        <p-list>
+          <o-fill :value="apiKeys">
+            <p-list-item
+              collapsible
+              attr:expanded="$host.expandedId === $data.id"
+              button
+              on:click-main="$host.toggleExpand($data.id)"
+            >
+              <span slot="prefix">
+                <span
+                  class="provider-badge"
+                  class:deepseek="$data.provider === 'deepseek'"
+                  class:kimi="$data.provider === 'kimi'"
+                >
+                  <n-icon
+                    attr:icon="$host.providerIcon($data.provider)"
+                  ></n-icon>
+                  <span>{{$host.providerLabel($data.provider)}}</span>
+                </span>
+              </span>
+
+              <div class="key-info">
+                <div class="masked-key">{{$data.maskedKey}}</div>
+                <div class="key-meta">{{$data.formattedDate}}</div>
+              </div>
+
+              <div
+                slot="suffix"
+                class="item-actions"
+                style="z-index: 3; position: relative"
+              >
+                <p-button
+                  variant="text"
+                  icon
+                  size="s"
+                  color="error"
+                  on:click="$host.handleDelete($data.id)"
+                  title="删除"
+                >
+                  <n-icon icon="mdi:delete-outline"></n-icon>
+                </p-button>
+              </div>
+
+              <p-list slot="sublist" style="--sublist-indent: 0px">
+                <p-list-item align-top>
+                  <span slot="prefix" class="detail-icon models-icon">
+                    <n-icon icon="mdi:brain"></n-icon>
+                  </span>
+                  <div class="detail-label">可用模型</div>
+                  <div slot="suffix" class="detail-suffix">
+                    <o-if :value="$host.loadingIds[$data.id]">
+                      <span class="loading-text">加载中...</span>
+                    </o-if>
+                    <o-if :value="!$host.loadingIds[$data.id]">
+                      <span class="detail-value">{{$host.detailMap[$data.id] ? $host.detailMap[$data.id].models : '点击展开后加载'}}</span>
+                    </o-if>
+                  </div>
+                </p-list-item>
+                <p-list-item align-top>
+                  <span slot="prefix" class="detail-icon balance-icon">
+                    <n-icon icon="mdi:wallet-outline"></n-icon>
+                  </span>
+                  <div class="detail-label">余额信息</div>
+                  <div slot="suffix" class="detail-suffix">
+                    <o-if :value="$host.loadingIds[$data.id]">
+                      <span class="loading-text">加载中...</span>
+                    </o-if>
+                    <o-if :value="!$host.loadingIds[$data.id]">
+                      <span class="detail-value">{{$host.detailMap[$data.id] ? $host.detailMap[$data.id].balance : '点击展开后加载'}}</span>
+                    </o-if>
+                  </div>
+                </p-list-item>
+              </p-list>
+            </p-list-item>
+          </o-fill>
+        </p-list>
+      </o-if>
+    </section>
+  </main>
+
+  <script>
+    export default async ({ load }) => {
+      const {
+        saveKey,
+        removeKey,
+        getApiKeys,
+        onApiKeysChange,
+        testApiKey,
+        getAssistant,
+      } = await load("/ai/main.js");
+      const { toast, confirm } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      return {
+        data: {
+          provider: "deepseek",
+          apiKey: "",
+          showPassword: false,
+          apiKeys: [],
+          submitting: false,
+          loadingIds: {},
+          detailMap: {},
+          expandedId: null,
+        },
+
+        proto: {
+          providerLabel(provider) {
+            return provider === "kimi" ? "Kimi" : "DeepSeek";
+          },
+
+          providerIcon(provider) {
+            return provider === "kimi" ? "mdi:robot" : "mdi:brain";
+          },
+
+          togglePassword() {
+            this.showPassword = !this.showPassword;
+          },
+
+          async handleValidate() {
+            const key = this.apiKey.trim();
+            if (!key) {
+              toast({ message: "请输入 API Key", color: "error" });
+              return;
+            }
+
+            this.submitting = true;
+            try {
+              const { valid, message } = await testApiKey(key, this.provider);
+              toast({ message, color: valid ? "success" : "error" });
+            } catch (error) {
+              toast({ message: `验证失败：${error.message}`, color: "error" });
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          async handleSave() {
+            const key = this.apiKey.trim();
+            if (!key) {
+              toast({ message: "请输入 API Key", color: "error" });
+              return;
+            }
+
+            this.submitting = true;
+            try {
+              const { valid, message } = await testApiKey(key, this.provider);
+              if (!valid) {
+                toast({ message, color: "error" });
+                return;
+              }
+
+              saveKey(key, this.provider);
+              this.apiKey = "";
+              toast({ message: "API Key 保存成功", color: "success" });
+            } catch (error) {
+              toast({ message: `保存失败：${error.message}`, color: "error" });
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          toggleExpand(id) {
+            if (this.expandedId === id) {
+              this.expandedId = null;
+              return;
+            }
+            this.expandedId = id;
+            if (!this.detailMap[id]) {
+              this.loadDetail(id);
+            }
+          },
+
+          async loadDetail(id) {
+            this.loadingIds[id] = true;
+            this.detailMap[id] = { models: "", balance: "" };
+
+            const assistant = getAssistant(id);
+
+            await Promise.all([
+              assistant
+                .getModels()
+                .then((models) => {
+                  const names = models.map((m) => m.id || m.name);
+                  this.detailMap[id].models = names.length
+                    ? names.join("，")
+                    : "暂无数据";
+                })
+                .catch((err) => {
+                  this.detailMap[id].models = `加载失败：${err.message}`;
+                }),
+              assistant
+                .getRemaining()
+                .then((remaining) => {
+                  const lines = remaining.balances
+                    .map((b) => `${b.amount} ${b.currency ?? "未知货币"}`)
+                    .join("，");
+                  this.detailMap[id].balance = lines
+                    ? lines
+                    : remaining.raw
+                    ? JSON.stringify(remaining.raw)
+                    : "暂无数据";
+                })
+                .catch((err) => {
+                  this.detailMap[id].balance = `加载失败：${err.message}`;
+                }),
+            ]);
+
+            sessionStorage.setItem(
+              `ai-manager:${id}:detail`,
+              JSON.stringify(this.detailMap[id]),
+            );
+            this.loadingIds[id] = false;
+          },
+
+          async handleDelete(id) {
+            const key = this.apiKeys.find((k) => k.id === id);
+            const ok = await confirm({
+              title: "删除确认",
+              message: `确定要删除 ${
+                key ? key.maskedKey : "这条"
+              } API Key 吗？此操作无法撤销。`,
+              yes: "删除",
+              cancel: "取消",
+            });
+            if (ok) {
+              removeKey(id);
+              if (this.expandedId === id) {
+                this.expandedId = null;
+              }
+              delete this.detailMap[id];
+              sessionStorage.removeItem(`ai-manager:${id}:detail`);
+              toast({ message: "已删除", color: "success" });
+            }
+          },
+        },
+
+        attached() {
+          this.apiKeys = getApiKeys();
+          this._unsub = onApiKeysChange((keys) => {
+            this.apiKeys = keys;
+          });
+
+          for (const key of this.apiKeys) {
+            const cached = sessionStorage.getItem(
+              `ai-manager:${key.id}:detail`,
+            );
+            if (cached) {
+              try {
+                this.detailMap[key.id] = JSON.parse(cached);
+              } catch {
+                sessionStorage.removeItem(`ai-manager:${key.id}:detail`);
+              }
+            }
+          }
+        },
+
+        detached() {
+          this._unsub?.();
+          this.apiKeys = [];
+          this.detailMap = {};
+          this.expandedId = null;
+        },
+      };
+    };
+  </script>
+</template>
