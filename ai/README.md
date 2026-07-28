@@ -27,26 +27,105 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from ".
 
 ### saveKey(apiKey, provider)
 
-保存 API Key 并返回 Assistant 实例。
+保存 API Key 并返回 Assistant 实例。写入后会自动持久化到 `ever-cache`，并通知所有 `onApiKeysChange` 订阅者。
+
+- `provider` 取值：`"deepseek"` / `"kimi"`
 
 ```javascript
 const assistant = await saveKey("sk-xxx", "deepseek");
 ```
 
-### getAssistant(id)
+### removeKey(id)
 
-根据 ID 获取 Assistant 实例。
+按 id 删除一条 API Key，返回是否删除成功。同样自动持久化 + 通知订阅者。
+
+```javascript
+removeKey("abc123"); // true / false
+```
+
+### getAssistant(id?)
+
+根据 id 获取 Assistant 实例。**不传 id** 时从已保存的 key 中随机选一个（适用于多 key 负载均衡）。空列表抛 `no api key available`，id 不存在抛 `key not found`。
 
 ```javascript
 const assistant = await getAssistant("abc123");
+// 或随机取一个
+const anyAssistant = await getAssistant();
 ```
 
-### apiKeys
+### getApiKeys()
 
-存储所有 API Key 的响应式数组。
+返回当前所有 API Key 的**快照**（浅拷贝数组，安全可读，不会随内部状态变化）。UI 层应通过 `onApiKeysChange` 维持实时视图，而不是长期持有这个引用。
 
 ```javascript
-console.log(apiKeys.length);
+const keys = getApiKeys();
+console.log(keys.length, keys.map(k => k.maskedKey));
+```
+
+返回的 key 对象结构：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 内部生成的唯一 id（用于 `getAssistant` / `removeKey`） |
+| `provider` | string | `"deepseek"` / `"kimi"` |
+| `apiKey` | string | 原始 key（敏感，UI 展示请用 `maskedKey`） |
+| `maskedKey` | string | 脱敏后的展示串，如 `sk-abcd...wxyz` |
+| `createdAt` | string | ISO 时间戳 |
+| `formattedDate` | string | 本地化时间字符串 |
+
+### onApiKeysChange(callback)
+
+订阅 API Key 列表变化（`saveKey` / `removeKey` 触发）。回调收到一份新的只读快照数组。返回**取消订阅函数**，组件销毁时务必调用以避免内存泄漏。
+
+本模块不依赖任何框架响应式，UI 层（ofa.js / React / 原生等）可借此同步视图。
+
+```javascript
+const unsub = onApiKeysChange((keys) => {
+  console.log("列表更新，共", keys.length, "条");
+});
+// 组件销毁时
+unsub();
+```
+
+### testApiKey(apiKey, provider)
+
+验证 API Key 是否有效（不写入列表，仅调用 `getModels()` 探测）。返回 `{ valid, message }`，**不会抛异常**，错误信息通过 `message` 返回。
+
+```javascript
+const { valid, message } = await testApiKey("sk-xxx", "kimi");
+if (!valid) alert(message);
+```
+
+### 完整使用流程
+
+```javascript
+import {
+  saveKey, removeKey, getAssistant,
+  getApiKeys, onApiKeysChange, testApiKey,
+} from "./main.js";
+
+// 1. 验证 key
+const { valid } = await testApiKey("sk-xxx", "deepseek");
+if (!valid) throw new Error("key 无效");
+
+// 2. 持久化保存
+await saveKey("sk-xxx", "deepseek");
+
+// 3. UI 订阅变化
+const unsub = onApiKeysChange((keys) => {
+  renderKeyList(keys); // 自行渲染
+});
+
+// 4. 发起对话
+const assistant = await getAssistant(); // 不传 id 随机取
+const result = await assistant.chat({
+  model: "deepseek-v4-flash",
+  messages: [{ role: "user", content: "你好" }],
+});
+
+// 5. 清理
+unsub();
+removeKey("某条 id");
 ```
 
 ## Assistant API
