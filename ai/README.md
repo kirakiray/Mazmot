@@ -132,6 +132,15 @@ removeKey("某条 id");
 
 ## Assistant API
 
+### providerName
+
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"`（与 key 对象的 `provider` 一致）。用 `getAssistant()` 随机取实例时，可读取它判断拿到的是哪家。
+
+```javascript
+const assistant = getAssistant();
+console.log(assistant.providerName); // "deepseek" 或 "kimi"
+```
+
 ### chat(options)
 
 与 AI 进行对话。

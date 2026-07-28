@@ -5,11 +5,11 @@ const THINKING_CONTROLLABLE = new Set(["kimi-k2.6", "kimi-k2.5"]);
 
 export class KimiAssistant extends Assistant {
   BASE_URL = "https://api.moonshot.cn/v1";
-  providerName = "Kimi";
+  providerName = "kimi";
 
   async chat({
     thinking = false,
-    model = "kimi-k2.6",
+    model = "kimi-k3",
     reasoningEffort = "high", // kimi-k3 专用："low" / "high" / "max"
     stream = false,
     messages,

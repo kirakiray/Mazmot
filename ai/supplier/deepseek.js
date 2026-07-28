@@ -2,7 +2,7 @@ import { Assistant } from "./assistant.js";
 
 export class DeepseekAssistant extends Assistant {
   BASE_URL = "https://api.deepseek.com";
-  providerName = "DeepSeek";
+  providerName = "deepseek";
 
   async chat({
     thinking = false,

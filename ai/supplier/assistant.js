@@ -2,7 +2,7 @@ export class Assistant {
   /**
    * 子类必须覆盖以下字段：
    *  - BASE_URL：API 基础地址
-   *  - providerName：错误信息前缀（如 "DeepSeek API error"）
+   *  - providerName：提供商标识（全小写，如 "deepseek" / "kimi"），也用作错误信息前缀
    */
   // id 用于标识 key 来源；testApiKey 等无 key 场景可传 null
   constructor(id, apiKey) {

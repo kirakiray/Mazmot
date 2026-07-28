@@ -2,10 +2,94 @@
 
 Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/ai/` 目录，统一封装 DeepSeek 和 Kimi 两家提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
 
+> **应用侧快速上手**：如果你的应用只需要调用 AI 对话能力，**基本不用关心 key 管理 API**（`saveKey` / `removeKey` / `getApiKeys` / `onApiKeysChange` / `testApiKey`）——那些是 AI Key 管理器应用自己用的。应用侧只需用 `getAssistant()` 拿到 Assistant 实例，然后调 `chat()` / `getModels()` / `getRemaining()` 即可：
+
+```js
+import { getAssistant } from "/ai/main.js";
+
+// 拿到 Assistant 实例（host 端已配置好 key）
+const assistant = getAssistant();
+const { content } = await assistant.chat({
+  messages: [{ role: "user", content: "你好" }],
+});
+```
+
+下面先讲应用侧常用的 Assistant API，再附上完整的 key 管理 API（给 AI Key 管理器或代理服务用）。
+
+## 应用侧常用 API
+
+由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
+
+### assistant.providerName
+
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
+
+```js
+const assistant = getAssistant();
+console.log(assistant.providerName); // "deepseek" 或 "kimi"
+```
+
+### chat(options)
+
+```js
+const response = await assistant.chat({
+  messages: [
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "你好" },
+  ],
+  thinking: false,
+  stream: false,
+  model: "deepseek-v4-flash",
+  onStream: (data) => { /* ... */ },
+  signal: controller.signal, // AbortSignal
+});
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `messages` | array | - | 消息数组，含 role/content |
+| `thinking` | boolean | false | 是否启用思考模式（DeepSeek / Kimi k2.6 / k2.5 生效） |
+| `stream` | boolean | false | 是否启用流式输出 |
+| `model` | string | - | 模型名称 |
+| `onStream` | function | null | 流式输出回调 |
+| `reasoningEffort` | string | "high" | DeepSeek / `kimi-k3` 专用，推理强度（DeepSeek：`high`/`max`；kimi-k3：`low`/`high`/`max`） |
+| `thinkingKeep` | string | null | 仅 `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
+| `signal` | AbortSignal | null | 传入用于取消请求；abort 后抛 `AbortError` |
+
+返回值：
+
+```js
+{
+  content: "AI 回复内容",
+  reasoningContent: "思考过程（启用 thinking 时）",
+  model: "使用的模型",
+  usage: { prompt_tokens: 10, completion_tokens: 20 },
+  raw: { /* 原始响应 */ }
+}
+```
+
+### getModels()
+
+获取可用模型列表。
+
+### getRemaining()
+
+获取账户余额，**统一返回结构**：
+
+```js
+{
+  balances: [{ currency: "CNY", amount: 123.45, raw: {...} }],
+  raw: { /* 原始响应 */ }
+}
+```
+
+## 应用侧完整导入
+
 ```js
 import {
-  saveKey, removeKey, getAssistant,
-  getApiKeys, onApiKeysChange, testApiKey,
+  getAssistant,
+  // 仅当应用自己管理 key 时才需要下面这些
+  saveKey, removeKey, getApiKeys, onApiKeysChange, testApiKey,
 } from "/ai/main.js";
 ```
 
@@ -18,7 +102,11 @@ import {
 
 > `kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已下线。`deepseek-chat` / `deepseek-reasoner` 旧名已于 2026/07/24 弃用。
 
-## main.js —— API Key 管理
+---
+
+## key 管理 API（AI Key 管理器 / 代理服务用）
+
+> 以下 API 给"AI Key 管理器应用"或"代理服务端"使用，普通应用通常用不到。
 
 ### saveKey(apiKey, provider)
 
@@ -97,64 +185,6 @@ const result = await assistant.chat({
 });
 // 5. 清理
 unsub();
-```
-
-## Assistant 实例 API
-
-由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
-
-### chat(options)
-
-```js
-const response = await assistant.chat({
-  messages: [
-    { role: "system", content: "You are a helpful assistant." },
-    { role: "user", content: "你好" },
-  ],
-  thinking: false,
-  stream: false,
-  model: "deepseek-v4-flash",
-  onStream: (data) => { /* ... */ },
-  signal: controller.signal, // AbortSignal
-});
-```
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messages` | array | - | 消息数组，含 role/content |
-| `thinking` | boolean | false | 是否启用思考模式（DeepSeek / Kimi k2.6 / k2.5 生效） |
-| `stream` | boolean | false | 是否启用流式输出 |
-| `model` | string | - | 模型名称 |
-| `onStream` | function | null | 流式输出回调 |
-| `reasoningEffort` | string | "high" | DeepSeek / `kimi-k3` 专用，推理强度（DeepSeek：`high`/`max`；kimi-k3：`low`/`high`/`max`） |
-| `thinkingKeep` | string | null | 仅 `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
-| `signal` | AbortSignal | null | 传入用于取消请求；abort 后抛 `AbortError` |
-
-返回值：
-
-```js
-{
-  content: "AI 回复内容",
-  reasoningContent: "思考过程（启用 thinking 时）",
-  model: "使用的模型",
-  usage: { prompt_tokens: 10, completion_tokens: 20 },
-  raw: { /* 原始响应 */ }
-}
-```
-
-### getModels()
-
-获取可用模型列表。
-
-### getRemaining()
-
-获取账户余额，**统一返回结构**：
-
-```js
-{
-  balances: [{ currency: "CNY", amount: 123.45, raw: {...} }],
-  raw: { /* 原始响应 */ }
-}
 ```
 
 ## 思考模式
