@@ -26,6 +26,20 @@ const _persist = () => {
 };
 
 /**
+ * 按 provider 创建对应的 Assistant 实例（统一三处 switch 路由）。
+ */
+const _createAssistant = (provider, id, apiKey) => {
+  switch (provider) {
+    case "deepseek":
+      return new DeepseekAssistant(id, apiKey);
+    case "kimi":
+      return new KimiAssistant(id, apiKey);
+    default:
+      throw new Error(`provider not supported: ${provider}`);
+  }
+};
+
+/**
  * 订阅 apiKeys 变化，回调收到只读快照数组。
  * @param {(keys: Array) => void} callback
  * @returns {() => void} 取消订阅函数
@@ -49,22 +63,13 @@ await (async () => {
   }
 })();
 
+/**
+ * 验证 API Key 是否有效（不写入列表，仅调用 getModels 探测）。
+ * 不会抛异常，所有错误（含不支持的 provider）都通过 { valid: false, message } 返回。
+ */
 export const testApiKey = async (apiKey, provider) => {
-  let assistant;
-
-  switch (provider) {
-    case "deepseek":
-      assistant = new DeepseekAssistant("test", apiKey);
-      break;
-    case "kimi":
-      assistant = new KimiAssistant("test", apiKey);
-      break;
-    default:
-      throw new Error("provider not supported");
-  }
-
   try {
-    // 尝试获取模型列表来验证 API key 是否有效
+    const assistant = _createAssistant(provider, null, apiKey);
     await assistant.getModels();
     return { valid: true, message: "API Key 验证成功" };
   } catch (error) {
@@ -72,23 +77,28 @@ export const testApiKey = async (apiKey, provider) => {
   }
 };
 
-export const saveKey = async (apiKey, provider) => {
+/**
+ * 保存 API Key，返回新保存的 key 对象（含 id，可用于 removeKey / getAssistant）。
+ * 写入后自动持久化到 ever-cache，并通知所有 onApiKeysChange 订阅者。
+ */
+export const saveKey = (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
-  _apiKeys.push({
+  const keyObj = {
     id,
     provider,
     apiKey,
     maskedKey: `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`,
     createdAt: createdAt.toISOString(),
     formattedDate: createdAt.toLocaleString(),
-  });
+  };
 
+  _apiKeys.push(keyObj);
   _persist();
   _emit();
 
-  return getAssistant(id);
+  return { ...keyObj };
 };
 
 /**
@@ -105,7 +115,11 @@ export const removeKey = (id) => {
   return true;
 };
 
-export const getAssistant = async (id) => {
+/**
+ * 根据 id 获取 Assistant 实例。不传 id 时随机选一个（多 key 负载均衡）。
+ * 同步函数（无 IO），调用方可省略 await。
+ */
+export const getAssistant = (id) => {
   if (_apiKeys.length === 0) {
     throw new Error("no api key available");
   }
@@ -121,12 +135,5 @@ export const getAssistant = async (id) => {
     }
   }
 
-  switch (item.provider) {
-    case "deepseek":
-      return new DeepseekAssistant(item.id, item.apiKey);
-    case "kimi":
-      return new KimiAssistant(item.id, item.apiKey);
-    default:
-      throw new Error("provider not supported");
-  }
+  return _createAssistant(item.provider, item.id, item.apiKey);
 };

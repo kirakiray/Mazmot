@@ -81,12 +81,10 @@ export class DeepseekAssistant extends Assistant {
 
     const data = await response.json();
     return {
-      isAvailable: data.is_available,
-      balanceInfos: data.balance_infos?.map((info) => ({
+      balances: (data.balance_infos || []).map((info) => ({
         currency: info.currency,
-        totalBalance: info.total_balance,
-        grantedBalance: info.granted_balance,
-        toppedUpBalance: info.topped_up_balance,
+        amount: Number(info.total_balance),
+        raw: info,
       })),
       raw: data,
     };

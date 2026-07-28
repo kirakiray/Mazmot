@@ -93,8 +93,9 @@ export class KimiAssistant extends Assistant {
     }
 
     const data = await response.json();
+    const amount = Number(data.data?.balance);
     return {
-      balance: data.data?.balance,
+      balances: isNaN(amount) ? [] : [{ currency: null, amount, raw: data.data }],
       raw: data,
     };
   }

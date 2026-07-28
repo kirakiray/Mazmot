@@ -47,10 +47,12 @@ removeKey("abc123"); // true / false
 
 根据 id 获取 Assistant 实例。**不传 id** 时从已保存的 key 中随机选一个（适用于多 key 负载均衡）。空列表抛 `no api key available`，id 不存在抛 `key not found`。
 
+> 同步函数（无 IO），调用方可省略 `await`。
+
 ```javascript
-const assistant = await getAssistant("abc123");
+const assistant = getAssistant("abc123");
 // 或随机取一个
-const anyAssistant = await getAssistant();
+const anyAssistant = getAssistant();
 ```
 
 ### getApiKeys()

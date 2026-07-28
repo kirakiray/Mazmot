@@ -209,13 +209,12 @@
           try {
             const assistant = new DeepseekAssistant("test-ds-balance", apiKey);
             const remaining = await assistant.getRemaining();
-            const hasField = typeof remaining.isAvailable === "boolean" || Array.isArray(remaining.balanceInfos);
+            const hasField = Array.isArray(remaining.balances);
 
             return {
               assert: hasField,
               content: {
-                isAvailable: remaining.isAvailable,
-                balanceInfos: remaining.balanceInfos,
+                balances: remaining.balances,
                 checks: { hasField },
               },
             };
@@ -684,7 +683,7 @@
           await saveKey("sk-test-ga-id-abcdefgh", "kimi");
           const key = getApiKeys().find((k) => k.apiKey === "sk-test-ga-id-abcdefgh");
 
-          const assistant = await getAssistant(key.id);
+          const assistant = getAssistant(key.id);
 
           const checks = {
             sameId: assistant.id === key.id,
@@ -712,7 +711,7 @@
           await saveKey("sk-test-ga-random-abcdef", "deepseek");
           const beforeCount = getApiKeys().length;
 
-          const assistant = await getAssistant();
+          const assistant = getAssistant();
 
           const checks = {
             returnsObject: typeof assistant === "object" && assistant !== null,
@@ -740,7 +739,7 @@
 
           let thrown = null;
           try {
-            await getAssistant("definitely-not-exists-zzz");
+            getAssistant("definitely-not-exists-zzz");
           } catch (e) {
             thrown = e;
           }
