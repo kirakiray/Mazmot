@@ -203,16 +203,26 @@
       color: var(--md-sys-color-on-tertiary-container);
     }
 
+    .detail-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-width: 0;
+    }
+
     .detail-label {
       font-size: 14px;
       font-weight: 500;
+      flex-shrink: 0;
+      white-space: nowrap;
       color: var(--md-sys-color-on-surface);
     }
 
-    .detail-suffix {
+    .detail-value-wrap {
+      flex: 1;
+      min-width: 0;
       text-align: right;
-      max-width: 65%;
-      margin-left: 12px;
     }
 
     .detail-value {
@@ -308,7 +318,7 @@
       <div class="form-actions">
         <p-button
           variant="outlined"
-          :disabled="!apiKey || submitting"
+          attr:disabled="!apiKey || submitting"
           on:click="handleValidate"
         >
           <span slot="prefix">
@@ -318,7 +328,7 @@
         </p-button>
         <p-button
           color="primary"
-          :disabled="!apiKey || submitting"
+          attr:disabled="!apiKey || submitting"
           on:click="handleSave"
         >
           <span slot="prefix">
@@ -347,9 +357,8 @@
           <o-fill :value="apiKeys">
             <p-list-item
               collapsible
-              attr:expanded="$host.expandedId === $data.id"
               button
-              on:click-main="$host.toggleExpand($data.id)"
+              on:click-main="$host.handleExpand($data.id)"
             >
               <span slot="prefix">
                 <span
@@ -387,32 +396,43 @@
               </div>
 
               <p-list slot="sublist" style="--sublist-indent: 0px">
-                <p-list-item align-top>
+                <p-list-item>
                   <span slot="prefix" class="detail-icon models-icon">
                     <n-icon icon="mdi:brain"></n-icon>
                   </span>
-                  <div class="detail-label">可用模型</div>
-                  <div slot="suffix" class="detail-suffix">
-                    <o-if :value="$host.loadingIds[$data.id]">
-                      <span class="loading-text">加载中...</span>
-                    </o-if>
-                    <o-if :value="!$host.loadingIds[$data.id]">
-                      <span class="detail-value">{{$host.detailMap[$data.id] ? $host.detailMap[$data.id].models : '点击展开后加载'}}</span>
-                    </o-if>
+                  <div class="detail-row">
+                    <span class="detail-label">可用模型</span>
+                    <span class="detail-value-wrap">
+                      <o-if :value="$host.loadingIds[$data.id]">
+                        <span class="loading-text">加载中...</span>
+                      </o-if>
+                      <o-if :value="!$host.loadingIds[$data.id]">
+                        <span class="detail-value">
+                          {{ $host.detailMap[$data.id] ?
+                          $host.detailMap[$data.id].models : '点击展开后加载' }}
+                        </span>
+                      </o-if>
+                    </span>
                   </div>
                 </p-list-item>
-                <p-list-item align-top>
+                <p-list-item>
                   <span slot="prefix" class="detail-icon balance-icon">
                     <n-icon icon="mdi:wallet-outline"></n-icon>
                   </span>
-                  <div class="detail-label">余额信息</div>
-                  <div slot="suffix" class="detail-suffix">
-                    <o-if :value="$host.loadingIds[$data.id]">
-                      <span class="loading-text">加载中...</span>
-                    </o-if>
-                    <o-if :value="!$host.loadingIds[$data.id]">
-                      <span class="detail-value">{{$host.detailMap[$data.id] ? $host.detailMap[$data.id].balance : '点击展开后加载'}}</span>
-                    </o-if>
+                  <div class="detail-row">
+                    <span class="detail-label">余额信息</span>
+                    <span class="detail-value-wrap">
+                      <o-if :value="$host.loadingIds[$data.id]">
+                        <span class="loading-text">加载中...</span>
+                      </o-if>
+                      <o-if :value="!$host.loadingIds[$data.id]">
+                        <span class="detail-value">
+                          {{ $host.detailMap[$data.id] ?
+                          $host.detailMap[$data.id].balance : '点击展开后加载'
+                          }}
+                        </span>
+                      </o-if>
+                    </span>
                   </div>
                 </p-list-item>
               </p-list>
@@ -446,7 +466,6 @@
           submitting: false,
           loadingIds: {},
           detailMap: {},
-          expandedId: null,
         },
 
         proto: {
@@ -455,7 +474,7 @@
           },
 
           providerIcon(provider) {
-            return provider === "kimi" ? "mdi:robot" : "mdi:brain";
+            return provider === "kimi" ? "simple-icons:moonshotai" : "simple-icons:deepseek";
           },
 
           togglePassword() {
@@ -505,12 +524,7 @@
             }
           },
 
-          toggleExpand(id) {
-            if (this.expandedId === id) {
-              this.expandedId = null;
-              return;
-            }
-            this.expandedId = id;
+          handleExpand(id) {
             if (!this.detailMap[id]) {
               this.loadDetail(id);
             }
@@ -543,8 +557,8 @@
                   this.detailMap[id].balance = lines
                     ? lines
                     : remaining.raw
-                    ? JSON.stringify(remaining.raw)
-                    : "暂无数据";
+                      ? JSON.stringify(remaining.raw)
+                      : "暂无数据";
                 })
                 .catch((err) => {
                   this.detailMap[id].balance = `加载失败：${err.message}`;
@@ -570,9 +584,6 @@
             });
             if (ok) {
               removeKey(id);
-              if (this.expandedId === id) {
-                this.expandedId = null;
-              }
               delete this.detailMap[id];
               sessionStorage.removeItem(`ai-manager:${id}:detail`);
               toast({ message: "已删除", color: "success" });
@@ -604,7 +615,6 @@
           this._unsub?.();
           this.apiKeys = [];
           this.detailMap = {};
-          this.expandedId = null;
         },
       };
     };
