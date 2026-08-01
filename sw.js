@@ -15,7 +15,7 @@ if (globalThis.serviceWorker) {
 
 // 启用宿主项目离线缓存（host-cache）
 // SW 加载时读取 /host-cache.json，将 files 列表预缓存到 OPFS，实现离线访问
-// globalThis.HOST_CACHE_CONFIG = true; // 开启离线缓存
+globalThis.HOST_CACHE_CONFIG = true; // 开启离线缓存
 
 // if (location.host.includes("localhost")) {
 // importScripts("http://localhost:3002/sw/dist.js");
