@@ -1,6 +1,3 @@
-import { init } from "/nos/fs/main.js";
-await init("mazmot");
-
 export const home = "./home.html";
 
 export const pageAnime = {
