@@ -13,8 +13,11 @@ if (globalThis.serviceWorker) {
   version = urlParams.get("v") || "";
 }
 
+// 宿主项目缓存（Host Cache）：由 NoneOS Core 在安装/升级后自动下载写入 OPFS
+globalThis.NONEOS_HOST_CACHE = { manifest: "/host-cache.json" };
+
 // if (location.host.includes("localhost")) {
-// importScripts("http://localhost:3002/sw/dist.js");
+importScripts("http://localhost:3002/sw/dist.js");
 // } else {
-importScripts("https://core.noneos.com/sw/dist.js?v=" + version);
+// importScripts("https://core.noneos.com/sw/dist.js?v=" + version);
 // }

@@ -23,7 +23,8 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/）
+├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/；importScripts 前设置 NONEOS_HOST_CACHE 开启宿主缓存）
+├── host-cache.json           # 宿主项目缓存清单（name/version/files），Core 安装或升级后自动下载 files 写入 OPFS 实现离线访问
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
@@ -378,6 +379,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
+| 宿主离线缓存文件清单 / 版本 | [host-cache.json](host-cache.json)（改动缓存文件后需同步提升 `version`） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [comps/ercode/ercode.html](comps/ercode/ercode.html) |
 | 浮窗式网络面板（主应用挂载） | [comps/rdn-network/rdn-network.html](comps/rdn-network/rdn-network.html) |
