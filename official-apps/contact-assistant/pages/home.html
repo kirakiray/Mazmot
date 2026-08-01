@@ -1,0 +1,641 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow-y: auto;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .intro-card {
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 24px;
+      padding: 28px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .app-icon {
+      font-size: 56px;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+
+    .intro-card h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      color: var(--md-sys-color-primary);
+    }
+
+    .intro-card p {
+      margin: 0 auto;
+      max-width: 520px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .card {
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      margin: 0 0 16px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-row {
+      margin-bottom: 16px;
+    }
+
+    .form-row label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .form-row input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .form-row input[type="text"]:focus {
+      outline: none;
+      border-color: var(--md-sys-color-primary);
+    }
+
+    .file-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .file-input-wrap {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .file-input-wrap input[type="file"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .file-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--md-sys-color-outline);
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-primary);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .file-name {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 6px;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+
+    .btn-secondary {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+
+    .btn-danger {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .empty-state n-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.6;
+    }
+
+    .space-item {
+      background-color: var(--md-sys-color-surface);
+      border: 1px solid rgb(from var(--md-sys-color-outline) r g b / 0.2);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .space-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .space-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+
+    .space-meta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 12px;
+    }
+
+    .space-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .share-result {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      border-radius: 16px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+
+    .share-result-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .share-link-box {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .share-link-box input {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 10px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+
+    .status {
+      font-size: 12px;
+      margin-top: 8px;
+      min-height: 16px;
+    }
+
+    .error {
+      color: var(--md-sys-color-error);
+      font-size: 12px;
+      margin-top: 8px;
+      word-break: break-word;
+    }
+
+    .tip {
+      font-size: 12px;
+      line-height: 1.5;
+      margin-top: 8px;
+      opacity: 0.9;
+    }
+  </style>
+
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="container">
+    <div class="intro-card">
+      <div class="app-icon">🤝</div>
+      <h1>我是你的联络助手</h1>
+      <p>
+        创建一个助手空间，上传你的背景资料，即可生成一个分享链接。
+        把链接放到论坛、名片或社交媒体上，别人点击后就能直接与你的 AI 助手聊天，
+        所有对话都会整理成联系记录，帮你管理外部信息。
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <n-icon icon="mdi:plus-circle-outline"></n-icon>
+        创建助手空间
+      </div>
+
+      <div class="form-row">
+        <label>空间名称</label>
+        <input
+          type="text"
+          sync:value="spaceName"
+          placeholder="例如：产品咨询、商务合作、个人名片"
+        />
+      </div>
+
+      <div class="form-row">
+        <label>初始化文本文件</label>
+        <div class="file-row">
+          <div class="file-input-wrap">
+            <button class="file-btn">
+              <n-icon icon="mdi:file-upload-outline"></n-icon>
+              选择文件
+            </button>
+            <input
+              type="file"
+              accept=".txt,.md,.markdown,text/plain,text/markdown"
+              on:change="handleFileChange($event)"
+            />
+          </div>
+          <span class="file-name">{{fileName || '未选择文件'}}</span>
+        </div>
+        <div class="hint">支持 .txt / .md，内容将作为助手回答来访者时的背景资料。</div>
+      </div>
+
+      <div class="actions">
+        <button
+          class="btn btn-primary"
+          on:click="createSpace"
+          attr:disabled="!spaceName || creating"
+        >
+          {{creating ? '创建中...' : '创建空间'}}
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <n-icon icon="mdi:folder-outline"></n-icon>
+        我的空间
+      </div>
+
+      <o-if :value="spaces.length === 0">
+        <div class="empty-state">
+          <n-icon icon="mdi:inbox-outline"></n-icon>
+          <p>还没有空间，先创建一个吧</p>
+        </div>
+      </o-if>
+
+      <o-if :value="spaces.length > 0">
+        <div>
+          <o-fill :value="spaces">
+            <div class="space-item">
+              <div class="space-header">
+                <span class="space-name">{{$data.name}}</span>
+                <button
+                  class="btn btn-danger"
+                  style="padding: 6px 10px; font-size: 12px;"
+                  on:click="$host.removeSpace($data)"
+                >
+                  <n-icon icon="mdi:delete-outline"></n-icon>
+                </button>
+              </div>
+              <div class="space-meta">
+                创建于 {{$host.formatTime($data.createdAt)}}
+              </div>
+              <div class="space-actions">
+                <button
+                  class="btn btn-secondary"
+                  style="padding: 8px 14px; font-size: 13px;"
+                  on:click="$host.openHost($data)"
+                >
+                  <n-icon icon="mdi:chat-processing-outline"></n-icon>
+                  进入工作台
+                </button>
+                <button
+                  class="btn btn-primary"
+                  style="padding: 8px 14px; font-size: 13px;"
+                  on:click="$host.generateShareLink($data)"
+                  attr:disabled="$host.generating"
+                >
+                  <n-icon icon="mdi:link-variant"></n-icon>
+                  生成分享链接
+                </button>
+              </div>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
+    </div>
+
+    <o-if :value="shareUrl">
+      <div class="share-result">
+        <div class="share-result-title">
+          <n-icon icon="mdi:check-circle-outline"></n-icon>
+          分享链接已生成
+        </div>
+        <div class="share-link-box">
+          <input type="text" :value="shareUrl" readonly />
+          <button class="btn btn-secondary" on:click="copyShareLink">
+            {{copyText}}
+          </button>
+        </div>
+        <div class="tip">
+          把链接发给对方，对方打开后即可与你的助手聊天。请保持本应用开启，以便接收消息。
+        </div>
+      </div>
+    </o-if>
+
+    <o-if :value="shareError">
+      <div class="error">{{shareError}}</div>
+    </o-if>
+
+    <div class="status">{{shareStatus}}</div>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const storageMod = await load("../lib/storage.js");
+      const p2pMod = await load("../lib/p2p.js");
+      const { getSpaces, saveSpace, deleteSpace } = storageMod;
+      const { getCurrentUserId } = p2pMod;
+
+      const generateId = () =>
+        Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+      const formatTime = (ts) => {
+        if (!ts) return "-";
+        const d = new Date(ts);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      };
+
+      return {
+        data: {
+          spaceName: "",
+          fileName: "",
+          spaces: [],
+          creating: false,
+          generating: false,
+          shareUrl: "",
+          shareStatus: "",
+          shareError: "",
+          copyText: "复制",
+        },
+        proto: {
+          _pendingFileText: "",
+
+          formatTime,
+
+          handleFileChange(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) {
+              this.fileName = "";
+              this._pendingFileText = "";
+              return;
+            }
+            this.fileName = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              this._pendingFileText = e.target.result || "";
+            };
+            reader.onerror = () => {
+              this.shareError = "读取文件失败";
+              this._pendingFileText = "";
+            };
+            reader.readAsText(file);
+          },
+
+          async createSpace() {
+            const name = this.spaceName.trim();
+            if (!name) return;
+
+            this.creating = true;
+            this.shareError = "";
+            try {
+              const space = {
+                id: generateId(),
+                name,
+                initText: this._pendingFileText || "",
+                createdAt: Date.now(),
+              };
+              await saveSpace(space);
+              this.spaces.push(space);
+              this.spaceName = "";
+              this.fileName = "";
+              this._pendingFileText = "";
+              const fileInput = this.shadow.$("input[type='file']");
+              if (fileInput && fileInput.ele) {
+                fileInput.ele.value = "";
+              }
+            } catch (err) {
+              console.error("createSpace error:", err);
+              this.shareError = (err && err.message) || "创建空间失败";
+            } finally {
+              this.creating = false;
+            }
+          },
+
+          async removeSpace(space) {
+            const ok = confirm(`确定删除空间「${space.name}」吗？相关的联系记录也会一并删除。`);
+            if (!ok) return;
+            try {
+              await deleteSpace(space.id);
+              const idx = this.spaces.findIndex((s) => s.id === space.id);
+              if (idx !== -1) this.spaces.splice(idx, 1);
+            } catch (err) {
+              console.error("removeSpace error:", err);
+              this.shareError = (err && err.message) || "删除失败";
+            }
+          },
+
+          openHost(space) {
+            this.goto(`./host.html?spaceId=${encodeURIComponent(space.id)}`);
+          },
+
+          parseSelfIdentity() {
+            const m = location.pathname.match(
+              /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
+            );
+            if (!m) return null;
+            return { namespace: m[1], dirName: m[2] };
+          },
+
+          async generateShareLink(space) {
+            this.generating = true;
+            this.shareUrl = "";
+            this.shareError = "";
+            this.shareStatus = "准备分享链接...";
+
+            try {
+              const hostUserId = await getCurrentUserId();
+              const self = this.parseSelfIdentity();
+              if (!self) {
+                throw new Error("无法识别当前应用路径，请从应用市场安装后打开");
+              }
+
+              this.shareStatus = "加载依赖...";
+              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+                load("/nos/fs/main.js"),
+                load("/gh/kirakiray/ever-cache/src/main.min.js"),
+                load("/lib/share-mgr.js"),
+              ]);
+              const { init } = fsMod;
+              const { storage } = cacheMod;
+              const { publishApp, generateAppId } = shareMgr;
+
+              const apps = (await storage.apps) || [];
+              const { dirName } = self;
+              const record =
+                apps.find(
+                  (a) => a.name === dirName || a.virtualDirName === dirName,
+                ) ||
+                apps.find((a) =>
+                  a.dirName ? a.dirName.endsWith("/" + dirName) : false,
+                ) ||
+                null;
+
+              this.shareStatus = "获取应用目录...";
+              const rootDir = await init(self.namespace);
+              const handle = await rootDir.get(dirName);
+
+              let appId = (record && record.appId) || "";
+              if (!appId) {
+                appId = await generateAppId(dirName);
+                if (record) {
+                  record.appId = appId;
+                  await storage.setItem("apps", apps);
+                }
+              }
+
+              const app = {
+                _handle: handle,
+                _recordName: dirName,
+                name: (record && record.name) || "联络助手",
+                version: (record && record.version) || "0.1.0",
+                desc: (record && record.desc) || "",
+                icon: (record && record.icon) || "🤝",
+                appId,
+              };
+
+              this.shareStatus = "发布到分享网络...";
+              const { shareUrl, payloadHash } = await publishApp(app, {
+                appId,
+                appParams: { spaceId: space.id, hostUserId },
+                onProgress: ({ text }) => {
+                  if (text) this.shareStatus = text;
+                },
+              });
+
+              if (record && payloadHash) {
+                record.payloadHash = payloadHash;
+                await storage.setItem("apps", apps);
+              }
+
+              this.shareUrl = shareUrl;
+              this.shareStatus = "链接已生成，可复制分享给他人";
+            } catch (err) {
+              console.error("generateShareLink error:", err);
+              this.shareError = (err && err.message) || "生成分享链接失败";
+              this.shareStatus = "";
+            } finally {
+              this.generating = false;
+            }
+          },
+
+          async copyShareLink() {
+            if (!this.shareUrl) return;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(this.shareUrl);
+              } else {
+                const ta = document.createElement("textarea");
+                ta.value = this.shareUrl;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+              }
+              this.copyText = "已复制 ✓";
+            } catch (_) {
+              this.copyText = "复制失败";
+            }
+            clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => {
+              this.copyText = "复制";
+            }, 1800);
+          },
+        },
+        async attached() {
+          try {
+            this.spaces = await getSpaces();
+          } catch (err) {
+            console.error("home attached error:", err);
+          }
+        },
+      };
+    };
+  </script>
+</template>
