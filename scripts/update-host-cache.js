@@ -31,7 +31,7 @@ const hostCache = JSON.parse(readFileSync(hostCachePath, 'utf-8'));
 
 hostCache.name = pkg.name;
 hostCache.version = pkg.version;
-hostCache.files = aiFiles;
+hostCache.files = ['index.html', ...aiFiles];
 
 // 4. Write back
 writeFileSync(hostCachePath, JSON.stringify(hostCache, null, 2) + '\n', 'utf-8');
