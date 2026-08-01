@@ -11,6 +11,7 @@ function walkDir(dir, baseDir = '') {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
+    if (entry.isDirectory() && entry.name === 'test') continue;
     const fullPath = join(dir, entry.name);
     const relativePath = baseDir ? `${baseDir}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
