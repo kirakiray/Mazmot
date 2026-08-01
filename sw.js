@@ -13,8 +13,9 @@ if (globalThis.serviceWorker) {
   version = urlParams.get("v") || "";
 }
 
-// 宿主项目缓存（Host Cache）：由 NoneOS Core 在安装/升级后自动下载写入 OPFS
-globalThis.NONEOS_HOST_CACHE = { manifest: "/host-cache.json" };
+// 启用宿主项目离线缓存（host-cache）
+// SW 加载时读取 /host-cache.json，将 files 列表预缓存到 OPFS，实现离线访问
+// globalThis.HOST_CACHE_CONFIG = true;
 
 // if (location.host.includes("localhost")) {
 // importScripts("http://localhost:3002/sw/dist.js");

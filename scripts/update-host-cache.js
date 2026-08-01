@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
-const rootDir = '/Users/yao/Documents/GitHub/Mazmot';
+const rootDir = join(import.meta.dirname, '..');
 
 // 1. Read package.json
 const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-8'));
@@ -23,7 +23,7 @@ function walkDir(dir, baseDir = '') {
   return files;
 }
 
-const aiFiles = walkDir(join(rootDir, 'ai'));
+const aiFiles = walkDir(join(rootDir, 'ai'), 'ai');
 
 // 3. Read current host-cache.json and update
 const hostCachePath = join(rootDir, 'host-cache.json');

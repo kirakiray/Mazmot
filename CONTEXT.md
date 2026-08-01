@@ -23,7 +23,7 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/；importScripts 前设置 NONEOS_HOST_CACHE 开启宿主缓存）
+├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/；importScripts 前设置 HOST_CACHE_CONFIG=true 开启宿主缓存）
 ├── host-cache.json           # 宿主项目缓存清单（name/version/files），Core 安装或升级后自动下载 files 写入 OPFS 实现离线访问
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
