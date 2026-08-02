@@ -210,17 +210,28 @@
                 </div>
               </div>
               <div class="row-btn">
-                <p-button
-                  color="primary"
-                  variant="tonal"
-                  size="s"
-                  on:click="$host.quickInstall($event, $data)"
-                  attr:disabled="$host.isInstalled($data.id) || $data.installing"
-                >
-                  <o-if :value="$host.isInstalled($data.id)">已安装</o-if>
-                  <o-if :value="!$host.isInstalled($data.id) && !$data.installing">获取</o-if>
-                  <o-if :value="$data.installing">安装中...</o-if>
-                </p-button>
+                <o-if :value="$host.isInstalled($data.id)">
+                  <p-button
+                    color="primary"
+                    variant="tonal"
+                    size="s"
+                    on:click="$host.openInstalledApp($event, $data)"
+                  >
+                    打开应用
+                  </p-button>
+                </o-if>
+                <o-if :value="!$host.isInstalled($data.id)">
+                  <p-button
+                    color="primary"
+                    variant="tonal"
+                    size="s"
+                    on:click="$host.quickInstall($event, $data)"
+                    attr:disabled="$data.installing"
+                  >
+                    <o-if :value="!$data.installing">获取</o-if>
+                    <o-if :value="$data.installing">安装中...</o-if>
+                  </p-button>
+                </o-if>
               </div>
             </div>
           </o-fill>
@@ -260,14 +271,23 @@
         </o-if>
 
         <div class="detail-actions">
-          <p-button
-            color="primary"
-            on:click="installSelected"
-            attr:disabled="isInstalled(selectedApp.id) || installing"
-          >
-            <o-if :value="isInstalled(selectedApp.id)">已安装</o-if>
-            <o-if :value="!isInstalled(selectedApp.id)">安装</o-if>
-          </p-button>
+          <o-if :value="isInstalled(selectedApp.id)">
+            <p-button
+              color="primary"
+              on:click="openInstalledDetail"
+            >
+              打开应用
+            </p-button>
+          </o-if>
+          <o-if :value="!isInstalled(selectedApp.id)">
+            <p-button
+              color="primary"
+              on:click="installSelected"
+              attr:disabled="installing"
+            >
+              安装
+            </p-button>
+          </o-if>
         </div>
 
         <o-if :value="selectedApp.desc">
@@ -297,6 +317,7 @@
     } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { loadOfficialApps, installOfficialApp } from "./official-app-writer.js";
     import { generateAppId } from "/lib/share-mgr.js";
+    import { getRunUrl } from "/lib/app-runner.js";
     import {
       officialAppState,
       syncOfficialAppState,
@@ -332,6 +353,60 @@
             return this.officialState.installedApps.some(
               (app) => app.officialId === appId,
             );
+          },
+
+          // 从已安装列表中查找对应的应用记录，构造运行参数并打开
+          _findInstalledApp(officialId) {
+            return this.officialState.installedApps.find(
+              (app) => app.officialId === officialId,
+            );
+          },
+
+          // 在市场列表页打开已安装的官方应用
+          async openInstalledApp(event, appMeta) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            await this._openInstalled(appMeta);
+          },
+
+          // 在详情页打开已安装的官方应用
+          async openInstalledDetail() {
+            if (!this.selectedApp) return;
+            await this._openInstalled(this.selectedApp);
+          },
+
+          async _openInstalled(appMeta) {
+            const installed = this._findInstalledApp(appMeta.id);
+            if (!installed) {
+              toast({ content: "未找到已安装的应用记录", type: "warning" });
+              return;
+            }
+            try {
+              const namespace = installed.namespace || "mazmot-apps";
+              const nsPrefix = namespace + "/";
+              const virtualDirName = installed.dirName?.startsWith(nsPrefix)
+                ? installed.dirName.slice(nsPrefix.length)
+                : installed.dirName || installed.name;
+              const rootDir = await init(namespace);
+              const handle = await rootDir.get(virtualDirName, { create: "dir" });
+              const url = await getRunUrl({
+                source: "official",
+                namespace,
+                virtualDirName,
+                dirName: installed.dirName,
+                name: installed.name,
+                _handle: handle,
+              });
+              window.open(url, `mazmot-app-${installed.name}`);
+            } catch (err) {
+              console.error("打开应用失败：", err);
+              toast({
+                content: "打开应用失败：" + (err.message || err),
+                type: "error",
+              });
+            }
           },
 
           async loadAppsData() {
