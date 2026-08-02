@@ -336,7 +336,6 @@
     }
     .msg-text {
       color: var(--md-sys-color-on-surface);
-      white-space: pre-wrap;
       word-break: break-word;
     }
     .msg-empty {
@@ -389,6 +388,7 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/comps/o-md/o-md.html"></l-m>
 
   <div class="dashboard">
     <!-- ===== 左栏：品牌 + 配置 + 链接 ===== -->
@@ -575,7 +575,14 @@
                       <div class="msg-role" attr:type="$data.role">
                         {{$data.role === 'user' ? '访客' : '助手'}}
                       </div>
-                      <div class="msg-text">{{$data.content}}</div>
+                      <div class="msg-text">
+                        <o-if :value="$data.role === 'assistant'">
+                          <o-md>{{$data.content}}</o-md>
+                        </o-if>
+                        <o-if :value="$data.role !== 'assistant'">
+                          {{$data.content}}
+                        </o-if>
+                      </div>
                     </div>
                   </o-fill>
                 </div>

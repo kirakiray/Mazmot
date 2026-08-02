@@ -1,0 +1,126 @@
+<template component>
+  <link rel="stylesheet" href="./github-markdown.css" />
+  <link rel="stylesheet" href="./hljs.css" />
+
+  <style>
+    :host {
+      display: block;
+    }
+    .markdown-body > *:first-child {
+      margin-top: 0;
+    }
+    .markdown-body > *:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+
+  <div style="display: none">
+    <slot></slot>
+  </div>
+
+  <div class="markdown-body"></div>
+
+  <script>
+    export default async ({ load, url }) => {
+      const { marked } = await load(
+        "https://cdn.jsdelivr.net/npm/marked@17.0.1/lib/marked.esm.js",
+      );
+
+      const { default: hljs } = await load(
+        "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/+esm",
+      );
+
+      marked.use({
+        extensions: [
+          {
+            name: "capRequest",
+            level: "block",
+            start(src) {
+              const match = src.match(/<cap-request>/);
+              return match ? match.index : -1;
+            },
+            tokenizer(src) {
+              const rule = /^<cap-request>[\s\S]*?<\/cap-request>/;
+              const match = rule.exec(src);
+              if (match) {
+                return {
+                  type: "capRequest",
+                  raw: match[0],
+                  text: match[0],
+                };
+              }
+              return undefined;
+            },
+            renderer(token) {
+              return token.text;
+            },
+          },
+        ],
+        renderer: {
+          code({ text, lang }) {
+            const code = text || "";
+            const language = lang || null;
+
+            if (language && hljs.getLanguage(language)) {
+              try {
+                const highlighted = hljs.highlight(code, { language }).value;
+                return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+              } catch (e) {
+                console.warn(`Highlight error for language ${language}:`, e);
+              }
+            }
+
+            try {
+              const highlighted = hljs.highlightAuto(code).value;
+              return `<pre><code class="hljs">${highlighted}</code></pre>`;
+            } catch (e) {
+              console.warn("Auto highlight error:", e);
+              return `<pre><code>${code}</code></pre>`;
+            }
+          },
+        },
+      });
+
+      return {
+        tag: "o-md",
+        attrs: {
+          src: null,
+        },
+        data: {},
+        ready() {
+          this.shadow.$("slot").on("slotchange", () => {
+            this._renderMarkdown();
+          });
+        },
+        proto: {
+          _getMarkdownContent() {
+            const pre = this.$("pre");
+            if (pre) {
+              return pre.text;
+            }
+
+            const slot = this.$("slot");
+            if (slot) {
+              const nodes = slot.ele.assignedNodes();
+              return nodes
+                .map((n) => n.textContent || "")
+                .join("")
+                .trim();
+            }
+
+            return this.text.trim();
+          },
+          _renderMarkdown() {
+            const container = this.shadow.$(".markdown-body");
+            if (!container) return;
+
+            const markdownText = this._getMarkdownContent();
+            if (markdownText) {
+              container.html = marked.parse(markdownText);
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>
