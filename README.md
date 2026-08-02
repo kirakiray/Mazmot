@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.1.16-blue.svg)](package.json)
 [![Browser Tests](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml/badge.svg)](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml)
+[![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
 
 **Mazmot** is a browser-based application launcher. Users can manage, run, and share multiple independent web apps — all running directly on the main domain, with no extra container service or packaging step. It is built on top of the micro-frontend containerization provided by [NoneOS Core](https://github.com/kirakiray/noneos-core), with the user-facing layer constructed using the [ofa.js](https://github.com/ofajs/ofa.js) framework and the [Punch-UI](https://github.com/ofajs/Punch-UI) component library.
@@ -124,7 +125,13 @@ Mazmot/
 - Node.js (to run the static dev server)
 - **Chrome** recommended (local directory mounting is Chrome-only; other browsers can use virtual directories and official apps)
 
-### 1. Start the server
+### 1. Online access (fastest)
+
+Visit **[mazmot.noneos.com](https://mazmot.noneos.com)** directly — no installation or setup required. The first visit auto-installs NoneOS Core, then enters the main app at `/apps/main/`.
+
+### 2. Local development
+
+Alternatively, run locally for development:
 
 ```bash
 git clone https://github.com/kirakiray/Mazmot.git
@@ -134,16 +141,14 @@ npm run static
 # → http://localhost:30031/
 ```
 
-The first visit auto-installs NoneOS Core, then enters the main app at `/apps/main/`.
-
-### 2. Add and run your first app
+### 3. Add and run your first app
 
 1. Click "Add App" on the main screen
 2. Choose a source: local directory (Chrome) or virtual directory
 3. Enter an app name (letters, digits, underscores, hyphens only — no spaces)
 4. A new entry appears in the app list; click the row or the `tab-plus` / `open-in-new` button to launch
 
-### 3. Share an app
+### 4. Share an app
 
 Toggle "Auto Share" in the app list's collapsible sub-item to generate a short link:
 

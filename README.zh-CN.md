@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.1.16-blue.svg)](package.json)
 [![Browser Tests](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml/badge.svg)](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml)
+[![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
 
 **Mazmot** 是一个完全运行在浏览器里的应用启动器。用户可以在其中管理、运行、分享多个独立的 Web 应用，所有应用直接在主域运行，不需要额外的容器服务或打包步骤。底层基于 [NoneOS Core](https://github.com/kirakiray/noneos-core) 提供的微前端容器化能力，上层用 [ofa.js](https://github.com/ofajs/ofa.js) 框架与 [Punch-UI](https://github.com/ofajs/Punch-UI) 组件库构建用户界面。
@@ -120,7 +121,13 @@ Mazmot/
 - Node.js（用于启动静态服务器）
 - 推荐 **Chrome**（本地目录挂载功能仅 Chrome 支持；其他浏览器可使用虚拟目录与官方应用）
 
-### 1. 启动服务
+### 1. 在线访问（最快）
+
+直接访问 **[mazmot.noneos.com](https://mazmot.noneos.com)** —— 无需安装、无需配置。首次访问会自动安装 NoneOS Core，完成后进入主应用 `/apps/main/`。
+
+### 2. 本地开发
+
+如需本地开发调试：
 
 ```bash
 git clone https://github.com/kirakiray/Mazmot.git
@@ -130,16 +137,14 @@ npm run static
 # → http://localhost:30031/
 ```
 
-首次访问会自动安装 NoneOS Core，完成后进入主应用 `/apps/main/`。
-
-### 2. 添加并运行第一个应用
+### 3. 添加并运行第一个应用
 
 1. 在主界面点击「添加应用」
 2. 选择应用来源：本地目录（Chrome）或虚拟目录
 3. 输入应用名（仅字母、数字、下划线、连字符，不含空格）
 4. 应用列表出现新项，点击应用行或 `tab-plus` / `open-in-new` 按钮启动
 
-### 3. 分享应用
+### 4. 分享应用
 
 在应用列表折叠子项中开启「自动分享」开关，系统会生成一个短链接：
 
