@@ -82,7 +82,8 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── hello-world/          # Hello World 示例应用
 │   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
-│   └── contact-assistant/    # 联络助手：创建空间 → 生成分享链接 → AI 接待访客 → Host 查看联系记录
+│   ├── contact-assistant/    # 联络助手：创建空间 → 生成分享链接 → AI 接待访客 → Host 查看联系记录
+│   └── chat-app/             # 即时聊天：生成链接分享给好友 → P2P 实时收发文本 + 在线状态（host 多会话 / customer 单窗）
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
@@ -407,3 +408,4 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
 | 联络助手官方应用 | [official-apps/contact-assistant/](official-apps/contact-assistant/)（空间/分享/Host 工作台/访客端） |
+| 即时聊天官方应用 | [official-apps/chat-app/](official-apps/chat-app/)（生成链接 → P2P 文本聊天 + 在线状态；lib/p2p.js 封装 NoneOS Core user API） |
