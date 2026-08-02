@@ -215,10 +215,11 @@
                   variant="tonal"
                   size="s"
                   on:click="$host.quickInstall($event, $data)"
-                  attr:disabled="$host.isInstalled($data.id)"
+                  attr:disabled="$host.isInstalled($data.id) || $data.installing"
                 >
                   <o-if :value="$host.isInstalled($data.id)">已安装</o-if>
-                  <o-if :value="!$host.isInstalled($data.id)">获取</o-if>
+                  <o-if :value="!$host.isInstalled($data.id) && !$data.installing">获取</o-if>
+                  <o-if :value="$data.installing">安装中...</o-if>
                 </p-button>
               </div>
             </div>
@@ -338,7 +339,7 @@
             try {
               const officialApps = await loadOfficialApps();
               // apps 只存原始数据，installed 状态由 officialState 派生
-              this.apps = officialApps;
+              this.apps = officialApps.map((app) => ({ ...app, installing: false }));
             } catch (err) {
               console.warn("加载官方应用列表失败：", err);
               toast({
@@ -384,6 +385,7 @@
             }
 
             this.installing = true;
+            appMeta.installing = true;
             this.progress = 0;
             this.progressText = "准备安装...";
 
@@ -440,6 +442,7 @@
               });
             } finally {
               this.installing = false;
+              appMeta.installing = false;
             }
           },
 
