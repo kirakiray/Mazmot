@@ -77,6 +77,38 @@
     .field p-input {
       width: 100%;
     }
+    .field-label {
+      font-size: 13px;
+      font-weight: 500;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .model-select {
+      width: 100%;
+      padding: 10px 36px 10px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    .model-select:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .model-select option {
+      background: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+    }
     .field-doc label {
       font-size: 13px;
       font-weight: 500;
@@ -254,6 +286,28 @@
       background: #ea8a00;
     }
 
+    .visitor-del {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--md-sys-color-on-surface-variant);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .visitor-del:hover {
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .visitor-del n-icon {
+      font-size: 18px;
+    }
+
     .visitor-chat {
       border-top: 1px solid var(--md-sys-color-outline-variant);
       padding: 12px 14px;
@@ -368,6 +422,21 @@
           <p-input sync:value="welcomeMsg" placeholder="访客打开后看到的开场白">
             <span slot="label">欢迎语</span>
           </p-input>
+        </div>
+
+        <div class="field">
+          <label class="field-label">AI 模型</label>
+          <select sync:value="aiModel" class="model-select">
+            <option value="auto">自动（使用默认模型）</option>
+            <o-fill :value="modelOptions">
+              <option attr:value="$data.value" attr:disabled="$data.disabled"
+                >{{$data.label}}{{$data.disabled ? '（未配置 Key）' : ''}}</option
+              >
+            </o-fill>
+          </select>
+          <p class="field-hint">
+            "自动"将根据已配置的密钥随机选用；指定模型需先在 AI 密钥管理器中配置对应平台的 Key
+          </p>
         </div>
 
         <div class="field field-doc">
@@ -487,6 +556,13 @@
                   class="visitor-dot"
                   attr:type="$data.thinking ? 'busy' : ($data.online ? 'online' : '')"
                 ></span>
+                <button
+                  class="visitor-del"
+                  title="删除该访客记录"
+                  on:click="$host.removeVisitor($data.userId, event)"
+                >
+                  <n-icon icon="mdi:delete-outline"></n-icon>
+                </button>
               </div>
 
               <o-if :value="$host.expanded[$data.userId]">
@@ -515,6 +591,20 @@
     export default async ({ load }) => {
       const SERVICE_ID = "smart-assistant";
 
+      // 各 provider 支持的模型清单
+      const MODELS_BY_PROVIDER = {
+        deepseek: [
+          { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+          { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+        ],
+        kimi: [
+          { value: "kimi-k3", label: "Kimi K3" },
+          { value: "kimi-k2.7-code", label: "Kimi K2.7 Code" },
+          { value: "kimi-k2.6", label: "Kimi K2.6" },
+          { value: "kimi-k2.5", label: "Kimi K2.5" },
+        ],
+      };
+
       return {
         tag: "sa-host-page",
 
@@ -522,6 +612,8 @@
           assistantName: "",
           welcomeMsg: "",
           systemPrompt: "",
+          aiModel: "auto",
+          modelOptions: [],
           saving: false,
           shareUrl: "",
           generating: false,
@@ -566,6 +658,38 @@
           shortId(id) {
             if (!id) return "????";
             return id.slice(-6);
+          },
+
+          // ===== 根据模型名推断 provider =====
+          providerOfModel(model) {
+            if (!model) return null;
+            if (model.startsWith("deepseek-")) return "deepseek";
+            if (model.startsWith("kimi-")) return "kimi";
+            return null;
+          },
+
+          // ===== 根据已配置的 Key 刷新可选模型列表 =====
+          refreshModelOptions() {
+            const keys = this._apiKeys || [];
+            const configuredProviders = new Set(keys.map((k) => k.provider));
+            const options = [];
+            for (const [provider, models] of Object.entries(
+              MODELS_BY_PROVIDER,
+            )) {
+              for (const m of models) {
+                options.push({
+                  ...m,
+                  disabled: !configuredProviders.has(provider),
+                });
+              }
+            }
+            this.modelOptions = options;
+            console.log(
+              "[smart-assistant] 可选模型：",
+              options.map(
+                (o) => o.value + (o.disabled ? "(未配置Key)" : ""),
+              ),
+            );
           },
 
           // ===== 保存单个访客的对话历史 =====
@@ -636,6 +760,46 @@
             this.expanded[userId] = !this.expanded[userId];
           },
 
+          // ===== 删除访客记录 =====
+          async removeVisitor(userId, event) {
+            // 阻止冒泡，避免触发折叠
+            if (event && typeof event.stopPropagation === "function") {
+              event.stopPropagation();
+            }
+
+            // 从内存列表移除
+            const idx = this.customers.findIndex((c) => c.userId === userId);
+            if (idx !== -1) {
+              this.customers.splice(idx, 1);
+            }
+
+            // 清理展开状态
+            if (this.expanded[userId]) {
+              delete this.expanded[userId];
+            }
+
+            // 删除本地持久化
+            if (this._storage) {
+              try {
+                await this._storage.removeItem("sa-visitor-" + userId);
+                const index =
+                  (await this._storage.getItem("sa-visitors-index")) || [];
+                const newIndex = index.filter((id) => id !== userId);
+                if (newIndex.length !== index.length) {
+                  await this._storage.setItem("sa-visitors-index", newIndex);
+                }
+              } catch (err) {
+                console.warn(
+                  "[smart-assistant] 删除访客持久化记录失败：",
+                  this.shortId(userId),
+                  err,
+                );
+              }
+            }
+
+            console.log("[smart-assistant] 已删除访客记录：", this.shortId(userId));
+          },
+
           // ===== 复制链接到剪贴板 =====
           async copyLink() {
             if (!this.shareUrl) return;
@@ -682,12 +846,14 @@
                 assistantName: this.assistantName,
                 welcomeMsg: this.welcomeMsg,
                 systemPrompt: this.systemPrompt,
+                aiModel: this.aiModel,
               });
               this.genStatus = "配置已保存";
               console.log("[smart-assistant] 配置已保存", {
                 assistantName: this.assistantName,
                 welcomeMsg: this.welcomeMsg,
                 promptLen: this.systemPrompt.length,
+                aiModel: this.aiModel,
               });
             } catch (err) {
               console.error("[smart-assistant] 保存配置失败：", err);
@@ -855,16 +1021,7 @@
             await this.sendToCustomer(c, { kind: "typing" });
 
             try {
-              const { getAssistant } = await load("/ai/main.js");
-              const assistant = getAssistant();
-              console.log(
-                "[smart-assistant] 调用 AI",
-                assistant.providerName,
-                "访客：",
-                this.shortId(c.userId),
-                "消息数：",
-                c.messages.length,
-              );
+              const { getAssistant, getApiKeys } = await load("/ai/main.js");
 
               const messages = [
                 {
@@ -879,11 +1036,39 @@
                 })),
               ];
 
-              // 不传 model，使用各 provider 的默认模型
-              //（DeepSeek→deepseek-v4-flash，Kimi→kimi-k3）
-              const { content } = await assistant.chat({
-                messages,
-              });
+              let assistant;
+              let chatOpts = { messages };
+
+              if (this.aiModel && this.aiModel !== "auto") {
+                const provider = this.providerOfModel(this.aiModel);
+                const keys = getApiKeys();
+                const key = keys.find((k) => k.provider === provider);
+                if (key) {
+                  assistant = getAssistant(key.id);
+                  chatOpts.model = this.aiModel;
+                } else {
+                  console.warn(
+                    "[smart-assistant] 未配置",
+                    provider,
+                    "的 Key，回退到自动",
+                  );
+                  assistant = getAssistant();
+                }
+              } else {
+                assistant = getAssistant();
+              }
+
+              console.log(
+                "[smart-assistant] 调用 AI",
+                assistant.providerName,
+                this.aiModel === "auto" ? "(自动)" : this.aiModel,
+                "访客：",
+                this.shortId(c.userId),
+                "消息数：",
+                c.messages.length,
+              );
+
+              const { content } = await assistant.chat(chatOpts);
 
               c.messages.push({ role: "assistant", content });
               c.thinking = false;
@@ -925,11 +1110,22 @@
               this.assistantName = cfg.assistantName || "";
               this.welcomeMsg = cfg.welcomeMsg || "";
               this.systemPrompt = cfg.systemPrompt || "";
+              this.aiModel = cfg.aiModel || "auto";
               console.log("[smart-assistant] 已读取保存的配置");
             }
 
             // 恢复历史访客列表
             await this.loadVisitorsHistory();
+
+            // 加载已配置的 AI Key，刷新可选模型
+            const aiMod = await load("/ai/main.js");
+            this._apiKeys = aiMod.getApiKeys();
+            this.refreshModelOptions();
+            // 订阅 Key 变化，实时刷新可选模型
+            this._unbindKeys = aiMod.onApiKeysChange((keys) => {
+              this._apiKeys = keys;
+              this.refreshModelOptions();
+            });
           } catch (err) {
             console.warn("[smart-assistant] 初始化存储失败：", err);
           }
@@ -969,11 +1165,13 @@
         },
 
         detached() {
-          [this._unbindConn, this._unbindDisc].forEach((fn) => {
-            try {
-              fn && fn();
-            } catch (_) {}
-          });
+          [this._unbindConn, this._unbindDisc, this._unbindKeys].forEach(
+            (fn) => {
+              try {
+                fn && fn();
+              } catch (_) {}
+            },
+          );
           if (this._svc) {
             try {
               this._svc.unregister();
