@@ -409,9 +409,6 @@
     }
 
     /* ===== 访客总览弹窗 ===== */
-    .overview-actions {
-      margin-bottom: 14px;
-    }
     .overview-body {
       margin-top: 8px;
       max-height: 56vh;
@@ -798,21 +795,6 @@
       访客对话总览
     </span>
 
-    <div class="overview-actions">
-      <p-button
-        color="primary"
-        attr:disabled="overviewGenerating"
-        on:click="generateOverview"
-      >
-        <span slot="prefix">
-          <n-icon
-            attr:icon="overviewGenerating ? 'mdi:loading' : 'mdi:auto-fix'"
-          ></n-icon>
-        </span>
-        {{overviewOutput ? '重新生成' : '生成总览'}}
-      </p-button>
-    </div>
-
     <o-if :value="overviewError">
       <div class="modal-error">{{overviewError}}</div>
     </o-if>
@@ -833,7 +815,13 @@
     </o-if>
 
     <div slot="bottom">
-      <o-if :value="overviewOutput">
+      <o-if :value="overviewOutput && !overviewGenerating">
+        <p-button variant="text" on:click="generateOverview">
+          <span slot="prefix">
+            <n-icon icon="mdi:refresh"></n-icon>
+          </span>
+          重新生成
+        </p-button>
         <p-button variant="text" on:click="copyOverview">
           <span slot="prefix">
             <n-icon
