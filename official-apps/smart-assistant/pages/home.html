@@ -1,0 +1,57 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    sa-host-page,
+    sa-customer-page {
+      display: block;
+      height: 100%;
+    }
+  </style>
+
+  <l-m src="./host.html"></l-m>
+  <l-m src="./customer.html"></l-m>
+
+  <o-if :value="role === 'loading'">
+    <div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--md-sys-color-on-surface-variant);">
+      正在初始化...
+    </div>
+  </o-if>
+  <o-if :value="role === 'host'">
+    <sa-host-page></sa-host-page>
+  </o-if>
+  <o-if :value="role === 'customer'">
+    <sa-customer-page></sa-customer-page>
+  </o-if>
+
+  <script>
+    export default async ({ load }) => {
+      const sp = new URLSearchParams(location.search);
+      const hostUserId = sp.get("host") || "";
+      const isCustomer = !!hostUserId;
+
+      return {
+        data: {
+          role: "loading",
+          hostUserId,
+          myUserId: "",
+        },
+
+        async ready() {
+          try {
+            const { getUser } = await load("/nos/user/main.js");
+            const user = await getUser("default");
+            this._user = user;
+            this.myUserId = user.userId;
+            this.role = isCustomer ? "customer" : "host";
+          } catch (err) {
+            console.error("[smart-assistant] 初始化失败：", err);
+            this.role = "host";
+          }
+        },
+      };
+    };
+  </script>
+</template>

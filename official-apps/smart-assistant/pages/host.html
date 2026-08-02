@@ -1,0 +1,894 @@
+<template component>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      overflow: hidden;
+    }
+
+    .page {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 16px 48px;
+    }
+    .page-inner {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    /* ===== 顶部品牌区 ===== */
+    .brand {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary),
+        var(--md-sys-color-tertiary)
+      );
+      color: var(--md-sys-color-on-primary);
+      font-size: 26px;
+      box-shadow: 0 4px 12px rgba(from var(--md-sys-color-primary) r g b / 0.3);
+      flex-shrink: 0;
+    }
+    .brand-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .brand-sub {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* ===== 卡片 ===== */
+    .card {
+      background: var(--md-sys-color-surface-container);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .card-title {
+      margin: 0 0 14px;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title n-icon {
+      font-size: 18px;
+      color: var(--md-sys-color-primary);
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+    .field:last-child {
+      margin-bottom: 0;
+    }
+    .field-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .field-name {
+      flex: 1;
+      min-width: 220px;
+    }
+    .field-name p-input {
+      width: 100%;
+    }
+    .field-welcome {
+      width: 100%;
+    }
+    .field-welcome p-input {
+      width: 100%;
+    }
+    .field-doc {
+      width: 100%;
+    }
+    .field-doc textarea {
+      width: 100%;
+      min-height: 160px;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .field-doc textarea:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .field-hint {
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .save-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* ===== 链接区 ===== */
+    .link-box {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .link-input {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 999px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 12px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .link-status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      min-height: 16px;
+    }
+    .link-tip {
+      margin-top: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-tertiary-container);
+      background: var(--md-sys-color-tertiary-container);
+      border-radius: 10px;
+    }
+
+    /* ===== 访客列表 ===== */
+    .visitor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .visitor-head .card-title {
+      margin: 0;
+    }
+    .count-badge {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 11px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .visitor-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .visitor-empty n-icon {
+      font-size: 40px;
+      opacity: 0.5;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .visitor-item {
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 14px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      background: var(--md-sys-color-surface);
+    }
+    .visitor-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .visitor-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .visitor-meta {
+      flex: 1;
+      min-width: 0;
+    }
+    .visitor-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .visitor-sub {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+    }
+    .visitor-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+      flex-shrink: 0;
+    }
+    .visitor-dot[type="online"] {
+      background: #34a853;
+    }
+    .visitor-dot[type="busy"] {
+      background: #ea8a00;
+    }
+
+    .visitor-chat {
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      padding: 12px 14px;
+      max-height: 280px;
+      overflow-y: auto;
+      background: var(--md-sys-color-surface-container-low);
+    }
+    .msg-line {
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .msg-line:last-child {
+      margin-bottom: 0;
+    }
+    .msg-role {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .msg-role[type="user"] {
+      color: var(--md-sys-color-primary);
+    }
+    .msg-role[type="assistant"] {
+      color: var(--md-sys-color-tertiary);
+    }
+    .msg-text {
+      color: var(--md-sys-color-on-surface);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg-empty {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-align: center;
+      padding: 8px;
+    }
+
+    /* 响应式 */
+    @media (max-width: 600px) {
+      .page {
+        padding: 16px 12px 40px;
+      }
+      .brand-title {
+        font-size: 18px;
+      }
+      .field-row {
+        flex-direction: column;
+      }
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <main class="page">
+    <div class="page-inner">
+      <header class="brand">
+        <div class="brand-icon">
+          <n-icon icon="mdi:robot-outline"></n-icon>
+        </div>
+        <div>
+          <h1 class="brand-title">智能联络助手</h1>
+          <p class="brand-sub">
+            填写助手设定与需求文档，生成链接让访客与你的 AI 实时对话
+          </p>
+        </div>
+      </header>
+
+      <!-- ===== 助手配置 ===== -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:cog-outline"></n-icon>
+          助手配置
+        </h2>
+
+        <div class="field-row">
+          <div class="field field-name">
+            <p-input sync:value="assistantName" placeholder="如：小智客服">
+              <span slot="label">助手名称</span>
+            </p-input>
+          </div>
+        </div>
+
+        <div class="field field-welcome">
+          <p-input sync:value="welcomeMsg" placeholder="访客打开后看到的开场白">
+            <span slot="label">欢迎语</span>
+          </p-input>
+        </div>
+
+        <div class="field field-doc">
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px;"
+            >功能需求文档（作为 AI 的系统提示词）</label
+          >
+          <textarea
+            sync:value="systemPrompt"
+            placeholder="描述助手的人设、擅长领域、语气风格、知识范围、注意事项等。例如：&#10;你是一位专业的健身教练助手，名叫小健。你的职责是：&#10;1. 解答健身相关问题&#10;2. 提供训练建议&#10;3. 语气亲切鼓励"
+          ></textarea>
+          <p class="field-hint">
+            这段文字会作为 AI 的 system prompt，决定助手如何回应访客
+          </p>
+        </div>
+
+        <div class="save-row">
+          <p-button
+            variant="outlined"
+            attr:disabled="saving"
+            on:click="saveConfig"
+          >
+            <span slot="prefix">
+              <n-icon icon="mdi:content-save-outline"></n-icon>
+            </span>
+            保存配置
+          </p-button>
+        </div>
+      </section>
+
+      <!-- ===== 分享链接 ===== -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:link-variant"></n-icon>
+          分享链接
+        </h2>
+        <div class="link-box">
+          <input
+            class="link-input"
+            type="text"
+            readonly
+            :value="shareUrl"
+            attr:placeholder="generating ? '正在生成链接...' : '点击下方按钮生成链接'"
+            on:click="selectLinkInput"
+          />
+          <p-button
+            color="primary"
+            attr:disabled="generating"
+            on:click="handleGenLink"
+          >
+            <span slot="prefix">
+              <n-icon
+                attr:icon="generating ? 'mdi:loading' : 'mdi:link-variant'"
+              ></n-icon>
+            </span>
+            {{generating ? '生成中' : (shareUrl ? '重新生成' : '生成链接')}}
+          </p-button>
+          <p-button
+            variant="outlined"
+            attr:disabled="!shareUrl"
+            on:click="copyLink"
+          >
+            <span slot="prefix">
+              <n-icon attr:icon="copied ? 'mdi:check' : 'mdi:content-copy'"></n-icon>
+            </span>
+            {{copied ? '已复制' : '复制'}}
+          </p-button>
+        </div>
+        <div class="link-status">{{genStatus}}</div>
+        <o-if :value="shareUrl">
+          <div class="link-tip">
+            把链接分享给外部访客，对方打开后即可与你的 AI 助手对话。<br />
+            注意：你需要保持本应用打开，AI 才能正常响应访客消息。
+          </div>
+        </o-if>
+      </section>
+
+      <!-- ===== 访客监控 ===== -->
+      <section class="card">
+        <div class="visitor-head">
+          <h2 class="card-title">
+            <n-icon icon="mdi:account-multiple-outline"></n-icon>
+            访客对话
+          </h2>
+          <span class="count-badge">{{customers.length}}</span>
+        </div>
+
+        <o-if :value="customers.length === 0">
+          <div class="visitor-empty">
+            <n-icon icon="mdi:chat-processing-outline"></n-icon>
+            <div>暂无访客连接，生成链接分享给他人开始对话</div>
+          </div>
+        </o-if>
+
+        <o-if :value="customers.length > 0">
+          <div class="visitor-item-container">
+            <o-fill :value="customers">
+              <div class="visitor-item">
+                <div
+                  class="visitor-bar"
+                  on:click="$host.toggleVisitor($data.userId)"
+                >
+                  <div class="visitor-avatar">
+                    <n-icon icon="mdi:account"></n-icon>
+                  </div>
+                  <div class="visitor-meta">
+                    <div class="visitor-name">
+                      访客 {{($host.shortId($data.userId))}}
+                    </div>
+                    <div class="visitor-sub">
+                      {{$data.messages.length}} 条消息
+                      <o-if :value="$data.thinking">· AI 思考中...</o-if>
+                      <o-if :value="!$data.online && !$data.thinking"
+                        >· 已离线</o-if
+                      >
+                    </div>
+                  </div>
+                  <span
+                    class="visitor-dot"
+                    attr:type="$data.thinking ? 'busy' : ($data.online ? 'online' : '')"
+                  ></span>
+                </div>
+
+                <o-if :value="$host.expanded[$data.userId]">
+                  <div class="visitor-chat">
+                    <o-if :value="$data.messages.length === 0">
+                      <div class="msg-empty">暂无对话记录</div>
+                    </o-if>
+                    <o-fill :value="$data.messages">
+                      <div class="msg-line">
+                        <div class="msg-role" attr:type="$data.role">
+                          {{$data.role === 'user' ? '访客' : '助手'}}
+                        </div>
+                        <div class="msg-text">{{$data.content}}</div>
+                      </div>
+                    </o-fill>
+                  </div>
+                </o-if>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    export default async ({ load }) => {
+      const SERVICE_ID = "smart-assistant";
+
+      return {
+        tag: "sa-host-page",
+
+        data: {
+          assistantName: "",
+          welcomeMsg: "",
+          systemPrompt: "",
+          saving: false,
+          shareUrl: "",
+          generating: false,
+          genStatus: "",
+          copied: false,
+          customers: [],
+          expanded: {},
+        },
+
+        proto: {
+          // ===== 处理访客发来的消息 =====
+          handleIncoming(data, ctx) {
+            if (!data || typeof data !== "object") return;
+            const userId = ctx.fromUserId;
+            const c = this.getOrCreateCustomer(userId, ctx.remoteUser);
+
+            const { kind } = data;
+            console.log(
+              "[smart-assistant] 收到访客消息：",
+              this.shortId(userId),
+              "kind=" + kind,
+            );
+
+            if (kind === "hello") {
+              // 访客刚连上，推送欢迎信息
+              this.sendToCustomer(c, {
+                kind: "welcome",
+                name: this.assistantName || "智能助手",
+                message: this.welcomeMsg || "你好，有什么可以帮你？",
+              });
+            } else if (kind === "chat") {
+              const text = (data.text || "").trim();
+              if (!text) return;
+              // 异步调用 AI，不阻塞后续消息
+              this.handleVisitorChat(c, text);
+            }
+          },
+
+          // ===== 工具：生成短 ID 用于展示 =====
+          shortId(id) {
+            if (!id) return "????";
+            return id.slice(-6);
+          },
+
+          // ===== 折叠/展开访客对话 =====
+          toggleVisitor(userId) {
+            this.expanded[userId] = !this.expanded[userId];
+          },
+
+          // ===== 复制链接到剪贴板 =====
+          async copyLink() {
+            if (!this.shareUrl) return;
+            try {
+              await navigator.clipboard.writeText(this.shareUrl);
+            } catch (_) {
+              // 回退：选中文本
+              try {
+                const inp = this.shadow.$(".link-input");
+                if (inp && inp.ele) {
+                  inp.ele.select();
+                  document.execCommand("copy");
+                }
+              } catch (e) {}
+            }
+            this.copied = true;
+            clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => {
+              this.copied = false;
+            }, 1500);
+          },
+
+          // ===== 选中链接输入框文本 =====
+          selectLinkInput(event) {
+            const el = event && event.target;
+            if (el && typeof el.select === "function") {
+              try {
+                el.select();
+              } catch (_) {}
+            }
+          },
+
+          // ===== 保存配置到 ever-cache =====
+          async saveConfig() {
+            this.saving = true;
+            try {
+              const { storage } = await load(
+                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+              );
+              await storage.setItem("sa-config", {
+                assistantName: this.assistantName,
+                welcomeMsg: this.welcomeMsg,
+                systemPrompt: this.systemPrompt,
+              });
+              this.genStatus = "配置已保存";
+              console.log("[smart-assistant] 配置已保存", {
+                assistantName: this.assistantName,
+                welcomeMsg: this.welcomeMsg,
+                promptLen: this.systemPrompt.length,
+              });
+            } catch (err) {
+              console.error("[smart-assistant] 保存配置失败：", err);
+              this.genStatus = "保存失败：" + (err.message || err);
+            } finally {
+              this.saving = false;
+            }
+          },
+
+          // ===== 生成分享链接 =====
+          async handleGenLink() {
+            if (this.generating) return;
+            this.generating = true;
+            this.genStatus = "准备中...";
+            try {
+              const self = this.parseSelfIdentity();
+              if (!self) {
+                throw new Error("无法识别当前应用的目录路径");
+              }
+              console.log("[smart-assistant] 当前应用身份：", self);
+
+              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+                load("/nos/fs/main.js"),
+                load(
+                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+                ),
+                load("/lib/share-mgr.js"),
+              ]);
+              const { init } = fsMod;
+              const { storage } = cacheMod;
+              const { publishApp, generateAppId } = shareMgr;
+
+              const apps = (await storage.apps) || [];
+              const { dirName } = self;
+              const record =
+                apps.find(
+                  (a) => a.name === dirName || a.virtualDirName === dirName,
+                ) ||
+                apps.find((a) =>
+                  a.dirName ? a.dirName.endsWith("/" + dirName) : false,
+                ) ||
+                null;
+              console.log("[smart-assistant] 应用记录：", record);
+
+              this.genStatus = "获取应用目录...";
+              const rootDir = await init(self.namespace);
+              const handle = await rootDir.get(dirName);
+
+              let appId = (record && record.appId) || "";
+              if (!appId) {
+                appId = await generateAppId(dirName);
+                if (record) {
+                  record.appId = appId;
+                  await storage.setItem("apps", apps);
+                }
+              }
+
+              const app = {
+                _handle: handle,
+                _recordName: dirName,
+                name: (record && record.name) || "smart-assistant",
+                version: (record && record.version) || "0.1.0",
+                desc: (record && record.desc) || "智能联络助手",
+                icon: (record && record.icon) || "🤖",
+                appId,
+              };
+
+              this.genStatus = "发布到分享网络...";
+              const { shareUrl, payloadHash } = await publishApp(app, {
+                appId,
+                appParams: { host: this.myUserId },
+                onProgress: ({ text }) => {
+                  if (text) this.genStatus = text;
+                },
+              });
+
+              if (record && payloadHash) {
+                record.payloadHash = payloadHash;
+                await storage.setItem("apps", apps);
+              }
+
+              this.shareUrl = shareUrl;
+              this.genStatus = "链接已生成，点击输入框可全选复制";
+              console.log("[smart-assistant] 分享链接已生成：", shareUrl);
+            } catch (err) {
+              console.error("[smart-assistant] 生成链接失败：", err);
+              this.genStatus = "失败：" + (err.message || err);
+            } finally {
+              this.generating = false;
+            }
+          },
+
+          parseSelfIdentity() {
+            const m = location.pathname.match(
+              /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
+            );
+            if (!m) return null;
+            return { namespace: m[1], dirName: m[2] };
+          },
+
+          // ===== 访客消息处理 =====
+          getOrCreateCustomer(userId, remoteUser) {
+            let c = this.customers.find((x) => x.userId === userId);
+            if (!c) {
+              c = {
+                userId,
+                messages: [],
+                thinking: false,
+                online: true,
+                _remote: remoteUser,
+              };
+              this.customers.push(c);
+              console.log(
+                "[smart-assistant] 新访客接入：",
+                this.shortId(userId),
+              );
+            } else if (remoteUser) {
+              c._remote = remoteUser;
+              c.online = true;
+            }
+            return c;
+          },
+
+          async sendToCustomer(c, payload) {
+            if (!c || !c._remote) {
+              console.warn(
+                "[smart-assistant] 无法发送：访客 remote 不可用",
+                this.shortId(c && c.userId),
+              );
+              return;
+            }
+            try {
+              const results = await c._remote.sendToService(SERVICE_ID, payload);
+              const ok = Array.isArray(results) &&
+                results.some((r) => r && r.status === "ok");
+              if (!ok) {
+                console.warn(
+                  "[smart-assistant] 发送给访客未送达：",
+                  this.shortId(c.userId),
+                  results,
+                );
+                c.online = false;
+              } else {
+                c.online = true;
+              }
+            } catch (err) {
+              console.error(
+                "[smart-assistant] 发送给访客异常：",
+                this.shortId(c.userId),
+                err,
+              );
+              c.online = false;
+            }
+          },
+
+          // ===== 调用 AI 并回复访客 =====
+          async handleVisitorChat(c, userText) {
+            // 追加访客消息
+            c.messages.push({ role: "user", content: userText });
+
+            // 标记思考中
+            c.thinking = true;
+            // 先发 typing 通知
+            await this.sendToCustomer(c, { kind: "typing" });
+
+            try {
+              const { getAssistant } = await load("/ai/main.js");
+              const assistant = getAssistant();
+              console.log(
+                "[smart-assistant] 调用 AI",
+                assistant.providerName,
+                "访客：",
+                this.shortId(c.userId),
+                "消息数：",
+                c.messages.length,
+              );
+
+              const messages = [
+                {
+                  role: "system",
+                  content:
+                    this.systemPrompt ||
+                    "你是一个友好的智能助手，请根据访客的问题给出有帮助的回答。",
+                },
+                ...c.messages.map((m) => ({
+                  role: m.role,
+                  content: m.content,
+                })),
+              ];
+
+              const { content } = await assistant.chat({
+                messages,
+                model: "deepseek-v4-flash",
+              });
+
+              c.messages.push({ role: "assistant", content });
+              c.thinking = false;
+              console.log(
+                "[smart-assistant] AI 回复访客",
+                this.shortId(c.userId),
+                "：",
+                content.slice(0, 80) + (content.length > 80 ? "..." : ""),
+              );
+
+              await this.sendToCustomer(c, { kind: "reply", text: content });
+            } catch (err) {
+              c.thinking = false;
+              console.error(
+                "[smart-assistant] AI 调用失败：",
+                this.shortId(c.userId),
+                err,
+              );
+              const errMsg = err && err.message ? err.message : String(err);
+              const tip = errMsg.includes("no api key available")
+                ? "助手主人尚未配置 AI Key，暂时无法回复。"
+                : "助手处理消息时出错：" + errMsg;
+              await this.sendToCustomer(c, { kind: "error", text: tip });
+            }
+          },
+        },
+
+        async attached() {
+          // 读取已保存的配置
+          try {
+            const { storage } = await load(
+              "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+            );
+            const cfg = await storage.getItem("sa-config");
+            if (cfg) {
+              this.assistantName = cfg.assistantName || "";
+              this.welcomeMsg = cfg.welcomeMsg || "";
+              this.systemPrompt = cfg.systemPrompt || "";
+              console.log("[smart-assistant] 已读取保存的配置");
+            }
+          } catch (err) {
+            console.warn("[smart-assistant] 读取配置失败：", err);
+          }
+
+          // 注册 P2P 服务
+          const parent = this.parentElement;
+          // host-page 放在 home.html 内，通过 home 的 _user 获取
+          // 但组件无法直接访问父页面，所以自行 getUser
+          const { getUser } = await load("/nos/user/main.js");
+          const user = await getUser("default");
+          this._user = user;
+          this.myUserId = user.userId;
+          console.log("[smart-assistant] Host userId：", user.userId);
+
+          const self = this;
+          this._svc = user.registerService(SERVICE_ID, {
+            onMessage(data, ctx) {
+              self.handleIncoming(data, ctx);
+            },
+          });
+
+          // 监听访客上下线
+          this._unbindConn = user.bind("remote_user_connected", (event) => {
+            const uid = event && event.detail && event.detail.userId;
+            if (!uid) return;
+            const c = self.customers.find((x) => x.userId === uid);
+            if (c && !c.online) c.online = true;
+          });
+          this._unbindDisc = user.bind(
+            "remote_user_disconnected",
+            (event) => {
+              const uid = event && event.detail && event.detail.userId;
+              if (!uid) return;
+              const c = self.customers.find((x) => x.userId === uid);
+              if (c && c.online) c.online = false;
+            },
+          );
+
+          console.log("[smart-assistant] Host 服务已注册：", SERVICE_ID);
+        },
+
+        detached() {
+          [this._unbindConn, this._unbindDisc].forEach((fn) => {
+            try {
+              fn && fn();
+            } catch (_) {}
+          });
+          if (this._svc) {
+            try {
+              this._svc.unregister();
+            } catch (_) {}
+          }
+        },
+      };
+    };
+  </script>
+</template>

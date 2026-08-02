@@ -82,6 +82,7 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── hello-world/          # Hello World 示例应用
 │   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
+│   └── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
