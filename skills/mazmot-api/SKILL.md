@@ -12,7 +12,7 @@ description: "Mazmot 自身提供的能力速查：app.json 应用结构、应�
 - 持久化存储 → 查 **ever-cache** 技能。
 - 测试框架本身 → 查 **sibyl-test** 技能。
 - AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
-- **应用间 P2P 通信**（生成带身份的分享链接 + 双端握手 + 消息收发 + 连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
+- **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
 
 ## 1. 应用结构 —— `app.json`
 
