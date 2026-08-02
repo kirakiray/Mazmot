@@ -1105,6 +1105,18 @@
             );
             this._storage = storage;
 
+            // 先加载已配置的 AI Key 并填充可选模型列表
+            // （必须在恢复 aiModel 之前，否则 select 找不到对应 option 会重置为"自动"）
+            const aiMod = await load("/ai/main.js");
+            this._apiKeys = aiMod.getApiKeys();
+            this.refreshModelOptions();
+            // 订阅 Key 变化，实时刷新可选模型
+            this._unbindKeys = aiMod.onApiKeysChange((keys) => {
+              this._apiKeys = keys;
+              this.refreshModelOptions();
+            });
+
+            // 恢复配置（此时 modelOptions 已就绪，select 能正确选中）
             const cfg = await storage.getItem("sa-config");
             if (cfg) {
               this.assistantName = cfg.assistantName || "";
@@ -1116,16 +1128,6 @@
 
             // 恢复历史访客列表
             await this.loadVisitorsHistory();
-
-            // 加载已配置的 AI Key，刷新可选模型
-            const aiMod = await load("/ai/main.js");
-            this._apiKeys = aiMod.getApiKeys();
-            this.refreshModelOptions();
-            // 订阅 Key 变化，实时刷新可选模型
-            this._unbindKeys = aiMod.onApiKeysChange((keys) => {
-              this._apiKeys = keys;
-              this.refreshModelOptions();
-            });
           } catch (err) {
             console.warn("[smart-assistant] 初始化存储失败：", err);
           }
