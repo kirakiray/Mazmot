@@ -150,7 +150,21 @@ app-runner.js getRunUrl(app)
 window.open(runUrl)
 ```
 
-### 3. 删除应用
+### 3. 更新官方应用（[apps/main/home.html](apps/main/home.html)）
+
+```
+attached / refreshApps → _checkOfficialUpdates
+   ↓
+遍历 source === "official" 的记录，loadOfficialAppMeta(officialId) 取市场版本
+   ↓
+compareVersions(市场版本, 本地 client/app.json 的 version) > 0 → hasUpdate = true（列表显示「可更新」徽标 + 更新按钮）
+   ↓
+handleUpdate → confirm → installOfficialApp({ dirHandle: app._handle, appId: officialId })
+   ↓
+覆盖写入 client/ 下的源文件（应用自身 IndexedDB 数据不受影响）→ refreshApps
+```
+
+### 4. 删除应用
 
 ```
 （已发布 autoShareUrl）→ unpublishApp 撤销发布，让旧分享链接失效
@@ -204,6 +218,11 @@ clearOpened → 关闭窗口
   source: "local" | "virtual" | "official",
   namespace: "...",
   appId: "...",
+  officialId: "hello-world",  // 仅 official 有值，检查更新时用它去 /official-apps/<id>/ 拉最新版本
+  latestVersion: "",          // 市场最新版本（_checkOfficialUpdates 写入，仅官方应用）
+  hasUpdate: boolean,         // latestVersion > version 时为 true，列表显示「可更新」徽标与更新按钮
+  updating: boolean,          // 正在执行更新（期间禁用更新/删除按钮）
+  updateStatus: "",           // 更新进度或错误文案，空字符串表示无需展示
   isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」
   opened: boolean,           // 窗口是否存活（BroadcastChannel + window 引用判定）
   autoShareValue: "on" | "off",   // 供 sync:value 双向绑定用

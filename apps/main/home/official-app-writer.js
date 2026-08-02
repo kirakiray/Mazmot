@@ -7,6 +7,60 @@
 const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
 
 /**
+ * 读取单个官方应用的元数据（含版本号）。
+ * name/icon/desc 来自 __app.json，version 来自应用自身的 app.json。
+ * @param {string} id 官方应用 ID
+ * @returns {Promise<{ id: string, name: string, icon: string, desc: string, version: string } | null>}
+ */
+export async function loadOfficialAppMeta(id) {
+  const appRoot = new URL(`${id}/`, OFFICIAL_APPS_ROOT);
+  const metaRes = await fetch(new URL("__app.json", appRoot));
+  if (!metaRes.ok) {
+    return null;
+  }
+  const meta = await metaRes.json();
+
+  // 版本号来源于应用自身的 app.json
+  let version = "";
+  try {
+    const appJsonRes = await fetch(new URL("app.json", appRoot));
+    if (appJsonRes.ok) {
+      const appJson = await appJsonRes.json();
+      version = appJson.version || "";
+    }
+  } catch (err) {
+    console.warn(`读取官方应用 ${id} 版本号失败：`, err);
+  }
+
+  return {
+    id,
+    name: meta.name || id,
+    icon: meta.icon || "📦",
+    desc: meta.desc || "",
+    version,
+  };
+}
+
+/**
+ * 比较两个版本号（形如 1.2.3），a > b 返回 1，a < b 返回 -1，相等返回 0。
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+export function compareVersions(a, b) {
+  const pa = String(a || "").split(".");
+  const pb = String(b || "").split(".");
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = parseInt(pa[i], 10) || 0;
+    const nb = parseInt(pb[i], 10) || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+/**
  * 加载官方应用列表。
  * manifest.json 只存放应用 id 列表，每个应用的 name/icon/desc
  * 从对应目录下的 __app.json 读取，version 从应用自身的 app.json 读取。
@@ -23,34 +77,13 @@ export async function loadOfficialApps() {
 
   const apps = [];
   for (const id of ids) {
-    const appRoot = new URL(`${id}/`, OFFICIAL_APPS_ROOT);
     try {
-      const metaRes = await fetch(new URL("__app.json", appRoot));
-      if (!metaRes.ok) {
+      const meta = await loadOfficialAppMeta(id);
+      if (!meta) {
         console.warn(`官方应用 ${id} 缺少 __app.json`);
         continue;
       }
-      const meta = await metaRes.json();
-
-      // 版本号来源于应用自身的 app.json
-      let version = "";
-      try {
-        const appJsonRes = await fetch(new URL("app.json", appRoot));
-        if (appJsonRes.ok) {
-          const appJson = await appJsonRes.json();
-          version = appJson.version || "";
-        }
-      } catch (err) {
-        console.warn(`读取官方应用 ${id} 版本号失败：`, err);
-      }
-
-      apps.push({
-        id,
-        name: meta.name || id,
-        icon: meta.icon || "📦",
-        desc: meta.desc || "",
-        version,
-      });
+      apps.push(meta);
     } catch (err) {
       console.warn(`加载官方应用 ${id} 元数据失败：`, err);
     }

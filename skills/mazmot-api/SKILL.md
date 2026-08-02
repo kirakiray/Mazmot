@@ -194,10 +194,13 @@ await writeTemplateFiles({
 
 ```js
 import {
-  loadOfficialApps, installOfficialApp,
+  loadOfficialApps, loadOfficialAppMeta, compareVersions, installOfficialApp,
 } from "/apps/main/home/official-app-writer.js";
 
 const list = await loadOfficialApps(); // [{ id, name, icon, desc, version }]（version 读自应用自身的 app.json）
+
+const meta = await loadOfficialAppMeta("hello-world"); // 单个应用元数据，null 表示不存在
+compareVersions("1.1.0", "1.0.0"); // 1 / 0 / -1，用于判断是否有新版本
 
 const result = await installOfficialApp({
   dirHandle,     // 虚拟目录句柄
@@ -205,6 +208,7 @@ const result = await installOfficialApp({
   onProgress: p => {},
 });
 // 返回 { name, desc, icon, files }
+// 对已安装应用重复调用即为「更新」：覆盖写入 client/ 下的源文件
 ```
 
 官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
