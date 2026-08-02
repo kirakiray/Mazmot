@@ -23,7 +23,8 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/）
+├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/；importScripts 前设置 HOST_CACHE_CONFIG=true 开启宿主缓存）
+├── host-cache.json           # 宿主项目缓存清单（name/version/files），Core 安装或升级后自动下载 files 写入 OPFS 实现离线访问
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
@@ -35,9 +36,9 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
-│   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用并安装到虚拟目录）
+│   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
-│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json，写入虚拟目录 client/）
+│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据 + app.json 版本号，写入虚拟目录 client/）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
 │   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc + 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、ping-pong（应用间定时 ping/pong 通信）、tic-tac-toe（应用间井字棋联机对战）
@@ -79,7 +80,8 @@ Mazmot/
 │
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
-│   └── <id>/                 # 每个应用一个子目录，含 __app.json（元数据 name/icon/desc + 文件清单）+ 源文件；当前有 hello-world
+│   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
+│   └── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
@@ -147,7 +149,21 @@ app-runner.js getRunUrl(app)
 window.open(runUrl)
 ```
 
-### 3. 删除应用
+### 3. 更新官方应用（[apps/main/home.html](apps/main/home.html)）
+
+```
+attached / refreshApps → _checkOfficialUpdates
+   ↓
+遍历 source === "official" 的记录，loadOfficialAppMeta(officialId) 取市场版本
+   ↓
+compareVersions(市场版本, 本地 client/app.json 的 version) > 0 → hasUpdate = true（列表显示「可更新」徽标 + 更新按钮）
+   ↓
+handleUpdate → confirm → installOfficialApp({ dirHandle: app._handle, appId: officialId })
+   ↓
+覆盖写入 client/ 下的源文件（应用自身 IndexedDB 数据不受影响）→ refreshApps
+```
+
+### 4. 删除应用
 
 ```
 （已发布 autoShareUrl）→ unpublishApp 撤销发布，让旧分享链接失效
@@ -171,7 +187,7 @@ clearOpened → 关闭窗口
   source: "local" | "virtual" | "official",
   namespace: "mazmot-apps",  // virtual / official 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
-  officialId: "hello-world", // 仅 official 有值：官方应用 ID，用于市场去重判断
+  officialId: "ai-manager", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
@@ -201,6 +217,11 @@ clearOpened → 关闭窗口
   source: "local" | "virtual" | "official",
   namespace: "...",
   appId: "...",
+  officialId: "ai-manager",  // 仅 official 有值，检查更新时用它去 /official-apps/<id>/ 拉最新版本
+  latestVersion: "",          // 市场最新版本（_checkOfficialUpdates 写入，仅官方应用）
+  hasUpdate: boolean,         // latestVersion > version 时为 true，列表显示「可更新」徽标与更新按钮
+  updating: boolean,          // 正在执行更新（期间禁用更新/删除按钮）
+  updateStatus: "",           // 更新进度或错误文案，空字符串表示无需展示
   isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」
   opened: boolean,           // 窗口是否存活（BroadcastChannel + window 引用判定）
   autoShareValue: "on" | "off",   // 供 sync:value 双向绑定用
@@ -377,8 +398,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js) |
+| 宿主离线缓存文件清单 / 版本 | [host-cache.json](host-cache.json)（改动缓存文件后需同步提升 `version`） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [comps/ercode/ercode.html](comps/ercode/ercode.html) |
 | 浮窗式网络面板（主应用挂载） | [comps/rdn-network/rdn-network.html](comps/rdn-network/rdn-network.html) |
 | 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
 | AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
+| AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |

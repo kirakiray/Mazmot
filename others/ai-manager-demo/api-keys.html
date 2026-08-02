@@ -144,7 +144,7 @@
             </div>
             <button
               class="delete-btn"
-              on:click="$host.apiKeys.splice($index, 1)"
+              on:click="$host.removeKey($data.id)"
             >
               删除
             </button>
@@ -169,7 +169,7 @@
     export const parent = "./layout.html";
     
     export default async ({ load }) => {
-      const { getAssistant, apiKeys, saveKey } = await load("../main.js");
+      const { getAssistant, getApiKeys, onApiKeysChange, saveKey, removeKey: _removeKey } = await load("../../ai/main.js");
 
       return {
         data: {
@@ -201,7 +201,7 @@
           async getModels(id) {
             this.isLoading[id] = true;
             try {
-              const assistant = await getAssistant(id);
+              const assistant = getAssistant(id);
               const models = await assistant.getModels();
               this.modelInfo[id] = `可用模型:\n${models.map(m => `  - ${m.id || m.name}`).join('\n')}`;
             } catch (error) {
@@ -214,28 +214,34 @@
           async getRemaining(id) {
             this.isLoading[id] = true;
             try {
-              const assistant = await getAssistant(id);
+              const assistant = getAssistant(id);
               const remaining = await assistant.getRemaining();
-              if (remaining.balanceInfos) {
-                this.modelInfo[id] = `余额信息:\n${remaining.balanceInfos.map(info => 
-                  `  ${info.currency}: ${info.totalBalance}`
-                ).join('\n')}`;
-              } else if (remaining.balance !== undefined) {
-                this.modelInfo[id] = `余额: ${remaining.balance}`;
-              } else {
-                this.modelInfo[id] = `余额信息:\n${JSON.stringify(remaining, null, 2)}`;
-              }
+              const lines = remaining.balances
+                .map((b) => `  ${b.currency ?? "未知货币"}: ${b.amount}`)
+                .join("\n");
+              this.modelInfo[id] = lines
+                ? `余额信息:\n${lines}`
+                : `余额信息:\n${JSON.stringify(remaining.raw, null, 2)}`;
             } catch (error) {
               this.modelInfo[id] = `查询余额失败: ${error.message}`;
             } finally {
               this.isLoading[id] = false;
             }
           },
+
+          removeKey(id) {
+            _removeKey(id);
+          },
         },
+
         attached() {
-          this.apiKeys = apiKeys;
+          this.apiKeys = getApiKeys();
+          this._unsub = onApiKeysChange((keys) => {
+            this.apiKeys = keys;
+          });
         },
         detached() {
+          this._unsub?.();
           this.apiKeys = [];
         },
       };

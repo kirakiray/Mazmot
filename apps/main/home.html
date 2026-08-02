@@ -124,6 +124,27 @@
     .official-badge n-icon {
       font-size: 12px;
     }
+    .update-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      vertical-align: middle;
+    }
+    .update-badge n-icon {
+      font-size: 12px;
+    }
+    .update-status {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
     .action-row {
       display: flex;
       align-items: center;
@@ -317,6 +338,12 @@
                   官方应用
                 </span>
               </o-if>
+              <o-if :value="$data.hasUpdate">
+                <span class="update-badge" title="应用市场有新版本可更新">
+                  <n-icon icon="mdi:arrow-up-circle-outline"></n-icon>
+                  可更新 v{{$data.latestVersion}}
+                </span>
+              </o-if>
               <div secondary>{{$data.desc}}</div>
 
               <div slot="suffix" class="item-suffix">
@@ -477,10 +504,31 @@
                     <div class="sub-info-row">
                       <span class="sub-info-label">操作：</span>
                       <div class="action-row">
+                        <o-if :value="$data.hasUpdate">
+                          <p-button
+                            variant="tonal"
+                            color="primary"
+                            size="s"
+                            attr:disabled="$data.updating"
+                            on:click="$host.handleUpdate($event, $data)"
+                          >
+                            <n-icon
+                              icon="mdi:download-outline"
+                              slot="prefix"
+                            ></n-icon>
+                            更新到 v{{$data.latestVersion}}
+                          </p-button>
+                        </o-if>
+                        <o-if :value="$data.updateStatus">
+                          <span class="update-status">
+                            {{$data.updateStatus}}
+                          </span>
+                        </o-if>
                         <p-button
                           variant="outlined"
                           color="error"
                           size="s"
+                          attr:disabled="$data.updating"
                           on:click="$host.handleDelete($event, $data)"
                         >
                           <n-icon
@@ -529,6 +577,11 @@
       unpublishApp,
     } from "/lib/share-mgr.js";
     import { syncOfficialAppState } from "./lib/official-app-state.js";
+    import {
+      loadOfficialAppMeta,
+      compareVersions,
+      installOfficialApp,
+    } from "./home/official-app-writer.js";
 
     async function loadApps() {
       const apps = (await storage.apps) || [];
@@ -612,6 +665,11 @@
             virtualDirName,
             _recordName: app.name,
             appId: app.appId || "",
+            officialId: app.officialId || "",
+            latestVersion: "",
+            hasUpdate: false,
+            updating: false,
+            updateStatus: "",
             // 自己开发的应用：appId 后缀为当前用户的 userId
             isMine:
               !!currentUserId &&
@@ -661,6 +719,8 @@
           });
           // 首次进入页面时，为所有已开启自动分享的应用发布一次
           this._runAutoShareAll();
+          // 检查官方应用是否有新版本
+          this._checkOfficialUpdates();
         },
         detached() {
           if (this._stopWatcher) {
@@ -799,6 +859,76 @@
             apps.forEach((app) => this.appList.push(app));
             // 刷新后再对已开启自动分享的应用执行一次发布
             this._runAutoShareAll();
+            // 刷新后重新检查官方应用更新
+            this._checkOfficialUpdates();
+          },
+
+          // 遍历列表，把官方应用的本地版本与市场版本比对，标记是否可更新
+          async _checkOfficialUpdates() {
+            const officialApps = this.appList.filter(
+              (app) => app.source === "official" && app.officialId,
+            );
+            for (const app of officialApps) {
+              try {
+                const meta = await loadOfficialAppMeta(app.officialId);
+                if (!meta || !meta.version) continue;
+                app.latestVersion = meta.version;
+                app.hasUpdate = compareVersions(meta.version, app.version) > 0;
+              } catch (err) {
+                console.warn(`检查 ${app.name} 更新失败：`, err);
+              }
+            }
+          },
+
+          // 重新拉取官方应用源文件覆盖写入 client/，实现原地更新
+          async handleUpdate(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            if (!app || !app.officialId || !app._handle) {
+              toast({ content: "无法更新：缺少应用信息", color: "error" });
+              return;
+            }
+            if (app.updating) return;
+
+            const ok = await confirm({
+              title: "更新应用",
+              message: `将「${app.name}」从 v${app.version} 更新到 v${app.latestVersion}。应用内保存的数据不受影响，但自定义修改过的源文件会被覆盖。`,
+              yes: "更新",
+              cancel: "取消",
+            });
+            if (!ok) return;
+
+            app.updating = true;
+            app.updateStatus = "准备更新...";
+            try {
+              await installOfficialApp({
+                dirHandle: app._handle,
+                appId: app.officialId,
+                onProgress: ({ path, status }) => {
+                  app.updateStatus =
+                    status === "writing"
+                      ? `正在写入 ${path} ...`
+                      : `已写入 ${path}`;
+                },
+              });
+              app.updateStatus = "";
+              toast({
+                content: `${app.name} 已更新到 v${app.latestVersion}`,
+                color: "success",
+              });
+              await this.refreshApps();
+            } catch (err) {
+              console.error("更新失败：", err);
+              app.updateStatus = "更新失败：" + (err.message || err);
+              toast({
+                content: "更新失败：" + (err.message || err),
+                color: "error",
+              });
+            } finally {
+              app.updating = false;
+            }
           },
 
           // 遍历列表，对所有已开启 autoShare 的应用触发一次 publish

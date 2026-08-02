@@ -2,36 +2,74 @@ import { storage } from "/gh/kirakiray/ever-cache/src/main.min.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
-export const apiKeys = $.stanz([]);
+// 内部私有数组，不再依赖 stanz；外部通过 getApiKeys / onApiKeysChange 访问
+const _apiKeys = [];
+const _listeners = new Set();
 
+const _snapshot = () => _apiKeys.map((item) => ({ ...item }));
+
+const _emit = () => {
+  const snap = _snapshot();
+  _listeners.forEach((fn) => {
+    try {
+      fn(snap);
+    } catch (e) {
+      console.error("apiKeys listener error:", e);
+    }
+  });
+};
+
+const _persist = () => {
+  storage.setItem("apiKeys", _snapshot()).catch((err) => {
+    console.error("Failed to persist apiKeys:", err);
+  });
+};
+
+/**
+ * 按 provider 创建对应的 Assistant 实例（统一三处 switch 路由）。
+ */
+const _createAssistant = (provider, id, apiKey) => {
+  switch (provider) {
+    case "deepseek":
+      return new DeepseekAssistant(id, apiKey);
+    case "kimi":
+      return new KimiAssistant(id, apiKey);
+    default:
+      throw new Error(`provider not supported: ${provider}`);
+  }
+};
+
+/**
+ * 订阅 apiKeys 变化，回调收到只读快照数组。
+ * @param {(keys: Array) => void} callback
+ * @returns {() => void} 取消订阅函数
+ */
+export const onApiKeysChange = (callback) => {
+  _listeners.add(callback);
+  return () => _listeners.delete(callback);
+};
+
+/**
+ * 返回当前 apiKeys 的快照（浅拷贝，安全可读）。
+ * @returns {Array}
+ */
+export const getApiKeys = () => _snapshot();
+
+// 初始化：从 storage 加载已保存的 key
 await (async () => {
   const savedData = await storage.apiKeys;
   if (savedData && Array.isArray(savedData)) {
-    apiKeys.push(...savedData);
+    _apiKeys.push(...savedData);
   }
 })();
 
-apiKeys.watchTick(() => {
-  const data = apiKeys.toJSON();
-  storage.apiKeys = data;
-});
-
+/**
+ * 验证 API Key 是否有效（不写入列表，仅调用 getModels 探测）。
+ * 不会抛异常，所有错误（含不支持的 provider）都通过 { valid: false, message } 返回。
+ */
 export const testApiKey = async (apiKey, provider) => {
-  let assistant;
-
-  switch (provider) {
-    case "deepseek":
-      assistant = new DeepseekAssistant("test", apiKey);
-      break;
-    case "kimi":
-      assistant = new KimiAssistant("test", apiKey);
-      break;
-    default:
-      throw new Error("provider not supported");
-  }
-
   try {
-    // 尝试获取模型列表来验证 API key 是否有效
+    const assistant = _createAssistant(provider, null, apiKey);
     await assistant.getModels();
     return { valid: true, message: "API Key 验证成功" };
   } catch (error) {
@@ -39,41 +77,63 @@ export const testApiKey = async (apiKey, provider) => {
   }
 };
 
-export const saveKey = async (apiKey, provider) => {
+/**
+ * 保存 API Key，返回新保存的 key 对象（含 id，可用于 removeKey / getAssistant）。
+ * 写入后自动持久化到 ever-cache，并通知所有 onApiKeysChange 订阅者。
+ */
+export const saveKey = (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
-  apiKeys.push({
+  const keyObj = {
     id,
-    concurrent: 4,
     provider,
     apiKey,
     maskedKey: `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`,
     createdAt: createdAt.toISOString(),
     formattedDate: createdAt.toLocaleString(),
-  });
+  };
 
-  return getAssistant(id);
+  _apiKeys.push(keyObj);
+  _persist();
+  _emit();
+
+  return { ...keyObj };
 };
 
-export const getAssistant = async (id) => {
+/**
+ * 按 id 删除一条 api key。
+ * @param {string} id
+ * @returns {boolean} 是否删除成功
+ */
+export const removeKey = (id) => {
+  const index = _apiKeys.findIndex((item) => item.id === id);
+  if (index === -1) return false;
+  _apiKeys.splice(index, 1);
+  _persist();
+  _emit();
+  return true;
+};
+
+/**
+ * 根据 id 获取 Assistant 实例。不传 id 时随机选一个（多 key 负载均衡）。
+ * 同步函数（无 IO），调用方可省略 await。
+ */
+export const getAssistant = (id) => {
+  if (_apiKeys.length === 0) {
+    throw new Error("no api key available");
+  }
+
   let item;
 
   if (!id) {
-    item = apiKeys[Math.floor(Math.random() * apiKeys.length)];
+    item = _apiKeys[Math.floor(Math.random() * _apiKeys.length)];
   } else {
-    item = apiKeys.find((item) => item.id === id);
+    item = _apiKeys.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");
     }
   }
 
-  switch (item.provider) {
-    case "deepseek":
-      return new DeepseekAssistant(item.id, item.apiKey);
-    case "kimi":
-      return new KimiAssistant(item.id, item.apiKey);
-    default:
-      throw new Error("provider not supported");
-  }
+  return _createAssistant(item.provider, item.id, item.apiKey);
 };

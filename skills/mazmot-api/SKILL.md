@@ -11,6 +11,8 @@ description: "Mazmot 自身提供的能力速查：app.json 应用结构、应�
 - `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
 - 持久化存储 → 查 **ever-cache** 技能。
 - 测试框架本身 → 查 **sibyl-test** 技能。
+- AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
+- **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
 
 ## 1. 应用结构 —— `app.json`
 
@@ -193,10 +195,13 @@ await writeTemplateFiles({
 
 ```js
 import {
-  loadOfficialApps, installOfficialApp,
+  loadOfficialApps, loadOfficialAppMeta, compareVersions, installOfficialApp,
 } from "/apps/main/home/official-app-writer.js";
 
-const list = await loadOfficialApps(); // [{ id, name, icon, desc }]
+const list = await loadOfficialApps(); // [{ id, name, icon, desc, version }]（version 读自应用自身的 app.json）
+
+const meta = await loadOfficialAppMeta("hello-world"); // 单个应用元数据，null 表示不存在
+compareVersions("1.1.0", "1.0.0"); // 1 / 0 / -1，用于判断是否有新版本
 
 const result = await installOfficialApp({
   dirHandle,     // 虚拟目录句柄
@@ -204,6 +209,7 @@ const result = await installOfficialApp({
   onProgress: p => {},
 });
 // 返回 { name, desc, icon, files }
+// 对已安装应用重复调用即为「更新」：覆盖写入 client/ 下的源文件
 ```
 
 官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
