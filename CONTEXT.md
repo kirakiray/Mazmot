@@ -80,7 +80,6 @@ Mazmot/
 │
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
-│   ├── hello-world/          # Hello World 示例应用
 │   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
 │   └── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │
@@ -188,7 +187,7 @@ clearOpened → 关闭窗口
   source: "local" | "virtual" | "official",
   namespace: "mazmot-apps",  // virtual / official 有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
-  officialId: "hello-world", // 仅 official 有值：官方应用 ID，用于市场去重判断
+  officialId: "ai-manager", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
@@ -218,7 +217,7 @@ clearOpened → 关闭窗口
   source: "local" | "virtual" | "official",
   namespace: "...",
   appId: "...",
-  officialId: "hello-world",  // 仅 official 有值，检查更新时用它去 /official-apps/<id>/ 拉最新版本
+  officialId: "ai-manager",  // 仅 official 有值，检查更新时用它去 /official-apps/<id>/ 拉最新版本
   latestVersion: "",          // 市场最新版本（_checkOfficialUpdates 写入，仅官方应用）
   hasUpdate: boolean,         // latestVersion > version 时为 true，列表显示「可更新」徽标与更新按钮
   updating: boolean,          // 正在执行更新（期间禁用更新/删除按钮）
