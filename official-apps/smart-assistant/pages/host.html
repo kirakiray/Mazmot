@@ -345,6 +345,92 @@
       padding: 8px;
     }
 
+    /* ===== 需求文档头部 + AI 整理按钮 ===== */
+    .doc-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .doc-head label {
+      margin: 0;
+    }
+    .ai-helper-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 11px;
+      border: 1px solid var(--md-sys-color-primary);
+      border-radius: 999px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+    .ai-helper-btn:hover {
+      filter: brightness(1.06);
+    }
+    .ai-helper-btn:active {
+      transform: scale(0.97);
+    }
+    .ai-helper-btn n-icon {
+      font-size: 15px;
+    }
+
+    /* ===== AI 需求整理弹窗内部样式（容器由 p-dialog 提供）===== */
+    .modal-label {
+      font-size: 13px;
+      font-weight: 500;
+      display: block;
+      margin-bottom: 6px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .modal-section {
+      margin-top: 18px;
+    }
+    .modal-input {
+      width: 100%;
+      min-height: 110px;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.15s ease;
+    }
+    .modal-input.result {
+      min-height: 200px;
+    }
+    .modal-input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .modal-error {
+      margin-top: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-error-container);
+      background: var(--md-sys-color-error-container);
+      border-radius: 10px;
+    }
+
     /* ===== 移动端单栏内边距 ===== */
     .sidebar {
       padding: 16px 14px;
@@ -387,6 +473,7 @@
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/comps/o-md/o-md.html"></l-m>
 
@@ -440,7 +527,13 @@
         </div>
 
         <div class="field field-doc">
-          <label>功能需求文档（作为 AI 的系统提示词）</label>
+          <div class="doc-head">
+            <label>功能需求文档（作为 AI 的系统提示词）</label>
+            <button class="ai-helper-btn" on:click="openReqHelper">
+              <n-icon icon="mdi:auto-fix"></n-icon>
+              AI 帮我整理
+            </button>
+          </div>
           <textarea
             sync:value="systemPrompt"
             placeholder="描述助手的人设、擅长领域、语气风格、知识范围、注意事项等。例如：&#10;你是一位专业的健身教练助手，名叫小健。你的职责是：&#10;1. 解答健身相关问题&#10;2. 提供训练建议&#10;3. 语气亲切鼓励"
@@ -594,6 +687,73 @@
     </main>
   </div>
 
+  <!-- ===== AI 需求整理弹窗（p-dialog）===== -->
+  <p-dialog
+    sync:open="reqHelperOpen"
+    auto-to-mobile-width="540px"
+    on:click-mask="closeReqHelper"
+  >
+    <span slot="title">
+      <n-icon icon="mdi:auto-fix" style="vertical-align: -2px; margin-right: 4px;"></n-icon>
+      AI 帮你整理需求
+    </span>
+
+    <label class="modal-label">把你脑袋里的想法写下来（乱一点也没关系）</label>
+    <textarea
+      class="modal-input"
+      sync:value="reqInput"
+      placeholder="例如：想做个卖花的客服机器人，要懂各种花语、能推荐送礼的花束，语气温柔一点，最好还能帮忙查订单物流..."
+    ></textarea>
+
+    <div class="modal-actions">
+      <p-button
+        variant="outlined"
+        attr:disabled="reqGenerating"
+        on:click="closeReqHelper"
+        >取消</p-button
+      >
+      <p-button
+        color="primary"
+        attr:disabled="reqGenerating || !reqInput.trim()"
+        on:click="generateReqDoc"
+      >
+        <span slot="prefix">
+          <n-icon
+            attr:icon="reqGenerating ? 'mdi:loading' : 'mdi:auto-fix'"
+          ></n-icon>
+        </span>
+        {{reqGenerating ? '整理中' : '让 AI 整理'}}
+      </p-button>
+    </div>
+
+    <o-if :value="reqError">
+      <div class="modal-error">{{reqError}}</div>
+    </o-if>
+
+    <o-if :value="reqOutput || reqGenerating">
+      <div class="modal-section">
+        <label class="modal-label">整理结果（可直接编辑后再应用）</label>
+        <textarea
+          class="modal-input result"
+          sync:value="reqOutput"
+          attr:placeholder="reqGenerating ? '正在生成...' : ''"
+        ></textarea>
+      </div>
+    </o-if>
+
+    <div slot="bottom">
+      <o-if :value="reqOutput && !reqGenerating">
+        <p-button variant="text" on:click="closeReqHelper">关闭</p-button>
+        <p-button color="primary" on:click="applyReqDoc">
+          <span slot="prefix">
+            <n-icon icon="mdi:check"></n-icon>
+          </span>
+          应用到功能需求文档
+        </p-button>
+      </o-if>
+    </div>
+  </p-dialog>
+
   <script>
     export default async ({ load }) => {
       const SERVICE_ID = "smart-assistant";
@@ -628,6 +788,12 @@
           copied: false,
           customers: [],
           expanded: {},
+          // AI 需求整理弹窗状态
+          reqHelperOpen: false,
+          reqInput: "",
+          reqOutput: "",
+          reqGenerating: false,
+          reqError: "",
         },
 
         proto: {
@@ -697,6 +863,24 @@
                 (o) => o.value + (o.disabled ? "(未配置Key)" : ""),
               ),
             );
+          },
+
+          // ===== 根据当前 aiModel 选择 assistant 与 model（共享逻辑）=====
+          async _pickAssistant() {
+            const { getAssistant, getApiKeys } = await load("/ai/main.js");
+            if (this.aiModel && this.aiModel !== "auto") {
+              const provider = this.providerOfModel(this.aiModel);
+              const key = getApiKeys().find((k) => k.provider === provider);
+              if (key) {
+                return { assistant: getAssistant(key.id), model: this.aiModel };
+              }
+              console.warn(
+                "[smart-assistant] 未配置",
+                provider,
+                "的 Key，回退到自动",
+              );
+            }
+            return { assistant: getAssistant(), model: undefined };
           },
 
           // ===== 保存单个访客的对话历史 =====
@@ -870,6 +1054,93 @@
             }
           },
 
+          // ===== 打开 AI 需求整理弹窗 =====
+          openReqHelper() {
+            this.reqHelperOpen = true;
+            this.reqError = "";
+          },
+
+          // ===== 关闭弹窗（生成中则中止请求）=====
+          closeReqHelper() {
+            if (this._reqController) {
+              try {
+                this._reqController.abort();
+              } catch (_) {}
+              this._reqController = null;
+            }
+            this.reqGenerating = false;
+            this.reqHelperOpen = false;
+          },
+
+          // ===== 调用 AI 整理需求（流式输出）=====
+          async generateReqDoc() {
+            const input = (this.reqInput || "").trim();
+            if (!input) return;
+
+            // 中止上一次未完成的请求
+            if (this._reqController) {
+              try {
+                this._reqController.abort();
+              } catch (_) {}
+            }
+            this._reqController = new AbortController();
+
+            this.reqGenerating = true;
+            this.reqOutput = "";
+            this.reqError = "";
+
+            try {
+              const { assistant, model } = await this._pickAssistant();
+
+              const systemMsg = {
+                role: "system",
+                content: `你是一位资深的 AI 助手需求分析师。用户会提供一些零散、混乱的想法，请你帮 ta 整理成一份结构清晰、可直接作为智能客服助手系统提示词的功能需求文档。
+
+整理要求：
+1. 提炼出助手的人设与职责定位
+2. 明确语气风格、擅长领域、知识范围
+3. 用条理清晰的分节/列表呈现
+4. 补充用户未明确但合理的细节（如边界情况处理、兜底话术、安全与隐私注意事项）
+5. 语言精炼实用，避免空话套话
+
+请直接输出整理后的需求文档（可使用 Markdown），不要输出额外的解释或寒暄。`,
+              };
+
+              const chatOpts = {
+                stream: true,
+                messages: [systemMsg, { role: "user", content: input }],
+                onStream: ({ content }) => {
+                  this.reqOutput = content;
+                },
+                signal: this._reqController.signal,
+              };
+              if (model) chatOpts.model = model;
+
+              await assistant.chat(chatOpts);
+            } catch (err) {
+              if (err && err.name === "AbortError") {
+                // 用户主动取消，不视为错误
+              } else {
+                console.error("[smart-assistant] 需求整理失败：", err);
+                const msg = err && err.message ? err.message : String(err);
+                this.reqError = msg.includes("no api key available")
+                  ? "尚未配置 AI Key，请先在 AI 密钥管理器中添加密钥。"
+                  : "整理失败：" + msg;
+              }
+            } finally {
+              this.reqGenerating = false;
+              this._reqController = null;
+            }
+          },
+
+          // ===== 把整理结果应用到功能需求文档 =====
+          applyReqDoc() {
+            const out = (this.reqOutput || "").trim();
+            if (!out) return;
+            this.systemPrompt = out;
+            this.closeReqHelper();
+          },
+
           // ===== 生成分享链接 =====
           async handleGenLink() {
             if (this.generating) return;
@@ -1028,8 +1299,6 @@
             await this.sendToCustomer(c, { kind: "typing" });
 
             try {
-              const { getAssistant, getApiKeys } = await load("/ai/main.js");
-
               const messages = [
                 {
                   role: "system",
@@ -1043,27 +1312,9 @@
                 })),
               ];
 
-              let assistant;
-              let chatOpts = { messages };
-
-              if (this.aiModel && this.aiModel !== "auto") {
-                const provider = this.providerOfModel(this.aiModel);
-                const keys = getApiKeys();
-                const key = keys.find((k) => k.provider === provider);
-                if (key) {
-                  assistant = getAssistant(key.id);
-                  chatOpts.model = this.aiModel;
-                } else {
-                  console.warn(
-                    "[smart-assistant] 未配置",
-                    provider,
-                    "的 Key，回退到自动",
-                  );
-                  assistant = getAssistant();
-                }
-              } else {
-                assistant = getAssistant();
-              }
+              const { assistant, model } = await this._pickAssistant();
+              const chatOpts = { messages };
+              if (model) chatOpts.model = model;
 
               console.log(
                 "[smart-assistant] 调用 AI",
