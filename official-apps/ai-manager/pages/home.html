@@ -237,6 +237,82 @@
       font-size: 13px;
     }
 
+    .privacy-notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .privacy-notice > n-icon {
+      flex-shrink: 0;
+      font-size: 22px;
+      color: var(--md-sys-color-primary);
+    }
+
+    .privacy-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .privacy-body strong {
+      font-weight: 600;
+    }
+
+    .privacy-detail-link {
+      display: inline;
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: var(--md-sys-color-primary);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .privacy-detail-content > p {
+      margin: 0 0 16px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .privacy-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .privacy-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .privacy-item > n-icon {
+      flex-shrink: 0;
+      font-size: 24px;
+      color: var(--md-sys-color-primary);
+    }
+
+    .privacy-item strong {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 2px;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .privacy-item p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
     @media (max-width: 600px) {
       .brand-text h1 {
         font-size: 20px;
@@ -282,6 +358,17 @@
         </div>
       </div>
     </header>
+
+    <div class="privacy-notice">
+      <n-icon icon="mdi:shield-check-outline"></n-icon>
+      <div class="privacy-body">
+        <strong>密钥仅保存在本地浏览器</strong
+        >，本应用无后端服务器，密钥不会上传到任何地方。
+        <button class="privacy-detail-link" on:click="showPrivacyDetail">
+          了解详情
+        </button>
+      </div>
+    </div>
 
     <section class="form-card">
       <h2 class="section-title">添加 API Key</h2>
@@ -443,6 +530,66 @@
     </section>
   </main>
 
+  <p-dialog
+    sync:open="privacyDialogOpen"
+    auto-close
+    style="--dialog-max-width: 480px"
+  >
+    <span slot="title">密钥安全说明</span>
+    <div class="privacy-detail-content">
+      <p>我们非常重视您的密钥安全，以下是本应用的隐私保障：</p>
+      <div class="privacy-item">
+        <n-icon icon="mdi:harddisk-outline"></n-icon>
+        <div>
+          <strong>本地存储，不上传</strong>
+          <p>
+            API Key 保存在浏览器的 IndexedDB
+            中（本地存储），仅存在于此设备。本应用为纯静态应用，没有任何后端服务器可以接收您的数据。
+          </p>
+        </div>
+      </div>
+      <div class="privacy-item">
+        <n-icon icon="mdi:lock-outline"></n-icon>
+        <div>
+          <strong>直连官方 API</strong>
+          <p>
+            使用密钥时（如验证、查询余额/模型），浏览器直接向 DeepSeek / Kimi
+            官方接口发请求，不经过任何第三方中转。
+          </p>
+        </div>
+      </div>
+      <div class="privacy-item">
+        <n-icon icon="mdi:trash-can-outline"></n-icon>
+        <div>
+          <strong>随时可删除</strong>
+          <p>清除浏览器数据或删除本应用，密钥即被彻底移除，不留痕迹。</p>
+        </div>
+      </div>
+      <div class="privacy-item">
+        <n-icon icon="mdi:source-repository"></n-icon>
+        <div>
+          <strong>开源可审计，支持本地部署</strong>
+          <p>
+            不信任当前容器？本项目完全开源，可在
+            <a
+              class="privacy-detail-link"
+              href="https://github.com/kirakiray/Mazmot/tree/main"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub</a
+            >
+            下载源码，本地部署到 localhost 自用，彻底杜绝任何顾虑。
+          </p>
+        </div>
+      </div>
+    </div>
+    <div slot="bottom">
+      <p-button color="primary" on:click="privacyDialogOpen = false"
+        >我知道了</p-button
+      >
+    </div>
+  </p-dialog>
+
   <script>
     export default async ({ load }) => {
       const {
@@ -466,6 +613,7 @@
           submitting: false,
           loadingIds: {},
           detailMap: {},
+          privacyDialogOpen: false,
         },
 
         proto: {
@@ -474,11 +622,17 @@
           },
 
           providerIcon(provider) {
-            return provider === "kimi" ? "simple-icons:moonshotai" : "simple-icons:deepseek";
+            return provider === "kimi"
+              ? "simple-icons:moonshotai"
+              : "simple-icons:deepseek";
           },
 
           togglePassword() {
             this.showPassword = !this.showPassword;
+          },
+
+          showPrivacyDetail() {
+            this.privacyDialogOpen = true;
           },
 
           async handleValidate() {
