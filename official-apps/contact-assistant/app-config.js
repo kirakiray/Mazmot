@@ -1,10 +1,17 @@
-const params = new URLSearchParams(location.search);
-const spaceId = params.get("spaceId") || "";
-const hostUserId = params.get("hostUserId") || "";
-const hasVisitorParams = spaceId && hostUserId;
+const _appParams = new URLSearchParams(location.search);
+const _hashQuery = location.hash.includes("?")
+  ? location.hash.split("?")[1]
+  : "";
+new URLSearchParams(_hashQuery).forEach((value, key) => {
+  if (!_appParams.has(key)) _appParams.set(key, value);
+});
+const spaceId = _appParams.get("spaceId") || "";
+const hostUserId = _appParams.get("hostUserId") || "";
+const hasVisitorParams = !!(spaceId && hostUserId);
 
-console.log("[contact-assistant] app-config query:", {
+console.log("[contact-assistant] app-config params:", {
   search: location.search,
+  hash: location.hash,
   spaceId,
   hostUserId,
   hasVisitorParams,

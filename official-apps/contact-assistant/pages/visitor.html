@@ -263,11 +263,19 @@
         registerService,
       } = p2pMod;
 
-      const spaceId = query.spaceId || "";
-      const hostUserId = query.hostUserId || "";
+      const pageParams = new URLSearchParams(location.search);
+      const hashQuery = location.hash.includes("?")
+        ? location.hash.split("?")[1]
+        : "";
+      new URLSearchParams(hashQuery).forEach((value, key) => {
+        if (!pageParams.has(key)) pageParams.set(key, value);
+      });
+      const spaceId = pageParams.get("spaceId") || "";
+      const hostUserId = pageParams.get("hostUserId") || "";
 
-      console.log("[contact-assistant visitor] page query:", {
-        rawQuery: query,
+      console.log("[contact-assistant visitor] page params:", {
+        search: location.search,
+        hash: location.hash,
         spaceId,
         hostUserId,
         currentUrl: location.href,

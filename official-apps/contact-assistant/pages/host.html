@@ -432,7 +432,7 @@
   </div>
 
   <script>
-    export default async ({ query, load }) => {
+    export default async ({ load }) => {
       const storageMod = await load("../lib/storage.js");
       const p2pMod = await load("../lib/p2p.js");
       const aiMod = await load("../lib/ai-service.js");
@@ -449,9 +449,17 @@
       const { replyAndSave, summarize } = aiMod;
       const { getAssistant } = aiMain;
 
-      const spaceId = query.spaceId || "";
-      console.log("[contact-assistant host] page query:", {
-        rawQuery: query,
+      const pageParams = new URLSearchParams(location.search);
+      const hashQuery = location.hash.includes("?")
+        ? location.hash.split("?")[1]
+        : "";
+      new URLSearchParams(hashQuery).forEach((value, key) => {
+        if (!pageParams.has(key)) pageParams.set(key, value);
+      });
+      const spaceId = pageParams.get("spaceId") || "";
+      console.log("[contact-assistant host] page params:", {
+        search: location.search,
+        hash: location.hash,
         spaceId,
         currentUrl: location.href,
       });
