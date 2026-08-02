@@ -271,7 +271,9 @@
       justify-content: center;
       cursor: pointer;
       flex-shrink: 0;
-      transition: background 0.15s ease, color 0.15s ease;
+      transition:
+        background 0.15s ease,
+        color 0.15s ease;
     }
     .visitor-del:hover {
       background: var(--md-sys-color-error-container);
@@ -343,7 +345,9 @@
       font-family: inherit;
       cursor: pointer;
       flex-shrink: 0;
-      transition: filter 0.15s ease, transform 0.1s ease;
+      transition:
+        filter 0.15s ease,
+        transform 0.1s ease;
     }
     .ai-helper-btn:hover {
       filter: brightness(1.06);
@@ -462,10 +466,16 @@
         font-size: 16px;
       }
     }
+
+    [slot="title"] n-icon {
+      display: inline-block;
+    }
   </style>
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"></l-m>
+  <l-m
+    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
+  ></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
@@ -481,9 +491,7 @@
         </div>
         <div>
           <h1 class="brand-title">智能联络助手</h1>
-          <p class="brand-sub">
-            配置助手并分享链接，让访客与你的 AI 实时对话
-          </p>
+          <p class="brand-sub">配置助手并分享链接，让访客与你的 AI 实时对话</p>
         </div>
       </header>
 
@@ -516,12 +524,14 @@
             <p-option value="auto">自动（使用默认模型）</p-option>
             <o-fill :value="modelOptions">
               <p-option attr:value="$data.value" attr:disabled="$data.disabled"
-                >{{$data.label}}{{$data.disabled ? '（未配置 Key）' : ''}}</p-option
+                >{{$data.label}}{{$data.disabled ? '（未配置 Key）' :
+                ''}}</p-option
               >
             </o-fill>
           </p-select>
           <p class="field-hint">
-            "自动"将根据已配置的密钥随机选用；指定模型需先在 AI 密钥管理器中配置对应平台的 Key
+            "自动"将根据已配置的密钥随机选用；指定模型需先在 AI
+            密钥管理器中配置对应平台的 Key
           </p>
         </div>
 
@@ -589,7 +599,9 @@
             on:click="copyLink"
           >
             <span slot="prefix">
-              <n-icon attr:icon="copied ? 'mdi:check' : 'mdi:content-copy'"></n-icon>
+              <n-icon
+                attr:icon="copied ? 'mdi:check' : 'mdi:content-copy'"
+              ></n-icon>
             </span>
             {{copied ? '已复制' : '复制'}}
           </p-button>
@@ -704,11 +716,14 @@
   <p-dialog
     sync:open="reqHelperOpen"
     auto-to-mobile-width="540px"
-    style="--dialog-width: min(600px, 92vw);"
+    style="--dialog-width: min(600px, 92vw)"
     on:click-mask="closeReqHelper"
   >
     <span slot="title">
-      <n-icon icon="mdi:auto-fix" style="vertical-align: -2px; margin-right: 4px;"></n-icon>
+      <n-icon
+        icon="mdi:auto-fix"
+        style="vertical-align: -2px; margin-right: 4px"
+      ></n-icon>
       AI 帮你整理需求
     </span>
 
@@ -772,11 +787,14 @@
   <p-dialog
     sync:open="overviewOpen"
     auto-to-mobile-width="540px"
-    style="--dialog-width: min(680px, 92vw);"
+    style="--dialog-width: min(680px, 92vw)"
     on:click-mask="closeOverview"
   >
     <span slot="title">
-      <n-icon icon="mdi:note-text-outline" style="vertical-align: -2px; margin-right: 4px;"></n-icon>
+      <n-icon
+        icon="mdi:note-text-outline"
+        style="vertical-align: -2px; margin-right: 4px"
+      ></n-icon>
       访客对话总览
     </span>
 
@@ -803,7 +821,9 @@
       <div class="overview-body">
         <!-- 生成中：纯文本实时显示（o-md 不响应流式文本变化）-->
         <o-if :value="overviewGenerating">
-          <pre class="overview-raw">{{overviewOutput || '正在生成总览...'}}</pre>
+          <pre class="overview-raw">
+{{overviewOutput || '正在生成总览...'}}</pre
+          >
         </o-if>
         <!-- 生成完成：o-md 只渲染一次，slotchange 正常触发 -->
         <o-if :value="!overviewGenerating && overviewOutput">
@@ -816,7 +836,9 @@
       <o-if :value="overviewOutput">
         <p-button variant="text" on:click="copyOverview">
           <span slot="prefix">
-            <n-icon attr:icon="overviewCopied ? 'mdi:check' : 'mdi:content-copy'"></n-icon>
+            <n-icon
+              attr:icon="overviewCopied ? 'mdi:check' : 'mdi:content-copy'"
+            ></n-icon>
           </span>
           {{overviewCopied ? '已复制' : '复制报告'}}
         </p-button>
@@ -936,9 +958,7 @@
             this.modelOptions = options;
             console.log(
               "[smart-assistant] 可选模型：",
-              options.map(
-                (o) => o.value + (o.disabled ? "(未配置Key)" : ""),
-              ),
+              options.map((o) => o.value + (o.disabled ? "(未配置Key)" : "")),
             );
           },
 
@@ -1065,7 +1085,10 @@
               }
             }
 
-            console.log("[smart-assistant] 已删除访客记录：", this.shortId(userId));
+            console.log(
+              "[smart-assistant] 已删除访客记录：",
+              this.shortId(userId),
+            );
           },
 
           // ===== 复制链接到剪贴板 =====
@@ -1325,10 +1348,7 @@
 
               const chatOpts = {
                 stream: true,
-                messages: [
-                  systemMsg,
-                  { role: "user", content: allChats },
-                ],
+                messages: [systemMsg, { role: "user", content: allChats }],
                 onStream: ({ content }) => {
                   this.overviewOutput = content;
                 },
@@ -1476,8 +1496,12 @@
               return;
             }
             try {
-              const results = await c._remote.sendToService(SERVICE_ID, payload);
-              const ok = Array.isArray(results) &&
+              const results = await c._remote.sendToService(
+                SERVICE_ID,
+                payload,
+              );
+              const ok =
+                Array.isArray(results) &&
                 results.some((r) => r && r.status === "ok");
               if (!ok) {
                 console.warn(
@@ -1623,15 +1647,12 @@
             const c = self.customers.find((x) => x.userId === uid);
             if (c && !c.online) c.online = true;
           });
-          this._unbindDisc = user.bind(
-            "remote_user_disconnected",
-            (event) => {
-              const uid = event && event.detail && event.detail.userId;
-              if (!uid) return;
-              const c = self.customers.find((x) => x.userId === uid);
-              if (c && c.online) c.online = false;
-            },
-          );
+          this._unbindDisc = user.bind("remote_user_disconnected", (event) => {
+            const uid = event && event.detail && event.detail.userId;
+            if (!uid) return;
+            const c = self.customers.find((x) => x.userId === uid);
+            if (c && c.online) c.online = false;
+          });
 
           console.log("[smart-assistant] Host 服务已注册：", SERVICE_ID);
         },
