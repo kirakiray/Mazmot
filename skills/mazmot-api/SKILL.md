@@ -197,7 +197,7 @@ import {
   loadOfficialApps, installOfficialApp,
 } from "/apps/main/home/official-app-writer.js";
 
-const list = await loadOfficialApps(); // [{ id, name, icon, desc }]
+const list = await loadOfficialApps(); // [{ id, name, icon, desc, version }]（version 读自应用自身的 app.json）
 
 const result = await installOfficialApp({
   dirHandle,     // 虚拟目录句柄

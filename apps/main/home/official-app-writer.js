@@ -9,8 +9,8 @@ const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
 /**
  * 加载官方应用列表。
  * manifest.json 只存放应用 id 列表，每个应用的 name/icon/desc
- * 从对应目录下的 __app.json 读取。
- * @returns {Promise<Array<{ id: string, name: string, icon?: string, desc?: string }>>}
+ * 从对应目录下的 __app.json 读取，version 从应用自身的 app.json 读取。
+ * @returns {Promise<Array<{ id: string, name: string, icon?: string, desc?: string, version: string }>>}
  */
 export async function loadOfficialApps() {
   const url = new URL("manifest.json", OFFICIAL_APPS_ROOT);
@@ -31,11 +31,25 @@ export async function loadOfficialApps() {
         continue;
       }
       const meta = await metaRes.json();
+
+      // 版本号来源于应用自身的 app.json
+      let version = "";
+      try {
+        const appJsonRes = await fetch(new URL("app.json", appRoot));
+        if (appJsonRes.ok) {
+          const appJson = await appJsonRes.json();
+          version = appJson.version || "";
+        }
+      } catch (err) {
+        console.warn(`读取官方应用 ${id} 版本号失败：`, err);
+      }
+
       apps.push({
         id,
         name: meta.name || id,
         icon: meta.icon || "📦",
         desc: meta.desc || "",
+        version,
       });
     } catch (err) {
       console.warn(`加载官方应用 ${id} 元数据失败：`, err);
