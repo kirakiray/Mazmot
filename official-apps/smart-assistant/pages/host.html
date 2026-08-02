@@ -77,38 +77,6 @@
     .field p-input {
       width: 100%;
     }
-    .field-label {
-      font-size: 13px;
-      font-weight: 500;
-      display: block;
-      margin-bottom: 6px;
-    }
-    .model-select {
-      width: 100%;
-      padding: 10px 36px 10px 14px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      border-radius: 12px;
-      background-color: var(--md-sys-color-surface);
-      color: var(--md-sys-color-on-surface);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      box-sizing: border-box;
-      cursor: pointer;
-      transition: border-color 0.15s ease;
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-      background-repeat: no-repeat;
-      background-position: right 12px center;
-    }
-    .model-select:focus {
-      border-color: var(--md-sys-color-primary);
-    }
-    .model-select option {
-      background: var(--md-sys-color-surface-container);
-      color: var(--md-sys-color-on-surface);
-    }
     .field-doc label {
       font-size: 13px;
       font-weight: 500;
@@ -473,6 +441,7 @@
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/comps/o-md/o-md.html"></l-m>
@@ -512,15 +481,15 @@
         </div>
 
         <div class="field">
-          <label class="field-label">AI 模型</label>
-          <select sync:value="aiModel" class="model-select">
-            <option value="auto">自动（使用默认模型）</option>
+          <p-select sync:value="aiModel" placeholder="选择 AI 模型">
+            <span slot="label">AI 模型</span>
+            <p-option value="auto">自动（使用默认模型）</p-option>
             <o-fill :value="modelOptions">
-              <option attr:value="$data.value" attr:disabled="$data.disabled"
-                >{{$data.label}}{{$data.disabled ? '（未配置 Key）' : ''}}</option
+              <p-option attr:value="$data.value" attr:disabled="$data.disabled"
+                >{{$data.label}}{{$data.disabled ? '（未配置 Key）' : ''}}</p-option
               >
             </o-fill>
-          </select>
+          </p-select>
           <p class="field-hint">
             "自动"将根据已配置的密钥随机选用；指定模型需先在 AI 密钥管理器中配置对应平台的 Key
           </p>
@@ -691,6 +660,7 @@
   <p-dialog
     sync:open="reqHelperOpen"
     auto-to-mobile-width="540px"
+    style="--dialog-width: min(600px, 92vw);"
     on:click-mask="closeReqHelper"
   >
     <span slot="title">
