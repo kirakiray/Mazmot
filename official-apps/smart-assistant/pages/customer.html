@@ -313,6 +313,12 @@
           thinking: false,
         },
 
+        watch: {
+          messages() {
+            this.saveHistory();
+          },
+        },
+
         proto: {
           // ===== 发送消息 =====
           async sendMessage() {
@@ -324,7 +330,6 @@
             this.inputText = "";
             this.thinking = true;
             this.scrollToBottom();
-            this.saveHistory();
 
             try {
               const results = await this._remote.sendToService(SERVICE_ID, {
@@ -341,7 +346,6 @@
                 });
                 this.connected = false;
                 this.scrollToBottom();
-                this.saveHistory();
               }
             } catch (err) {
               console.error("[smart-assistant-customer] 发送失败：", err);
@@ -351,7 +355,6 @@
                 text: "发送失败：" + (err.message || err),
               });
               this.scrollToBottom();
-              this.saveHistory();
             }
           },
 
@@ -360,41 +363,6 @@
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               this.sendMessage();
-            }
-          },
-
-          // ===== 持久化聊天记录到 ever-cache =====
-          async loadHistory(hostUserId) {
-            if (!hostUserId) return;
-            try {
-              const { storage } = await load(
-                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-              );
-              const saved = await storage.getItem("sa-chat-" + hostUserId);
-              if (Array.isArray(saved) && saved.length) {
-                this.messages = saved;
-                console.log(
-                  "[smart-assistant-customer] 已恢复历史记录",
-                  saved.length,
-                  "条",
-                );
-                this.scrollToBottom();
-              }
-            } catch (err) {
-              console.warn("[smart-assistant-customer] 读取历史失败：", err);
-            }
-          },
-
-          async saveHistory() {
-            const key = this._storageKey;
-            if (!key) return;
-            try {
-              const { storage } = await load(
-                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-              );
-              await storage.setItem(key, this.messages.slice());
-            } catch (err) {
-              console.warn("[smart-assistant-customer] 保存历史失败：", err);
             }
           },
 
@@ -407,17 +375,8 @@
             if (kind === "welcome") {
               if (data.name) this.assistantName = data.name;
               if (data.message) {
-                // 去重：刷新后最后一条已是欢迎语则不重复添加
-                const last = this.messages[this.messages.length - 1];
-                const isDup =
-                  last &&
-                  last.type === "assistant" &&
-                  last.text === data.message;
-                if (!isDup) {
-                  this.messages.push({ type: "assistant", text: data.message });
-                  this.scrollToBottom();
-                  this.saveHistory();
-                }
+                this.messages.push({ type: "assistant", text: data.message });
+                this.scrollToBottom();
               }
             } else if (kind === "typing") {
               this.thinking = true;
@@ -425,7 +384,6 @@
               this.thinking = false;
               this.messages.push({ type: "assistant", text: data.text || "" });
               this.scrollToBottom();
-              this.saveHistory();
             } else if (kind === "error") {
               this.thinking = false;
               this.messages.push({
@@ -433,7 +391,6 @@
                 text: data.text || "助手出错",
               });
               this.scrollToBottom();
-              this.saveHistory();
             }
           },
 
@@ -445,20 +402,50 @@
               }, 30);
             }
           },
+
+          // ===== 保存对话历史到本地 =====
+          async saveHistory() {
+            if (!this._storage || !this._chatKey) return;
+            try {
+              await this._storage.setItem(
+                this._chatKey,
+                JSON.parse(JSON.stringify(this.messages)),
+              );
+            } catch (err) {
+              console.warn("[smart-assistant-customer] 保存历史失败：", err);
+            }
+          },
         },
 
         async attached() {
           // 直接从 URL 读取 host 参数（比属性绑定更可靠，避免时序问题）
           const sp = new URLSearchParams(location.search);
           const hostUserId = sp.get("host") || "";
-          this._storageKey = "sa-chat-" + hostUserId;
           console.log(
             "[smart-assistant-customer] 启动，目标 host：",
             hostUserId,
           );
 
-          // 先加载历史记录
-          await this.loadHistory(hostUserId);
+          // 加载存储并恢复历史对话（即使连接失败也能看到历史）
+          try {
+            const { storage } = await load(
+              "/gh/kirakiray/ever-cache/src/main.min.js",
+            );
+            this._storage = storage;
+            this._chatKey = "sa-chat-" + hostUserId;
+            const history = await storage.getItem(this._chatKey);
+            if (Array.isArray(history) && history.length) {
+              this.messages = history;
+              console.log(
+                "[smart-assistant-customer] 恢复历史消息",
+                history.length,
+                "条",
+              );
+              this.scrollToBottom();
+            }
+          } catch (err) {
+            console.warn("[smart-assistant-customer] 加载历史失败：", err);
+          }
 
           try {
             const { getUser } = await load("/nos/user/main.js");

@@ -527,12 +527,14 @@
             );
 
             if (kind === "hello") {
-              // 访客刚连上，推送欢迎信息
-              this.sendToCustomer(c, {
-                kind: "welcome",
-                name: this.assistantName || "智能助手",
-                message: this.welcomeMsg || "你好，有什么可以帮你？",
-              });
+              // 只在访客首次连接（无历史消息）时推送欢迎信息，避免刷新重复
+              if (c.messages.length === 0) {
+                this.sendToCustomer(c, {
+                  kind: "welcome",
+                  name: this.assistantName || "智能助手",
+                  message: this.welcomeMsg || "你好，有什么可以帮你？",
+                });
+              }
             } else if (kind === "chat") {
               const text = (data.text || "").trim();
               if (!text) return;
@@ -545,6 +547,69 @@
           shortId(id) {
             if (!id) return "????";
             return id.slice(-6);
+          },
+
+          // ===== 保存单个访客的对话历史 =====
+          async saveVisitorHistory(c) {
+            if (!this._storage || !c) return;
+            try {
+              const key = "sa-visitor-" + c.userId;
+              await this._storage.setItem(
+                key,
+                JSON.parse(JSON.stringify(c.messages)),
+              );
+              // 更新访客索引
+              const index =
+                (await this._storage.getItem("sa-visitors-index")) || [];
+              if (!index.includes(c.userId)) {
+                index.push(c.userId);
+                await this._storage.setItem("sa-visitors-index", index);
+              }
+            } catch (err) {
+              console.warn(
+                "[smart-assistant] 保存访客历史失败：",
+                this.shortId(c.userId),
+                err,
+              );
+            }
+          },
+
+          // ===== 恢复所有历史访客（标记为离线）=====
+          async loadVisitorsHistory() {
+            if (!this._storage) return;
+            try {
+              const index =
+                (await this._storage.getItem("sa-visitors-index")) || [];
+              for (const userId of index) {
+                const messages = await this._storage.getItem(
+                  "sa-visitor-" + userId,
+                );
+                if (Array.isArray(messages)) {
+                  // 避免重复添加（已在线的访客不覆盖）
+                  const existing = this.customers.find(
+                    (x) => x.userId === userId,
+                  );
+                  if (!existing) {
+                    this.customers.push({
+                      userId,
+                      messages,
+                      thinking: false,
+                      online: false,
+                      _remote: null,
+                    });
+                  }
+                }
+              }
+              if (index.length) {
+                console.log(
+                  "[smart-assistant] 恢复历史访客",
+                  index.length,
+                  "个",
+                );
+              }
+            } catch (err) {
+              console.warn("[smart-assistant] 恢复访客历史失败：", err);
+            }
           },
 
           // ===== 折叠/展开访客对话 =====
@@ -588,10 +653,13 @@
           async saveConfig() {
             this.saving = true;
             try {
-              const { storage } = await load(
-                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-              );
-              await storage.setItem("sa-config", {
+              if (!this._storage) {
+                const { storage } = await load(
+                  "/gh/kirakiray/ever-cache/src/main.min.js",
+                );
+                this._storage = storage;
+              }
+              await this._storage.setItem("sa-config", {
                 assistantName: this.assistantName,
                 welcomeMsg: this.welcomeMsg,
                 systemPrompt: this.systemPrompt,
@@ -622,15 +690,15 @@
               }
               console.log("[smart-assistant] 当前应用身份：", self);
 
-              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+              const [fsMod, shareMgr] = await Promise.all([
                 load("/nos/fs/main.js"),
-                load(
-                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-                ),
                 load("/lib/share-mgr.js"),
               ]);
               const { init } = fsMod;
-              const { storage } = cacheMod;
+              const { storage } = this._storage
+                ? { storage: this._storage }
+                : await load("/gh/kirakiray/ever-cache/src/main.min.js");
+              this._storage = storage;
               const { publishApp, generateAppId } = shareMgr;
 
               const apps = (await storage.apps) || [];
@@ -760,6 +828,7 @@
           async handleVisitorChat(c, userText) {
             // 追加访客消息
             c.messages.push({ role: "user", content: userText });
+            this.saveVisitorHistory(c);
 
             // 标记思考中
             c.thinking = true;
@@ -798,6 +867,7 @@
 
               c.messages.push({ role: "assistant", content });
               c.thinking = false;
+              this.saveVisitorHistory(c);
               console.log(
                 "[smart-assistant] AI 回复访客",
                 this.shortId(c.userId),
@@ -823,11 +893,13 @@
         },
 
         async attached() {
-          // 读取已保存的配置
+          // 加载存储、读取配置 + 恢复历史访客
           try {
             const { storage } = await load(
-              "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
+              "/gh/kirakiray/ever-cache/src/main.min.js",
             );
+            this._storage = storage;
+
             const cfg = await storage.getItem("sa-config");
             if (cfg) {
               this.assistantName = cfg.assistantName || "";
@@ -835,14 +907,14 @@
               this.systemPrompt = cfg.systemPrompt || "";
               console.log("[smart-assistant] 已读取保存的配置");
             }
+
+            // 恢复历史访客列表
+            await this.loadVisitorsHistory();
           } catch (err) {
-            console.warn("[smart-assistant] 读取配置失败：", err);
+            console.warn("[smart-assistant] 初始化存储失败：", err);
           }
 
           // 注册 P2P 服务
-          const parent = this.parentElement;
-          // host-page 放在 home.html 内，通过 home 的 _user 获取
-          // 但组件无法直接访问父页面，所以自行 getUser
           const { getUser } = await load("/nos/user/main.js");
           const user = await getUser("default");
           this._user = user;
