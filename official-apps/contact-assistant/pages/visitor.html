@@ -247,7 +247,7 @@
   </div>
 
   <script>
-    export default async ({ query, load }) => {
+    export default async ({ load }) => {
       const storageMod = await load("../lib/storage.js");
       const p2pMod = await load("../lib/p2p.js");
       const {
@@ -265,6 +265,13 @@
 
       const spaceId = query.spaceId || "";
       const hostUserId = query.hostUserId || "";
+
+      console.log("[contact-assistant visitor] page query:", {
+        rawQuery: query,
+        spaceId,
+        hostUserId,
+        currentUrl: location.href,
+      });
 
       const formatTime = (ts) => {
         if (!ts) return "";
@@ -295,23 +302,39 @@
 
           async initConnection() {
             if (!spaceId || !hostUserId) {
-              this.errorText = "链接缺少必要参数，无法打开聊天。";
+              const missing = [
+                !spaceId && "spaceId",
+                !hostUserId && "hostUserId",
+              ].filter(Boolean);
+              const detail = `缺少参数: ${missing.join(", ")}。当前 spaceId="${spaceId}", hostUserId="${hostUserId}", 完整 URL="${location.href}"`;
+              console.error("[contact-assistant visitor] initConnection aborted:", detail);
+              this.errorText = `链接缺少必要参数，无法打开聊天。${detail}`;
               this.statusText = "参数错误";
               return;
             }
 
+            console.log("[contact-assistant visitor] initConnection start:", {
+              spaceId,
+              hostUserId,
+            });
+
             try {
+              console.log("[contact-assistant visitor] saving visitor space...");
               await saveVisitorSpace(spaceId, { spaceId, hostUserId });
+              console.log("[contact-assistant visitor] connecting host...", hostUserId);
               await connectHost(hostUserId);
 
-              const unregister = await registerService((data) => {
+              console.log("[contact-assistant visitor] registering service...");
+              const unregister = await registerService((data, ctx) => {
+                console.log("[contact-assistant visitor] service message:", data, ctx);
                 this.handleIncomingReply(data);
               });
               this._unregisterService = unregister;
+              console.log("[contact-assistant visitor] service registered");
 
               this.statusText = "已连接";
             } catch (err) {
-              console.error("initConnection error:", err);
+              console.error("[contact-assistant visitor] initConnection error:", err);
               this.statusText = "连接失败";
               this.errorText =
                 (err && err.message) || "连接助手失败，请确认链接有效。";
@@ -319,7 +342,14 @@
           },
 
           handleIncomingReply(data) {
-            if (!data || data.spaceId !== spaceId) return;
+            console.log("[contact-assistant visitor] handleIncomingReply:", data);
+            if (!data || data.spaceId !== spaceId) {
+              console.warn("[contact-assistant visitor] reply ignored, spaceId mismatch:", {
+                expected: spaceId,
+                got: data && data.spaceId,
+              });
+              return;
+            }
             if (data.type === "reply") {
               const msg = {
                 id: `a-${data.timestamp || Date.now()}`,
@@ -336,7 +366,10 @@
 
           async sendMessage() {
             const text = this.inputText.trim();
-            if (!text || !hostUserId) return;
+            if (!text || !hostUserId) {
+              console.warn("[contact-assistant visitor] sendMessage skipped:", { text, hostUserId });
+              return;
+            }
 
             const now = Date.now();
             const msg = {
@@ -355,6 +388,11 @@
             this.sending = true;
             try {
               const visitorId = await getCurrentUserId();
+              console.log("[contact-assistant visitor] sending message to host:", {
+                hostUserId,
+                visitorId,
+                spaceId,
+              });
               const results = await sendToHost(hostUserId, {
                 type: "chat",
                 spaceId,
@@ -362,6 +400,7 @@
                 message: text,
                 timestamp: now,
               });
+              console.log("[contact-assistant visitor] sendToHost results:", results);
               const delivered = Array.isArray(results)
                 ? results.some((r) => r.status === "ok")
                 : false;
@@ -369,7 +408,7 @@
                 this.typingText = "消息已保存，但对方当前不在线。";
               }
             } catch (err) {
-              console.error("sendMessage error:", err);
+              console.error("[contact-assistant visitor] sendMessage error:", err);
               this.typingText = "发送失败，请稍后重试。";
             } finally {
               this.sending = false;

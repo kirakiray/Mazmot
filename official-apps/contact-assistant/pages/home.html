@@ -87,6 +87,26 @@
       border-color: var(--md-sys-color-primary);
     }
 
+    .form-row textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 12px 14px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 14px;
+      line-height: 1.6;
+      box-sizing: border-box;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .form-row textarea:focus {
+      outline: none;
+      border-color: var(--md-sys-color-primary);
+    }
+
     .file-row {
       display: flex;
       gap: 12px;
@@ -283,7 +303,7 @@
       <div class="app-icon">🤝</div>
       <h1>我是你的联络助手</h1>
       <p>
-        创建一个助手空间，上传你的背景资料，即可生成一个分享链接。
+        创建一个助手空间，填写或上传你的背景资料，即可生成一个分享链接。
         把链接放到论坛、名片或社交媒体上，别人点击后就能直接与你的 AI 助手聊天，
         所有对话都会整理成联系记录，帮你管理外部信息。
       </p>
@@ -305,7 +325,16 @@
       </div>
 
       <div class="form-row">
-        <label>初始化文本文件</label>
+        <label>初始化文本</label>
+        <textarea
+          sync:value="initText"
+          placeholder="直接输入背景资料，例如：你的个人简介、产品介绍、服务说明等..."
+        ></textarea>
+        <div class="hint">也可以上传 .txt / .md 文件；若同时输入了文本和文件，优先使用上方输入的文本。</div>
+      </div>
+
+      <div class="form-row">
+        <label>或上传文本文件</label>
         <div class="file-row">
           <div class="file-input-wrap">
             <button class="file-btn">
@@ -320,7 +349,6 @@
           </div>
           <span class="file-name">{{fileName || '未选择文件'}}</span>
         </div>
-        <div class="hint">支持 .txt / .md，内容将作为助手回答来访者时的背景资料。</div>
       </div>
 
       <div class="actions">
@@ -433,6 +461,7 @@
       return {
         data: {
           spaceName: "",
+          initText: "",
           fileName: "",
           spaces: [],
           creating: false,
@@ -476,12 +505,13 @@
               const space = {
                 id: generateId(),
                 name,
-                initText: this._pendingFileText || "",
+                initText: (this.initText || this._pendingFileText || "").trim(),
                 createdAt: Date.now(),
               };
               await saveSpace(space);
               this.spaces.push(space);
               this.spaceName = "";
+              this.initText = "";
               this.fileName = "";
               this._pendingFileText = "";
               const fileInput = this.shadow.$("input[type='file']");
@@ -593,6 +623,7 @@
               }
 
               this.shareUrl = shareUrl;
+              console.log("[contact-assistant home] share link generated:", shareUrl);
               this.shareStatus = "链接已生成，可复制分享给他人";
             } catch (err) {
               console.error("generateShareLink error:", err);

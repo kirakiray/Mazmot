@@ -1,5 +1,14 @@
 const params = new URLSearchParams(location.search);
-const hasVisitorParams = params.get("spaceId") && params.get("hostUserId");
+const spaceId = params.get("spaceId") || "";
+const hostUserId = params.get("hostUserId") || "";
+const hasVisitorParams = spaceId && hostUserId;
+
+console.log("[contact-assistant] app-config query:", {
+  search: location.search,
+  spaceId,
+  hostUserId,
+  hasVisitorParams,
+});
 
 export const home = hasVisitorParams
   ? "./pages/visitor.html"

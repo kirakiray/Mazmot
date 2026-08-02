@@ -28,6 +28,7 @@ export async function getCurrentUserId() {
  */
 export async function registerService(onMessage) {
   const user = await getCurrentUser();
+  console.log("[contact-assistant p2p] registerService for user:", user.userId);
 
   if (_serviceReg) {
     try {
@@ -37,13 +38,15 @@ export async function registerService(onMessage) {
 
   _serviceReg = user.registerService(SERVICE_NAME, {
     onMessage(data, ctx) {
+      console.log("[contact-assistant p2p] service message received:", { data, from: ctx?.fromUserId, session: ctx?.fromSessionId });
       try {
         onMessage(data, ctx);
       } catch (err) {
-        console.error("Host service onMessage error:", err);
+        console.error("[contact-assistant p2p] service onMessage error:", err);
       }
     },
   });
+  console.log("[contact-assistant p2p] service registered");
 
   return () => {
     try {
@@ -63,11 +66,14 @@ export async function connectHost(hostUserId) {
     throw new Error("缺少 hostUserId");
   }
   if (_remoteCache.has(hostUserId)) {
+    console.log("[contact-assistant p2p] connectHost using cached remote:", hostUserId);
     return _remoteCache.get(hostUserId);
   }
+  console.log("[contact-assistant p2p] connectHost connecting:", hostUserId);
   const user = await getCurrentUser();
   const remoteUser = await user.connectUser(hostUserId);
   _remoteCache.set(hostUserId, remoteUser);
+  console.log("[contact-assistant p2p] connectHost connected:", hostUserId);
   return remoteUser;
 }
 
@@ -78,8 +84,11 @@ export async function connectHost(hostUserId) {
  * @returns {Promise<Array>} sendToService 返回结果数组
  */
 export async function sendToHost(hostUserId, data) {
+  console.log("[contact-assistant p2p] sendToHost:", { hostUserId, data });
   const remoteUser = await connectHost(hostUserId);
-  return remoteUser.sendToService(SERVICE_NAME, data);
+  const results = await remoteUser.sendToService(SERVICE_NAME, data);
+  console.log("[contact-assistant p2p] sendToHost results:", results);
+  return results;
 }
 
 /**
@@ -88,12 +97,15 @@ export async function sendToHost(hostUserId, data) {
  * @param {object} data
  */
 export async function replyToVisitor(ctx, data) {
+  console.log("[contact-assistant p2p] replyToVisitor:", { ctx, data });
   if (!ctx?.remoteUser || !ctx?.fromSessionId) {
     throw new Error("缺少回复上下文");
   }
-  return ctx.remoteUser.sendToService(SERVICE_NAME, data, {
+  const results = await ctx.remoteUser.sendToService(SERVICE_NAME, data, {
     sessionId: ctx.fromSessionId,
   });
+  console.log("[contact-assistant p2p] replyToVisitor results:", results);
+  return results;
 }
 
 /**

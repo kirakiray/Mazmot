@@ -450,6 +450,11 @@
       const { getAssistant } = aiMain;
 
       const spaceId = query.spaceId || "";
+      console.log("[contact-assistant host] page query:", {
+        rawQuery: query,
+        spaceId,
+        currentUrl: location.href,
+      });
 
       const formatTime = (ts) => {
         if (!ts) return "";
@@ -531,7 +536,14 @@
           },
 
           async handleIncomingMessage(data, ctx) {
-            if (!data || data.spaceId !== spaceId) return;
+            console.log("[contact-assistant host] incoming message:", { data, spaceId });
+            if (!data || data.spaceId !== spaceId) {
+              console.warn("[contact-assistant host] message ignored, spaceId mismatch:", {
+                expected: spaceId,
+                got: data && data.spaceId,
+              });
+              return;
+            }
 
             if (data.type === "chat") {
               const now = data.timestamp || Date.now();
@@ -563,12 +575,15 @@
               this.typingText = "助手正在输入...";
               this.aiReplying = true;
               try {
+                console.log("[contact-assistant host] generating AI reply for visitor:", data.visitorId);
                 const content = await replyAndSave(
                   getAssistant,
                   spaceId,
                   data.visitorId,
                 );
+                console.log("[contact-assistant host] AI reply generated:", content ? "ok" : "empty");
                 if (content && ctx) {
+                  console.log("[contact-assistant host] sending reply to visitor...");
                   await replyToVisitor(ctx, {
                     type: "reply",
                     spaceId,
@@ -576,6 +591,7 @@
                     message: content,
                     timestamp: Date.now(),
                   });
+                  console.log("[contact-assistant host] reply sent to visitor");
 
                   if (this.currentVisitorId === data.visitorId) {
                     this.messages = await getMessages(spaceId, data.visitorId);
@@ -583,7 +599,7 @@
                   }
                 }
               } catch (err) {
-                console.error("AI 回复失败:", err);
+                console.error("[contact-assistant host] AI 回复失败:", err);
               } finally {
                 this.aiReplying = false;
                 this.typingText = "";
@@ -644,20 +660,30 @@
         },
         async attached() {
           try {
+            console.log("[contact-assistant host] attached start");
+            if (!spaceId) {
+              console.error("[contact-assistant host] missing spaceId");
+              this.serviceStatus = "缺少空间 ID";
+              return;
+            }
             await this.loadSpace();
+            console.log("[contact-assistant host] space loaded:", this.space?.name);
             await this.loadContacts();
+            console.log("[contact-assistant host] contacts loaded:", this.contacts.length);
 
             const unregister = await registerService((data, ctx) => {
+              console.log("[contact-assistant host] service message received");
               this.handleIncomingMessage(data, ctx);
             });
             this._unregisterService = unregister;
             this.serviceStatus = "已上线";
+            console.log("[contact-assistant host] service registered");
 
             if (this.contacts.length > 0 && !this.currentVisitorId) {
               await this.selectContact(this.contacts[0].visitorId);
             }
           } catch (err) {
-            console.error("host attached error:", err);
+            console.error("[contact-assistant host] attached error:", err);
             this.serviceStatus = "启动失败";
           }
         },
