@@ -191,6 +191,12 @@
       color: var(--md-sys-color-on-surface);
       font-weight: 600;
     }
+    .crumb-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
     .crumb-sep {
       font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
@@ -526,11 +532,13 @@
 
         <div class="breadcrumb">
           <o-fill :value="breadcrumbs">
-            <o-if :value="$index > 0">
-              <span class="crumb-sep">/</span>
-            </o-if>
-            <span class="crumb" on:click="$host.navigateTo($data.path)">
-              {{$data.name}}
+            <span class="crumb-item">
+              <o-if :value="$index > 0">
+                <span class="crumb-sep">/</span>
+              </o-if>
+              <span class="crumb" on:click="$host.navigateTo($data.path)">
+                {{$data.name}}
+              </span>
             </span>
           </o-fill>
         </div>
@@ -657,6 +665,7 @@
   <script>
     const SERVICE_ID = "cloud-drive";
     const CHUNK_SIZE = 1048576; // 1MB
+    const SESSION_KEY = "cloud-drive-session";
 
     async function calcHash(buffer) {
       const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
@@ -719,12 +728,56 @@
         proto: {
           // ===== 返回 =====
           goBack() {
+            this._clearSession();
             if (this.connected && this._user && this.serverUserId) {
               try {
                 this._user.disconnectUser(this.serverUserId);
               } catch (_) {}
             }
             this.goto("./home.html");
+          },
+
+          // ===== 会话持久化 =====
+          _saveSession() {
+            try {
+              sessionStorage.setItem(
+                SESSION_KEY,
+                JSON.stringify({
+                  serverUserId: this.serverUserId,
+                  username: this.username,
+                  password: this.password,
+                  currentPath: this.currentPath || "/",
+                }),
+              );
+              console.log("[cloud-drive-client] 会话已保存");
+            } catch (_) {}
+          },
+
+          _updateSessionPath() {
+            try {
+              const raw = sessionStorage.getItem(SESSION_KEY);
+              if (!raw) return;
+              const sess = JSON.parse(raw);
+              sess.currentPath = this.currentPath || "/";
+              sessionStorage.setItem(SESSION_KEY, JSON.stringify(sess));
+            } catch (_) {}
+          },
+
+          _loadSession() {
+            try {
+              const raw = sessionStorage.getItem(SESSION_KEY);
+              if (!raw) return null;
+              return JSON.parse(raw);
+            } catch (_) {
+              return null;
+            }
+          },
+
+          _clearSession() {
+            try {
+              sessionStorage.removeItem(SESSION_KEY);
+              console.log("[cloud-drive-client] 会话已清除");
+            } catch (_) {}
           },
 
           // ===== 工具函数 =====
@@ -800,6 +853,15 @@
               const remote = await this._user.connectUser(serverUserId);
               this._remoteUser = remote;
 
+              // 二进制消息必须绑定在 remoteUser 上（RTC DataChannel 路径）
+              const self = this;
+              if (this._unbindRemoteMessage) {
+                try { this._unbindRemoteMessage(); } catch (_) {}
+              }
+              this._unbindRemoteMessage = remote.bind("message", (event) => {
+                self.handleBinaryMessage(event);
+              });
+
               const online = await this._user.isRemoteUserOnline(
                 serverUserId,
               );
@@ -857,6 +919,7 @@
               if (authResult.success) {
                 this.connected = true;
                 this.connecting = false;
+                this._saveSession();
                 console.log("[cloud-drive-client] 认证成功，进入文件浏览器");
                 this.refreshList();
               } else {
@@ -889,6 +952,7 @@
 
           navigateTo(path) {
             this.currentPath = path;
+            this._updateSessionPath();
             this.refreshList();
           },
 
@@ -1338,7 +1402,17 @@
 
           async handleBinaryMessage(event) {
             const raw = event.detail.data;
-            if (typeof raw !== "object" || raw === null) return;
+            // 只处理真正的二进制数据，跳过 JSON/文本消息（remoteUser.bind 会收到所有消息）
+            if (
+              typeof raw === "string" ||
+              raw === null ||
+              raw === undefined ||
+              (!(raw instanceof ArrayBuffer) &&
+                !ArrayBuffer.isView(raw) &&
+                !(raw instanceof Blob))
+            ) {
+              return;
+            }
 
             try {
               const { header, payload } = await unpackBinary(raw);
@@ -1377,9 +1451,8 @@
 
           _storeDownloadChunk(transferId, chunkIndex, totalChunks, payload) {
             const transfer = this._downloads.get(transferId);
-            if (!transfer) return;
+            if (!transfer || transfer.assembled) return;
 
-            // 先存储分块（确保 chunks.size 立即更新，不受异步哈希计算影响）
             transfer.chunks.set(chunkIndex, payload);
 
             const progress = Math.round(
@@ -1399,26 +1472,18 @@
               totalChunks,
             );
 
-            // 异步验证哈希（不阻塞存储流程）
-            calcHash(payload).then((hash) => {
-              const t = this._downloads.get(transferId);
-              if (!t) return;
-              if (hash !== t.chunkHashes[chunkIndex]) {
-                console.error(
-                  "[cloud-drive-client] 分块哈希不匹配:",
-                  chunkIndex,
-                );
-              }
-            });
+            // 所有分块到齐，自动组装（不依赖 download_complete 消息，避免竞态）
+            if (transfer.chunks.size === transfer.chunkCount) {
+              console.log("[cloud-drive-client] 所有分块已到齐，开始组装");
+              this._assembleDownload(transferId);
+            }
           },
 
-          async handleDownloadComplete(data) {
-            const { transferId } = data;
+          _assembleDownload(transferId) {
             const transfer = this._downloads.get(transferId);
-            if (!transfer) return;
+            if (!transfer || transfer.assembled) return;
 
             try {
-              // 检查分块完整性
               if (transfer.chunks.size !== transfer.chunkCount) {
                 throw new Error(
                   "分块不完整: " +
@@ -1428,14 +1493,14 @@
                 );
               }
 
-              // 组装文件
+              transfer.assembled = true;
+
               const chunks = [];
               for (let i = 0; i < transfer.chunkCount; i++) {
                 chunks.push(transfer.chunks.get(i));
               }
               const blob = new Blob(chunks);
 
-              // 触发浏览器下载
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
@@ -1445,7 +1510,6 @@
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
 
-              // 更新 UI
               const uiTransfer = this.transfers.find(
                 (t) => t.id === transferId,
               );
@@ -1468,6 +1532,28 @@
               }
             } finally {
               this._downloads.delete(transferId);
+            }
+          },
+
+          handleDownloadComplete(data) {
+            const { transferId } = data;
+            const transfer = this._downloads.get(transferId);
+            // 分块已通过 _storeDownloadChunk 自动组装完毕，或仍在等待分块
+            if (!transfer || transfer.assembled) return;
+
+            if (transfer.chunks.size === transfer.chunkCount) {
+              // 分块刚好到齐，组装
+              this._assembleDownload(transferId);
+            } else {
+              // 竞态：download_complete 比二进制分块先处理完（noneos-core Blob→ArrayBuffer 异步延迟）
+              // 标记等待，_storeDownloadChunk 收齐后会自动组装
+              transfer.completeRequested = true;
+              console.log(
+                "[cloud-drive-client] download_complete 先到，等待分块:",
+                transfer.chunks.size,
+                "/",
+                transfer.chunkCount,
+              );
             }
           },
 
@@ -1567,10 +1653,8 @@
               },
             });
 
-            // 监听二进制消息（下载分块）
-            this._unbindMessage = user.bind("message", (event) => {
-              self.handleBinaryMessage(event);
-            });
+            // 监听二进制消息（下载分块）— 已移至 remoteUser.bind（见 connect()）
+            // user.bind("message") 仅覆盖 WebSocket 中转路径，不覆盖 RTC DataChannel
 
             // 监听服务端断线
             this._unbindDisc = user.bind(
@@ -1582,11 +1666,29 @@
                   console.warn("[cloud-drive-client] 服务端已断开");
                   self.connected = false;
                   self.authError = "服务端已断开连接";
+                  self._clearSession();
                 }
               },
             );
 
             console.log("[cloud-drive-client] 服务已注册:", SERVICE_ID);
+
+            // 检查 sessionStorage 恢复上次会话（刷新重连场景）
+            const saved = this._loadSession();
+            if (saved && saved.serverUserId) {
+              console.log(
+                "[cloud-drive-client] 发现已保存会话，自动重连:",
+                saved.serverUserId,
+                "path:",
+                saved.currentPath,
+              );
+              this.serverUserId = saved.serverUserId;
+              this.username = saved.username || "";
+              this.password = saved.password || "";
+              this.currentPath = saved.currentPath || "/";
+              // 自动触发连接
+              this.connect();
+            }
           } catch (err) {
             console.error("[cloud-drive-client] 初始化失败:", err);
           }
@@ -1601,7 +1703,7 @@
             } catch (_) {}
           }
           [
-            this._unbindMessage,
+            this._unbindRemoteMessage,
             this._unbindDisc,
           ].forEach((fn) => {
             try {

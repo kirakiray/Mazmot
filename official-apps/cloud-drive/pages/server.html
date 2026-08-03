@@ -1320,7 +1320,17 @@
 
           async handleBinaryMessage(event) {
             const raw = event.detail.data;
-            if (!(raw instanceof Blob)) return;
+            // 只处理真正的二进制数据，跳过 JSON/文本消息
+            if (
+              typeof raw === "string" ||
+              raw === null ||
+              raw === undefined ||
+              (!(raw instanceof ArrayBuffer) &&
+                !ArrayBuffer.isView(raw) &&
+                !(raw instanceof Blob))
+            ) {
+              return;
+            }
 
             const fromUserId = event.detail.fromUserId;
             if (!this._authClients.has(fromUserId)) {
@@ -1526,6 +1536,7 @@
           // 非响应式状态
           this._uploads = new Map();
           this._authClients = new Set();
+          this._remoteBinaryBindings = new Map();
 
           // 加载持久化数据
           await this.loadMounts();
@@ -1546,21 +1557,38 @@
             },
           });
 
-          // 监听二进制消息（文件分块）
-          this._unbindMessage = user.bind("message", (event) => {
-            self.handleBinaryMessage(event);
-          });
+          // 监听二进制消息（文件分块）— 已移至每个 remoteUser（见 remote_user_connected）
+          // user.bind("message") 仅覆盖 WebSocket 中转路径，不覆盖 RTC DataChannel
 
           // 监听客户端上下线
           this._unbindConn = user.bind("remote_user_connected", (event) => {
             const uid = event && event.detail && event.detail.userId;
+            const remoteUser = event && event.detail && event.detail.remoteUser;
             if (!uid) return;
+
+            // 在 remoteUser 上绑定二进制消息（RTC 路径必须如此）
+            if (remoteUser) {
+              const unbind = remoteUser.bind("message", (ev) => {
+                self.handleBinaryMessage(ev);
+              });
+              self._remoteBinaryBindings.set(uid, unbind);
+              console.log("[cloud-drive-server] 已绑定二进制监听:", self.shortId(uid));
+            }
+
             const client = self.clients.find((c) => c.userId === uid);
             if (client && !client.online) client.online = true;
           });
           this._unbindDisc = user.bind("remote_user_disconnected", (event) => {
             const uid = event && event.detail && event.detail.userId;
             if (!uid) return;
+
+            // 解绑二进制监听
+            const unbind = self._remoteBinaryBindings.get(uid);
+            if (unbind) {
+              try { unbind(); } catch (_) {}
+              self._remoteBinaryBindings.delete(uid);
+            }
+
             const client = self.clients.find((c) => c.userId === uid);
             if (client && client.online) client.online = false;
             self._authClients.delete(uid);
@@ -1574,8 +1602,14 @@
         },
 
         detached() {
+          // 解绑所有 remoteUser 的二进制监听
+          if (this._remoteBinaryBindings) {
+            for (const [, unbind] of this._remoteBinaryBindings) {
+              try { unbind && unbind(); } catch (_) {}
+            }
+            this._remoteBinaryBindings.clear();
+          }
           [
-            this._unbindMessage,
             this._unbindConn,
             this._unbindDisc,
           ].forEach((fn) => {
