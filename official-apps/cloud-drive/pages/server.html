@@ -1,0 +1,1574 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      overflow-y: auto;
+    }
+
+    .dashboard {
+      min-height: 100%;
+    }
+
+    /* ===== 品牌 + 返回 ===== */
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .back-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 10px;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s ease;
+    }
+    .back-btn:hover {
+      background: var(--md-sys-color-surface-container-highest);
+    }
+    .back-btn n-icon {
+      font-size: 20px;
+    }
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary),
+        var(--md-sys-color-tertiary)
+      );
+      color: var(--md-sys-color-on-primary);
+      font-size: 21px;
+      flex-shrink: 0;
+    }
+    .brand-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .brand-sub {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* ===== 卡片 ===== */
+    .card {
+      background: var(--md-sys-color-surface-container);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title n-icon {
+      font-size: 17px;
+      color: var(--md-sys-color-primary);
+    }
+
+    /* ===== 挂载列表 ===== */
+    .mount-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .mount-item:last-child {
+      border-bottom: none;
+    }
+    .mount-item n-icon {
+      font-size: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .mount-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mount-type {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .mount-type[type="virtual"] {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .mount-type[type="local"] {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .mount-type[type="expired"] {
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .mount-del {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--md-sys-color-on-surface-variant);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .mount-del:hover {
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .mount-del n-icon {
+      font-size: 16px;
+    }
+
+    /* ===== 按钮 ===== */
+    .add-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 10px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: border-color 0.15s ease;
+    }
+    .add-btn:hover {
+      border-color: var(--md-sys-color-primary);
+    }
+    .add-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .add-btn n-icon {
+      font-size: 16px;
+    }
+    .gen-btn {
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 10px;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .gen-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .gen-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ===== 输入框 ===== */
+    .cd-input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+      font-family: inherit;
+      transition: border-color 0.15s ease;
+    }
+    .cd-input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .form-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .hint {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin: 6px 0 0;
+    }
+
+    /* ===== 用户列表 ===== */
+    .user-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .user-item:last-child {
+      border-bottom: none;
+    }
+    .user-item n-icon {
+      font-size: 16px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .user-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .user-pass {
+      flex: 1;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-family: monospace;
+    }
+    .user-del {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--md-sys-color-on-surface-variant);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .user-del:hover {
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .user-del n-icon {
+      font-size: 16px;
+    }
+
+    /* ===== 链接区 ===== */
+    .link-box {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .link-input {
+      flex: 1 1 120px;
+      min-width: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 11px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .link-input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+    .link-status {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      min-height: 14px;
+    }
+    .copy-btn {
+      padding: 8px 12px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover {
+      border-color: var(--md-sys-color-primary);
+    }
+
+    /* ===== 手动连接 ID ===== */
+    .manual-id {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .manual-id label {
+      display: block;
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .id-box {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .id-box code {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-size: 11px;
+      word-break: break-all;
+      overflow: hidden;
+    }
+
+    /* ===== 客户端列表 ===== */
+    .main-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .main-head .card-title {
+      margin: 0;
+    }
+    .count-badge {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 11px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .client-empty {
+      padding: 48px 16px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .client-empty n-icon {
+      font-size: 42px;
+      opacity: 0.4;
+      display: block;
+      margin-bottom: 10px;
+    }
+    .client-empty p {
+      margin: 0;
+      font-size: 13px;
+    }
+    .client-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      background: var(--md-sys-color-surface-container);
+    }
+    .client-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .client-meta {
+      flex: 1;
+      min-width: 0;
+    }
+    .client-name {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .client-id {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 1px;
+      font-family: monospace;
+    }
+    .client-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+      flex-shrink: 0;
+    }
+    .client-dot[type="online"] {
+      background: #34a853;
+    }
+
+    /* ===== 布局 ===== */
+    .sidebar {
+      padding: 16px 14px;
+    }
+    .main {
+      padding: 4px 14px 24px;
+    }
+
+    @media (min-width: 881px) {
+      :host {
+        overflow: hidden;
+      }
+      .dashboard {
+        display: flex;
+        height: 100%;
+      }
+      .sidebar {
+        width: 380px;
+        flex-shrink: 0;
+        overflow-y: auto;
+        padding: 24px 20px;
+        border-right: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface-container-low);
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        overflow-y: auto;
+        padding: 24px 28px;
+      }
+    }
+  </style>
+
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="dashboard">
+    <!-- ===== 左栏 ===== -->
+    <aside class="sidebar">
+      <header class="brand">
+        <button class="back-btn" on:click="goBack">
+          <n-icon icon="mdi:arrow-left"></n-icon>
+        </button>
+        <div class="brand-icon">
+          <n-icon icon="mdi:cloud-outline"></n-icon>
+        </div>
+        <div>
+          <h1 class="brand-title">云盘服务端</h1>
+          <p class="brand-sub">管理存储空间与用户凭证</p>
+        </div>
+      </header>
+
+      <!-- 存储空间 -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:harddisk"></n-icon>
+          存储空间
+        </h2>
+        <o-fill :value="mounts">
+          <div class="mount-item">
+            <n-icon
+              attr:icon="$data.type === 'virtual' ? 'mdi:folder-outline' : 'mdi:harddisk-outline'"
+            ></n-icon>
+            <span class="mount-name">{{$data.name}}</span>
+            <span class="mount-type" attr:type="$data.needsAuth ? 'expired' : $data.type">
+              {{$data.needsAuth ? '需重新授权' : ($data.type === 'virtual' ? '虚拟' : '本地')}}
+            </span>
+            <o-if :value="$data.type !== 'virtual'">
+              <button
+                class="mount-del"
+                on:click="$host.removeMount($data.id, event)"
+              >
+                <n-icon icon="mdi:close"></n-icon>
+              </button>
+            </o-if>
+          </div>
+        </o-fill>
+        <o-if :value="supportLocalDir">
+          <button class="add-btn" on:click="addLocalMount">
+            <n-icon icon="mdi:plus"></n-icon>
+            添加本地目录
+          </button>
+        </o-if>
+        <o-if :value="!supportLocalDir">
+          <p class="hint">当前浏览器不支持本地目录挂载（需 Chrome）</p>
+        </o-if>
+      </section>
+
+      <!-- 用户凭证 -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:account-key"></n-icon>
+          用户凭证
+        </h2>
+        <o-fill :value="users">
+          <div class="user-item">
+            <n-icon icon="mdi:account"></n-icon>
+            <span class="user-name">{{$data.username}}</span>
+            <span class="user-pass">{{$data.password}}</span>
+            <button
+              class="user-del"
+              on:click="$host.removeUser($data.username, event)"
+            >
+              <n-icon icon="mdi:close"></n-icon>
+            </button>
+          </div>
+        </o-fill>
+        <o-if :value="users.length === 0">
+          <p class="hint">尚未创建用户，客户端无法连接</p>
+        </o-if>
+        <div class="form-row">
+          <input
+            class="cd-input"
+            sync:value="newUsername"
+            placeholder="用户名"
+          />
+          <input
+            class="cd-input"
+            sync:value="newPassword"
+            type="password"
+            placeholder="密码"
+          />
+          <button
+            class="add-btn"
+            on:click="addUser"
+            attr:disabled="!newUsername.trim() || !newPassword.trim()"
+            style="margin-top: 0;"
+          >
+            <n-icon icon="mdi:plus"></n-icon>
+          </button>
+        </div>
+      </section>
+
+      <!-- 分享链接 -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:link-variant"></n-icon>
+          分享链接
+        </h2>
+        <button class="gen-btn" on:click="generateLink" attr:disabled="generating">
+          {{generating ? '生成中...' : '生成分享链接'}}
+        </button>
+        <o-if :value="shareUrl">
+          <div class="link-box">
+            <input
+              class="link-input"
+              type="text"
+              readonly
+              :value="shareUrl"
+              on:click="selectLinkInput"
+            />
+            <button class="copy-btn" on:click="copyLink">
+              {{copied ? '已复制' : '复制'}}
+            </button>
+          </div>
+        </o-if>
+        <div class="link-status">{{genStatus}}</div>
+
+        <div class="manual-id">
+          <label>手动连接 ID（客户端可直接输入此 ID 连接）</label>
+          <div class="id-box">
+            <code>{{serverUserId || '正在获取...'}}</code>
+            <button class="copy-btn" on:click="copyUserId">复制</button>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ===== 右栏：已连接客户端 ===== -->
+    <main class="main">
+      <div class="main-head">
+        <h2 class="card-title">
+          <n-icon icon="mdi:account-multiple-outline"></n-icon>
+          已连接客户端
+        </h2>
+        <span class="count-badge">{{clients.length}}</span>
+      </div>
+
+      <o-if :value="clients.length === 0">
+        <div class="client-empty">
+          <n-icon icon="mdi:account-off-outline"></n-icon>
+          <p>暂无客户端连接<br />生成分享链接或告知他人你的 ID</p>
+        </div>
+      </o-if>
+
+      <o-fill :value="clients">
+        <div class="client-item">
+          <div class="client-avatar">
+            <n-icon icon="mdi:account"></n-icon>
+          </div>
+          <div class="client-meta">
+            <div class="client-name">{{$data.username}}</div>
+            <div class="client-id">{{$host.shortId($data.userId)}}</div>
+          </div>
+          <span class="client-dot" attr:type="$data.online ? 'online' : ''"></span>
+        </div>
+      </o-fill>
+    </main>
+  </div>
+
+  <script>
+    const SERVICE_ID = "cloud-drive";
+    const STORAGE_NAMESPACE = "cloud-drive-storage";
+    const CHUNK_SIZE = 1048576; // 1MB
+
+    async function calcHash(buffer) {
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    function packBinary(transferId, chunkIndex, totalChunks, payload) {
+      const headerJson = JSON.stringify({
+        transferId,
+        chunkIndex,
+        totalChunks,
+      });
+      const headerBytes = new TextEncoder().encode(headerJson);
+      const buf = new ArrayBuffer(4 + headerBytes.length + payload.byteLength);
+      const view = new DataView(buf);
+      view.setUint32(0, headerBytes.length, false); // big-endian
+      new Uint8Array(buf, 4, headerBytes.length).set(headerBytes);
+      new Uint8Array(buf, 4 + headerBytes.length).set(new Uint8Array(payload));
+      return buf;
+    }
+
+    async function unpackBinary(blob) {
+      const buf = await blob.arrayBuffer();
+      const view = new DataView(buf);
+      const headerLen = view.getUint32(0, false);
+      const headerJson = new TextDecoder().decode(
+        new Uint8Array(buf, 4, headerLen),
+      );
+      const header = JSON.parse(headerJson);
+      const payload = buf.slice(4 + headerLen);
+      return { header, payload };
+    }
+
+    export default async ({ load }) => {
+      return {
+          data: {
+          serverUserId: "",
+          mounts: [],
+          users: [],
+          clients: [],
+          shareUrl: "",
+          generating: false,
+          genStatus: "",
+          copied: false,
+          newUsername: "",
+          newPassword: "",
+          supportLocalDir:
+            typeof window.showDirectoryPicker === "function",
+        },
+
+        proto: {
+          // ===== 返回模式选择 =====
+          goBack() {
+            this.goto("./home.html");
+          },
+
+          shortId(id) {
+            if (!id) return "????";
+            return id.slice(-6);
+          },
+
+          // =====================================================
+          //  存储管理
+          // =====================================================
+
+          async addLocalMount() {
+            try {
+              const { open } = await load("/nos/fs/main.js");
+              const handle = await open();
+              if (!handle) return;
+
+              const baseName = handle.name || "外部磁盘";
+              let uniqueName = baseName;
+              let counter = 1;
+              while (this.mounts.some((m) => m.name === uniqueName)) {
+                uniqueName = baseName + " " + counter;
+                counter++;
+              }
+
+              this.mounts.push({
+                id: "mount-" + Date.now(),
+                name: uniqueName,
+                type: "local",
+                nativeHandle: handle._handle || handle,
+                _handle: handle,
+                needsAuth: false,
+              });
+
+              await this.persistMounts();
+              console.log("[cloud-drive-server] 添加本地挂载:", uniqueName);
+            } catch (err) {
+              console.error("[cloud-drive-server] 添加本地目录失败:", err);
+            }
+          },
+
+          async removeMount(mountId, event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            const idx = this.mounts.findIndex((m) => m.id === mountId);
+            if (idx === -1) return;
+            if (this.mounts[idx].isDefault) {
+              console.warn("[cloud-drive-server] 不能删除默认主目录");
+              return;
+            }
+            this.mounts.splice(idx, 1);
+            await this.persistMounts();
+            console.log("[cloud-drive-server] 已移除挂载:", mountId);
+          },
+
+          async persistMounts() {
+            const serializable = this.mounts.map((m) => ({
+              id: m.id,
+              name: m.name,
+              type: m.type,
+              isDefault: m.isDefault || false,
+              nativeHandle: m.nativeHandle || null,
+            }));
+            await this._storage.setItem("cd-mounts", serializable);
+          },
+
+          async loadMounts() {
+            const data = await this._storage.getItem("cd-mounts");
+            const restored = [];
+
+            if (Array.isArray(data)) {
+              for (const m of data) {
+                if (m.type === "virtual" && m.isDefault) {
+                  // 默认虚拟目录稍后统一创建
+                  continue;
+                }
+                if (m.type === "local" && m.nativeHandle) {
+                  try {
+                    const { DirHandle } = await load(
+                      "/nos/fs/handle/dir.js",
+                    );
+                    const handle = new DirHandle(m.nativeHandle);
+                    restored.push({
+                      ...m,
+                      _handle: handle,
+                      needsAuth: false,
+                    });
+                  } catch (err) {
+                    console.warn(
+                      "[cloud-drive-server] 恢复本地挂载失败:",
+                      m.name,
+                      err,
+                    );
+                    restored.push({
+                      ...m,
+                      _handle: null,
+                      needsAuth: true,
+                    });
+                  }
+                }
+              }
+            }
+
+            // 确保默认虚拟目录存在
+            const { init } = await load("/nos/fs/main.js");
+            const rootDir = await init(STORAGE_NAMESPACE);
+            restored.unshift({
+              id: "default",
+              name: "主目录",
+              type: "virtual",
+              isDefault: true,
+              _handle: rootDir,
+              needsAuth: false,
+            });
+
+            this.mounts = restored;
+            console.log(
+              "[cloud-drive-server] 已加载挂载点:",
+              restored.map((m) => m.name),
+            );
+          },
+
+          async getMountDir(mount) {
+            if (mount._handle) return mount._handle;
+            if (mount.type === "virtual") {
+              const { init } = await load("/nos/fs/main.js");
+              const rootDir = await init(STORAGE_NAMESPACE);
+              mount._handle = rootDir;
+              return rootDir;
+            }
+            if (mount.type === "local" && mount.nativeHandle) {
+              const { DirHandle } = await load("/nos/fs/handle/dir.js");
+              const handle = new DirHandle(mount.nativeHandle);
+              mount._handle = handle;
+              mount.needsAuth = false;
+              return handle;
+            }
+            throw new Error("挂载点不可用: " + mount.name);
+          },
+
+          // =====================================================
+          //  路径解析
+          // =====================================================
+
+          parsePath(path) {
+            const parts = (path || "").split("/").filter(Boolean);
+            if (parts.length === 0) return { mount: null, subPath: [] };
+            const mountName = decodeURIComponent(parts[0]);
+            const mount = this.mounts.find((m) => m.name === mountName);
+            return {
+              mount,
+              subPath: parts.slice(1).map((p) => decodeURIComponent(p)),
+            };
+          },
+
+          async resolveDir(path) {
+            const { mount, subPath } = this.parsePath(path);
+            if (!mount) throw new Error("挂载点不存在");
+            let dir = await this.getMountDir(mount);
+            for (const name of subPath) {
+              dir = await dir.get(name);
+              if (!dir) throw new Error("路径不存在: " + name);
+              if (dir.kind !== "dir") throw new Error("不是目录: " + name);
+            }
+            return dir;
+          },
+
+          async resolveFile(path) {
+            const parts = (path || "").split("/").filter(Boolean);
+            if (parts.length < 2) throw new Error("路径无效");
+            const dirPath = parts.slice(0, -1).join("/");
+            const fileName = decodeURIComponent(parts[parts.length - 1]);
+            const dir = await this.resolveDir(dirPath);
+            const file = await dir.get(fileName);
+            if (!file) throw new Error("文件不存在: " + fileName);
+            if (file.kind !== "file") throw new Error("不是文件: " + fileName);
+            return file;
+          },
+
+          // =====================================================
+          //  凭证管理
+          // =====================================================
+
+          async addUser() {
+            const username = (this.newUsername || "").trim();
+            const password = (this.newPassword || "").trim();
+            if (!username || !password) return;
+            if (this.users.some((u) => u.username === username)) {
+              console.warn("[cloud-drive-server] 用户名已存在:", username);
+              return;
+            }
+            this.users.push({ username, password });
+            this.newUsername = "";
+            this.newPassword = "";
+            await this.persistUsers();
+            console.log("[cloud-drive-server] 添加用户:", username);
+          },
+
+          async removeUser(username, event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            const idx = this.users.findIndex((u) => u.username === username);
+            if (idx === -1) return;
+            this.users.splice(idx, 1);
+            await this.persistUsers();
+            console.log("[cloud-drive-server] 已删除用户:", username);
+          },
+
+          async persistUsers() {
+            await this._storage.setItem("cd-users", this.users);
+          },
+
+          async loadUsers() {
+            const data = await this._storage.getItem("cd-users");
+            if (Array.isArray(data)) {
+              this.users = data;
+              console.log(
+                "[cloud-drive-server] 已加载用户:",
+                data.map((u) => u.username),
+              );
+            }
+          },
+
+          // =====================================================
+          //  分享链接
+          // =====================================================
+
+          parseSelfIdentity() {
+            const m = location.pathname.match(
+              /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
+            );
+            if (!m) return null;
+            return { namespace: m[1], dirName: m[2] };
+          },
+
+          async generateLink() {
+            if (this.generating) return;
+            this.generating = true;
+            this.genStatus = "准备中...";
+            try {
+              const self = this.parseSelfIdentity();
+              if (!self) {
+                throw new Error("无法识别当前应用的目录路径");
+              }
+              console.log("[cloud-drive-server] 当前应用身份:", self);
+
+              const [fsMod, shareMgr] = await Promise.all([
+                load("/nos/fs/main.js"),
+                load("/lib/share-mgr.js"),
+              ]);
+              const { init } = fsMod;
+              const { publishApp, generateAppId } = shareMgr;
+
+              const apps = (await this._storage.apps) || [];
+              const { dirName } = self;
+              const record =
+                apps.find(
+                  (a) => a.name === dirName || a.virtualDirName === dirName,
+                ) ||
+                apps.find((a) =>
+                  (a.dirName || "").endsWith("/" + dirName),
+                ) ||
+                null;
+
+              this.genStatus = "获取应用目录...";
+              const rootDir = await init(self.namespace);
+              const handle = await rootDir.get(dirName);
+
+              let appId = (record && record.appId) || "";
+              if (!appId) {
+                appId = await generateAppId(dirName);
+                if (record) {
+                  record.appId = appId;
+                  await this._storage.setItem("apps", apps);
+                }
+              }
+
+              const app = {
+                _handle: handle,
+                _recordName: dirName,
+                name: (record && record.name) || "cloud-drive",
+                version: (record && record.version) || "1.0.0",
+                desc: (record && record.desc) || "云盘",
+                icon: (record && record.icon) || "☁️",
+                appId,
+              };
+
+              this.genStatus = "发布到分享网络...";
+              const { shareUrl, payloadHash } = await publishApp(app, {
+                appId,
+                appParams: { host: this.serverUserId },
+                onProgress: ({ text }) => {
+                  if (text) this.genStatus = text;
+                },
+              });
+
+              if (record && payloadHash) {
+                record.payloadHash = payloadHash;
+                await this._storage.setItem("apps", apps);
+              }
+
+              this.shareUrl = shareUrl;
+              this.genStatus = "链接已生成，可复制分享给他人";
+              console.log("[cloud-drive-server] 分享链接已生成:", shareUrl);
+            } catch (err) {
+              console.error("[cloud-drive-server] 生成链接失败:", err);
+              this.genStatus = "失败:" + (err.message || err);
+            } finally {
+              this.generating = false;
+            }
+          },
+
+          selectLinkInput(event) {
+            const el = event && event.target;
+            if (el && typeof el.select === "function") {
+              try {
+                el.select();
+              } catch (_) {}
+            }
+          },
+
+          async copyLink() {
+            if (!this.shareUrl) return;
+            try {
+              await navigator.clipboard.writeText(this.shareUrl);
+            } catch (_) {}
+            this.copied = true;
+            clearTimeout(this._copyTimer);
+            this._copyTimer = setTimeout(() => {
+              this.copied = false;
+            }, 1500);
+          },
+
+          async copyUserId() {
+            if (!this.serverUserId) return;
+            try {
+              await navigator.clipboard.writeText(this.serverUserId);
+            } catch (_) {}
+            console.log("[cloud-drive-server] 已复制 userId");
+          },
+
+          // =====================================================
+          //  P2P 消息处理
+          // =====================================================
+
+          handleIncoming(data, ctx) {
+            if (!data || typeof data !== "object") return;
+            const { kind } = data;
+            const userId = ctx.fromUserId;
+
+            console.log(
+              "[cloud-drive-server] 收到消息:",
+              kind,
+              "from:",
+              this.shortId(userId),
+            );
+
+            // auth 不需要认证
+            if (kind === "auth") {
+              this.handleAuth(data, ctx);
+              return;
+            }
+
+            // 其他操作需要认证
+            if (!this._authClients.has(userId)) {
+              ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "error",
+                error: "未认证，请先登录",
+              });
+              return;
+            }
+
+            const handlers = {
+              list: () => this.handleList(data, ctx),
+              mkdir: () => this.handleMkdir(data, ctx),
+              delete: () => this.handleDelete(data, ctx),
+              rename: () => this.handleRename(data, ctx),
+              upload_start: () => this.handleUploadStart(data, ctx),
+              upload_complete: () => this.handleUploadComplete(data, ctx),
+              download_request: () => this.handleDownloadRequest(data, ctx),
+            };
+
+            const handler = handlers[kind];
+            if (handler) {
+              handler().catch((err) => {
+                console.error(
+                  "[cloud-drive-server] 处理消息失败:",
+                  kind,
+                  err,
+                );
+              });
+            } else {
+              console.warn("[cloud-drive-server] 未知消息类型:", kind);
+            }
+          },
+
+          handleAuth(data, ctx) {
+            const { username, password } = data;
+            const userId = ctx.fromUserId;
+
+            const user = this.users.find(
+              (u) => u.username === username && u.password === password,
+            );
+
+            if (user) {
+              this._authClients.add(userId);
+
+              let client = this.clients.find((c) => c.userId === userId);
+              if (!client) {
+                this.clients.push({
+                  userId,
+                  username,
+                  online: true,
+                });
+              } else {
+                client.online = true;
+                client.username = username;
+              }
+
+              ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "auth_result",
+                success: true,
+              });
+              console.log(
+                "[cloud-drive-server] 客户端认证成功:",
+                this.shortId(userId),
+                username,
+              );
+            } else {
+              ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "auth_result",
+                success: false,
+                error: "用户名或密码错误",
+              });
+              console.log(
+                "[cloud-drive-server] 客户端认证失败:",
+                this.shortId(userId),
+              );
+            }
+          },
+
+          async handleList(data, ctx) {
+            const { path } = data;
+            try {
+              let items = [];
+              if (!path || path === "/") {
+                items = this.mounts.map((m) => ({
+                  name: m.name,
+                  kind: "dir",
+                  size: 0,
+                  lastModified: 0,
+                }));
+              } else {
+                const dir = await this.resolveDir(path);
+                for await (const [name, handle] of dir.entries()) {
+                  const item = {
+                    name,
+                    kind: handle.kind,
+                    size: 0,
+                    lastModified: 0,
+                  };
+                  if (handle.kind === "file") {
+                    try {
+                      item.size = await handle.size();
+                      item.lastModified = await handle.lastModified();
+                    } catch (_) {}
+                  }
+                  items.push(item);
+                }
+              }
+
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "list_result",
+                path,
+                items,
+              });
+              console.log(
+                "[cloud-drive-server] 列出目录:",
+                path,
+                "共",
+                items.length,
+                "项",
+              );
+            } catch (err) {
+              console.error("[cloud-drive-server] 列出目录失败:", err);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "list_result",
+                path,
+                error: err.message,
+              });
+            }
+          },
+
+          async handleMkdir(data, ctx) {
+            const { path, name } = data;
+            try {
+              const dir = await this.resolveDir(path);
+              await dir.get(name, { create: "dir" });
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "mkdir_result",
+                success: true,
+              });
+              console.log("[cloud-drive-server] 创建目录:", path + "/" + name);
+            } catch (err) {
+              console.error("[cloud-drive-server] 创建目录失败:", err);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "mkdir_result",
+                success: false,
+                error: err.message,
+              });
+            }
+          },
+
+          async handleDelete(data, ctx) {
+            const { path } = data;
+            try {
+              const parts = path.split("/").filter(Boolean);
+              const dirPath = parts.slice(0, -1).join("/");
+              const fileName = decodeURIComponent(parts[parts.length - 1]);
+              const dir = await this.resolveDir(dirPath);
+              const item = await dir.get(fileName);
+              if (!item) throw new Error("文件或目录不存在");
+              await item.remove();
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "delete_result",
+                success: true,
+              });
+              console.log("[cloud-drive-server] 删除:", path);
+            } catch (err) {
+              console.error("[cloud-drive-server] 删除失败:", err);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "delete_result",
+                success: false,
+                error: err.message,
+              });
+            }
+          },
+
+          async handleRename(data, ctx) {
+            const { path, newName } = data;
+            try {
+              const parts = path.split("/").filter(Boolean);
+              const dirPath = parts.slice(0, -1).join("/");
+              const oldName = decodeURIComponent(parts[parts.length - 1]);
+              const dir = await this.resolveDir(dirPath);
+              const item = await dir.get(oldName);
+              if (!item) throw new Error("文件或目录不存在");
+              await item.moveTo(dir, newName);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "rename_result",
+                success: true,
+              });
+              console.log("[cloud-drive-server] 重命名:", oldName, "->", newName);
+            } catch (err) {
+              console.error("[cloud-drive-server] 重命名失败:", err);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "rename_result",
+                success: false,
+                error: err.message,
+              });
+            }
+          },
+
+          // =====================================================
+          //  文件上传（客户端 -> 服务端）
+          // =====================================================
+
+          async handleUploadStart(data, ctx) {
+            const { transferId, path, fileName, fileSize, chunkCount, chunkHashes } = data;
+
+            try {
+              // 验证目标目录存在
+              await this.resolveDir(path);
+
+              this._uploads.set(transferId, {
+                path,
+                fileName,
+                fileSize,
+                chunkCount,
+                chunkHashes,
+                chunks: new Map(),
+                clientUserId: ctx.fromUserId,
+              });
+
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_ready",
+                transferId,
+                accepted: true,
+              });
+              console.log(
+                "[cloud-drive-server] 上传开始:",
+                fileName,
+                "分块数:",
+                chunkCount,
+                "transferId:",
+                transferId,
+              );
+            } catch (err) {
+              console.error("[cloud-drive-server] 上传准备失败:", err);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_ready",
+                transferId,
+                accepted: false,
+                error: err.message,
+              });
+            }
+          },
+
+          async handleBinaryMessage(event) {
+            const raw = event.detail.data;
+            if (!(raw instanceof Blob)) return;
+
+            const fromUserId = event.detail.fromUserId;
+            if (!this._authClients.has(fromUserId)) {
+              console.warn("[cloud-drive-server] 未认证的二进制消息:", this.shortId(fromUserId));
+              return;
+            }
+
+            try {
+              const { header, payload } = await unpackBinary(raw);
+              const { transferId, chunkIndex, totalChunks } = header;
+
+              const transfer = this._uploads.get(transferId);
+              if (!transfer) {
+                console.warn("[cloud-drive-server] 未知 transferId:", transferId);
+                return;
+              }
+
+              // 验证分块哈希
+              const hash = await calcHash(payload);
+              if (hash !== transfer.chunkHashes[chunkIndex]) {
+                console.error(
+                  "[cloud-drive-server] 分块哈希不匹配:",
+                  chunkIndex,
+                );
+                return;
+              }
+
+              transfer.chunks.set(chunkIndex, payload);
+              console.log(
+                "[cloud-drive-server] 收到分块",
+                chunkIndex + 1,
+                "/",
+                totalChunks,
+                "transferId:",
+                transferId,
+              );
+            } catch (err) {
+              console.error("[cloud-drive-server] 处理二进制消息失败:", err);
+            }
+          },
+
+          async handleUploadComplete(data, ctx) {
+            const { transferId } = data;
+            const transfer = this._uploads.get(transferId);
+            if (!transfer) {
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_done",
+                transferId,
+                success: false,
+                error: "未知传输ID",
+              });
+              return;
+            }
+
+            try {
+              // 检查分块完整性
+              if (transfer.chunks.size !== transfer.chunkCount) {
+                throw new Error(
+                  "分块不完整: " + transfer.chunks.size + "/" + transfer.chunkCount,
+                );
+              }
+
+              // 组装文件
+              const chunks = [];
+              for (let i = 0; i < transfer.chunkCount; i++) {
+                chunks.push(transfer.chunks.get(i));
+              }
+              const blob = new Blob(chunks);
+              const file = new File([blob], transfer.fileName);
+
+              // 写入存储
+              const dir = await this.resolveDir(transfer.path);
+              const fileHandle = await dir.get(transfer.fileName, {
+                create: "file",
+              });
+              await fileHandle.write(file);
+
+              // 清理
+              this._uploads.delete(transferId);
+
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_done",
+                transferId,
+                success: true,
+              });
+              console.log(
+                "[cloud-drive-server] 文件上传完成:",
+                transfer.fileName,
+                "(",
+                transfer.fileSize,
+                "bytes)",
+              );
+            } catch (err) {
+              console.error("[cloud-drive-server] 文件组装失败:", err);
+              this._uploads.delete(transferId);
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_done",
+                transferId,
+                success: false,
+                error: err.message,
+              });
+            }
+          },
+
+          // =====================================================
+          //  文件下载（服务端 -> 客户端）
+          // =====================================================
+
+          async handleDownloadRequest(data, ctx) {
+            const { path } = data;
+            const clientSessionId = ctx.fromSessionId;
+            const remoteUser = ctx.remoteUser;
+
+            try {
+              const file = await this.resolveFile(path);
+              const buffer = await file.buffer();
+              const fileName = file.name;
+              const fileSize = buffer.byteLength;
+
+              // 分块
+              const chunks = [];
+              for (let i = 0; i < buffer.byteLength; i += CHUNK_SIZE) {
+                chunks.push(
+                  buffer.slice(i, Math.min(i + CHUNK_SIZE, buffer.byteLength)),
+                );
+              }
+
+              // 计算哈希
+              const chunkHashes = [];
+              for (const chunk of chunks) {
+                chunkHashes.push(await calcHash(chunk));
+              }
+
+              const transferId =
+                "dl-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+
+              // 发送 download_start
+              await remoteUser.sendToService(SERVICE_ID, {
+                kind: "download_start",
+                transferId,
+                fileName,
+                fileSize,
+                chunkCount: chunks.length,
+                chunkHashes,
+                path,
+              });
+
+              console.log(
+                "[cloud-drive-server] 开始下载:",
+                fileName,
+                "分块数:",
+                chunks.length,
+                "transferId:",
+                transferId,
+              );
+
+              // 逐个发送二进制分块
+              for (let i = 0; i < chunks.length; i++) {
+                const binary = packBinary(
+                  transferId,
+                  i,
+                  chunks.length,
+                  chunks[i],
+                );
+                await remoteUser.send(clientSessionId, binary);
+                console.log(
+                  "[cloud-drive-server] 发送分块",
+                  i + 1,
+                  "/",
+                  chunks.length,
+                );
+              }
+
+              // 发送 download_complete
+              await remoteUser.sendToService(SERVICE_ID, {
+                kind: "download_complete",
+                transferId,
+              });
+
+              console.log("[cloud-drive-server] 下载完成:", fileName);
+            } catch (err) {
+              console.error("[cloud-drive-server] 下载失败:", err);
+              await remoteUser.sendToService(SERVICE_ID, {
+                kind: "download_start",
+                error: err.message,
+              });
+            }
+          },
+        },
+
+        async attached() {
+          // 初始化存储
+          try {
+            const { storage } = await load(
+              "/gh/kirakiray/ever-cache/src/main.min.js",
+            );
+            this._storage = storage;
+          } catch (err) {
+            console.error("[cloud-drive-server] 初始化存储失败:", err);
+            return;
+          }
+
+          // 非响应式状态
+          this._uploads = new Map();
+          this._authClients = new Set();
+
+          // 加载持久化数据
+          await this.loadMounts();
+          await this.loadUsers();
+
+          // 获取用户
+          const { getUser } = await load("/nos/user/main.js");
+          const user = await getUser("default");
+          this._user = user;
+          this.serverUserId = user.userId;
+          console.log("[cloud-drive-server] Server userId:", user.userId);
+
+          // 注册 P2P 服务
+          const self = this;
+          this._svc = user.registerService(SERVICE_ID, {
+            onMessage(data, ctx) {
+              self.handleIncoming(data, ctx);
+            },
+          });
+
+          // 监听二进制消息（文件分块）
+          this._unbindMessage = user.bind("message", (event) => {
+            self.handleBinaryMessage(event);
+          });
+
+          // 监听客户端上下线
+          this._unbindConn = user.bind("remote_user_connected", (event) => {
+            const uid = event && event.detail && event.detail.userId;
+            if (!uid) return;
+            const client = self.clients.find((c) => c.userId === uid);
+            if (client && !client.online) client.online = true;
+          });
+          this._unbindDisc = user.bind("remote_user_disconnected", (event) => {
+            const uid = event && event.detail && event.detail.userId;
+            if (!uid) return;
+            const client = self.clients.find((c) => c.userId === uid);
+            if (client && client.online) client.online = false;
+            self._authClients.delete(uid);
+            console.log(
+              "[cloud-drive-server] 客户端断开:",
+              self.shortId(uid),
+            );
+          });
+
+          console.log("[cloud-drive-server] 服务已注册:", SERVICE_ID);
+        },
+
+        detached() {
+          [
+            this._unbindMessage,
+            this._unbindConn,
+            this._unbindDisc,
+          ].forEach((fn) => {
+            try {
+              fn && fn();
+            } catch (_) {}
+          });
+          if (this._svc) {
+            try {
+              this._svc.unregister();
+            } catch (_) {}
+          }
+        },
+      };
+    };
+  </script>
+</template>

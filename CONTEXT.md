@@ -81,7 +81,8 @@ Mazmot/
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
-│   └── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
+│   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
+│   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
 │   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
@@ -405,3 +406,4 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
 | AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |
