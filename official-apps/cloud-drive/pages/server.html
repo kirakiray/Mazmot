@@ -658,8 +658,22 @@
       return buf;
     }
 
-    async function unpackBinary(blob) {
-      const buf = await blob.arrayBuffer();
+    async function unpackBinary(raw) {
+      // 统一为 ArrayBuffer
+      let buf;
+      if (raw instanceof Blob) {
+        buf = await raw.arrayBuffer();
+      } else if (raw instanceof ArrayBuffer) {
+        buf = raw;
+      } else if (ArrayBuffer.isView(raw)) {
+        // Uint8Array 等 TypedArray — 取底层 buffer 的有效部分
+        buf = raw.buffer.slice(
+          raw.byteOffset,
+          raw.byteOffset + raw.byteLength,
+        );
+      } else {
+        throw new Error("unpackBinary: 不支持的数据类型 " + typeof raw);
+      }
       const view = new DataView(buf);
       const headerLen = view.getUint32(0, false);
       const headerJson = new TextDecoder().decode(
@@ -1343,18 +1357,8 @@
               const { transferId, chunkIndex, totalChunks } = header;
 
               const transfer = this._uploads.get(transferId);
-              if (!transfer) {
-                console.warn("[cloud-drive-server] 未知 transferId:", transferId);
-                return;
-              }
-
-              // 验证分块哈希
-              const hash = await calcHash(payload);
-              if (hash !== transfer.chunkHashes[chunkIndex]) {
-                console.error(
-                  "[cloud-drive-server] 分块哈希不匹配:",
-                  chunkIndex,
-                );
+              if (!transfer || transfer.assembled) {
+                console.warn("[cloud-drive-server] 未知或已完成的 transferId:", transferId);
                 return;
               }
 
@@ -1367,33 +1371,44 @@
                 "transferId:",
                 transferId,
               );
+
+              // 所有分块到齐时自动组装（不依赖 upload_complete，避免 RTC 竞态）
+              if (transfer.chunks.size === transfer.chunkCount) {
+                console.log("[cloud-drive-server] 所有分块已到齐，开始组装");
+                // 使用 upload_complete 存储的 ctx（可能先于分块到达）
+                const ctx = transfer._ctx || this._getRemoteCtx(fromUserId);
+                this._assembleUpload(transferId, ctx);
+              }
             } catch (err) {
               console.error("[cloud-drive-server] 处理二进制消息失败:", err);
             }
           },
 
-          async handleUploadComplete(data, ctx) {
-            const { transferId } = data;
+          _getRemoteCtx(fromUserId) {
+            // 为二进制处理路径构造 ctx（二进制消息不经过 handleIncoming 的 Proxy 包装）
+            const remoteUser = (this._user.remoteUsers || []).find(
+              (r) => r.userId === fromUserId,
+            );
+            if (!remoteUser) return null;
+            return {
+              fromUserId,
+              fromSessionId: null,
+              remoteUser: new Proxy(remoteUser, {
+                get(target, prop) {
+                  const val = target[prop];
+                  return typeof val === "function" ? val.bind(target) : val;
+                },
+              }),
+            };
+          },
+
+          async _assembleUpload(transferId, ctx) {
             const transfer = this._uploads.get(transferId);
-            if (!transfer) {
-              await ctx.remoteUser.sendToService(SERVICE_ID, {
-                kind: "upload_done",
-                transferId,
-                success: false,
-                error: "未知传输ID",
-              });
-              return;
-            }
+            if (!transfer || transfer.assembled) return;
 
             try {
-              // 检查分块完整性
-              if (transfer.chunks.size !== transfer.chunkCount) {
-                throw new Error(
-                  "分块不完整: " + transfer.chunks.size + "/" + transfer.chunkCount,
-                );
-              }
+              transfer.assembled = true;
 
-              // 组装文件
               const chunks = [];
               for (let i = 0; i < transfer.chunkCount; i++) {
                 chunks.push(transfer.chunks.get(i));
@@ -1408,7 +1423,6 @@
               });
               await fileHandle.write(file);
 
-              // 清理
               this._uploads.delete(transferId);
 
               await ctx.remoteUser.sendToService(SERVICE_ID, {
@@ -1432,6 +1446,39 @@
                 success: false,
                 error: err.message,
               });
+            }
+          },
+
+          async handleUploadComplete(data, ctx) {
+            const { transferId } = data;
+            const transfer = this._uploads.get(transferId);
+            if (!transfer) {
+              await ctx.remoteUser.sendToService(SERVICE_ID, {
+                kind: "upload_done",
+                transferId,
+                success: false,
+                error: "未知传输ID",
+              });
+              return;
+            }
+
+            // 已通过自动组装完成
+            if (transfer.assembled) return;
+
+            if (transfer.chunks.size === transfer.chunkCount) {
+              // 分块刚好到齐，组装
+              await this._assembleUpload(transferId, ctx);
+            } else {
+              // 竞态：upload_complete 比二进制分块先处理完
+              // 标记等待，_assembleUpload 会在分块到齐后自动调用
+              transfer.completeRequested = true;
+              transfer._ctx = ctx;
+              console.log(
+                "[cloud-drive-server] upload_complete 先到，等待分块:",
+                transfer.chunks.size,
+                "/",
+                transfer.chunkCount,
+              );
             }
           },
 
