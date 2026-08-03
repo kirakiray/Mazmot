@@ -680,8 +680,16 @@
       return buf;
     }
 
-    async function unpackBinary(blob) {
-      const buf = await blob.arrayBuffer();
+    async function unpackBinary(data) {
+      const buf =
+        data instanceof Blob
+          ? await data.arrayBuffer()
+          : ArrayBuffer.isView(data)
+            ? data.buffer.slice(
+                data.byteOffset,
+                data.byteOffset + data.byteLength,
+              )
+            : data;
       const view = new DataView(buf);
       const headerLen = view.getUint32(0, false);
       const headerJson = new TextDecoder().decode(
@@ -778,6 +786,12 @@
             this.authError = "";
 
             try {
+              // 清理可能存在的旧连接（刷新重连场景）
+              try {
+                this._user.disconnectUser(serverUserId);
+                console.log("[cloud-drive-client] 已清理旧连接");
+              } catch (_) {}
+
               console.log(
                 "[cloud-drive-client] 正在连接服务端:",
                 serverUserId,
@@ -1302,11 +1316,29 @@
               "分块数:",
               chunkCount,
             );
+
+            // 回放提前到达的分块（解决二进制比 download_start 先到的竞态）
+            const pending = this._pendingChunks.get(transferId) || [];
+            for (const p of pending) {
+              this._storeDownloadChunk(
+                transferId,
+                p.chunkIndex,
+                p.totalChunks,
+                p.payload,
+              );
+            }
+            this._pendingChunks.delete(transferId);
+            if (pending.length) {
+              console.log(
+                "[cloud-drive-client] 已回放缓冲分块:",
+                pending.length,
+              );
+            }
           },
 
           async handleBinaryMessage(event) {
             const raw = event.detail.data;
-            if (!(raw instanceof Blob)) return;
+            if (typeof raw !== "object" || raw === null) return;
 
             try {
               const { header, payload } = await unpackBinary(raw);
@@ -1314,41 +1346,26 @@
 
               const transfer = this._downloads.get(transferId);
               if (!transfer) {
-                console.warn(
-                  "[cloud-drive-client] 未知下载 transferId:",
+                // 竞态：二进制比 download_start 先到达，缓冲起来
+                console.log(
+                  "[cloud-drive-client] 分块先于元数据到达，缓冲:",
                   transferId,
-                );
-                return;
-              }
-
-              // 验证哈希
-              const hash = await calcHash(payload);
-              if (hash !== transfer.chunkHashes[chunkIndex]) {
-                console.error(
-                  "[cloud-drive-client] 分块哈希不匹配:",
                   chunkIndex,
                 );
+                if (!this._pendingChunks.has(transferId)) {
+                  this._pendingChunks.set(transferId, []);
+                }
+                this._pendingChunks
+                  .get(transferId)
+                  .push({ chunkIndex, totalChunks, payload });
                 return;
               }
 
-              transfer.chunks.set(chunkIndex, payload);
-
-              // 更新进度
-              const progress = Math.round(
-                (transfer.chunks.size / totalChunks) * 100,
-              );
-              const uiTransfer = this.transfers.find(
-                (t) => t.id === transferId,
-              );
-              if (uiTransfer) {
-                uiTransfer.progress = progress;
-              }
-
-              console.log(
-                "[cloud-drive-client] 收到分块",
-                chunkIndex + 1,
-                "/",
+              this._storeDownloadChunk(
+                transferId,
+                chunkIndex,
                 totalChunks,
+                payload,
               );
             } catch (err) {
               console.error(
@@ -1356,6 +1373,43 @@
                 err,
               );
             }
+          },
+
+          _storeDownloadChunk(transferId, chunkIndex, totalChunks, payload) {
+            const transfer = this._downloads.get(transferId);
+            if (!transfer) return;
+
+            // 先存储分块（确保 chunks.size 立即更新，不受异步哈希计算影响）
+            transfer.chunks.set(chunkIndex, payload);
+
+            const progress = Math.round(
+              (transfer.chunks.size / totalChunks) * 100,
+            );
+            const uiTransfer = this.transfers.find(
+              (t) => t.id === transferId,
+            );
+            if (uiTransfer) {
+              uiTransfer.progress = progress;
+            }
+
+            console.log(
+              "[cloud-drive-client] 收到分块",
+              chunkIndex + 1,
+              "/",
+              totalChunks,
+            );
+
+            // 异步验证哈希（不阻塞存储流程）
+            calcHash(payload).then((hash) => {
+              const t = this._downloads.get(transferId);
+              if (!t) return;
+              if (hash !== t.chunkHashes[chunkIndex]) {
+                console.error(
+                  "[cloud-drive-client] 分块哈希不匹配:",
+                  chunkIndex,
+                );
+              }
+            });
           },
 
           async handleDownloadComplete(data) {
@@ -1496,6 +1550,7 @@
           // 非响应式状态
           this._uploads = new Map();
           this._downloads = new Map();
+          this._pendingChunks = new Map();
 
           // 获取用户
           try {
@@ -1538,6 +1593,13 @@
         },
 
         detached() {
+          // 主动断开与服务端的 P2P 连接，避免刷新后旧连接残留
+          if (this._user && this.serverUserId) {
+            try {
+              this._user.disconnectUser(this.serverUserId);
+              console.log("[cloud-drive-client] 已断开服务端连接");
+            } catch (_) {}
+          }
           [
             this._unbindMessage,
             this._unbindDisc,
@@ -1553,6 +1615,7 @@
           }
           if (this._uploads) this._uploads.clear();
           if (this._downloads) this._downloads.clear();
+          if (this._pendingChunks) this._pendingChunks.clear();
         },
       };
     };

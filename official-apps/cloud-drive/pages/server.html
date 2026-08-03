@@ -1049,6 +1049,24 @@
               this.shortId(userId),
             );
 
+            // 关键修复：包装 sendToService，确保所有回复定向到消息来源的 session
+            // 解决客户端刷新重连后，serviceSessionCache 缓存旧 session 导致回复发送到死 session 的问题
+            const realRemote = ctx.remoteUser;
+            const fromSessionId = ctx.fromSessionId;
+            ctx.remoteUser = new Proxy(realRemote, {
+              get(target, prop) {
+                if (prop === "sendToService") {
+                  return (appId, msg, opts) =>
+                    target.sendToService(appId, msg, {
+                      ...(opts || {}),
+                      sessionId: fromSessionId,
+                    });
+                }
+                const val = target[prop];
+                return typeof val === "function" ? val.bind(target) : val;
+              },
+            });
+
             // auth 不需要认证
             if (kind === "auth") {
               this.handleAuth(data, ctx);
