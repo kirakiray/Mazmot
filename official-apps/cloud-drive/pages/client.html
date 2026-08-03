@@ -664,7 +664,7 @@
 
   <script>
     const SERVICE_ID = "cloud-drive";
-    const CHUNK_SIZE = 1048576; // 1MB
+    const CHUNK_SIZE = 245760; // 240KB（服务端中转上限 256KB，留余量给协议头）
     const SESSION_KEY = "cloud-drive-session";
 
     async function calcHash(buffer) {
@@ -836,15 +836,13 @@
             }
 
             this.connecting = true;
+            this._connecting = true; // 防止 disconnect 处理器在连接过程中干扰
             this.authError = "";
 
             try {
               // 清理可能存在的旧连接（刷新重连场景）
-              try {
-                this._user.disconnectUser(serverUserId);
-                console.log("[cloud-drive-client] 已清理旧连接");
-              } catch (_) {}
-
+              // 不调用 disconnectUser — 它会触发 remote_user_disconnected 干扰新连接
+              // connectUser 内部会处理旧 session 的清理
               console.log(
                 "[cloud-drive-client] 正在连接服务端:",
                 serverUserId,
@@ -867,6 +865,7 @@
               );
               if (!online) {
                 this.connecting = false;
+                this._connecting = false;
                 this.authError = "服务端不在线";
                 console.warn("[cloud-drive-client] 服务端不在线");
                 return;
@@ -900,6 +899,7 @@
                 results.some((r) => r && r.status === "ok");
               if (!ok) {
                 this.connecting = false;
+                this._connecting = false;
                 this.authError = "无法连接到服务端";
                 return;
               }
@@ -919,11 +919,13 @@
               if (authResult.success) {
                 this.connected = true;
                 this.connecting = false;
+                this._connecting = false;
                 this._saveSession();
                 console.log("[cloud-drive-client] 认证成功，进入文件浏览器");
                 this.refreshList();
               } else {
                 this.connecting = false;
+                this._connecting = false;
                 this.authError = authResult.error || "认证失败";
                 console.warn(
                   "[cloud-drive-client] 认证失败:",
@@ -933,6 +935,7 @@
             } catch (err) {
               console.error("[cloud-drive-client] 连接失败:", err);
               this.connecting = false;
+              this._connecting = false;
               this.authError = err.message || "连接失败";
             }
           },
@@ -1663,6 +1666,11 @@
                 const uid =
                   event && event.detail && event.detail.userId;
                 if (uid === self.serverUserId) {
+                  // 连接过程中忽略断开事件（旧 session 清理会触发此事件）
+                  if (self._connecting) {
+                    console.log("[cloud-drive-client] 连接过程中的断开事件，忽略");
+                    return;
+                  }
                   console.warn("[cloud-drive-client] 服务端已断开");
                   self.connected = false;
                   self.authError = "服务端已断开连接";
