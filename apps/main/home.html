@@ -124,6 +124,23 @@
     .official-badge n-icon {
       font-size: 12px;
     }
+    .offline-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      vertical-align: middle;
+    }
+    .offline-badge n-icon {
+      font-size: 12px;
+    }
     .update-badge {
       display: inline-flex;
       align-items: center;
@@ -338,6 +355,12 @@
                   官方应用
                 </span>
               </o-if>
+              <o-if :value="$data.offline">
+                <span class="offline-badge" title="该官方应用已从市场下线，无法更新">
+                  <n-icon icon="mdi:cloud-off-outline"></n-icon>
+                  已下线
+                </span>
+              </o-if>
               <o-if :value="$data.hasUpdate">
                 <span class="update-badge" title="应用市场有新版本可更新">
                   <n-icon icon="mdi:arrow-up-circle-outline"></n-icon>
@@ -504,6 +527,11 @@
                     <div class="sub-info-row">
                       <span class="sub-info-label">操作：</span>
                       <div class="action-row">
+                        <o-if :value="$data.offline">
+                          <span class="update-status">
+                            该官方应用已从市场下线，无法更新
+                          </span>
+                        </o-if>
                         <o-if :value="$data.hasUpdate">
                           <p-button
                             variant="tonal"
@@ -668,6 +696,7 @@
             officialId: app.officialId || "",
             latestVersion: "",
             hasUpdate: false,
+            offline: false,
             updating: false,
             updateStatus: "",
             // 自己开发的应用：appId 后缀为当前用户的 userId
@@ -871,7 +900,14 @@
             for (const app of officialApps) {
               try {
                 const meta = await loadOfficialAppMeta(app.officialId);
-                if (!meta || !meta.version) continue;
+                if (!meta) {
+                  // 官方应用已从市场下线
+                  app.offline = true;
+                  app.hasUpdate = false;
+                  continue;
+                }
+                app.offline = false;
+                if (!meta.version) continue;
                 app.latestVersion = meta.version;
                 app.hasUpdate = compareVersions(meta.version, app.version) > 0;
               } catch (err) {
