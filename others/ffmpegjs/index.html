@@ -452,10 +452,14 @@
     },
     {
       title: "提取单帧为图片", tag: "frame",
-      desc: "从第 1 秒抽取一张画面保存为 JPG（-frames:v 1 表示只取 1 帧）。",
-      cli: "ffmpeg -i input.mp4 -ss 1 -frames:v 1 -q:v 2 frame.jpg",
-      args: (in_) => ["-i", in_, "-ss", "1", "-frames:v", "1", "-q:v", "2", "frame.jpg"],
-      kind: KIND.image("image/jpeg"), out: "frame.jpg",
+      // ⚠️ 已知坑：此 wasm core 的 mjpeg 编码器有内存分配 bug，
+      //    报 "[mjpeg] Buffer reallocation failed" + "RuntimeError: memory access out of bounds"。
+      //    换用 PNG 编码器（不同代码路径）输出单帧，稳定可用。
+      //    -update 1 是新版 image2 muxer 写单张图片必需的选项。
+      desc: "从第 1 秒抽取一张画面保存为 PNG。-frames:v 1 只取 1 帧；-update 1 是新版 image2 muxer 写单张图片必需的选项。用 PNG 而非 JPG，因为此 core 的 mjpeg 编码器有内存越界 bug。",
+      cli: "ffmpeg -ss 1 -i input.mp4 -frames:v 1 -update 1 frame.png",
+      args: (in_) => ["-ss", "1", "-i", in_, "-frames:v", "1", "-update", "1", "frame.png"],
+      kind: KIND.image("image/png"), out: "frame.png",
     },
     {
       title: "生成 GIF 动图", tag: "gif",
@@ -467,9 +471,12 @@
     },
     {
       title: "缩放分辨率（缩小一半）", tag: "scale",
-      desc: "用 scale 滤镜把宽高各缩小到一半（iw/2:ih/2），可显著减小体积。",
-      cli: "ffmpeg -i input.mp4 -vf scale=iw/2:ih/2 output.mp4",
-      args: (in_) => ["-i", in_, "-vf", "scale=iw/2:ih/2", "output.mp4"],
+      // ⚠️ libx264 要求宽高都是偶数（yuv420p 色度半采样）。
+      //    若原视频高度是奇数（如本例 242→121），用 -2 自动凑偶数，否则报
+      //    "height not divisible by 2"。
+      desc: "用 scale 滤镜把宽高各缩小到一半。-2 表示该维度自动取最接近的偶数值（libx264 要求宽高必须是偶数，否则报 'height/width not divisible by 2'）。",
+      cli: "ffmpeg -i input.mp4 -vf scale=iw/2:-2 output.mp4",
+      args: (in_) => ["-i", in_, "-vf", "scale=iw/2:-2", "output.mp4"],
       kind: KIND.video("video/mp4"), out: "output.mp4",
     },
     {
