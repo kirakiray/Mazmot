@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ffmpeg.wasm 使用案例 · others/ffmpegjs</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --muted: #9aa3b2;
+    --accent: #4f8cff;
+    --accent-2: #2bd4a3;
+    --danger: #ff6b6b;
+    --code-bg: #0b0d12;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, #1b2336 0%, transparent 60%), var(--bg);
+    color: var(--text);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* 顶部标题区 */
+  header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  header.top h1 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: .3px; }
+  header.top .sub { color: var(--muted); font-size: 13px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.ok .dot { background: var(--accent-2); box-shadow: 0 0 8px var(--accent-2); }
+  .pill.ok { color: var(--accent-2); border-color: rgba(43,212,163,.4); }
+  .pill.err .dot { background: var(--danger); }
+  .pill.err { color: var(--danger); border-color: rgba(255,107,107,.4); }
+
+  /* 控制条 */
+  .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .toolbar .src-info { color: var(--muted); font-size: 13px; flex: 1 1 220px; }
+  .toolbar .src-info b { color: var(--text); }
+  .btn { appearance: none; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    padding: 9px 14px; border-radius: 9px; font-size: 13px; cursor: pointer; transition: .15s;
+    display: inline-flex; align-items: center; gap: 7px; }
+  .btn:hover { border-color: #3a4150; background: #242935; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: linear-gradient(180deg, #4f8cff, #3674ef); border-color: #2f66e0; color: #fff; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 6px 10px; font-size: 12px; }
+
+  /* 进度条 */
+  .progress { height: 6px; background: var(--panel-2); border-radius: 6px; overflow: hidden; margin: 0 0 18px;
+    border: 1px solid var(--border); }
+  .progress > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width .15s; }
+
+  /* 案例网格 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .card h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .tag { font-size: 11px; color: var(--muted); background: var(--code-bg); border: 1px solid var(--border);
+    padding: 2px 7px; border-radius: 6px; font-weight: 500; }
+  .card .desc { color: var(--muted); font-size: 12.5px; }
+  pre.cli { margin: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 12px; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #b8c2d1; overflow-x: auto; white-space: pre; }
+  pre.cli .k { color: #79c0ff; }
+  pre.cli .f { color: #2bd4a3; }
+  .card .actions { display: flex; gap: 8px; align-items: center; }
+  .result { min-height: 0; }
+  .result video, .result audio, .result img { max-width: 100%; border-radius: 8px; background: #000; display: block; }
+  .result .meta { font-size: 12px; color: var(--muted); }
+  .result .info { font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; color: #cdd3df; background: var(--code-bg);
+    border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; white-space: pre-wrap; max-height: 200px; overflow:auto;}
+  .result .info .k { color: #79c0ff; }
+
+  /* 日志控制台 */
+  details.console { margin-top: 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  details.console > summary { cursor: pointer; padding: 12px 16px; font-size: 13px; color: var(--muted);
+    list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.console > summary::-webkit-details-marker { display: none; }
+  details.console > summary::before { content: "▸"; color: var(--muted); transition: .15s; }
+  details.console[open] > summary::before { transform: rotate(90deg); }
+  #log { margin: 0 16px 16px; padding: 10px 12px; height: 240px; overflow: auto; resize: vertical;
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px;
+    font: 11.5px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #8b94a3; white-space: pre-wrap; word-break: break-all; }
+
+  .note { color: var(--muted); font-size: 12.5px; background: var(--panel); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 9px; padding: 10px 14px; margin-bottom: 18px; }
+  .note code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>ffmpeg.wasm 使用案例</h1>
+      <div class="sub">纯浏览器端音视频处理 · 零上传、零服务器算力 · 基于 <code>@ffmpeg/ffmpeg</code> 0.12.x</div>
+    </div>
+    <div style="margin-left:auto" class="pill" id="status"><span class="dot"></span><span>未加载</span></div>
+  </header>
+
+  <div class="note">
+    说明：本页所有处理都在你浏览器本地完成，视频不会上传到任何服务器。首次加载需下载约 <b>31MB</b> 的 ffmpeg-core（WebAssembly）。
+    演示素材为同目录下的 <code>video.mp4</code>，你也可以点「选择文件」上传自己的视频。<br/>
+    提示：请通过本地静态服务器打开（如 <code>npx serve others/ffmpegjs</code> 或 <code>python3 -m http.server</code>），<b>不要</b>用 <code>file://</code> 直接双击打开（fetch 本地文件会被浏览器拦截）。
+  </div>
+
+  <!-- 工具条 -->
+  <div class="toolbar">
+    <div class="src-info">当前输入：<b id="srcName">video.mp4（默认）</b></div>
+    <button class="btn primary" id="loadBtn">加载 ffmpeg-core</button>
+    <input type="file" id="fileInput" accept="video/*,audio/*" hidden />
+    <button class="btn" id="pickBtn">选择文件…</button>
+    <button class="btn ghost" id="resetBtn">重置为 video.mp4</button>
+  </div>
+
+  <!-- 进度条 -->
+  <div class="progress"><i id="bar"></i></div>
+
+  <!-- 案例卡片由 JS 动态生成 -->
+  <div class="grid" id="grid"></div>
+
+  <!-- 日志控制台 -->
+  <details class="console" open>
+    <summary>ffmpeg 日志控制台</summary>
+    <div id="log"></div>
+  </details>
+</div>
+
+<!-- ============ 核心逻辑 ============ -->
+<!--
+  依赖说明（无需构建工具）：
+    ./lib/ffmpeg/*  : 来自 @ffmpeg/ffmpeg 0.12.10 的 ESM 源码（已下载到本地，共约 15KB）
+                      —— 必须放本地！库内部用 new Worker(new URL("./worker.js", import.meta.url))
+                         起 Web Worker，Worker 不允许跨源构造，所以不能直接从 CDN 引入。
+    ./lib/util/*    : 来自 @ffmpeg/util 0.12.1 的 ESM 源码（提供 toBlobURL / fetchFile）
+    ffmpeg-core     : 约 31MB 的 WebAssembly 核心，从 jsDelivr CDN 用 toBlobURL 转成同源 Blob URL 加载。
+
+  关键点：库的 worker 是「module worker」，它用动态 import() 加载 core，所以 coreURL 必须指向
+          @ffmpeg/core 的【ESM 版】（dist/esm/ffmpeg-core.js，带 export default），而不能用 umd 版。
+  单线程版无需 COOP/COEP 跨域隔离头，任何静态服务器都能跑；多线程 core-mt 更快但需要这些头。
+-->
+<script type="module">
+  import { FFmpeg } from "./lib/ffmpeg/index.js";
+  import { toBlobURL, fetchFile } from "./lib/util/index.js";
+
+  // ---- DOM ----
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status"), barEl = $("bar"), logEl = $("log"), gridEl = $("grid");
+  const loadBtn = $("loadBtn"), pickBtn = $("pickBtn"), resetBtn = $("resetBtn"), fileInput = $("fileInput");
+  const srcNameEl = $("srcName");
+
+  // ---- ffmpeg 实例 ----
+  const ffmpeg = new FFmpeg();
+  let loaded = false;
+  let running = false;
+
+  // 输入源：默认抓取同目录 video.mp4；用户也可上传。inputExt 决定 FS 内文件名后缀
+  let inputBytes = null;
+  let inputExt = "mp4";
+  const INPUT = () => `input.${inputExt}`; // ffmpeg 虚拟文件系统里的输入文件名
+
+  // ---- 日志 / 进度 / 状态 ----
+  const probeBuf = { on: false, lines: [] }; // 仅“获取媒体信息”时临时缓存日志用于解析
+
+  ffmpeg.on("log", ({ message }) => {
+    if (probeBuf.on) probeBuf.lines.push(message);
+    logEl.textContent += message + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+  ffmpeg.on("progress", ({ progress }) => {
+    const p = Math.max(0, Math.min(1, progress));
+    barEl.style.width = (p * 100).toFixed(1) + "%";
+  });
+
+  function setStatus(state, text) {
+    statusEl.className = "pill " + (state || "");
+    statusEl.querySelector("span:last-child").textContent = text;
+  }
+
+  function log(htmlLine) {
+    logEl.textContent += htmlLine + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function clearBar() { barEl.style.width = "0%"; }
+
+  // ---- 加载 ffmpeg-core ----
+  async function loadCore() {
+    if (loaded) return;
+    loadBtn.disabled = true;
+    setStatus("", "加载中…（约 31MB）");
+    log("▶ 开始下载 ffmpeg-core …");
+    try {
+      // 必须用 ESM 版 core（库的 worker 是 module worker，靠动态 import() 加载 core，需要 export default）
+      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+      await ffmpeg.load({
+        // toBlobURL 把 CDN 上的 core 文件转成同源 Blob URL，绕过跨域 & Worker 同源限制
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+      loaded = true;
+      setStatus("ok", "已就绪");
+      log("✓ ffmpeg-core 加载完成");
+      enableCases(true);
+    } catch (e) {
+      console.error(e);
+      setStatus("err", "加载失败");
+      log("✗ 加载失败：" + (e?.message || e));
+      loadBtn.disabled = false;
+      throw e;
+    }
+  }
+
+  loadBtn.addEventListener("click", () => loadCore().catch(() => {}));
+
+  // ---- 输入源管理 ----
+  async function ensureInput() {
+    if (inputBytes) return INPUT();
+    // 默认抓取同目录下的 video.mp4
+    try {
+      inputBytes = await fetchFile("video.mp4");
+      inputExt = "mp4";
+      srcNameEl.textContent = "video.mp4（默认）";
+      log("✓ 已载入默认素材 video.mp4");
+    } catch (e) {
+      throw new Error("无法读取 video.mp4，请改用“选择文件”上传（或确认通过 http 服务器打开本页）");
+    }
+    return INPUT();
+  }
+  async function writeInput() {
+    const name = await ensureInput();
+    // ⚠️ 关键：ffmpeg.writeFile 内部会通过 postMessage 把传入 buffer transfer 给 Worker，
+    // 转移后原 buffer 会 detached（失效）。如果直接传 inputBytes，第二次运行再用同一份
+    // 数据就会报 "An ArrayBuffer is detached and could not be cloned"。
+    // 所以每次都传一个 slice(0) 复制品，让副本被 transfer，原始 inputBytes 保持可复用。
+    await ffmpeg.writeFile(name, inputBytes.slice(0));
+    return name;
+  }
+
+  pickBtn.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", async () => {
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    inputBytes = await fetchFile(f);
+    inputExt = (f.name.split(".").pop() || "mp4").toLowerCase();
+    srcNameEl.textContent = f.name + "（已上传）";
+    log("✓ 已载入上传文件：" + f.name);
+  });
+  resetBtn.addEventListener("click", () => {
+    inputBytes = null; srcNameEl.textContent = "video.mp4（默认）";
+    log("· 输入源已重置为 video.mp4");
+  });
+
+  // ---- 工具：读取结果并构造下载/预览 ----
+  function download(name, blob) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(2) + " MB";
+  }
+
+  // 渲染结果到对应卡片
+  function renderResult(card, kind, name, data) {
+    const box = card.querySelector(".result");
+    box.innerHTML = "";
+    const blob = new Blob([data], { type: kind.mime });
+    const url = URL.createObjectURL(blob);
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `${name} · ${fmtSize(blob.size)}`;
+    if (kind.type === "video") {
+      const v = document.createElement("video"); v.src = url; v.controls = true; box.appendChild(v);
+    } else if (kind.type === "audio") {
+      const a = document.createElement("audio"); a.src = url; a.controls = true; box.appendChild(a);
+    } else if (kind.type === "image") {
+      const img = document.createElement("img"); img.src = url; box.appendChild(img);
+    }
+    box.appendChild(meta);
+    const dl = document.createElement("button"); dl.className = "btn small";
+    dl.textContent = "下载 " + name; dl.onclick = () => download(name, blob);
+    box.appendChild(dl);
+  }
+
+  // ---- 运行一个案例 ----
+  async function runCase(c, card) {
+    if (!loaded) { alert("请先点击「加载 ffmpeg-core」"); return; }
+    if (running) { alert("当前已有任务在运行，请稍候…"); return; }
+    running = true;
+    const runBtn = card.querySelector(".run");
+    runBtn.disabled = true;
+    card.querySelector(".result").innerHTML = '<div class="meta">处理中…</div>';
+    clearBar();
+    try {
+      const input = await writeInput();
+
+      // 特殊：获取媒体信息（不产出文件，靠解析日志）
+      if (c.kind.type === "log") {
+        probeBuf.on = true; probeBuf.lines = [];
+        try {
+          // 仅 -i 不指定输出，ffmpeg 会把流信息打印到 stderr 后以非 0 退出
+          await ffmpeg.exec(c.args(input));
+        } catch (_) { /* 忽略：-i 探测必然报错退出 */ }
+        probeBuf.on = false;
+        renderInfo(card, probeBuf.lines.join("\n"));
+        clearBar();
+        return;
+      }
+
+      // 清理可能残留的同名输出，避免读到旧文件
+      try { await ffmpeg.deleteFile(c.out); } catch (_) {}
+
+      await ffmpeg.exec(c.args(input));
+      const data = await ffmpeg.readFile(c.out);
+      renderResult(card, c.kind, c.out, data);
+      try { await ffmpeg.deleteFile(c.out); } catch (_) {} // 读完即清理，节省 wasm 内存
+    } catch (e) {
+      console.error(e);
+      card.querySelector(".result").innerHTML = `<div class="meta" style="color:var(--danger)">处理失败：${e?.message || e}</div>`;
+    } finally {
+      running = false;
+      runBtn.disabled = false;
+      clearBar();
+    }
+  }
+
+  // 解析媒体信息：从日志里提取 Duration / Video Stream / Audio Stream
+  function renderInfo(card, raw) {
+    const grab = (re) => { const m = raw.match(re); return m ? m[0] : null; };
+    const dur = grab(/Duration:\s*[0-9:.]+,?/);
+    const bitrate = grab(/bitrate:\s*[0-9]+\s*kb\/s/i) || grab(/bitrate:\s*[0-9.]+\s*\w+\/?s?/i);
+    const vstream = grab(/Stream #\d+:\d+.*Video:.*$/m);
+    const astream = grab(/Stream #\d+:\d+.*Audio:.*$/m);
+    let html = "";
+    const line = (k, v) => v ? `<span class="k">${k}</span> ${v}\n` : "";
+    html += line("时长   ", dur);
+    html += line("总码率 ", bitrate);
+    html += line("视频流 ", vstream);
+    html += line("音频流 ", astream);
+    if (!html) html = "（未解析到信息，请查看下方完整日志）\n\n" + raw.slice(-600);
+    const box = card.querySelector(".result");
+    box.innerHTML = "";
+    const pre = document.createElement("div"); pre.className = "info";
+    pre.innerHTML = html.trim();
+    box.appendChild(pre);
+  }
+
+  // ====================== 使用案例定义 ======================
+  // 每个案例：title / desc / 等效 CLI / args(input) / kind / out(输出文件名)
+  // kind.type: 'video' | 'audio' | 'image' | 'log'
+  const KIND = {
+    video: (mime) => ({ type: "video", mime }),
+    audio: (mime) => ({ type: "audio", mime }),
+    image: (mime) => ({ type: "image", mime }),
+    log: () => ({ type: "log" }),
+  };
+
+  const CASES = [
+    {
+      title: "获取媒体信息", tag: "probe",
+      desc: "读取视频的封装格式、时长、码率、分辨率、编码格式等元信息。不产出文件，靠解析 ffmpeg 日志。",
+      cli: "ffmpeg -i input.mp4",
+      args: (in_) => ["-i", in_],
+      kind: KIND.log(),
+    },
+    {
+      title: "格式转换：MP4 → WebM", tag: "transcode",
+      // ⚠️ 已知坑：单线程 core 里 libvpx-vp9(VP9) / libopus / AV1 会必崩
+      //    "RuntimeError: memory access out of bounds"（ffmpegwasm#679），
+      //    官方 issue 多人验证可用的组合是 VP8(libvpx) + libvorbis。
+      desc: "把 MP4 转为 WebM。⚠️ ffmpeg.wasm 单线程 core 的 VP9/Opus/AV1 编码器有内存越界 bug，这里用 VP8(libvpx)+libvorbis 这个经验证可用的组合。",
+      cli: "ffmpeg -i input.mp4 -fflags +genpts -preset ultrafast -c:v libvpx -crf 23 -c:a libvorbis -threads 0 output.webm",
+      args: (in_) => ["-i", in_, "-fflags", "+genpts", "-preset", "ultrafast", "-c:v", "libvpx", "-crf", "23", "-c:a", "libvorbis", "-threads", "0", "output.webm"],
+      kind: KIND.video("video/webm"), out: "output.webm",
+    },
+    {
+      title: "提取音频为 MP3", tag: "audio",
+      desc: "去掉画面只保留声音，编码为 MP3（-vn 表示不要视频，-q:a 2 为高质量 VBR）。",
+      cli: "ffmpeg -i input.mp4 -vn -acodec libmp3lame -q:a 2 output.mp3",
+      args: (in_) => ["-i", in_, "-vn", "-acodec", "libmp3lame", "-q:a", "2", "output.mp3"],
+      kind: KIND.audio("audio/mpeg"), out: "output.mp3",
+    },
+    {
+      title: "视频压缩", tag: "compress",
+      desc: "用 H.264 重新编码并提高 CRF（数值越大体积越小、画质越低），-preset veryfast 编码更快。",
+      cli: "ffmpeg -i input.mp4 -c:v libx264 -crf 30 -preset veryfast -c:a aac -b:a 128k output.mp4",
+      args: (in_) => ["-i", in_, "-c:v", "libx264", "-crf", "30", "-preset", "veryfast", "-c:a", "aac", "-b:a", "128k", "output.mp4"],
+      kind: KIND.video("video/mp4"), out: "output.mp4",
+    },
+    {
+      title: "截取片段（前 3 秒）", tag: "trim",
+      // ⚠️ -c copy 在 ffmpeg.wasm 生成的 MP4 上常导致浏览器“只有声音、画面黑”
+      //    （B 帧 / edts / moov 位置综合问题，-avoid_negative_ts 也救不回来）。
+      //    改为重新编码 + faststart（moov atom 前置），保证浏览器能正常播放。
+      desc: "截取 0~3 秒片段。-ss/-to 指定起止时间；这里重新编码而非 -c copy，因为 ffmpeg.wasm 的流拷贝在浏览器常出现黑屏（moov/edts 问题）。-movflags +faststart 把索引前置，立即播放。",
+      cli: "ffmpeg -ss 0 -to 3 -i input.mp4 -c:v libx264 -preset ultrafast -crf 18 -c:a aac -movflags +faststart output.mp4",
+      args: (in_) => ["-ss", "0", "-to", "3", "-i", in_, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-c:a", "aac", "-movflags", "+faststart", "output.mp4"],
+      kind: KIND.video("video/mp4"), out: "output.mp4",
+    },
+    {
+      title: "提取单帧为图片", tag: "frame",
+      desc: "从第 1 秒抽取一张画面保存为 JPG（-frames:v 1 表示只取 1 帧）。",
+      cli: "ffmpeg -i input.mp4 -ss 1 -frames:v 1 -q:v 2 frame.jpg",
+      args: (in_) => ["-i", in_, "-ss", "1", "-frames:v", "1", "-q:v", "2", "frame.jpg"],
+      kind: KIND.image("image/jpeg"), out: "frame.jpg",
+    },
+    {
+      title: "生成 GIF 动图", tag: "gif",
+      desc: "取前 3 秒、降帧率到 10fps、宽度缩到 320px，并用 palettegen/paletteuse 生成高质量调色板 GIF。",
+      cli: 'ffmpeg -i input.mp4 -t 3 -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" output.gif',
+      args: (in_) => ["-i", in_, "-t", "3", "-vf",
+        "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", "output.gif"],
+      kind: KIND.image("image/gif"), out: "output.gif",
+    },
+    {
+      title: "缩放分辨率（缩小一半）", tag: "scale",
+      desc: "用 scale 滤镜把宽高各缩小到一半（iw/2:ih/2），可显著减小体积。",
+      cli: "ffmpeg -i input.mp4 -vf scale=iw/2:ih/2 output.mp4",
+      args: (in_) => ["-i", in_, "-vf", "scale=iw/2:ih/2", "output.mp4"],
+      kind: KIND.video("video/mp4"), out: "output.mp4",
+    },
+    {
+      title: "2 倍速播放", tag: "speed",
+      desc: "setpts=0.5*PTS 让视频快 2 倍，atempo=2 同步加速音频（atempo 范围 0.5~2，需更高倍率可链式串联）。",
+      cli: 'ffmpeg -i input.mp4 -filter:v "setpts=0.5*PTS" -filter:a "atempo=2" output.mp4',
+      args: (in_) => ["-i", in_, "-filter:v", "setpts=0.5*PTS", "-filter:a", "atempo=2", "output.mp4"],
+      kind: KIND.video("video/mp4"), out: "output.mp4",
+    },
+  ];
+
+  // 简单给 CLI 着色，方便阅读
+  function colorizeCLI(cli) {
+    return cli
+      .replace(/(^|\s)(-[-\w:]+)/g, '$1<span class="k">$2</span>')   // 选项
+      .replace(/\b(input\.\w+|output\.\w+|frame\.\w+|output\.gif)\b/g, '<span class="f">$1</span>'); // 文件名
+  }
+
+  // ---- 渲染卡片 ----
+  function renderCards() {
+    gridEl.innerHTML = "";
+    for (const c of CASES) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <h3>${c.title} <span class="tag">${c.tag}</span></h3>
+        <div class="desc">${c.desc}</div>
+        <pre class="cli">${colorizeCLI(c.cli)}</pre>
+        <div class="actions">
+          <button class="btn primary small run" disabled>运行</button>
+          <span class="meta" style="color:var(--muted);font-size:12px">需先加载 ffmpeg-core</span>
+        </div>
+        <div class="result"></div>`;
+      card.querySelector(".run").addEventListener("click", () => runCase(c, card));
+      gridEl.appendChild(card);
+    }
+  }
+  function enableCases(on) {
+    document.querySelectorAll(".card .run").forEach((b) => { b.disabled = !on; });
+    document.querySelectorAll(".card .actions .meta").forEach((m) => {
+      m.textContent = on ? "就绪" : "需先加载 ffmpeg-core";
+    });
+  }
+
+  renderCards();
+  setStatus("", "未加载");
+</script>
+</body>
+</html>
