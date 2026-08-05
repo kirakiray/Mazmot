@@ -161,8 +161,14 @@
   const srcNameEl = $("srcName");
 
   // ---- ffmpeg 实例 ----
-  const ffmpeg = new FFmpeg();
-  let loaded = false;
+  // ⚠️ ffmpeg.wasm 单线程 core 有已知缺陷（emscripten#22400）：同一个 core 实例跑多次
+  //    ffmpeg.exec() 后，wasm 堆内存被污染，从第二次起必报
+  //    "RuntimeError: memory access out of bounds"。
+  //    解决方案：把 31MB core 下载一次缓存成 Blob URL，之后每跑一个命令前都用缓存的
+  //    Blob 重新 new 一个干净的 FFmpeg 实例（不重新下载，只重新编译 wasm，约 1~2 秒）。
+  let ffmpeg = null;            // 当前 FFmpeg 实例（每次跑命令前会换成新的）
+  let coreBlobs = null;         // 缓存 { coreURL, wasmURL }，避免重复下载 31MB
+  let loaded = false;           // core 是否已下载缓存过
   let running = false;
 
   // 输入源：默认抓取同目录 video.mp4；用户也可上传。inputExt 决定 FS 内文件名后缀
@@ -173,15 +179,18 @@
   // ---- 日志 / 进度 / 状态 ----
   const probeBuf = { on: false, lines: [] }; // 仅“获取媒体信息”时临时缓存日志用于解析
 
-  ffmpeg.on("log", ({ message }) => {
-    if (probeBuf.on) probeBuf.lines.push(message);
-    logEl.textContent += message + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-  });
-  ffmpeg.on("progress", ({ progress }) => {
-    const p = Math.max(0, Math.min(1, progress));
-    barEl.style.width = (p * 100).toFixed(1) + "%";
-  });
+  // 给 ffmpeg 实例挂上日志/进度监听
+  function attachHandlers(inst) {
+    inst.on("log", ({ message }) => {
+      if (probeBuf.on) probeBuf.lines.push(message);
+      logEl.textContent += message + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    });
+    inst.on("progress", ({ progress }) => {
+      const p = Math.max(0, Math.min(1, progress));
+      barEl.style.width = (p * 100).toFixed(1) + "%";
+    });
+  }
 
   function setStatus(state, text) {
     statusEl.className = "pill " + (state || "");
@@ -194,23 +203,26 @@
   }
   function clearBar() { barEl.style.width = "0%"; }
 
-  // ---- 加载 ffmpeg-core ----
+  // ---- 加载 ffmpeg-core（首次：下载 31MB 并缓存 Blob）----
   async function loadCore() {
     if (loaded) return;
     loadBtn.disabled = true;
-    setStatus("", "加载中…（约 31MB）");
+    setStatus("", "下载中…（约 31MB，仅一次）");
     log("▶ 开始下载 ffmpeg-core …");
     try {
       // 必须用 ESM 版 core（库的 worker 是 module worker，靠动态 import() 加载 core，需要 export default）
       const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
-      await ffmpeg.load({
-        // toBlobURL 把 CDN 上的 core 文件转成同源 Blob URL，绕过跨域 & Worker 同源限制
+      // toBlobURL 把 CDN 上的 core 文件转成同源 Blob URL，绕过跨域 & Worker 同源限制
+      // 下载一次后缓存，之后每跑一个命令都复用这两个 Blob，不再重新下载
+      coreBlobs = {
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-      });
+      };
       loaded = true;
+      log("✓ ffmpeg-core 已下载并缓存");
+      // 预热：起一个实例确认 core 可用
+      ffmpeg = await freshCore();
       setStatus("ok", "已就绪");
-      log("✓ ffmpeg-core 加载完成");
       enableCases(true);
     } catch (e) {
       console.error(e);
@@ -219,6 +231,17 @@
       loadBtn.disabled = false;
       throw e;
     }
+  }
+
+  // ---- 用缓存的 Blob 重新起一个干净的 FFmpeg 实例 ----
+  // 关键：每次跑命令前都调用它，保证命令在一个全新、未被污染的 core 上执行。
+  // 终止旧 worker（释放内存），new 一个 FFmpeg，挂监听，用缓存 Blob load（不重新下载）。
+  async function freshCore() {
+    if (ffmpeg) { try { ffmpeg.terminate(); } catch (_) {} }
+    const inst = new FFmpeg();
+    attachHandlers(inst);
+    await inst.load(coreBlobs); // 复用缓存的 {coreURL, wasmURL}，零网络下载
+    return inst;
   }
 
   loadBtn.addEventListener("click", () => loadCore().catch(() => {}));
@@ -303,13 +326,20 @@
     running = true;
     const runBtn = card.querySelector(".run");
     runBtn.disabled = true;
-    card.querySelector(".result").innerHTML = '<div class="meta">处理中…</div>';
+    card.querySelector(".result").innerHTML = '<div class="meta">初始化干净引擎…</div>';
     clearBar();
     try {
+      // ⚠️ 关键：每跑一个命令前都重新起一个干净的 core 实例（用缓存的 Blob，不重新下载）。
+      //    这样避开“同一 core 跑多次 exec 会内存越界”的致命 bug（emscripten#22400）。
+      //    代价是每次多 1~2 秒 wasm 编译时间。
+      setStatus("", "重置引擎…");
+      ffmpeg = await freshCore();
+
       const input = await writeInput();
 
       // 特殊：获取媒体信息（不产出文件，靠解析日志）
       if (c.kind.type === "log") {
+        card.querySelector(".result").innerHTML = '<div class="meta">读取媒体信息…</div>';
         probeBuf.on = true; probeBuf.lines = [];
         try {
           // 仅 -i 不指定输出，ffmpeg 会把流信息打印到 stderr 后以非 0 退出
@@ -318,19 +348,28 @@
         probeBuf.on = false;
         renderInfo(card, probeBuf.lines.join("\n"));
         clearBar();
+        setStatus("ok", "已就绪");
         return;
       }
 
-      // 清理可能残留的同名输出，避免读到旧文件
+      card.querySelector(".result").innerHTML = '<div class="meta">处理中…</div>';
+      // 清理可能残留的同名输出（虽然 freshCore 已是空 FS，这里防御性兜底）
       try { await ffmpeg.deleteFile(c.out); } catch (_) {}
 
       await ffmpeg.exec(c.args(input));
       const data = await ffmpeg.readFile(c.out);
       renderResult(card, c.kind, c.out, data);
       try { await ffmpeg.deleteFile(c.out); } catch (_) {} // 读完即清理，节省 wasm 内存
+      setStatus("ok", "已就绪");
     } catch (e) {
       console.error(e);
-      card.querySelector(".result").innerHTML = `<div class="meta" style="color:var(--danger)">处理失败：${e?.message || e}</div>`;
+      const msg = e?.message || String(e);
+      card.querySelector(".result").innerHTML = `<div class="meta" style="color:var(--danger)">处理失败：${msg}</div>`;
+      setStatus("err", "出错");
+      // 若是内存越界，说明这个命令本身有问题（如 VP9），core 已废，下次 freshCore 会重建
+      if (/memory access out of bounds|RuntimeError/i.test(msg)) {
+        log("✗ 引擎内存越界。该命令可能用了 core 不支持的编码器。");
+      }
     } finally {
       running = false;
       runBtn.disabled = false;
