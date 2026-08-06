@@ -1708,6 +1708,10 @@
           this.myUserId = user.userId;
           console.log("[smart-assistant] Host userId：", user.userId);
 
+          // 开启握手服务器自动重连（默认关闭）。
+          // 网络抖动断线后按指数退避自动恢复，避免 publisher 掉线后链接失效。
+          user.server.setAutoReconnect({ enabled: true });
+
           // 初始化握手服务器状态
           this.refreshServers();
           this._unbindSvrConn = user.bind("server_connected", () => {

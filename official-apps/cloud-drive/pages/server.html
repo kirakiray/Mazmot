@@ -347,6 +347,46 @@
       overflow: hidden;
     }
 
+    /* ===== 握手服务器状态 ===== */
+    .server-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+    .server-item:last-child {
+      border-bottom: none;
+    }
+    .server-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .server-dot[type="online"] {
+      background: #34a853;
+    }
+    .server-dot[type="offline"] {
+      background: var(--md-sys-color-error);
+    }
+    .server-host {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .server-state {
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .server-empty {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 6px 0;
+    }
+
     /* ===== 客户端列表 ===== */
     .main-head {
       display: flex;
@@ -597,6 +637,29 @@
           </div>
         </div>
       </section>
+
+      <!-- 握手服务器状态 -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:server-network"></n-icon>
+          握手服务器
+        </h2>
+        <o-if :value="servers.length === 0">
+          <div class="server-empty">正在获取服务器状态...</div>
+        </o-if>
+        <o-fill :value="servers">
+          <div class="server-item">
+            <span
+              class="server-dot"
+              attr:type="$data.connected ? 'online' : 'offline'"
+            ></span>
+            <span class="server-host">{{$data.host}}</span>
+            <span class="server-state"
+              >{{$data.connected ? '已连接' : '未连接'}}</span
+            >
+          </div>
+        </o-fill>
+      </section>
     </aside>
 
     <!-- ===== 右栏：已连接客户端 ===== -->
@@ -691,6 +754,7 @@
           mounts: [],
           users: [],
           clients: [],
+          servers: [],
           shareUrl: "",
           generating: false,
           genStatus: "",
@@ -710,6 +774,32 @@
           shortId(id) {
             if (!id) return "????";
             return id.slice(-6);
+          },
+
+          // ===== 刷新握手服务器连接状态 =====
+          async refreshServers() {
+            if (!this._user || !this._user.server) return;
+            try {
+              const all =
+                (await this._user.server.getServers()) || [];
+              const connected = Array.isArray(
+                this._user.server.connectedUrls,
+              )
+                ? this._user.server.connectedUrls
+                : [];
+              this.servers = all.map((url) => {
+                let host = url;
+                try {
+                  host = new URL(url).host;
+                } catch (_) {}
+                return { url, host, connected: connected.includes(url) };
+              });
+            } catch (err) {
+              console.warn(
+                "[cloud-drive-server] 读取服务器状态失败:",
+                err,
+              );
+            }
           },
 
           // =====================================================
@@ -1596,6 +1686,19 @@
           this.serverUserId = user.userId;
           console.log("[cloud-drive-server] Server userId:", user.userId);
 
+          // 开启握手服务器自动重连（默认关闭）。
+          // 网络抖动断线后按指数退避自动恢复，避免服务端掉线后客户端无法连接。
+          user.server.setAutoReconnect({ enabled: true });
+
+          // 初始化握手服务器状态
+          this.refreshServers();
+          this._unbindSvrConn = user.bind("server_connected", () => {
+            this.refreshServers();
+          });
+          this._unbindSvrDisc = user.bind("server_disconnected", () => {
+            this.refreshServers();
+          });
+
           // 注册 P2P 服务
           const self = this;
           this._svc = user.registerService(SERVICE_ID, {
@@ -1659,6 +1762,8 @@
           [
             this._unbindConn,
             this._unbindDisc,
+            this._unbindSvrConn,
+            this._unbindSvrDisc,
           ].forEach((fn) => {
             try {
               fn && fn();
