@@ -16,7 +16,8 @@ cloud-drive/
 └── pages/
     ├── home.html         # 角色选择页（服务端 / 用户端）
     ├── server.html       # 服务端页面（存储管理 + 凭证管理 + P2P 服务）
-    └── client.html       # 用户端页面（连接认证 + 文件浏览 + 上传下载）
+    ├── client.html       # 用户端父页面（布局容器：连接认证 + 文件浏览 + 上传下载）
+    └── browse.html       # 用户端子路由页（不可见，仅承载 ?path= 用于文件夹导航历史）
 ```
 
 ## 页面架构
@@ -24,16 +25,28 @@ cloud-drive/
 三个页面均为 `<template page>` 模块（ofa.js 页面模块），通过 `this.goto()` 进行应用路由跳转。
 
 ### home.html — 角色选择
-- 检测 URL 是否有 `?host=<userId>` 参数，有则直接跳转 `client.html?host=xxx`（分享链接场景）
+- 检测 URL 是否有 `?host=<userId>` 参数，有则直接跳转 `browse.html?host=xxx&path=/`（分享链接场景，browse.html 是 client.html 的子路由）
 - 无 host 参数时显示两张卡片供用户选择模式
 - `selectServer()` → `goto("./server.html")`
-- `selectClient()` → `goto("./client.html")`
+- `selectClient()` → `goto("./browse.html?path=/")`
 
 ### server.html — 服务端
 负责：存储空间管理、用户凭证管理、分享链接生成、P2P 文件服务。
 
-### client.html — 用户端
-负责：连接认证、文件浏览导航、上传/下载、会话恢复。
+### client.html — 用户端（父布局页面）+ browse.html（子路由）
+
+用户端采用 ofa.js **嵌套路由**（nested routes）架构，使文件夹导航通过应用路由产生历史记录，浏览器后退键可在文件夹层级间回退：
+
+- **client.html（父页面 / Layout）**：建立并持有 P2P 连接，渲染全部 UI（连接表单 + 文件浏览器 + 传输面板）。包含 `<slot></slot>` 供子页面挂载。文件夹导航期间父页面**不卸载**，连接持续保持。
+- **browse.html（子路由页）**：`export const parent = "./client.html"`，自身 `display:none` 不渲染可见内容。唯一职责是承载 URL 中的 `?path=` 参数，通过 `goto("./browse.html?path=xxx")` 创建历史记录。
+
+**路径同步机制（双保险）**：
+1. 子页面 `attached()` 主动调用 `parent.applyRoute(path, host)` 同步路径
+2. 父页面 `routerChange()` 读取 `this.app.current.routePath` 同步路径
+
+`applyRoute(path, host)` 更新 `currentPath`、`serverUserId`（分享链接场景），若已连接则触发 `refreshList()`。
+
+文件夹导航流程：点击文件夹 → `navigateTo(path)` → `goto("./browse.html?path=" + encodeURIComponent(path))` → 子路由切换 → 父页面 `routerChange` / 子页面 `attached` → `applyRoute` → 刷新列表。
 
 ## 核心技术依赖
 

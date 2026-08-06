@@ -658,6 +658,9 @@
     </div>
   </o-if>
 
+  <!-- 子路由插槽：browse.html 仅承载路径参数用于路由历史，自身不可见 -->
+  <slot></slot>
+
   <script>
     const SERVICE_ID = "cloud-drive";
     const CHUNK_SIZE = 245760; // 240KB（服务端中转上限 256KB，留余量给协议头）
@@ -705,8 +708,7 @@
       return { header, payload };
     }
 
-    export default async ({ load, query }) => {
-      const hostFromQuery = query.host || "";
+    export default async ({ load }) => {
       return {
         data: {
           serverUserId: "",
@@ -950,9 +952,17 @@
           // =====================================================
 
           navigateTo(path) {
-            this.currentPath = path;
+            this.goto("./browse.html?path=" + encodeURIComponent(path));
+          },
+
+          // 由子路由 browse.html 调用，同步当前路径并按需刷新
+          applyRoute(path, host) {
+            this.currentPath = path || "/";
+            if (host) this.serverUserId = host;
+            if (this.connected) {
+              this.refreshList();
+            }
             this._updateSessionPath();
-            this.refreshList();
           },
 
           async refreshList() {
@@ -1623,15 +1633,6 @@
         },
 
         async attached() {
-          // 从路由 query 读取 host 参数（分享链接场景）
-          if (hostFromQuery) {
-            this.serverUserId = hostFromQuery;
-            console.log(
-              "[cloud-drive-client] 从链接获取服务端 ID:",
-              hostFromQuery,
-            );
-          }
-
           // 非响应式状态
           this._uploads = new Map();
           this._downloads = new Map();
@@ -1693,8 +1694,23 @@
               // 自动触发连接
               this.connect();
             }
+
+            // 从当前路由同步路径（URL 为路径唯一来源，覆盖会话缓存）
+            // 子页面 browse.html 尚未就绪时 routePath 为 undefined，跳过即可
+            const cur = this.app.current;
+            if (cur && typeof cur.routePath === "string") {
+              this.applyRoute(cur.routePath, cur.routeHost || "");
+            }
           } catch (err) {
             console.error("[cloud-drive-client] 初始化失败:", err);
+          }
+        },
+
+        // 路由变化时（文件夹导航 / 浏览器后退）同步路径
+        routerChange() {
+          const cur = this.app && this.app.current;
+          if (cur && typeof cur.routePath === "string") {
+            this.applyRoute(cur.routePath, cur.routeHost || "");
           }
         },
 
