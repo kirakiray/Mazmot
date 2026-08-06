@@ -831,33 +831,20 @@
               this._remoteUser = remoteUser;
               diag.mark("connectUser done");
 
-              // 探测一次连接路径，让历史里能看到走的是 RTC 直连还是哪台服务器
-              let pingErr = null;
+              // 探测一次连接路径，让历史里能看到走的是 RTC 直连还是哪台服务器。
+              // 注意：ping 在 connectUser 后立即调用可能因 core 会话绑定竞态而失败
+              //（消息含 "Session undefined ... is not online"），属瞬时状态、不代表
+              // 发布者离线，这里只记录、不作为致命错误。
               try {
                 await remoteUser.ping();
                 diag.mark("ping done");
               } catch (e) {
-                pingErr = e;
                 diag.mark("ping failed", {
                   msg: String((e && e.message) || e),
                 });
               }
               // ping 后 getRTT 已有数据，刷新握手状态显示实际最快服务器
               this.updateHandshakeStatus();
-
-              // 服务器明确告知发布者不在线时，立即给出可读错误。
-              // 否则会继续白等 waitForRtcReady（3s）+ requestManifest 超时（数十秒），
-              // 最终抛出迷惑性的 "Manifest request timed out"。
-              const pingMsg = String((pingErr && pingErr.message) || "");
-              if (/is not online/i.test(pingMsg)) {
-                this.fail(
-                  "发布者暂不在线",
-                  new Error(
-                    "分享者当前未连接到网络，无法获取应用文件。请让对方保持应用页面打开（不要关闭或刷新），然后重新打开此链接重试。",
-                  ),
-                );
-                return;
-              }
 
               // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
               // 如果 3s 内没升上来，就继续走 relay，不阻塞。
