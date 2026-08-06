@@ -153,6 +153,43 @@
       border-radius: 10px;
     }
 
+    /* ===== 握手服务器状态 ===== */
+    .server-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+    .server-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .server-dot[type="online"] {
+      background: #34a853;
+    }
+    .server-dot[type="offline"] {
+      background: var(--md-sys-color-error);
+    }
+    .server-host {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .server-state {
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .server-empty {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 6px 0;
+    }
+
     /* ===== 访客监控 ===== */
     .main-head {
       display: flex;
@@ -611,6 +648,29 @@
           </div>
         </o-if>
       </section>
+
+      <!-- 握手服务器状态 -->
+      <section class="card">
+        <h2 class="card-title">
+          <n-icon icon="mdi:server-network"></n-icon>
+          握手服务器
+        </h2>
+        <o-if :value="servers.length === 0">
+          <div class="server-empty">正在获取服务器状态...</div>
+        </o-if>
+        <o-fill :value="servers">
+          <div class="server-item">
+            <span
+              class="server-dot"
+              attr:type="$data.connected ? 'online' : 'offline'"
+            ></span>
+            <span class="server-host">{{$data.host}}</span>
+            <span class="server-state"
+              >{{$data.connected ? '已连接' : '未连接'}}</span
+            >
+          </div>
+        </o-fill>
+      </section>
     </aside>
 
     <!-- ===== 右栏：访客实时监控 ===== -->
@@ -867,6 +927,7 @@
           generating: false,
           genStatus: "",
           copied: false,
+          servers: [],
           customers: [],
           expanded: {},
           // AI 需求整理弹窗状态
@@ -1108,6 +1169,32 @@
               try {
                 el.select();
               } catch (_) {}
+            }
+          },
+
+          // ===== 刷新握手服务器连接状态 =====
+          async refreshServers() {
+            if (!this._user || !this._user.server) return;
+            try {
+              const all =
+                (await this._user.server.getServers()) || [];
+              const connected = Array.isArray(
+                this._user.server.connectedUrls,
+              )
+                ? this._user.server.connectedUrls
+                : [];
+              this.servers = all.map((url) => {
+                let host = url;
+                try {
+                  host = new URL(url).host;
+                } catch (_) {}
+                return { url, host, connected: connected.includes(url) };
+              });
+            } catch (err) {
+              console.warn(
+                "[smart-assistant] 读取服务器状态失败：",
+                err,
+              );
             }
           },
 
@@ -1621,6 +1708,15 @@
           this.myUserId = user.userId;
           console.log("[smart-assistant] Host userId：", user.userId);
 
+          // 初始化握手服务器状态
+          this.refreshServers();
+          this._unbindSvrConn = user.bind("server_connected", () => {
+            this.refreshServers();
+          });
+          this._unbindSvrDisc = user.bind("server_disconnected", () => {
+            this.refreshServers();
+          });
+
           const self = this;
           this._svc = user.registerService(SERVICE_ID, {
             onMessage(data, ctx) {
@@ -1646,7 +1742,7 @@
         },
 
         detached() {
-          [this._unbindConn, this._unbindDisc, this._unbindKeys].forEach(
+          [this._unbindConn, this._unbindDisc, this._unbindKeys, this._unbindSvrConn, this._unbindSvrDisc].forEach(
             (fn) => {
               try {
                 fn && fn();
