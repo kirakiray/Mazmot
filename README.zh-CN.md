@@ -137,6 +137,17 @@ npm run static
 # → http://localhost:30031/
 ```
 
+> **提示**：若要进行完整功能的本地调试（P2P 握手、去中心化用户连接、应用分享等），还需运行由 [NoneOS Core](https://github.com/kirakiray/noneos-core) 提供的本地握手服务器：
+
+```bash
+git clone https://github.com/kirakiray/noneos-core.git
+cd noneos-core
+npm install
+npm run ws
+```
+
+请在独立的终端窗口中保持握手服务器运行，否则依赖 P2P 的功能（应用分享、用户间消息等）将无法端到端运作。
+
 ### 3. 添加并运行第一个应用
 
 1. 在主界面点击「添加应用」
