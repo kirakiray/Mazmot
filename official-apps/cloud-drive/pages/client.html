@@ -527,7 +527,7 @@
       <!-- 工具栏 -->
       <div class="toolbar">
         <div class="breadcrumb">
-          <o-fill :value="breadcrumbs">
+          <o-fill :value="breadcrumbs" fill-key="path">
             <span class="crumb-item">
               <o-if :value="$index > 0">
                 <span class="crumb-sep">/</span>
@@ -590,7 +590,7 @@
           </div>
         </o-if>
 
-        <o-fill :value="fileList">
+        <o-fill :value="fileList" fill-key="name">
           <div class="file-item" on:click="$host.handleItemClick($data)">
             <n-icon
               class="file-icon"
@@ -665,6 +665,7 @@
     const SERVICE_ID = "cloud-drive";
     const CHUNK_SIZE = 245760; // 240KB（服务端中转上限 256KB，留余量给协议头）
     const SESSION_KEY = "cloud-drive-session";
+    const LIST_CACHE_KEY = "cloud-drive-list-cache";
 
     async function calcHash(buffer) {
       const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
@@ -774,8 +775,28 @@
           _clearSession() {
             try {
               sessionStorage.removeItem(SESSION_KEY);
+              sessionStorage.removeItem(LIST_CACHE_KEY);
               console.log("[cloud-drive-client] 会话已清除");
             } catch (_) {}
+          },
+
+          _saveFileListCache(path, items) {
+            try {
+              sessionStorage.setItem(
+                LIST_CACHE_KEY,
+                JSON.stringify({ path, items }),
+              );
+            } catch (_) {}
+          },
+
+          _loadFileListCache() {
+            try {
+              const raw = sessionStorage.getItem(LIST_CACHE_KEY);
+              if (!raw) return null;
+              return JSON.parse(raw);
+            } catch (_) {
+              return null;
+            }
           },
 
           // ===== 工具函数 =====
@@ -830,7 +851,7 @@
 
             if (!serverUserId || !username || !password) {
               this.authError = "请填写所有字段";
-              return;
+              return false;
             }
 
             this.connecting = true;
@@ -866,7 +887,7 @@
                 this._connecting = false;
                 this.authError = "服务端不在线";
                 console.warn("[cloud-drive-client] 服务端不在线");
-                return;
+                return false;
               }
 
               // 创建认证 Promise
@@ -899,7 +920,7 @@
                 this.connecting = false;
                 this._connecting = false;
                 this.authError = "无法连接到服务端";
-                return;
+                return false;
               }
 
               // 保存服务端 sessionId 用于二进制传输
@@ -921,6 +942,7 @@
                 this._saveSession();
                 console.log("[cloud-drive-client] 认证成功，进入文件浏览器");
                 this.refreshList();
+                return true;
               } else {
                 this.connecting = false;
                 this._connecting = false;
@@ -929,12 +951,14 @@
                   "[cloud-drive-client] 认证失败:",
                   this.authError,
                 );
+                return false;
               }
             } catch (err) {
               console.error("[cloud-drive-client] 连接失败:", err);
               this.connecting = false;
               this._connecting = false;
               this.authError = err.message || "连接失败";
+              return false;
             }
           },
 
@@ -966,6 +990,7 @@
           },
 
           async refreshList() {
+            if (!this._remoteUser) return;
             this.loading = true;
             try {
               const results = await this._remoteUser.sendToService(
@@ -1003,6 +1028,7 @@
                 return a.name.localeCompare(b.name);
               });
               this.fileList = items;
+              this._saveFileListCache(path, items);
               console.log(
                 "[cloud-drive-client] 列出目录:",
                 path,
@@ -1691,8 +1717,27 @@
               this.username = saved.username || "";
               this.password = saved.password || "";
               this.currentPath = saved.currentPath || "/";
-              // 自动触发连接
-              this.connect();
+
+              // 乐观恢复：先用缓存数据展示文件浏览器，再后台自动重连
+              // 重连成功后 refreshList 会刷新列表；失败则回到登录界面
+              this._autoReconnecting = true;
+              this.connected = true;
+              const cached = this._loadFileListCache();
+              if (
+                cached &&
+                cached.path === this.currentPath &&
+                Array.isArray(cached.items)
+              ) {
+                this.fileList = cached.items;
+              }
+
+              this.connect().then((ok) => {
+                this._autoReconnecting = false;
+                if (!ok) {
+                  // 自动重连失败，回到登录界面（保留已填写的表单数据）
+                  this.connected = false;
+                }
+              });
             }
 
             // 从当前路由同步路径（URL 为路径唯一来源，覆盖会话缓存）
