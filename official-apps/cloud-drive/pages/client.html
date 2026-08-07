@@ -580,7 +580,7 @@
           <span class="file-header-actions">操作</span>
         </div>
 
-        <o-if :value="loading">
+        <o-if :value="loading && fileList.length === 0">
           <div class="empty-state">
             <n-icon icon="mdi:loading"></n-icon>
             <p>加载中...</p>
@@ -996,7 +996,12 @@
           async refreshList() {
             if (!this._remoteUser) return;
             this.loading = true;
-            this.fileList = [];
+            // 切换目录时立即清空旧列表，避免新旧列表叠加；
+            // 自动重连同一目录时保留缓存列表，避免闪烁
+            const cached = this._loadFileListCache();
+            if (!cached || cached.path !== this.currentPath) {
+              this.fileList = [];
+            }
             try {
               const results = await this._remoteUser.sendToService(
                 SERVICE_ID,
