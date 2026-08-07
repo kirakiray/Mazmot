@@ -1042,64 +1042,20 @@
               }
               console.log("[cloud-drive-server] 当前应用身份:", self);
 
-              const [fsMod, shareMgr] = await Promise.all([
-                load("/nos/fs/main.js"),
-                load("/lib/share-mgr.js"),
-              ]);
-              const { init } = fsMod;
-              const { publishApp, generateAppId } = shareMgr;
+              const shareMgr = await load("/lib/share-mgr.js");
+              const { buildOfficialRunUrl } = shareMgr;
 
-              const apps = (await this._storage.apps) || [];
-              const { dirName } = self;
-              const record =
-                apps.find(
-                  (a) => a.name === dirName || a.virtualDirName === dirName,
-                ) ||
-                apps.find((a) =>
-                  (a.dirName || "").endsWith("/" + dirName),
-                ) ||
-                null;
-
-              this.genStatus = "获取应用目录...";
-              const rootDir = await init(self.namespace);
-              const handle = await rootDir.get(dirName);
-
-              let appId = (record && record.appId) || "";
-              if (!appId) {
-                appId = await generateAppId(dirName);
-                if (record) {
-                  record.appId = appId;
-                  await this._storage.setItem("apps", apps);
-                }
-              }
-
-              const app = {
-                _handle: handle,
-                _recordName: dirName,
-                name: (record && record.name) || "cloud-drive",
-                version: (record && record.version) || "1.0.0",
-                desc: (record && record.desc) || "云盘",
-                icon: (record && record.icon) || "☁️",
-                appId,
-              };
-
-              this.genStatus = "发布到分享网络...";
-              const { shareUrl, payloadHash } = await publishApp(app, {
-                appId,
-                appParams: { host: this.serverUserId },
-                onProgress: ({ text }) => {
-                  if (text) this.genStatus = text;
-                },
-              });
-
-              if (record && payloadHash) {
-                record.payloadHash = payloadHash;
-                await this._storage.setItem("apps", apps);
-              }
-
-              this.shareUrl = shareUrl;
+              // cloud-drive 是官方应用，使用官方 HTTP 渠道生成分享链接。
+              // 客户通过 ?app=<officialId>&host=<serverUserId> 从 /official-apps/ 同源拉取安装，
+              // 无需发布者保持在线；host 参数由 run-app 透传给应用，用于 P2P 客户端通信。
+              this.genStatus = "生成链接...";
+              this.shareUrl = buildOfficialRunUrl(
+                location.origin,
+                self.dirName,
+                { host: this.serverUserId },
+              );
               this.genStatus = "链接已生成，可复制分享给他人";
-              console.log("[cloud-drive-server] 分享链接已生成:", shareUrl);
+              console.log("[cloud-drive-server] 分享链接已生成:", this.shareUrl);
             } catch (err) {
               console.error("[cloud-drive-server] 生成链接失败:", err);
               this.genStatus = "失败:" + (err.message || err);

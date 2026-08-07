@@ -135,7 +135,7 @@ noneos-core 有两条传输路径，二进制监听必须绑定在 **remoteUser*
 
 ### 分享链接
 
-通过 `/lib/share-mgr.js` 的 `publishApp` 生成分享 URL，URL 参数包含 `host=<serverUserId>`。
+通过 `/lib/share-mgr.js` 的 `buildOfficialRunUrl` 生成官方应用 HTTP 渠道分享 URL（`?app=cloud-drive&host=<serverUserId>`），客户从 `/official-apps/cloud-drive/` 同源拉取安装，无需发布者保持在线；`host` 参数由 run-app 透传给应用，用于 P2P 客户端通信。
 
 ## 用户端详细设计
 

@@ -1460,69 +1460,20 @@
               }
               console.log("[smart-assistant] 当前应用身份：", self);
 
-              const [fsMod, shareMgr] = await Promise.all([
-                load("/nos/fs/main.js"),
-                load("/lib/share-mgr.js"),
-              ]);
-              const { init } = fsMod;
-              const { storage } = this._storage
-                ? { storage: this._storage }
-                : await load("/gh/kirakiray/ever-cache/src/main.min.js");
-              this._storage = storage;
-              const { publishApp, generateAppId } = shareMgr;
+              const shareMgr = await load("/lib/share-mgr.js");
+              const { buildOfficialRunUrl } = shareMgr;
 
-              const apps = (await storage.apps) || [];
-              const { dirName } = self;
-              const record =
-                apps.find(
-                  (a) => a.name === dirName || a.virtualDirName === dirName,
-                ) ||
-                apps.find((a) =>
-                  a.dirName ? a.dirName.endsWith("/" + dirName) : false,
-                ) ||
-                null;
-              console.log("[smart-assistant] 应用记录：", record);
-
-              this.genStatus = "获取应用目录...";
-              const rootDir = await init(self.namespace);
-              const handle = await rootDir.get(dirName);
-
-              let appId = (record && record.appId) || "";
-              if (!appId) {
-                appId = await generateAppId(dirName);
-                if (record) {
-                  record.appId = appId;
-                  await storage.setItem("apps", apps);
-                }
-              }
-
-              const app = {
-                _handle: handle,
-                _recordName: dirName,
-                name: (record && record.name) || "smart-assistant",
-                version: (record && record.version) || "0.1.0",
-                desc: (record && record.desc) || "智能联络助手",
-                icon: (record && record.icon) || "🤖",
-                appId,
-              };
-
-              this.genStatus = "发布到分享网络...";
-              const { shareUrl, payloadHash } = await publishApp(app, {
-                appId,
-                appParams: { host: this.myUserId },
-                onProgress: ({ text }) => {
-                  if (text) this.genStatus = text;
-                },
-              });
-
-              if (record && payloadHash) {
-                record.payloadHash = payloadHash;
-                await storage.setItem("apps", apps);
-              }
-
-              this.shareUrl = shareUrl;
+              // smart-assistant 是官方应用，使用官方 HTTP 渠道生成分享链接。
+              // 客户通过 ?app=<officialId>&host=<hostUserId> 从 /official-apps/ 同源拉取安装，
+              // 无需发布者保持在线；host 参数由 run-app 透传给应用，用于 P2P 客服通信。
+              this.genStatus = "生成链接...";
+              this.shareUrl = buildOfficialRunUrl(
+                location.origin,
+                self.dirName,
+                { host: this.myUserId },
+              );
               this.genStatus = "链接已生成，点击输入框可全选复制";
-              console.log("[smart-assistant] 分享链接已生成：", shareUrl);
+              console.log("[smart-assistant] 分享链接已生成：", this.shareUrl);
             } catch (err) {
               console.error("[smart-assistant] 生成链接失败：", err);
               this.genStatus = "失败：" + (err.message || err);
