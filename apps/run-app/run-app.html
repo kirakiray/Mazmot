@@ -344,6 +344,26 @@
     ];
     const TOTAL_STEPS = STEPS.length;
 
+    // 应用安装阶段（步骤 3~9）的进度刻度与文案。
+    // 百分比为 appProgress 的旧刻度（5-100），由 mapAppProgress 映射到 CORE_END-100。
+    // 集中定义，避免散落在各方法里成为难搜的魔数。
+    const STEP = {
+      parseLink: { pct: 5, text: "解析短链接..." },
+      connectPub: { pct: 8, text: "连接发布者..." },
+      connectSrv: { pct: 8, text: "连接信令服务器..." },
+      waitRtc: { pct: 9, text: "等待建立直连通道..." },
+      connectedRtc: { pct: 10, text: "已连接发布者（RTC 直连）" },
+      connectedRelay: { pct: 10, text: "已连接发布者（经中继）" },
+      fetchPayload: { pct: 14, text: "拉取分享清单..." },
+      payloadChunks: { pct: 18, text: "下载分享清单内容..." },
+      checkInstalled: { pct: 22, text: "检查本地已装应用..." },
+      appManifest: { pct: 30, text: "拉取应用清单..." },
+      assemble: { pct: 78, text: "组装应用包..." },
+      writeUpdate: { pct: 82, text: "覆盖写入应用文件..." },
+      writeNew: { pct: 82, text: "写入虚拟文件系统..." },
+      record: { pct: 92, text: "记录应用信息..." },
+    };
+
     export default async ({ load }) => {
       // 抽出的纯函数（便于单测），run-app.html 只做壳。
       const utils = await load("./lib/run-app-utils.js");
@@ -358,6 +378,8 @@
         shouldSkipInstall,
         findByPayloadHash,
         buildAppUrlWithParams,
+        findOfficialInstalled,
+        isOfficialUpToDate,
       } = utils;
       const diagMod = await load("./lib/diag.js");
       const {
@@ -377,6 +399,12 @@
       const installFlow = await load("./lib/install-flow.js");
       const { fetchSharePayload, findInstalled, installAppPackage } =
         installFlow;
+      // 官方应用 HTTP 安装分支复用官方应用市场的写入器
+      const officialAppWriter = await load(
+        "/apps/main/home/official-app-writer.js",
+      );
+      const { loadOfficialAppMeta, compareVersions, installOfficialApp } =
+        officialAppWriter;
       const diag = createDiag();
       diag.mark("page module ready");
 
@@ -407,13 +435,10 @@
           pathHint: "", // 当前到发布者的连接路径（RTC 直连 / 经某台服务器 + RTT）
           handshakeUrl: "", // 当前握手的信令服务器地址
           handshakeConnected: false, // 握手服务器是否已连接
-          _payload: null,
-          _installed: null, // { record, installedVersion } | null
           _confirmResolver: null,
           _modules: null, // { init, storage, shareMgr } after core ready
-          _remoteUser: null, // 与发布者建立的 RemoteUser 会话
-          _publisher: null, // DataPublisher 实例
-          _userRef: null, // LocalUser（诊断用）
+          _remoteUser: null, // 与发布者建立的 RemoteUser 会话（diag/fail/rtt 回调跨方法读）
+          _userRef: null, // LocalUser（诊断/握手状态跨方法读）
           _coreEventsBound: false,
           _appParams: {}, // 从分享链接解析出的应用业务参数（透传给应用入口，不含 u/h）
         },
@@ -682,6 +707,7 @@
 
             // 兜底解析应用业务参数：fastJump 内部已解析过，但如果 fastJump 未命中
             // （无 h 或未安装），走正常流程时 _appParams 仍为初始空对象，这里补一次。
+            // u/h/app 均为 run-app 保留参数，不透传给应用。
             if (
               !this._appParams ||
               Object.keys(this._appParams).length === 0
@@ -689,7 +715,7 @@
               const sp = new URLSearchParams(window.location.search || "");
               const appParams = {};
               for (const [k, v] of sp.entries()) {
-                if (k !== "u" && k !== "h") appParams[k] = v;
+                if (k !== "u" && k !== "h" && k !== "app") appParams[k] = v;
               }
               this._appParams = appParams;
             }
@@ -757,39 +783,205 @@
             };
           },
 
+          // ============ 安装主流程（步骤 3~9）============
+          // runInstall 只做编排：每个阶段是独立方法，失败时自行调用 fail() 并返回
+          // null / false，调用方据此 return。这样每个阶段的业务、进度、诊断、错误
+          // 处理都内聚在一处，避免 278 行巨型方法。
+          //
+          // 入口按 parseShareLink 返回的 kind 分流：
+          //  - "official"：官方应用，走 HTTP 安装（installOfficialApp），跳过 P2P
+          //  - "p2p"：用户应用，走 P2P 分发（connectAndFetchPayload → ...）
           async runInstall() {
-            const { storage, shareMgr } = this._modules;
-            const {
-              parseShareUrl,
-              ensureUser,
-              ensurePublisher,
-              isPublicKeyOfUser,
-            } = shareMgr;
-
             diag.mark("runInstall start");
             this.step = "verifying";
 
             // 步骤 3：解析短链接
+            const parsed = await this.parseShareLink();
+            if (!parsed) return;
+
+            if (parsed.kind === "official") {
+              await this.runOfficialInstall(parsed.officialId);
+              return;
+            }
+
+            // 步骤 4：连接发布者 → 获取分享清单
+            const fetched = await this.connectAndFetchPayload(parsed);
+            if (!fetched) return;
+            const { payload, remoteUser, publisher } = fetched;
+            this.setMeta(payload);
+
+            // 步骤 5：检查本地已装应用（含自我分享判断 + 跳过逻辑）
+            const check = await this.checkInstalledAndMaybeSkip(payload);
+            if (!check) return;
+            if (check.skip) {
+              this.enterStep(TOTAL_STEPS);
+              this.setProgress(100, "已是最新，正在跳转...");
+              this.goApp(check.recordName);
+              return;
+            }
+
+            // 步骤 6：若本地已有其它应用则等待用户确认
+            if (!(await this.maybeConfirmInstall(payload))) return;
+
+            // 步骤 7 / 8 / 9：拉取应用清单 → 下载写入 → 启动
+            await this.downloadAndLaunch({
+              publisher,
+              remoteUser,
+              payload,
+              payloadHash: parsed.payloadHash,
+              installed: check.installed,
+            });
+          },
+
+          // 步骤 3：解析短链接。
+          // 返回 { kind, ...params } | null（null=已fail）
+          //  - { kind:"p2p", publisherUserId, payloadHash }
+          //  - { kind:"official", officialId }
+          async parseShareLink() {
+            const { parseShareUrl } = this._modules.shareMgr;
             this.enterStep(3);
-            this.appProgress(5, "解析短链接...");
+            this.appProgress(STEP.parseLink.pct, STEP.parseLink.text);
             const parsed = parseShareUrl(window.location.search);
             if (!parsed) {
               this.fail(
                 "分享链接无效",
-                new Error("未在 URL 中检测到分享参数（?u=...&h=...）。"),
+                new Error("未在 URL 中检测到分享参数（?u=...&h=... 或 ?app=...）。"),
               );
-              return;
+              return null;
+            }
+            if (parsed.kind === "official") {
+              diag.mark("parsed official shareUrl", {
+                officialId: parsed.officialId,
+              });
+              return parsed;
             }
             const { userId: publisherUserId, payloadHash } = parsed;
             diag.mark("parsed shareUrl", {
               userIdHead: publisherUserId.slice(0, 8),
               payloadHashHead: payloadHash.slice(0, 8),
             });
+            return { publisherUserId, payloadHash };
+          },
 
-            // 步骤 4：连接发布者 → 拉取分享清单 → 校验签发者
+          // ============ 官方应用 HTTP 安装分支 ============
+          // 官方应用作为同源公共资源（/official-apps/<id>/），通过 HTTP 直接拉取，
+          // 无需 P2P。流程：读 meta → 检查已装/版本 → 写入文件 → 记录 → 跳转。
+          // 记录字段与 market.html 的 installApp 保持一致，保证应用列表行为统一。
+          async runOfficialInstall(officialId) {
+            const { storage, init } = this._modules;
+            const namespace = "mazmot-apps";
+
+            try {
+              // 步骤 3 续：拉取官方应用元数据
+              this.appProgress(
+                STEP.fetchPayload.pct,
+                "拉取官方应用信息...",
+              );
+              const meta = await loadOfficialAppMeta(officialId);
+              if (!meta) {
+                this.fail(
+                  "官方应用不存在",
+                  new Error(`未找到官方应用：${officialId}`),
+                );
+                return;
+              }
+              diag.mark("official meta loaded", {
+                id: officialId,
+                version: meta.version,
+              });
+              this.setMeta({
+                icon: meta.icon,
+                displayName: meta.name,
+                version: meta.version,
+              });
+
+              // 步骤 5：检查本地是否已安装该官方应用 + 版本比对
+              this.enterStep(5);
+              this.appProgress(
+                STEP.checkInstalled.pct,
+                STEP.checkInstalled.text,
+              );
+              const apps = (await storage.apps) || [];
+              const existing = findOfficialInstalled(apps, officialId);
+              if (
+                existing &&
+                isOfficialUpToDate(
+                  existing.version || "",
+                  meta.version,
+                  compareVersions,
+                )
+              ) {
+                // 已是最新 → 直接跳转
+                diag.mark("official already installed", {
+                  name: existing.name,
+                });
+                this.enterStep(TOTAL_STEPS);
+                this.setProgress(100, "已是最新，正在跳转...");
+                this.goApp(existing.name);
+                return;
+              }
+
+              // 步骤 7/8：写入应用文件（复用官方应用市场的 installOfficialApp）
+              this.enterStep(7);
+              this.appProgress(STEP.writeNew.pct, STEP.writeNew.text);
+              const rootDir = await init(namespace);
+              const vHandle = await rootDir.get(officialId, {
+                create: "dir",
+              });
+              diag.mark("official install start");
+              await installOfficialApp({
+                dirHandle: vHandle,
+                appId: officialId,
+                onProgress: ({ path, status }) => {
+                  this.appProgress(
+                    STEP.writeNew.pct,
+                    status === "writing"
+                      ? `正在写入 ${path} ...`
+                      : `已写入 ${path}`,
+                  );
+                },
+              });
+              diag.mark("official install done");
+
+              // 步骤：记录到 storage.apps
+              this.appProgress(STEP.record.pct, STEP.record.text);
+              if (existing) {
+                // 更新已装记录的版本号
+                existing.version = meta.version;
+                existing.desc = meta.desc || existing.desc || "";
+                await storage.setItem("apps", apps);
+              } else {
+                apps.push({
+                  name: officialId,
+                  desc: meta.desc || "",
+                  handle: null,
+                  dirName: `${namespace}/${officialId}`,
+                  source: "official",
+                  namespace,
+                  officialId,
+                  version: meta.version,
+                  createdAt: Date.now(),
+                });
+                await storage.setItem("apps", apps);
+              }
+
+              // 步骤 9：启动应用
+              this.enterStep(TOTAL_STEPS);
+              this.setProgress(100, "启动应用...");
+              this.goApp(officialId);
+            } catch (err) {
+              this.fail("安装官方应用失败", err);
+            }
+          },
+
+          // 步骤 4：连接发布者 → 拉取分享清单 → 校验签发者。
+          // 返回 { payload, remoteUser, publisher } | null（null=已fail）
+          async connectAndFetchPayload({ publisherUserId, payloadHash }) {
+            const { shareMgr } = this._modules;
+            const { ensurePublisher, isPublicKeyOfUser } = shareMgr;
+
             this.enterStep(4);
-            this.appProgress(8, "连接发布者...");
-            let payload = null;
+            this.appProgress(STEP.connectPub.pct, STEP.connectPub.text);
             let remoteUser = null;
             let publisher = null;
             try {
@@ -802,7 +994,7 @@
 
               // 等待本地用户连上信令服务器后再 connectUser，
               // 否则 connectedUrls 为空会立刻抛 "not online on any connected server"。
-              this.appProgress(8, "连接信令服务器...");
+              this.appProgress(STEP.connectSrv.pct, STEP.connectSrv.text);
               const srv = await ensureServerConnected(ctx.user);
               this.updateHandshakeStatus();
               diag.mark("ensureServerConnected done", {
@@ -848,7 +1040,7 @@
 
               // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
               // 如果 3s 内没升上来，就继续走 relay，不阻塞。
-              this.appProgress(9, "等待建立直连通道...");
+              this.appProgress(STEP.waitRtc.pct, STEP.waitRtc.text);
               const waited = await waitForRtcReady(remoteUser, 3000);
               diag.mark("waitForRtcReady done", waited);
 
@@ -858,15 +1050,21 @@
               this.pathHint = formatPathHint(rttInfo);
               if (rttInfo) {
                 if (rttInfo.via === "rtc") {
-                  this.appProgress(10, "已连接发布者（RTC 直连）");
+                  this.appProgress(
+                    STEP.connectedRtc.pct,
+                    STEP.connectedRtc.text,
+                  );
                 } else if (rttInfo.via === "server") {
-                  this.appProgress(10, "已连接发布者（经中继）");
+                  this.appProgress(
+                    STEP.connectedRelay.pct,
+                    STEP.connectedRelay.text,
+                  );
                 }
               }
 
-              this.appProgress(14, "拉取分享清单...");
+              this.appProgress(STEP.fetchPayload.pct, STEP.fetchPayload.text);
               diag.mark("payload requestManifest start");
-              payload = await fetchSharePayload({
+              const payload = await fetchSharePayload({
                 publisher,
                 remoteUser,
                 payloadHash,
@@ -879,7 +1077,10 @@
                       chunks: evt.chunks,
                       fileSize: evt.fileSize,
                     });
-                    this.appProgress(18, "下载分享清单内容...");
+                    this.appProgress(
+                      STEP.payloadChunks.pct,
+                      STEP.payloadChunks.text,
+                    );
                   } else if (evt.type === "chunk-retry") {
                     diag.logEvent("chunk retry", {
                       label: evt.label,
@@ -890,22 +1091,28 @@
                 },
               });
               diag.mark("payload assembled");
+              return { payload, remoteUser, publisher };
             } catch (err) {
               if (err && err.code === "PAYLOAD_SIGNER_MISMATCH") {
                 this.fail("签发者身份不匹配", err);
               } else {
                 this.fail("获取分享清单失败", err);
               }
-              return;
+              return null;
             }
-            this._payload = payload;
-            this._remoteUser = remoteUser;
-            this._publisher = publisher;
-            this.setMeta(payload);
+          },
 
-            // 步骤 5：检查本地已装应用
+          // 步骤 5：检查本地已装应用 + 自我分享判断 + 跳过逻辑。
+          // 返回 { skip: true, recordName } | { skip: false, installed } | null（null=已fail）
+          async checkInstalledAndMaybeSkip(payload) {
+            const { storage, shareMgr } = this._modules;
+            const { ensureUser } = shareMgr;
+
             this.enterStep(5);
-            this.appProgress(22, "检查本地已装应用...");
+            this.appProgress(
+              STEP.checkInstalled.pct,
+              STEP.checkInstalled.text,
+            );
             let installed = null;
             try {
               installed = await findInstalled(payload, {
@@ -920,9 +1127,8 @@
               });
             } catch (err) {
               this.fail("检查本地已装应用失败", err);
-              return;
+              return null;
             }
-            this._installed = installed;
 
             // 自我分享
             let isSelfShare = false;
@@ -939,59 +1145,72 @@
               console.warn("获取当前用户失败：", err);
             }
 
-            // 已安装且版本一致 or 自我分享 → 直接跳转
+            // 已安装且内容一致 or 自我分享 → 直接跳转
             if (shouldSkipInstall(installed, payload, isSelfShare)) {
-              this.enterStep(TOTAL_STEPS);
-              this.setProgress(100, "已是最新，正在跳转...");
-              this.goApp(installed.record.name);
-              return;
+              return { skip: true, recordName: installed.record.name };
             }
+            return { skip: false, installed };
+          },
 
-            // 步骤 6：若本地已有其它应用则等待用户确认
+          // 步骤 6：若本地已有其它应用则等待用户确认。
+          // 返回 true（继续安装）| false（取消/失败，调用方应 return）
+          async maybeConfirmInstall(payload) {
+            const { storage } = this._modules;
             try {
               const allApps = (await storage.apps) || [];
               const others = filterOtherApps(allApps, payload);
-              if (others.length > 0) {
-                this.enterStep(6);
-                this.otherApps = others.map(formatOtherAppEntry);
-                this.setProgress(CORE_END, "等待用户确认安装...");
-                diag.mark("confirm shown");
-                const agreed = await new Promise((resolve) => {
-                  this._confirmResolver = resolve;
-                  this.titleText = "确认安装此应用？";
-                  this.subtitleText = `${payload.displayName || payload.recordName || ""} v${payload.version || "0.1.0"}`;
-                  this.step = "confirm";
-                });
-                this._confirmResolver = null;
-                diag.mark(agreed ? "confirm agreed" : "confirm canceled");
-                if (!agreed) {
-                  this.fail(
-                    "已取消安装",
-                    new Error("你取消了此次应用安装。"),
-                  );
-                  return;
-                }
-                this.setMeta(payload);
-                this.step = "installing";
+              if (others.length === 0) return true;
+
+              this.enterStep(6);
+              this.otherApps = others.map(formatOtherAppEntry);
+              this.setProgress(CORE_END, "等待用户确认安装...");
+              diag.mark("confirm shown");
+              const agreed = await new Promise((resolve) => {
+                this._confirmResolver = resolve;
+                this.titleText = "确认安装此应用？";
+                this.subtitleText = `${payload.displayName || payload.recordName || ""} v${payload.version || "0.1.0"}`;
+                this.step = "confirm";
+              });
+              this._confirmResolver = null;
+              diag.mark(agreed ? "confirm agreed" : "confirm canceled");
+              if (!agreed) {
+                this.fail(
+                  "已取消安装",
+                  new Error("你取消了此次应用安装。"),
+                );
+                return false;
               }
+              this.setMeta(payload);
+              this.step = "installing";
+              return true;
             } catch (err) {
               console.warn("读取本地应用列表失败：", err);
+              return true;
             }
+          },
 
-            // 步骤 7 / 8：拉取应用清单 → 下载并写入
+          // 步骤 7 / 8 / 9：拉取应用清单 → 下载写入 → 启动应用。
+          async downloadAndLaunch({
+            publisher,
+            remoteUser,
+            payload,
+            payloadHash,
+            installed,
+          }) {
+            const { shareMgr } = this._modules;
             try {
               this.enterStep(7);
-              this.appProgress(30, "拉取应用清单...");
+              this.appProgress(STEP.appManifest.pct, STEP.appManifest.text);
               diag.mark("app requestManifest start", {
                 pathNow: pathInfoOf(this._remoteUser),
               });
               const recordName = await installAppPackage({
-                publisher: this._publisher,
-                remoteUser: this._remoteUser,
+                publisher,
+                remoteUser,
                 payload,
                 payloadHash,
                 existingRecord: installed ? installed.record : null,
-                storage,
+                storage: this._modules.storage,
                 init: this._modules.init,
                 PACKAGE_VERSION: shareMgr.PACKAGE_VERSION,
                 onEvent: (evt) => {
@@ -1014,16 +1233,16 @@
                     });
                   } else if (evt.type === "assemble") {
                     this.enterStep(8);
-                    this.appProgress(78, "组装应用包...");
+                    this.appProgress(STEP.assemble.pct, STEP.assemble.text);
                   } else if (evt.type === "write") {
                     this.appProgress(
-                      82,
+                      STEP.writeUpdate.pct,
                       evt.isUpdate
-                        ? "覆盖写入应用文件..."
-                        : "写入虚拟文件系统...",
+                        ? STEP.writeUpdate.text
+                        : STEP.writeNew.text,
                     );
                   } else if (evt.type === "record") {
-                    this.appProgress(92, "记录应用信息...");
+                    this.appProgress(STEP.record.pct, STEP.record.text);
                   }
                 },
               });

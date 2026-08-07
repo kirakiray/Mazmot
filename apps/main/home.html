@@ -453,7 +453,7 @@
                       </div>
                     </o-if>
                     <div class="sub-info-row" style="margin: 0 0 4px">
-                      <span class="sub-info-label">自动分享：</span>
+                      <span class="sub-info-label">分享：</span>
                       <div class="auto-share-row" style="flex: 1; min-width: 0">
                         <div class="auto-share-header">
                           <p-switch
@@ -603,6 +603,7 @@
       generateAppId,
       publishApp,
       unpublishApp,
+      buildOfficialRunUrl,
     } from "/lib/share-mgr.js";
     import { syncOfficialAppState } from "./lib/official-app-state.js";
     import {
@@ -746,7 +747,7 @@
               });
             },
           });
-          // 首次进入页面时，为所有已开启自动分享的应用发布一次
+          // 首次进入页面时，为所有已开启分享的应用发布一次
           this._runAutoShareAll();
           // 检查官方应用是否有新版本
           this._checkOfficialUpdates();
@@ -886,7 +887,7 @@
             const apps = await loadApps();
             this.appList.length = 0;
             apps.forEach((app) => this.appList.push(app));
-            // 刷新后再对已开启自动分享的应用执行一次发布
+            // 刷新后再对已开启分享的应用执行一次发布
             this._runAutoShareAll();
             // 刷新后重新检查官方应用更新
             this._checkOfficialUpdates();
@@ -977,7 +978,7 @@
             });
           },
 
-          // 打开分享二维码弹窗（链接已由自动分享发布好）
+          // 打开分享二维码弹窗（链接已由分享发布好）
           showShareQrCode(event, app) {
             if (event) {
               event.stopPropagation();
@@ -991,7 +992,7 @@
             this.shareDialogOpen = true;
           },
 
-          // 切换某个应用的"自动分享"开关（sync:value 已把新值写回 app.autoShareValue）
+          // 切换某个应用的"分享"开关（sync:value 已把新值写回 app.autoShareValue）
           async handleAutoShareToggle(event, app) {
             if (event) {
               event.stopPropagation();
@@ -1009,10 +1010,13 @@
             });
 
             if (!nextChecked) {
-              // 关闭时撤销发布，让旧的分享链接失效
-              unpublishApp(target).catch((err) =>
-                console.warn("撤销分享失败：", err),
-              );
+              // 关闭时撤销发布，让旧的分享链接失效。
+              // 官方应用走 HTTP 链接、没发布 P2P payload，无需 unpublish。
+              if (target.source !== "official") {
+                unpublishApp(target).catch((err) =>
+                  console.warn("撤销分享失败：", err),
+                );
+              }
               target.autoShareUrl = "";
               target.autoShareState = "idle";
               target.autoShareStatus = "已关闭";
@@ -1022,9 +1026,26 @@
             await this.autoShareApp(target);
           },
 
-          // 对单个已开启自动分享的应用执行发布，写回状态
+          // 对单个已开启分享的应用执行发布，写回状态。
+          // 官方应用走同源 HTTP 链接（?app=<officialId>），接收端直接拉取
+          // /official-apps/，无需 P2P 分发、不依赖发布者在线。
+          // 其余应用走 P2P：读取文件 → 打包 → publish → 生成 u/h 短链接。
           async autoShareApp(target) {
-            if (!target || !target._handle) {
+            if (!target) return;
+
+            // 官方应用分支
+            if (target.source === "official" && target.officialId) {
+              target.autoShareState = "ready";
+              target.autoShareStatus = "官方应用，对方可直接连接";
+              target.autoShareUrl = buildOfficialRunUrl(
+                location.origin,
+                target.officialId,
+              );
+              return;
+            }
+
+            // P2P 分支
+            if (!target._handle) {
               target.autoShareState = "error";
               target.autoShareStatus = "缺少目录句柄，无法发布";
               return;
@@ -1058,7 +1079,7 @@
                 });
               }
             } catch (err) {
-              console.error("自动分享失败：", err);
+              console.error("分享失败：", err);
               target.autoShareState = "error";
               target.autoShareStatus =
                 "发布失败：" + (err.message || String(err));
@@ -1068,7 +1089,7 @@
             }
           },
 
-          // 重新获取目录句柄权限并重试自动分享
+          // 重新获取目录句柄权限并重试分享
           async requestPermissionAndRetry(event, target) {
             if (event) {
               event.stopPropagation();

@@ -141,6 +141,17 @@ npm run static
 # → http://localhost:30031/
 ```
 
+> **Note**: For full-featured local debugging (P2P handshakes, decentralized user connections, app sharing), you also need to run the local handshake server provided by [NoneOS Core](https://github.com/kirakiray/noneos-core):
+
+```bash
+git clone https://github.com/kirakiray/noneos-core.git
+cd noneos-core
+npm install
+npm run ws
+```
+
+Keep the handshake server running in a separate terminal while developing Mazmot, otherwise P2P-dependent features (app sharing, user-to-user messaging, etc.) will not work end-to-end.
+
 ### 3. Add and run your first app
 
 1. Click "Add App" on the main screen

@@ -135,16 +135,18 @@ noneos-core 有两条传输路径，二进制监听必须绑定在 **remoteUser*
 
 ### 分享链接
 
-通过 `/lib/share-mgr.js` 的 `publishApp` 生成分享 URL，URL 参数包含 `host=<serverUserId>`。
+通过 `/lib/share-mgr.js` 的 `buildOfficialRunUrl` 生成官方应用 HTTP 渠道分享 URL（`?app=cloud-drive&host=<serverUserId>`），客户从 `/official-apps/cloud-drive/` 同源拉取安装，无需发布者保持在线；`host` 参数由 run-app 透传给应用，用于 P2P 客户端通信。
 
 ## 用户端详细设计
 
 ### 会话恢复
 
-- 认证成功后保存到 `sessionStorage`（key: `cloud-drive-session`）：`{ serverUserId, username, password, currentPath }`
-- 页面刷新时 `attached()` 自动读取并调用 `connect()` 重连
+- 认证成功后保存到 sessionStorage（key: `cloud-drive-session`）：`{ serverUserId, username, password, currentPath }`
+- 文件列表缓存到 sessionStorage（key: `cloud-drive-list-cache`）：`{ path, items }`，每次 `handleListResult` 成功时更新
+- 页面刷新时 `attached()` 乐观恢复：先用缓存数据展示文件浏览器（`connected = true` + 缓存的 `fileList`），再后台自动重连
+- 自动重连成功 → `refreshList()` 刷新最新列表；失败 → `connected = false` 回到登录界面（保留表单数据供用户重试）
 - 导航目录时 `_updateSessionPath()` 实时更新路径
-- 用户主动返回或服务端断线时清除会话
+- 用户主动返回或服务端断线时清除会话 + 列表缓存
 
 ### 连接流程
 
@@ -196,6 +198,7 @@ noneos-core 的 `#handleBinaryRelay` 有 `await blob.arrayBuffer()` 异步操作
 | 挂载点列表 | ever-cache (IndexedDB) | `cd-mounts` |
 | 用户凭证 | ever-cache (IndexedDB) | `cd-users` |
 | 客户端会话 | sessionStorage | `cloud-drive-session` |
+| 客户端文件列表缓存 | sessionStorage | `cloud-drive-list-cache` |
 | 上传/下载 transfer 状态 | 内存 Map | — |
 
 **注意**：ever-cache 不能直接存储 ofa.js Proxy 对象，必须用 `JSON.parse(JSON.stringify())` 去壳。
