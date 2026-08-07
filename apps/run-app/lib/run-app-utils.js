@@ -212,3 +212,34 @@ export function buildAppUrlWithParams(baseUrl, appParams) {
   const sep = baseUrl.includes("?") ? "&" : "?";
   return baseUrl + sep + extra;
 }
+
+/**
+ * 在 apps 列表里查找 officialId 匹配的已装官方应用记录。
+ * 官方应用通过 HTTP 直接拉取安装，不走 P2P，因此按 source==="official" + officialId 匹配。
+ * @param {Array} apps
+ * @param {string} officialId
+ * @returns {object|null}
+ */
+export function findOfficialInstalled(apps, officialId) {
+  if (!Array.isArray(apps) || !officialId) return null;
+  return (
+    apps.find(
+      (a) => a && a.source === "official" && a.officialId === officialId,
+    ) || null
+  );
+}
+
+/**
+ * 判断官方应用是否已是最新版本。
+ * 官方应用没有 payloadHash/fileHash，用 compareVersions 比对版本号。
+ * @param {string} installedVersion - 已装记录的版本号
+ * @param {string} latestVersion - /official-apps/ 当前版本号
+ * @param {function} compareVersions - 版本号比较函数（a>b 返回 1）
+ * @returns {boolean} true 表示已是最新（可跳过安装直接跳转）
+ */
+export function isOfficialUpToDate(installedVersion, latestVersion, compareVersions) {
+  const iv = String(installedVersion || "").trim();
+  const lv = String(latestVersion || "").trim();
+  if (!iv || !lv) return false;
+  return compareVersions(iv, lv) >= 0;
+}

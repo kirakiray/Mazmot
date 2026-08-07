@@ -603,6 +603,7 @@
       generateAppId,
       publishApp,
       unpublishApp,
+      buildOfficialRunUrl,
     } from "/lib/share-mgr.js";
     import { syncOfficialAppState } from "./lib/official-app-state.js";
     import {
@@ -1009,10 +1010,13 @@
             });
 
             if (!nextChecked) {
-              // 关闭时撤销发布，让旧的分享链接失效
-              unpublishApp(target).catch((err) =>
-                console.warn("撤销分享失败：", err),
-              );
+              // 关闭时撤销发布，让旧的分享链接失效。
+              // 官方应用走 HTTP 链接、没发布 P2P payload，无需 unpublish。
+              if (target.source !== "official") {
+                unpublishApp(target).catch((err) =>
+                  console.warn("撤销分享失败：", err),
+                );
+              }
               target.autoShareUrl = "";
               target.autoShareState = "idle";
               target.autoShareStatus = "已关闭";
@@ -1022,9 +1026,26 @@
             await this.autoShareApp(target);
           },
 
-          // 对单个已开启自动分享的应用执行发布，写回状态
+          // 对单个已开启自动分享的应用执行发布，写回状态。
+          // 官方应用走同源 HTTP 链接（?app=<officialId>），接收端直接拉取
+          // /official-apps/，无需 P2P 分发、不依赖发布者在线。
+          // 其余应用走 P2P：读取文件 → 打包 → publish → 生成 u/h 短链接。
           async autoShareApp(target) {
-            if (!target || !target._handle) {
+            if (!target) return;
+
+            // 官方应用分支
+            if (target.source === "official" && target.officialId) {
+              target.autoShareState = "ready";
+              target.autoShareStatus = "官方应用，对方可直接连接";
+              target.autoShareUrl = buildOfficialRunUrl(
+                location.origin,
+                target.officialId,
+              );
+              return;
+            }
+
+            // P2P 分支
+            if (!target._handle) {
               target.autoShareState = "error";
               target.autoShareStatus = "缺少目录句柄，无法发布";
               return;

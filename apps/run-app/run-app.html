@@ -378,6 +378,8 @@
         shouldSkipInstall,
         findByPayloadHash,
         buildAppUrlWithParams,
+        findOfficialInstalled,
+        isOfficialUpToDate,
       } = utils;
       const diagMod = await load("./lib/diag.js");
       const {
@@ -397,6 +399,12 @@
       const installFlow = await load("./lib/install-flow.js");
       const { fetchSharePayload, findInstalled, installAppPackage } =
         installFlow;
+      // 官方应用 HTTP 安装分支复用官方应用市场的写入器
+      const officialAppWriter = await load(
+        "/apps/main/home/official-app-writer.js",
+      );
+      const { loadOfficialAppMeta, compareVersions, installOfficialApp } =
+        officialAppWriter;
       const diag = createDiag();
       diag.mark("page module ready");
 
@@ -699,6 +707,7 @@
 
             // 兜底解析应用业务参数：fastJump 内部已解析过，但如果 fastJump 未命中
             // （无 h 或未安装），走正常流程时 _appParams 仍为初始空对象，这里补一次。
+            // u/h/app 均为 run-app 保留参数，不透传给应用。
             if (
               !this._appParams ||
               Object.keys(this._appParams).length === 0
@@ -706,7 +715,7 @@
               const sp = new URLSearchParams(window.location.search || "");
               const appParams = {};
               for (const [k, v] of sp.entries()) {
-                if (k !== "u" && k !== "h") appParams[k] = v;
+                if (k !== "u" && k !== "h" && k !== "app") appParams[k] = v;
               }
               this._appParams = appParams;
             }
@@ -778,6 +787,10 @@
           // runInstall 只做编排：每个阶段是独立方法，失败时自行调用 fail() 并返回
           // null / false，调用方据此 return。这样每个阶段的业务、进度、诊断、错误
           // 处理都内聚在一处，避免 278 行巨型方法。
+          //
+          // 入口按 parseShareLink 返回的 kind 分流：
+          //  - "official"：官方应用，走 HTTP 安装（installOfficialApp），跳过 P2P
+          //  - "p2p"：用户应用，走 P2P 分发（connectAndFetchPayload → ...）
           async runInstall() {
             diag.mark("runInstall start");
             this.step = "verifying";
@@ -785,6 +798,11 @@
             // 步骤 3：解析短链接
             const parsed = await this.parseShareLink();
             if (!parsed) return;
+
+            if (parsed.kind === "official") {
+              await this.runOfficialInstall(parsed.officialId);
+              return;
+            }
 
             // 步骤 4：连接发布者 → 获取分享清单
             const fetched = await this.connectAndFetchPayload(parsed);
@@ -815,7 +833,10 @@
             });
           },
 
-          // 步骤 3：解析短链接。返回 { publisherUserId, payloadHash } | null（null=已fail）
+          // 步骤 3：解析短链接。
+          // 返回 { kind, ...params } | null（null=已fail）
+          //  - { kind:"p2p", publisherUserId, payloadHash }
+          //  - { kind:"official", officialId }
           async parseShareLink() {
             const { parseShareUrl } = this._modules.shareMgr;
             this.enterStep(3);
@@ -824,9 +845,15 @@
             if (!parsed) {
               this.fail(
                 "分享链接无效",
-                new Error("未在 URL 中检测到分享参数（?u=...&h=...）。"),
+                new Error("未在 URL 中检测到分享参数（?u=...&h=... 或 ?app=...）。"),
               );
               return null;
+            }
+            if (parsed.kind === "official") {
+              diag.mark("parsed official shareUrl", {
+                officialId: parsed.officialId,
+              });
+              return parsed;
             }
             const { userId: publisherUserId, payloadHash } = parsed;
             diag.mark("parsed shareUrl", {
@@ -834,6 +861,117 @@
               payloadHashHead: payloadHash.slice(0, 8),
             });
             return { publisherUserId, payloadHash };
+          },
+
+          // ============ 官方应用 HTTP 安装分支 ============
+          // 官方应用作为同源公共资源（/official-apps/<id>/），通过 HTTP 直接拉取，
+          // 无需 P2P。流程：读 meta → 检查已装/版本 → 写入文件 → 记录 → 跳转。
+          // 记录字段与 market.html 的 installApp 保持一致，保证应用列表行为统一。
+          async runOfficialInstall(officialId) {
+            const { storage, init } = this._modules;
+            const namespace = "mazmot-apps";
+
+            try {
+              // 步骤 3 续：拉取官方应用元数据
+              this.appProgress(
+                STEP.fetchPayload.pct,
+                "拉取官方应用信息...",
+              );
+              const meta = await loadOfficialAppMeta(officialId);
+              if (!meta) {
+                this.fail(
+                  "官方应用不存在",
+                  new Error(`未找到官方应用：${officialId}`),
+                );
+                return;
+              }
+              diag.mark("official meta loaded", {
+                id: officialId,
+                version: meta.version,
+              });
+              this.setMeta({
+                icon: meta.icon,
+                displayName: meta.name,
+                version: meta.version,
+              });
+
+              // 步骤 5：检查本地是否已安装该官方应用 + 版本比对
+              this.enterStep(5);
+              this.appProgress(
+                STEP.checkInstalled.pct,
+                STEP.checkInstalled.text,
+              );
+              const apps = (await storage.apps) || [];
+              const existing = findOfficialInstalled(apps, officialId);
+              if (
+                existing &&
+                isOfficialUpToDate(
+                  existing.version || "",
+                  meta.version,
+                  compareVersions,
+                )
+              ) {
+                // 已是最新 → 直接跳转
+                diag.mark("official already installed", {
+                  name: existing.name,
+                });
+                this.enterStep(TOTAL_STEPS);
+                this.setProgress(100, "已是最新，正在跳转...");
+                this.goApp(existing.name);
+                return;
+              }
+
+              // 步骤 7/8：写入应用文件（复用官方应用市场的 installOfficialApp）
+              this.enterStep(7);
+              this.appProgress(STEP.writeNew.pct, STEP.writeNew.text);
+              const rootDir = await init(namespace);
+              const vHandle = await rootDir.get(officialId, {
+                create: "dir",
+              });
+              diag.mark("official install start");
+              await installOfficialApp({
+                dirHandle: vHandle,
+                appId: officialId,
+                onProgress: ({ path, status }) => {
+                  this.appProgress(
+                    STEP.writeNew.pct,
+                    status === "writing"
+                      ? `正在写入 ${path} ...`
+                      : `已写入 ${path}`,
+                  );
+                },
+              });
+              diag.mark("official install done");
+
+              // 步骤：记录到 storage.apps
+              this.appProgress(STEP.record.pct, STEP.record.text);
+              if (existing) {
+                // 更新已装记录的版本号
+                existing.version = meta.version;
+                existing.desc = meta.desc || existing.desc || "";
+                await storage.setItem("apps", apps);
+              } else {
+                apps.push({
+                  name: officialId,
+                  desc: meta.desc || "",
+                  handle: null,
+                  dirName: `${namespace}/${officialId}`,
+                  source: "official",
+                  namespace,
+                  officialId,
+                  version: meta.version,
+                  createdAt: Date.now(),
+                });
+                await storage.setItem("apps", apps);
+              }
+
+              // 步骤 9：启动应用
+              this.enterStep(TOTAL_STEPS);
+              this.setProgress(100, "启动应用...");
+              this.goApp(officialId);
+            } catch (err) {
+              this.fail("安装官方应用失败", err);
+            }
           },
 
           // 步骤 4：连接发布者 → 拉取分享清单 → 校验签发者。
