@@ -17,6 +17,7 @@
     .app-header {
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 16px;
       margin-bottom: 20px;
     }
@@ -32,29 +33,19 @@
       background: linear-gradient(
         135deg,
         var(--md-sys-color-primary),
-        rgb(from var(--md-sys-color-primary) calc(r + 40) calc(g - 20) calc(b + 30))
+        rgb(
+          from var(--md-sys-color-primary) calc(r + 40) calc(g - 20)
+            calc(b + 30)
+        )
       );
       color: var(--md-sys-color-on-primary);
       font-size: 26px;
     }
 
-    .brand-text h1 {
-      margin: 0;
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--md-sys-color-on-surface);
-    }
-
-    .brand-text p {
-      margin: 4px 0 0;
-      font-size: 13px;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-
     .toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
       gap: 12px;
       margin-bottom: 20px;
       flex-wrap: wrap;
@@ -63,10 +54,9 @@
     .group-bar {
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       flex-wrap: wrap;
-      flex: 1;
-      min-width: 0;
     }
 
     .group-bar o-fill {
@@ -83,7 +73,9 @@
       font: inherit;
       font-size: 13px;
       cursor: pointer;
-      background-color: rgb(from var(--md-sys-color-surface-variant) r g b / 0.5);
+      background-color: rgb(
+        from var(--md-sys-color-surface-variant) r g b / 0.5
+      );
       color: var(--md-sys-color-on-surface-variant);
       transition: background-color 0.15s ease;
     }
@@ -99,8 +91,9 @@
     }
 
     .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
       gap: 16px;
     }
 
@@ -108,7 +101,33 @@
       display: contents;
     }
 
+    .add-tile {
+      width: 150px;
+      min-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      border: 2px dashed
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.4);
+      background: none;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 32px;
+      cursor: pointer;
+      transition:
+        border-color 0.15s ease,
+        color 0.15s ease,
+        transform 0.15s ease;
+    }
+
+    .add-tile:hover {
+      border-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-primary);
+      transform: translateY(-2px);
+    }
+
     .tile {
+      width: 150px;
       position: relative;
       display: flex;
       flex-direction: column;
@@ -116,7 +135,9 @@
       gap: 10px;
       padding: 20px 12px 16px;
       border-radius: 20px;
-      background-color: rgb(from var(--md-sys-color-surface-variant) r g b / 0.4);
+      background-color: rgb(
+        from var(--md-sys-color-surface-variant) r g b / 0.4
+      );
       border: 1px solid rgb(from var(--md-sys-color-on-surface) r g b / 0.12);
       cursor: pointer;
       user-select: none;
@@ -188,34 +209,6 @@
       opacity: 1;
     }
 
-    .add-tile {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 140px;
-      border-radius: 20px;
-      border: 2px dashed rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.4);
-      background: none;
-      color: var(--md-sys-color-on-surface-variant);
-      font: inherit;
-      font-size: 13px;
-      cursor: pointer;
-      transition:
-        border-color 0.15s ease,
-        color 0.15s ease;
-    }
-
-    .add-tile:hover {
-      border-color: var(--md-sys-color-primary);
-      color: var(--md-sys-color-primary);
-    }
-
-    .add-tile n-icon {
-      font-size: 28px;
-    }
-
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -236,7 +229,7 @@
       display: flex;
       flex-direction: column;
       gap: 24px;
-      padding: 16px 0 8px;
+      padding: 16px;
     }
 
     .dialog-form p-input {
@@ -277,12 +270,16 @@
 
     @media (max-width: 600px) {
       .grid {
-        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
         gap: 12px;
       }
 
-      .brand-text h1 {
-        font-size: 19px;
+      .tile,
+      .add-tile {
+        width: 110px;
+      }
+
+      .add-tile {
+        min-height: 120px;
       }
     }
   </style>
@@ -297,10 +294,6 @@
       <div class="brand-icon">
         <n-icon icon="mdi:bookmark-multiple"></n-icon>
       </div>
-      <div class="brand-text">
-        <h1>网页收藏夹</h1>
-        <p>Speed Dial 风格的网址快捷入口，数据仅保存在本机</p>
-      </div>
     </header>
 
     <div class="toolbar">
@@ -313,7 +306,7 @@
           <n-icon icon="mdi:apps"></n-icon>
           <span>全部 {{dials.length}}</span>
         </button>
-        <o-fill :value="groups">
+        <o-fill :value="groups" fill-key="name">
           <button
             class="group-chip"
             class:active="$host.activeGroup === $data.name"
@@ -324,18 +317,16 @@
           </button>
         </o-fill>
       </div>
-      <p-button color="primary" on:click="openAdd">
-        <span slot="prefix">
-          <n-icon icon="mdi:plus"></n-icon>
-        </span>
-        添加网址
-      </p-button>
     </div>
 
     <o-if :value="dials.length === 0">
       <div class="empty-state">
         <n-icon icon="mdi:bookmark-outline"></n-icon>
-        <p>还没有收藏任何网址，点击「添加网址」开始吧</p>
+        <p>还没有收藏任何网址</p>
+        <p-button color="primary" size="s" on:click="openAdd">
+          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
+          添加网址
+        </p-button>
       </div>
     </o-if>
 
@@ -381,9 +372,8 @@
             <div class="tile-host">{{$host.hostOf($data.url)}}</div>
           </div>
         </o-fill>
-        <button class="add-tile" on:click="openAdd">
+        <button class="add-tile" on:click="openAdd" attr:aria-label="添加网址">
           <n-icon icon="mdi:plus"></n-icon>
-          <span>添加网址</span>
         </button>
       </div>
     </o-if>
@@ -396,11 +386,7 @@
     </o-if>
   </main>
 
-  <p-dialog
-    sync:open="dialogOpen"
-    auto-close
-    style="--dialog-max-width: 460px"
-  >
+  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
     <span slot="title">{{editingId ? '编辑网址' : '添加网址'}}</span>
     <div class="dialog-form">
       <p-input sync:value="form.url" placeholder="example.com">
@@ -465,9 +451,7 @@
         proto: {
           get visibleDials() {
             if (!this.activeGroup) return this.dials;
-            return this.dials.filter(
-              (dial) => dial.group === this.activeGroup,
-            );
+            return this.dials.filter((dial) => dial.group === this.activeGroup);
           },
 
           get groups() {
@@ -508,7 +492,8 @@
             this.editingId = "";
             this.form.url = "";
             this.form.title = "";
-            this.form.group = this.activeGroup === "未分组" ? "" : this.activeGroup;
+            this.form.group =
+              this.activeGroup === "未分组" ? "" : this.activeGroup;
             this.form.color = PALETTE[this.dials.length % PALETTE.length];
             this.dialogOpen = true;
           },
