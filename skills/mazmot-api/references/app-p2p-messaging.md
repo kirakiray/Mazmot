@@ -262,18 +262,18 @@ async generateLink() {
   const self = this.parseSelfIdentity();
   if (!self) throw new Error("无法识别当前应用的目录路径");
 
-  // 2. 并行加载依赖（页面模块内用 /nos/ /lib/ 前缀，ever-cache 用完整 URL）
-  const [fsMod, cacheMod, shareMgr] = await Promise.all([
+  // 2. 并行加载依赖（页面模块内用 /nos/ /lib/ 本地前缀）
+  const [fsMod, storageMod, shareMgr] = await Promise.all([
     load("/nos/fs/main.js"),
-    load("https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js"),
+    load("/nos/storage/main.js"),
     load("/lib/share-mgr.js"),
   ]);
   const { init } = fsMod;
-  const { storage } = cacheMod;
+  const storage = storageMod.getStorage("mazmot");
   const { publishApp, generateAppId } = shareMgr;
 
-  // 3. 从 storage.apps 找本应用记录（用于补 appId / 回写 payloadHash）
-  const apps = (await storage.apps) || [];
+  // 3. 从 storage 的 apps 键找本应用记录（用于补 appId / 回写 payloadHash）
+  const apps = (await storage.getItem("apps")) || [];
   const { dirName } = self;
   const record =
     apps.find((a) => a.name === dirName || a.virtualDirName === dirName) ||
@@ -531,5 +531,5 @@ detached() {
 - **发布者必须在线**：接收端从发布者 IndexedDB 拉 chunk；host 标签页关闭后，未拉完的 chunk 无法继续，且已建立的 P2P 连接也会断。涉及关闭/切后台/断网的 UI 都要以此为前提。
 - **只支持 UTF-8 文本**：消息载荷是 JSON，不要塞二进制。应用文件分享同样只支持文本（见 [SKILL.md §4](../SKILL.md)）。
 - **无权威方 / 无防作弊**：双方都能本地改状态，依赖「收到消息才改」的约定维持一致性。Demo 性质，不要套用到需要强一致/防作弊的生产场景。
-- **URL 前缀**：页面模块内 `/nos/*`、`/lib/*` 用本地前缀（由 NoneOS Core Service Worker 拦截，离线可用、跨域安全）；`ever-cache` 不走 ofa.js 仓库前缀，沿用完整 jsdelivr URL（见上文代码示例）。
+- **URL 前缀**：页面模块内 `/nos/*`、`/lib/*` 用本地前缀（由 NoneOS Core Service Worker 拦截，离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL（见上文代码示例）。
 - **非响应式对象用 `_` 前缀**：`this._user` / `this._remoteUser` / `this._svc` 等挂到 ofa.js 组件实例时必须以 `_` 开头。

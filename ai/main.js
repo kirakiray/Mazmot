@@ -1,4 +1,4 @@
-import { storage } from "/gh/kirakiray/ever-cache/src/main.min.js";
+import { storage } from "/nos/storage/main.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 
@@ -79,7 +79,7 @@ export const testApiKey = async (apiKey, provider) => {
 
 /**
  * 保存 API Key，返回新保存的 key 对象（含 id，可用于 removeKey / getAssistant）。
- * 写入后自动持久化到 ever-cache，并通知所有 onApiKeysChange 订阅者。
+ * 写入后自动持久化到本地存储（nos storage），并通知所有 onApiKeysChange 订阅者。
  */
 export const saveKey = (apiKey, provider) => {
   const id = Math.random().toString(36).slice(2);

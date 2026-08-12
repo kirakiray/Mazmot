@@ -13,7 +13,7 @@
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
 | 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
 | UI | Punch-UI v2 | Material Design 风格组件（`p-list`、`p-dialog`、`p-button` 等） |
-| 存储 | ever-cache | 基于 IndexedDB 的异步存储（类 localStorage） |
+| 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
@@ -82,10 +82,11 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
+│   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │
 ├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
-│   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 ever-cache）
+│   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
 │   ├── supplier/             # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
 │   ├── demo/                 # 独立 ofa.js demo 应用（api-keys / chat / layout）
 │   └── README.md             # 完整 API 文档
@@ -124,12 +125,12 @@ Mazmot/
 选择应用来源 → 输入应用名 → 校验唯一性
    ├─ 本地目录：open() 选择目录
    │    └─ probeExistingApp(handle)：读 client/app.json（回退根 app.json）
-   │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 storage.apps 并关闭弹窗（不写模板）
+   │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 apps 列表并关闭弹窗（不写模板）
    │         ├─ 命中且用户点「取消」→ 用 manifest.name / description 预填 step2 表单继续
    │         └─ 未命中 → 进入 step2 让用户填名称
    └─ 虚拟目录：确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立子目录
    ↓
-存入 ever-cache 的 apps[]（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
+存入 `getStorage("mazmot")` 的 `apps` 键（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
    ↓
 writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录（仅新建流程走到这里）
    ↓
@@ -170,14 +171,14 @@ handleUpdate → confirm → installOfficialApp({ dirHandle: app._handle, appId:
 （已发布 autoShareUrl）→ unpublishApp 撤销发布，让旧分享链接失效
 clearOpened → 关闭窗口
 （虚拟目录）app._handle.remove() → 移除虚拟子目录
-从 ever-cache.apps 移除记录
+从 `getStorage("mazmot")` 的 `apps` 列表移除记录
 ```
 
 ## 数据模型
 
-### ever-cache `apps` 数组结构
+### `apps` 数组结构
 
-#### 持久化字段（写入 `EverCache("mazmot").apps`）
+#### 持久化字段（写入 `getStorage("mazmot")` 的 `apps` 键）
 
 ```javascript
 {
@@ -338,8 +339,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 1. `index.html` 只承担 ofa.js 外壳（`<o-router>` + `<o-app src="./app-config.js">`），`app-config.js` 声明 `home = "./run-app.html"`；由于 Core 可能尚未安装，`app-config.js` **不** `init("mazmot")`，也不会校验任何 `/nos/*` 模块。
 2. 页面模块内嵌隐藏的 `<nos-version auto-install>` 组件，通过模板 `on:check-start` / `on:uninstalled` / `on:upgradable` / `on:install-start` / `on:install-progress` / `on:installed` / `on:error="onCoreError($event)"` 声明式绑定到 `proto.onCoreXxx` 方法；`coreReady` Promise 由 `onCoreInstalled` / `onCoreError` 通过闭包变量兑现。Core 检测/安装占进度条前 40%。
 3. 步骤计数：模块顶部有 `STEPS` 数组（共 9 步），进度条上方的 `statusText` 一律带 `n/N · 描述` 前缀（由 `run-app-utils.js` 的 `formatStatus` 生成），通过 `enterStep(index)` + `setProgress(percent, text)` 联动。
-3.5. **前置秒跳（`tryFastJump`，在 Core 检测之前）**：`startFlow` 第一步先跑 `tryFastJump`——内联解析 URL 的 `h`（不加载 `share-mgr.js`，因其顶层 import `/nos/*` 会牵连 Core 依赖），只加载 `ever-cache`（CDN 直连、不需要 Core SW）读 `storage.apps`，`findByPayloadHash` 命中后调 `resolveRunUrl(hit)` 解析运行 URL → `location.replace` 同标签跳转。`resolveRunUrl` 按 source 分流：**virtual** 用 `appDirExists` 校验目录仍在后拼 `/$namespace/{dirName}/client/index.html`；**local**（含开发者自分享的应用）重建 `DirHandle` 后走 `app-runner.js` 的 `getRunUrl`（mount client 子目录）。这样"已装过该应用"的老用户、以及**打开自己分享链接的开发者**都绕过了 nos-version 的版本检测（含网络请求，主要延迟来源）。未命中（含全新用户，`storage.apps` 为空立即返回、不碰 `/nos/*`）、目录失效或任何异常都静默退回下方正常流程，绝不阻断。自我分享能命中的前提：`home.html` 的 `autoShareApp` 在 `publishApp` 成功后把 `payloadHash` 持久化到发布者自己的 app 记录。
-4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`ever-cache`、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`。（无改动秒跳已在步骤 3.5 前置处理；此处进入正常联网安装流程。）**`ensurePublisher` 后先调用 `ensureServerConnected` 并发连上所有配置的信令服务器（`getServers()` → 并发 `connect()`，2s 上限：全部完成或超时先到者返回，至少一台连上即继续），一是防止 `connectedUrls` 为空导致 `connectUser` 立即抛错，二是让 core 在多台已连服务器间按 RTT 择优（只连一台则无从选最快）；单台失败记进 `errors`，全失败才报"无法连接任何信令服务器"**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。`connectUser` + `ping` 后刷新握手状态显示：`readHandshakeStatus(user, remoteUser)` 优先用 `remoteUser.getRTT()` 的实际路径——经中继时显示 core 择优后真正使用的最快服务器 `url` + `rtt`（而非配置列表第一台），RTC 直连或尚无 remoteUser 时退回已连接的第一台 `connectedUrls[0]`。
+3.5. **前置秒跳（`tryFastJump`，在 Core 检测之前）**：`startFlow` 第一步先跑 `tryFastJump`——内联解析 URL 的 `h`（不加载 `share-mgr.js`，因其顶层 import `/nos/*` 会牵连 Core 依赖），只加载 `https://core.noneos.com/nos/storage/main.js`（直连、不需要 Core SW）读 `getStorage("mazmot")` 的 `apps` 键，`findByPayloadHash` 命中后调 `resolveRunUrl(hit)` 解析运行 URL → `location.replace` 同标签跳转。`resolveRunUrl` 按 source 分流：**virtual** 用 `appDirExists` 校验目录仍在后拼 `/$namespace/{dirName}/client/index.html`；**local**（含开发者自分享的应用）重建 `DirHandle` 后走 `app-runner.js` 的 `getRunUrl`（mount client 子目录）。这样"已装过该应用"的老用户、以及**打开自己分享链接的开发者**都绕过了 nos-version 的版本检测（含网络请求，主要延迟来源）。未命中（含全新用户，`apps` 为空立即返回、不碰 `/nos/*`）、目录失效或任何异常都静默退回下方正常流程，绝不阻断。自我分享能命中的前提：`home.html` 的 `autoShareApp` 在 `publishApp` 成功后把 `payloadHash` 持久化到发布者自己的 app 记录。
+4. Core 就绪后使用 `load = lm(import.meta)` 并行加载 `/nos/fs`、`storage`（步骤 3.5 已加载则直接复用）、`share-mgr.js`、`/nos/user`、`/nos/publish`、`/nos/crypto`。`parseShareUrl` 得到 `{ userId, payloadHash }`。（无改动秒跳已在步骤 3.5 前置处理；此处进入正常联网安装流程。）**`ensurePublisher` 后先调用 `ensureServerConnected` 并发连上所有配置的信令服务器（`getServers()` → 并发 `connect()`，2s 上限：全部完成或超时先到者返回，至少一台连上即继续），一是防止 `connectedUrls` 为空导致 `connectUser` 立即抛错，二是让 core 在多台已连服务器间按 RTT 择优（只连一台则无从选最快）；单台失败记进 `errors`，全失败才报"无法连接任何信令服务器"**；`connectUser(userId)` 后调用 `install-flow.js` 的 `fetchSharePayload`（内部：`requestManifest` → `isPublicKeyOfUser` 核对签发者 → `connection.js` 的 `requestChunkWithRetry` × N → `assembleFile`）得到 payload JSON。`connectUser` + `ping` 后刷新握手状态显示：`readHandshakeStatus(user, remoteUser)` 优先用 `remoteUser.getRTT()` 的实际路径——经中继时显示 core 择优后真正使用的最快服务器 `url` + `rtt`（而非配置列表第一台），RTC 直连或尚无 remoteUser 时退回已连接的第一台 `connectedUrls[0]`。
 5. `findInstalled(payload)`：
    - 未安装 or 已安装但内容哈希不同 → 走 `installOrUpdate` 流程（复用步骤 4 已建立的 `remoteUser` → `requestManifest(payload.fileHash)` → `requestChunk` × N → `assembleFile` → 写入 `$mazmot-apps/{recordName}/client/`；`recordName` = `payload.appId`，覆盖时沿用旧目录）。安装时把 `payload.fileHash` 与 URL 的 `payloadHash` 一并写进 app 记录，供下次秒跳比对。
    - 已安装且内容哈希一致（`shouldSkipInstall` 比对本地记录 `fileHash` 与 `payload.fileHash`，**不用版本号**——开发者更新内容却不改版本时版本号相同但 `fileHash` 已变，必须重装），或来自本人分享 → 跳过下载直接跳转。
@@ -406,4 +407,5 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
 | AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |

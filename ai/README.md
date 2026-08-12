@@ -27,7 +27,7 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from "/
 
 ### saveKey(apiKey, provider)
 
-保存 API Key 并返回 Assistant 实例。写入后会自动持久化到 `ever-cache`，并通知所有 `onApiKeysChange` 订阅者。
+保存 API Key 并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
 
 - `provider` 取值：`"deepseek"` / `"kimi"`
 
@@ -397,5 +397,5 @@ others/ai-manager-demo/      # 演示应用（引用 ../../ai/main.js）
 ## 技术栈
 
 - [ofa.js](https://github.com/ofajs/ofa.js) - 前端框架
-- [ever-cache](https://github.com/kirakiray/ever-cache) - 本地存储
+- [NoneOS Core storage](https://github.com/kirakiray/noneos-core) (`/nos/storage/main.js`) - 本地异步键值存储
 - [Punch-UI](https://punch-ui-v2.pages.dev/) - UI 组件库

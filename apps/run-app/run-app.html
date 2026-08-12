@@ -408,6 +408,19 @@
       const diag = createDiag();
       diag.mark("page module ready");
 
+      // 本地应用列表所在的存储空间（与主应用共用 getStorage("mazmot")）。
+      // 直连 core.noneos.com 加载，不经 Core Service Worker，因此在 Core 检测
+      // 之前的「前置秒跳」阶段也能读；同一模块实例在整页内复用。
+      let storagePromise = null;
+      const getAppStorage = () => {
+        if (!storagePromise) {
+          storagePromise = load(
+            "https://core.noneos.com/nos/storage/main.js",
+          ).then((mod) => mod.getStorage("mazmot"));
+        }
+        return storagePromise;
+      };
+
       // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
       let coreResolve;
       let coreReject;
@@ -650,12 +663,9 @@
             }
             this._appParams = appParams;
 
-            // 只加载 ever-cache（CDN 直连，不依赖 Core Service Worker）读本地应用列表
-            const cacheMod = await load(
-              "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-            );
-            const storage = cacheMod.storage;
-            const apps = (await storage.apps) || [];
+            // 只加载 storage（core.noneos.com 直连，不依赖 Core Service Worker）读本地应用列表
+            const storage = await getAppStorage();
+            const apps = (await storage.getItem("apps")) || [];
             const hit = findByPayloadHash(apps, payloadHash);
             if (!hit) return false; // 未命中（含全新用户）→ 走正常流程
 
@@ -721,9 +731,9 @@
             }
 
             // 前置秒跳：对"已安装过该应用"的老用户，绕过 Core 版本检测（含网络请求，
-            // 是主要延迟来源）直接跳转。只依赖 ever-cache（CDN 直连，不需要 Core SW），
-            // 命中后才加载 /nos/fs 校验目录（此时必是老用户，SW 已就绪，很快）。
-            // 任何异常都静默退回正常流程，绝不阻断。
+            // 是主要延迟来源）直接跳转。只依赖 /nos/storage（core.noneos.com 直连，
+            // 不需要 Core SW），命中后才加载 /nos/fs 校验目录（此时必是老用户，
+            // SW 已就绪，很快）。任何异常都静默退回正常流程，绝不阻断。
             try {
               if (await this.tryFastJump()) return;
             } catch (err) {
@@ -763,11 +773,9 @@
           async loadDeps() {
             // 使用页面模块参数 load 加载依赖（ofa.js 官方推荐做法，
             // 与 <l-m> 一致，能加载 .js / .html 模块，并共享缓存）。
-            const [fsMod, cacheMod, shareMgr] = await Promise.all([
+            const [fsMod, storage, shareMgr] = await Promise.all([
               load("/nos/fs/main.js"),
-              load(
-                "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-              ),
+              getAppStorage(),
               load("/lib/share-mgr.js"),
             ]);
             // 预加载 publisher 依赖，确保后续 ensurePublisher 时可用
@@ -778,7 +786,7 @@
             ]);
             this._modules = {
               init: fsMod.init,
-              storage: cacheMod.storage,
+              storage,
               shareMgr,
             };
           },
@@ -901,7 +909,7 @@
                 STEP.checkInstalled.pct,
                 STEP.checkInstalled.text,
               );
-              const apps = (await storage.apps) || [];
+              const apps = (await storage.getItem("apps")) || [];
               const existing = findOfficialInstalled(apps, officialId);
               if (
                 existing &&
@@ -943,7 +951,7 @@
               });
               diag.mark("official install done");
 
-              // 步骤：记录到 storage.apps
+              // 步骤：记录到应用列表
               this.appProgress(STEP.record.pct, STEP.record.text);
               if (existing) {
                 // 更新已装记录的版本号
@@ -1157,7 +1165,7 @@
           async maybeConfirmInstall(payload) {
             const { storage } = this._modules;
             try {
-              const allApps = (await storage.apps) || [];
+              const allApps = (await storage.getItem("apps")) || [];
               const others = filterOtherApps(allApps, payload);
               if (others.length === 0) return true;
 

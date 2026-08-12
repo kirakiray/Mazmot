@@ -456,6 +456,45 @@
       const hostUserId = sp.get("host") || "";
       const isCustomer = !!hostUserId;
 
+      // ===== 可靠投递层（ACK + 超时重发 + msgId 去重 + 串行队列）=====
+      // 参考 noneos-core-docs/references/reliable-messaging.md
+      const ACK_TIMEOUT = 3000; // 单次等待 ACK 的毫秒数
+      const MAX_RETRY = 3; // 最大重发次数
+      const SEEN_TTL = 5 * 60 * 1000; // 去重记录保留 5 分钟
+
+      const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries }
+      const seenIds = new Map(); // msgId -> 首次接收时间戳
+      const sendQueues = new Map(); // 队列 key -> 尾部 Promise（串行链）
+      let msgSeq = 0;
+
+      /** 把发送操作排入对应目标的串行队列（前一条 ACK 后才发下一条） */
+      function enqueue(key, task) {
+        const prev = sendQueues.get(key) ?? Promise.resolve();
+        const next = prev.then(task, task);
+        sendQueues.set(key, next);
+        next.finally(() => {
+          if (sendQueues.get(key) === next) sendQueues.delete(key);
+        });
+        return next;
+      }
+
+      /** 收到 ACK 时结算对应的 pending 发送 */
+      function resolveAck(msgId) {
+        const entry = pendingAcks.get(msgId);
+        if (!entry) return; // 迟到的重复 ACK，忽略
+        clearTimeout(entry.timer);
+        pendingAcks.delete(msgId);
+        entry.resolve();
+      }
+
+      /** 清理过期的去重记录 */
+      function pruneSeen() {
+        const deadline = Date.now() - SEEN_TTL;
+        for (const [id, ts] of seenIds) {
+          if (ts < deadline) seenIds.delete(id);
+        }
+      }
+
       return {
         data: {
           role: "loading",
@@ -584,6 +623,56 @@
             this._eventsBound = true;
           },
 
+          // ===== 获取当前发送目标（房间方发给 customer，加入方发给 host）=====
+          getRemote() {
+            if (this.role === "host") return this._customerRemote;
+            if (this.role === "customer") return this._remoteUser;
+            return null;
+          },
+
+          // ===== 可靠发送：msgId + 等 ACK + 超时重发 + 串行队列 =====
+          // payload 是业务数据（{ kind, ... }），外部无需关心信封。
+          // ACK 到达时 resolve；重试 MAX_RETRY 次后仍无 ACK 则 reject。
+          sendReliable(payload) {
+            const remote = this.getRemote();
+            if (!remote) return Promise.reject(new Error("无可用连接"));
+
+            const msgId = `m-${Date.now()}-${++msgSeq}`;
+            const key = remote.userId ?? "peer";
+
+            return enqueue(key, () =>
+              new Promise((resolve, reject) => {
+                const entry = { resolve, reject, timer: null, tries: 0 };
+                pendingAcks.set(msgId, entry);
+
+                const attempt = async () => {
+                  entry.tries++;
+                  if (entry.tries > MAX_RETRY) {
+                    pendingAcks.delete(msgId);
+                    reject(
+                      new Error(`ACK 超时（重试 ${MAX_RETRY} 次后放弃）`),
+                    );
+                    return;
+                  }
+
+                  const results = await remote.sendToService(
+                    SERVICE_ID,
+                    { msgId, kind: "data", payload },
+                    { waitForService: ACK_TIMEOUT },
+                  );
+
+                  // 利用返回值更新连接状态 / 对端在线指示
+                  this.applySendResults(results);
+
+                  // 无论 ok 与否都设超时等 ACK；ACK 到达后 clearTimeout
+                  entry.timer = setTimeout(attempt, ACK_TIMEOUT);
+                };
+
+                attempt();
+              }),
+            );
+          },
+
           // ===== 判断某格是否可落子 =====
           canPlaceAt(index) {
             // 已结束或未连接：全部不可点
@@ -608,28 +697,11 @@
             this.applyAfterMove(mark);
             // 棋盘变更后，ofa.js 会自动重新渲染
 
-            // 同步给对端
+            // 可靠同步给对端（带 ACK + 超时重发，防止通道切换时静默丢失）
             try {
-              let results;
-              if (this.role === "host" && this._customerRemote) {
-                results = await this._customerRemote.sendToService(
-                  SERVICE_ID,
-                  {
-                    kind: "move",
-                    index,
-                    mark,
-                  },
-                );
-              } else if (this.role === "customer" && this._remoteUser) {
-                results = await this._remoteUser.sendToService(SERVICE_ID, {
-                  kind: "move",
-                  index,
-                  mark,
-                });
-              }
-              this.applySendResults(results);
+              await this.sendReliable({ kind: "move", index, mark });
             } catch (err) {
-              console.error("同步落子失败：", err);
+              console.error("同步落子失败：", err.message || err);
             }
           },
 
@@ -704,22 +776,9 @@
           async requestRestart() {
             this.resetBoard();
             try {
-              let results;
-              if (this.role === "host" && this._customerRemote) {
-                results = await this._customerRemote.sendToService(
-                  SERVICE_ID,
-                  {
-                    kind: "restart",
-                  },
-                );
-              } else if (this.role === "customer" && this._remoteUser) {
-                results = await this._remoteUser.sendToService(SERVICE_ID, {
-                  kind: "restart",
-                });
-              }
-              this.applySendResults(results);
+              await this.sendReliable({ kind: "restart" });
             } catch (err) {
-              console.error("通知重开失败：", err);
+              console.error("通知重开失败：", err.message || err);
             }
           },
 
@@ -741,7 +800,7 @@
                   self.connected = true;
                   self.bindPeerEvents();
                 }
-                self.handleIncoming(data);
+                self.handleIncoming(data, ctx);
               },
             });
 
@@ -761,7 +820,7 @@
             const self = this;
             this._svc = this._user.registerService(SERVICE_ID, {
               onMessage(data, ctx) {
-                self.handleIncoming(data);
+                self.handleIncoming(data, ctx);
               },
             });
 
@@ -778,18 +837,14 @@
                 this.customerStatus = "已连接，开始对战";
                 this.connected = true;
                 this.bindPeerEvents();
-                // 主动发一条 hello 让房间方知道自己已加入
+                // 主动发一条 hello 让房间方知道自己已加入（可靠投递）
                 try {
-                  const results = await this._remoteUser.sendToService(
-                    SERVICE_ID,
-                    {
-                      kind: "hello",
-                      mark: this.myMark,
-                    },
-                  );
-                  this.applySendResults(results);
+                  await this.sendReliable({
+                    kind: "hello",
+                    mark: this.myMark,
+                  });
                 } catch (err) {
-                  console.error("发送就绪信号失败：", err);
+                  console.error("发送就绪信号失败：", err.message || err);
                 }
               } else {
                 this.customerStatus = "房间方不在线，请稍后再试";
@@ -801,16 +856,43 @@
             }
           },
 
-          // ===== 统一处理收到的消息 =====
-          handleIncoming(data) {
-            if (!data || typeof data !== "object") return;
-            const { kind } = data;
-            if (kind === "move") {
-              this.onRemoteMove(data);
-            } else if (kind === "restart") {
-              this.onRemoteRestart();
-            } else if (kind === "hello") {
-              // 加入方上线通知，房间方无需特殊处理（connected 已在首条消息时置位）
+          // ===== 统一处理收到的消息（可靠投递信封拆包）=====
+          handleIncoming(data, ctx) {
+            if (!data || !data.msgId) return; // 不符合协议的消息忽略
+
+            // 1. ACK 分支：结算本端等待中的发送
+            if (data.kind === "ack") {
+              resolveAck(data.msgId);
+              return;
+            }
+
+            // 2. 无论是否重复，都先回 ACK
+            //    （重复消息说明上次 ACK 丢了，必须再回，否则对端会一直重发）
+            if (ctx && ctx.remoteUser && ctx.fromSessionId) {
+              ctx.remoteUser
+                .sendToService(
+                  SERVICE_ID,
+                  { msgId: data.msgId, kind: "ack" },
+                  { sessionId: ctx.fromSessionId },
+                )
+                .catch(() => {});
+            }
+
+            // 3. 按 msgId 去重，重发导致的重复消息只处理一次
+            if (seenIds.has(data.msgId)) return;
+            seenIds.set(data.msgId, Date.now());
+            pruneSeen();
+
+            // 4. 拆信封，执行业务逻辑
+            if (data.kind === "data" && data.payload) {
+              const { kind } = data.payload;
+              if (kind === "move") {
+                this.onRemoteMove(data.payload);
+              } else if (kind === "restart") {
+                this.onRemoteRestart();
+              } else if (kind === "hello") {
+                // 加入方上线通知，房间方无需特殊处理
+              }
             }
           },
 
@@ -826,18 +908,16 @@
               }
 
               this.genStatus = "加载依赖...";
-              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+              const [fsMod, storageMod, shareMgr] = await Promise.all([
                 load("/nos/fs/main.js"),
-                load(
-                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-                ),
+                load("/nos/storage/main.js"),
                 load("/lib/share-mgr.js"),
               ]);
               const { init } = fsMod;
-              const { storage } = cacheMod;
+              const storage = storageMod.getStorage("mazmot");
               const { publishApp, generateAppId } = shareMgr;
 
-              const apps = (await storage.apps) || [];
+              const apps = (await storage.getItem("apps")) || [];
               const { dirName } = self;
               const record =
                 apps.find(
@@ -972,6 +1052,13 @@
         },
 
         detached() {
+          // 清理可靠投递层的定时器与队列
+          for (const entry of pendingAcks.values()) {
+            clearTimeout(entry.timer);
+          }
+          pendingAcks.clear();
+          sendQueues.clear();
+
           // 解绑对端事件监听
           [
             this._unbindConnected,

@@ -150,11 +150,11 @@
   - `options`：`{ appId, appParams, onProgress }`。本模板固定传 `appParams: { host: this.myUserId }`。
   - 返回 `{ shareUrl, payloadHash }`。
 
-### ever-cache（`https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js`）
+### NoneOS Core storage（`/nos/storage/main.js`）
 
-通过 `const { storage } = await load(...)` 获取：
+通过 `const { getStorage } = await load("/nos/storage/main.js")` 获取，主系统应用列表用 `getStorage("mazmot")` 空间：
 
-- `await storage.apps`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
+- `await storage.getItem("apps")`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
 - `await storage.setItem("apps", apps)`：写回记录。
 
 ### NoneOS Core fs（`/nos/fs/main.js`）
@@ -219,8 +219,8 @@
 ### 6. 生成通信链接（`generateLink`，发起方专用，自动触发）
 
 1. `parseSelfIdentity()` 从 `location.pathname`（格式 `/$<namespace>/<dirName>/client/index.html`）解析自身身份。
-2. 并行加载 `fs` / `ever-cache` / `share-mgr`。
-3. 从 `storage.apps` 找记录、缺 `appId` 则 `generateAppId` 并写回。
+2. 并行加载 `fs` / `storage` / `share-mgr`。
+3. 从 `getStorage("mazmot")` 的 `apps` 键找记录、缺 `appId` 则 `generateAppId` 并写回。
 4. `rootDir.get(dirName)` 取目录句柄，组装 `app` 对象。
 5. `publishApp(app, { appId, appParams: { host: myUserId }, onProgress })`。
 6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 写入输入框展示，`genStatus` 提示「链接已生成，点击「复制」按钮分享给对方」。

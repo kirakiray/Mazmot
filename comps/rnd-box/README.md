@@ -53,7 +53,7 @@
 
 ### 自动保存定位与尺寸
 
-设置 `auto-save-id` 后，每次拖拽或缩放结束都会把当前的位置、尺寸、focus 状态以及 offsetParent 当时的尺寸写入 ever-cache；下次刷新页面时若存在对应记录，会自动恢复定位、尺寸和 focus（此时会忽略属性上的 `x` / `y` / `width` / `height`）。
+设置 `auto-save-id` 后，每次拖拽或缩放结束都会把当前的位置、尺寸、focus 状态以及 offsetParent 当时的尺寸写入 `getStorage("mazmot-rnd-box")`；下次刷新页面时若存在对应记录，会自动恢复定位、尺寸和 focus（此时会忽略属性上的 `x` / `y` / `width` / `height`）。
 
 如果刷新时 offsetParent 的尺寸与存档不一致，会按比例缩放 `x` / `y` / `width` / `height`，确保 box 在新尺寸的父元素中保持相对位置和大小；缩放后会再做一次边界裁剪，防止越界。
 
@@ -72,7 +72,7 @@
 </m-rnd-box>
 ```
 
-> 存储 key 规则：`mazmot:rnd-box:${autoSaveId}`，使用独立的 [`ever-cache`](https://github.com/kirakiray/ever-cache) 实例（`new EverCache("mazmot-rnd-box")`）作为存储后端，与全局 `storage` 隔离。
+> 存储 key 规则：`mazmot:rnd-box:${autoSaveId}`，存储后端为独立的 `getStorage("mazmot-rnd-box")` 空间，与全局 `storage` 隔离。
 > 每条记录都带有 `savedAt` 时间戳（`Date.now()`），可通过监听 `loadState` 后的返回对象读取；同一 offsetParent 内最多只有一个 box 持有 `rnd-focus` 属性（表现为 `z-index: 5`）。
 
 ## API
@@ -89,7 +89,7 @@
 | height        | number   | 0      | 盒子的高度 (px)                                                      |
 | movable       | boolean  | —      | 是否可拖拽移动                                                       |
 | resizable     | boolean  | —      | 是否可调整大小                                                       |
-| auto-save-id  | string   | —      | 存在时自动将定位与尺寸保存到 ever-cache，刷新后按该 id 恢复位置      |
+| auto-save-id  | string   | —      | 存在时自动将定位与尺寸保存到 `getStorage("mazmot-rnd-box")`，刷新后按该 id 恢复位置      |
 
 > 注：`movable` 和 `resizable` 为布尔属性，无需赋值，存在即生效。
 
