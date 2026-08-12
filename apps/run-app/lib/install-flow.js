@@ -72,13 +72,13 @@ export async function fetchSharePayload({
  *
  * @param {object} payload
  * @param {object} args
- * @param {{apps: Promise<Array>}} args.storage
+ * @param {{getItem:(k:string)=>Promise<any>}} args.storage
  * @param {(namespace:string) => Promise<any>} args.init - noneos-core fs.init
  * @param {(apps:Array, payload:object) => object|null} args.findAppRecord
  * @returns {Promise<{record:object, installedVersion:string} | null>}
  */
 export async function findInstalled(payload, { storage, init, findAppRecord }) {
-  const apps = (await storage.apps) || [];
+  const apps = (await storage.getItem("apps")) || [];
   const existing = findAppRecord(apps, payload);
   if (!existing) return null;
   let installedVersion = "";
@@ -107,7 +107,7 @@ export async function findInstalled(payload, { storage, init, findAppRecord }) {
 
 /**
  * 拉取应用清单 → 下载所有 chunk → 组装 → 校验 → 写入虚拟文件系统 →
- * 更新 storage.apps。返回本地记录名（recordName）。
+ * 更新本地应用列表（storage 的 `apps` 键）。返回本地记录名（recordName）。
  *
  * @param {object} args
  * @param {object} args.publisher
@@ -115,7 +115,7 @@ export async function findInstalled(payload, { storage, init, findAppRecord }) {
  * @param {object} args.payload - 分享清单
  * @param {string} [args.payloadHash] - URL 里的 h（分享清单内容哈希），存入记录用于"无改动秒跳"
  * @param {object|null} args.existingRecord - 已安装记录，null 表示全新安装
- * @param {{apps: Promise<Array>, setItem:(k:string,v:any)=>Promise<void>}} args.storage
+ * @param {{getItem:(k:string)=>Promise<any>, setItem:(k:string,v:any)=>Promise<void>}} args.storage
  * @param {(namespace:string) => Promise<any>} args.init
  * @param {string} args.PACKAGE_VERSION
  * @param {(evt:{type:string, [k:string]:any}) => void} [args.onEvent] -
@@ -207,7 +207,7 @@ export async function installAppPackage({
   }
 
   onEvent && onEvent({ type: "record" });
-  const apps = (await storage.apps) || [];
+  const apps = (await storage.getItem("apps")) || [];
   if (isUpdate) {
     const target = apps.find(
       (a) =>

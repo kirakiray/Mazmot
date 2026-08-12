@@ -41,11 +41,11 @@
 │  │       (Web Components / 数据绑定 / 路由 / 组件库)           │   │
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
-│  ┌──────────┐  ┌──────────┴─┐  ┌────────────┐  ┌──────────┐  │
-│  │ /nos/fs  │  │ /nos/user  │  │/nos/publish│  │ever-cache│  │
-│  │ (虚拟    │  │ (去中心化  │  │ (DataPub-  │  │ (IndexedDB│  │
-│  │  文件系统)│  │  身份/通信) │  │  lisher)   │  │  存储)   │  │
-│  └──────────┘  └────────────┘  └────────────┘  └──────────┘  │
+│  ┌──────────┐  ┌──────────┴─┐  ┌────────────┐  ┌────────────┐  │
+│  │ /nos/fs  │  │ /nos/user  │  │/nos/publish│  │/nos/storage│  │
+│  │ (虚拟    │  │ (去中心化  │  │ (DataPub-  │  │ (IndexedDB │  │
+│  │  文件系统)│  │  身份/通信) │  │  lisher)   │  │   存储)  │  │
+│  └──────────┘  └────────────┘  └────────────┘  └────────────┘  │
 │                           │                                     │
 ├───────────────────────────┼─────────────────────────────────────┤
 │              NoneOS Core Service Worker (sw.js)                  │
@@ -189,9 +189,8 @@ https://your-host/apps/run-app/?u={publisherUserId}&h={payloadHash}
 开发前请先阅读对应的 Skill 文档（详见 [AGENTS.md](AGENTS.md)）：
 
 - **ofajs-docs** — 页面/组件模块开发
-- **noneos-core-docs** — 文件系统、用户管理、服务通信
+- **noneos-core-docs** — `/nos/storage`（IndexedDB 存储）、文件系统、用户管理、服务通信
 - **punch-ui** — 组件库与视觉规范
-- **ever-cache** — 本地存储
 - **sibyl-test** — 测试框架
 
 ---

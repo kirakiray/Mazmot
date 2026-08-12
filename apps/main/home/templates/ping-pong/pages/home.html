@@ -643,18 +643,16 @@
               }
 
               this.genStatus = "加载依赖...";
-              const [fsMod, cacheMod, shareMgr] = await Promise.all([
+              const [fsMod, storageMod, shareMgr] = await Promise.all([
                 load("/nos/fs/main.js"),
-                load(
-                  "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js",
-                ),
+                load("/nos/storage/main.js"),
                 load("/lib/share-mgr.js"),
               ]);
               const { init } = fsMod;
-              const { storage } = cacheMod;
+              const storage = storageMod.getStorage("mazmot");
               const { publishApp, generateAppId } = shareMgr;
 
-              const apps = (await storage.apps) || [];
+              const apps = (await storage.getItem("apps")) || [];
               const { dirName } = self;
               const record =
                 apps.find(

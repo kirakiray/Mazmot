@@ -57,11 +57,11 @@
   - `options`：`{ appId, appParams, onProgress }`。`appParams` 是业务参数对象（如 `{ mood: "happy" }`）。
   - 返回 `{ shareUrl, payloadHash }`。
 
-### ever-cache（`https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js`）
+### NoneOS Core storage（`/nos/storage/main.js`）
 
-通过 `const { storage } = await load(...)` 获取：
+通过 `const { getStorage } = await load("/nos/storage/main.js")` 获取，主系统应用列表用 `getStorage("mazmot")` 空间：
 
-- `await storage.apps`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
+- `await storage.getItem("apps")`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
 - `await storage.setItem("apps", apps)`：写回记录。
 
 ### NoneOS Core fs（`/nos/fs/main.js`）
@@ -84,8 +84,8 @@
 
 1. `collectParams()` 过滤出 key/value 均非空的项组成对象；为空则报错返回。
 2. `parseSelfIdentity()` 从 `location.pathname`（格式 `/$<namespace>/<dirName>/client/index.html`）解析自身身份。
-3. 并行加载 `fs` / `ever-cache` / `share-mgr`。
-4. 从 `storage.apps` 查记录（按 `name` / `virtualDirName` / `dirName` 三级匹配）；缺 `appId` 则 `generateAppId` 并写回。
+3. 并行加载 `fs` / `storage` / `share-mgr`。
+4. 从 `getStorage("mazmot")` 的 `apps` 键查记录（按 `name` / `virtualDirName` / `dirName` 三级匹配）；缺 `appId` 则 `generateAppId` 并写回。
 5. `rootDir.get(dirName)` 取目录句柄，组装 `app` 对象。
 6. `publishApp(app, { appId, appParams, onProgress })`。
 7. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 展示在链接框。

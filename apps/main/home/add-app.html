@@ -486,7 +486,7 @@
 
   <script>
     import { open, get, init } from "/nos/fs/main.js";
-    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { getStorage } from "/nos/storage/main.js";
     import {
       toast,
       alert,
@@ -494,6 +494,8 @@
     } from "https://punch-ui-v2.pages.dev/packages/util.js";
     import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
     import { generateAppId } from "/lib/share-mgr.js";
+
+    const storage = getStorage("mazmot");
 
     export default async () => {
       return {
@@ -614,7 +616,7 @@
             }
           },
 
-          // 「直接导入」：把已有本地应用目录登记到 storage.apps 并关闭弹窗
+          // 「直接导入」：把已有本地应用目录登记到 apps 列表并关闭弹窗
           async importExistingLocalApp(handle, manifest) {
             const rawName = (manifest && manifest.name) || handle.name || "";
             const cleanName = (rawName || "").trim().replace(/\s+/g, "-");
@@ -626,7 +628,7 @@
               });
               return;
             }
-            const apps = (await storage.apps) || [];
+            const apps = (await storage.getItem("apps")) || [];
             if (apps.some((a) => a.name === cleanName)) {
               alert({
                 content: `已存在同名应用「${cleanName}」，无法重复导入。`,
@@ -693,7 +695,7 @@
               return false;
             }
             // 检查重复
-            const apps = (await storage.apps) || [];
+            const apps = (await storage.getItem("apps")) || [];
             if (apps.some((app) => app.name === name)) {
               this.nameError = "该应用名称已存在";
               return false;
@@ -756,8 +758,8 @@
                   this._selectedHandle._handle || this._selectedHandle;
               }
 
-              // 保存到 ever-cache
-              const apps = (await storage.apps) || [];
+              // 保存到应用列表
+              const apps = (await storage.getItem("apps")) || [];
               const appId = await generateAppId(appName);
               apps.push({
                 name: appName,

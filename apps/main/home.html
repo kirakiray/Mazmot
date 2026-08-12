@@ -581,7 +581,7 @@
   </div>
 
   <script>
-    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { getStorage } from "/nos/storage/main.js";
     import { get, init } from "/nos/fs/main.js";
     import { DirHandle } from "/nos/fs/handle/dir.js";
     import {
@@ -612,8 +612,10 @@
       installOfficialApp,
     } from "./home/official-app-writer.js";
 
+    const storage = getStorage("mazmot");
+
     async function loadApps() {
-      const apps = (await storage.apps) || [];
+      const apps = (await storage.getItem("apps")) || [];
       // 从 localStorage 恢复已打开路径快照
       const lsOpened = new Set(readOpenedFromLS());
       // 当前用户的 userId，用于判定「自己开发的应用」
@@ -1125,7 +1127,7 @@
 
           // 持久化更新一条 app 记录里的若干字段
           async _persistAppField(recordName, patch) {
-            const apps = (await storage.apps) || [];
+            const apps = (await storage.getItem("apps")) || [];
             const item = apps.find((a) => a.name === recordName);
             if (!item) return;
             Object.assign(item, patch);
@@ -1222,7 +1224,7 @@
                 }
               }
 
-              const apps = (await storage.apps) || [];
+              const apps = (await storage.getItem("apps")) || [];
               const next = apps.filter(
                 (a) => !(a.name === (app._recordName || app.name)),
               );

@@ -33,7 +33,7 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 
 ## NoneOS Core 依赖加载
 
-`/nos/*` 模块（`/nos/fs/main.js`、`/nos/user/main.js`、`/nos/publish/data-publisher.js` 等）由 NoneOS Core Service Worker 提供，**加载时机受 Core 是否就绪约束**。不同位置允许的写法不同：
+`/nos/*` 模块（`/nos/fs/main.js`、`/nos/user/main.js`、`/nos/storage/main.js`、`/nos/publish/data-publisher.js` 等）由 NoneOS Core Service Worker 提供，**加载时机受 Core 是否就绪约束**。不同位置允许的写法不同：
 
 - **顶层入口 HTML**（如 [index.html](index.html)、[apps/main/index.html](apps/main/index.html)、[apps/network/index.html](apps/network/index.html)）
   - 可以用顶层 `await import("/nos/xxx/main.js")` 做 Core 检测；失败时 `location.href = "/?redirect=..."` 回根入口升级。
@@ -45,6 +45,25 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
   - 参考实现：[apps/run-app/run-app.html](apps/run-app/run-app.html) 的 Core 就绪 Promise + `load(...)` 并行加载模式。
 
 > 违反这条规则最典型的现象：首次访问或 Core 升级后白屏，因为模块加载早于 Core 注册 SW。
+
+## 本地数据存储规范
+
+统一使用 NoneOS Core 提供的 `/nos/storage/main.js`（异步键值存储，底层 IndexedDB，支持复杂类型与跨标签页同步），**禁止**引入第三方存储库，也**禁止**裸用 `localStorage`。
+
+```javascript
+import { storage, getStorage } from "/nos/storage/main.js"; // 仅入口 HTML / Core 已就绪的 app-config.js
+// 页面模块 / 组件：const { getStorage } = await load("/nos/storage/main.js");
+
+await storage.setItem("key", value);       // 默认空间，等价 getStorage("public")
+const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
+```
+
+- **空间划分**：不同业务用 `getStorage(<id>)` 隔离，禁止全部塞进默认空间。主系统应用列表用 `mazmot` 空间的 `apps` 键。
+- **加载时机**：`/nos/storage/main.js` 属于 `/nos/*`，受上一节「NoneOS Core 依赖加载」约束——页面模块 / 组件顶层**禁止** import，必须 `load(...)` 按需加载。
+- **API 优先级**：用 `setItem` / `getItem` / `has` / `removeItem` 方法调用；代理语法（`storage.key = v`）会静默吞错且写入时序不确定，仅用于无关紧要的场景。
+- **文件句柄**：可直接存 `nos/fs` 句柄（读回仍是可用句柄），但 `open()` 得到的本地目录必须先 `mount()`，且句柄不能放在 `Map` / `Set` / 类实例里。
+- **例外**：`sessionStorage`（标签页级、关页即失效，如云盘客户端会话）与 [apps/main/home/app-status.js](apps/main/home/app-status.js) 中需要同步读写的 `mazmot-opened-apps` 保留原生 API，不要迁移。
+- 详细 API 见 `noneos-core-docs` 知识库的 storage 章节。
 
 ## UI 与视觉规范
 
@@ -125,10 +144,6 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
 - **noneos-core-docs**
   - [GitHub 在线源码](https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs)
   - [ZIP 离线包下载](https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/skills/noneos-core-docs.zip)
-- **ever-cache**
-  - 涉及存储数据（如 localStorage）时，应优先使用 EverCache 替代原生存储方案。
-  - 使用前请检查本地是否有 ever-cache Skill，若无则需导入。
-  - [Skill 在线文件](https://github.com/kirakiray/ever-cache/blob/main/skills/ever-cache/SKILL.md)
 - **sibyl-test**
   - 该项目使用 `sibyl-test` 作为测试模块。
   - 使用前请检查本地是否有 sibyl-test Skill，若无则需导入。

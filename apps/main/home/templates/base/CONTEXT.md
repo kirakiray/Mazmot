@@ -30,4 +30,4 @@
 - **接入 NoneOS Core**：
   - 顶层禁止 `import "/nos/*"`。
   - 在页面模块中：`const load = lm(import.meta); const { init } = await load("/nos/fs/main.js");`
-- **持久化数据**：优先使用 ever-cache（`load("https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js")`），避免直接使用 `localStorage`。
+- **持久化数据**：使用 `/nos/storage/main.js`（`getStorage(<id>)` 划分空间），避免直接使用 `localStorage`。

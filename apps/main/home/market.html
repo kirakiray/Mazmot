@@ -310,7 +310,7 @@
 
   <script>
     import { init } from "/nos/fs/main.js";
-    import { storage } from "https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js";
+    import { getStorage } from "/nos/storage/main.js";
     import {
       toast,
       alert,
@@ -322,6 +322,8 @@
       officialAppState,
       syncOfficialAppState,
     } from "../lib/official-app-state.js";
+
+    const storage = getStorage("mazmot");
 
     export default async () => {
       return {
@@ -467,7 +469,7 @@
             const appName = appMeta.id;
 
             try {
-              const existingApps = (await storage.apps) || [];
+              const existingApps = (await storage.getItem("apps")) || [];
               if (existingApps.some((a) => a.name === appName)) {
                 alert({
                   content: `已存在同名应用「${appName}」，无法重复安装。`,

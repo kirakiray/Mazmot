@@ -56,7 +56,7 @@ cloud-drive/
 | **ofa.js router** | `<o-router>` + `<o-app>` 路由系统 |
 | **noneos-core** (`/nos/user/main.js`) | P2P 通信（`getUser`, `connectUser`, `sendToService`, `send`, `registerService`） |
 | **noneos-core FS** (`/nos/fs/main.js`) | 虚拟文件系统（`init`, `open`, `mount`, `DirHandle`, `FileHandle`） |
-| **ever-cache** (`/gh/kirakiray/ever-cache/src/main.min.js`) | 持久化存储（IndexedDB），存挂载点列表和用户凭证 |
+| **noneos-core storage** (`/nos/storage/main.js`) | 持久化存储（IndexedDB），存挂载点列表和用户凭证 |
 | **Punch-UI CSS** | 全局样式变量（`--md-sys-color-*`） |
 
 ## P2P 通信协议
@@ -117,7 +117,7 @@ noneos-core 有两条传输路径，二进制监听必须绑定在 **remoteUser*
 ### 存储管理
 
 - **默认虚拟目录**（"主目录"）：通过 `init(STORAGE_NAMESPACE)` 创建，不可删除
-- **本地目录挂载**：通过 `open()` 选择 Chrome 本地目录，`nativeHandle` 持久化到 ever-cache
+- **本地目录挂载**：通过 `open()` 选择 Chrome 本地目录，`nativeHandle` 持久化到 nos/storage
 - 挂载点恢复时需要重新请求权限（`needsAuth` 标记）
 - 每个挂载点作为客户端文件浏览器的顶层文件夹
 
@@ -125,7 +125,7 @@ noneos-core 有两条传输路径，二进制监听必须绑定在 **remoteUser*
 
 ### 凭证管理
 
-- 用户凭证 `{ username, password }` 存于 ever-cache（key: `cd-users`）
+- 用户凭证 `{ username, password }` 存于 nos/storage（key: `cd-users`）
 - 认证成功的客户端 userId 加入 `_authClients` Set
 - 客户端断开时从 `_authClients` 移除
 
@@ -195,13 +195,13 @@ noneos-core 的 `#handleBinaryRelay` 有 `await blob.arrayBuffer()` 异步操作
 
 | 数据 | 存储方式 | Key |
 |---|---|---|
-| 挂载点列表 | ever-cache (IndexedDB) | `cd-mounts` |
-| 用户凭证 | ever-cache (IndexedDB) | `cd-users` |
+| 挂载点列表 | nos/storage (IndexedDB) | `cd-mounts` |
+| 用户凭证 | nos/storage (IndexedDB) | `cd-users` |
 | 客户端会话 | sessionStorage | `cloud-drive-session` |
 | 客户端文件列表缓存 | sessionStorage | `cloud-drive-list-cache` |
 | 上传/下载 transfer 状态 | 内存 Map | — |
 
-**注意**：ever-cache 不能直接存储 ofa.js Proxy 对象，必须用 `JSON.parse(JSON.stringify())` 去壳。
+**注意**：nos/storage 不能直接存储 ofa.js Proxy 对象，必须用 `JSON.parse(JSON.stringify())` 去壳。
 
 ## 已知限制
 

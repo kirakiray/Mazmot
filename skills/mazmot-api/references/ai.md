@@ -110,7 +110,7 @@ import {
 
 ### saveKey(apiKey, provider)
 
-保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到 ever-cache 并通知订阅者。
+保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到本地存储（nos storage）并通知订阅者。
 
 - `provider`：`"deepseek"` / `"kimi"`
 

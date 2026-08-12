@@ -24,9 +24,9 @@
 | 加入方 customer | 打开带 `?host=<userId>` 的链接   | O    | 后手 |
 
 - 棋盘为长度 9 的一维数组，下标对应 3×3 网格（0-2 第一行，3-5 第二行，6-8 第三行）。
-- 每次落子由落子方本地先更新棋盘，再通过 `sendToService` 发 `{ kind: "move", index, mark }` 给对端，对端收到后本地复现。
+- 每次落子由落子方本地先更新棋盘，再通过 `sendReliable` 可靠投递业务消息 `{ kind: "move", index, mark }` 给对端，对端收到后本地复现。
 - 胜负判定双方各自独立计算（八条获胜线），不依赖对端判定结果。
-- 任意一方点击「再来一局」会本地重置棋盘并发 `{ kind: "restart" }` 通知对端同步重置。
+- 任意一方点击「再来一局」会本地重置棋盘并通过 `sendReliable` 发 `{ kind: "restart" }` 通知对端同步重置。
 
 ## 关键约定
 
@@ -79,13 +79,29 @@
 
 ## 消息协议
 
-通过 `sendToService(SERVICE_ID, data)` 发送，`data` 形状：
+所有业务消息都通过 `sendReliable(payload)` 发送，该方法自动在外面包一层**可靠投递信封**，底层调用 `sendToService(SERVICE_ID, envelope, { waitForService })`：
+
+```
+业务消息（sendReliable 的 payload）    线上信封（sendToService 的 data）
+{ kind: "move", index, mark }    →    { msgId, kind: "data", payload: { kind: "move", ... } }
+                                    ←  { msgId, kind: "ack" }   （接收方回的确认）
+```
+
+业务 `payload.kind` 取值：
 
 | `kind`    | 其他字段       | 方向         | 用途                                   |
 | --------- | -------------- | ------------ | -------------------------------------- |
 | `"hello"` | `mark`         | customer→host | 加入方上线通知（首条消息触发 host 的 `connected=true`）|
 | `"move"`  | `index`, `mark` | 双向         | 落子同步，`index` 0-8，`mark` "X"/"O"  |
 | `"restart"` | —            | 双向         | 请求对端重置棋盘开启新一局             |
+
+可靠投递机制（参考 `noneos-core-docs/references/reliable-messaging.md`）：
+
+- **msgId**：每条消息自动生成唯一 ID（`m-{timestamp}-{seq}`）
+- **ACK 确认**：接收方收到 `data` 消息后立即回 `{ kind: "ack", msgId }`（带 `sessionId` 定向回复）
+- **超时重发**：发送方 3s 内未收到 ACK 则重发（复用同一 msgId），最多重试 3 次
+- **msgId 去重**：接收方按 msgId 记录 5 分钟内已处理的消息，重发导致的重复只执行一次业务逻辑
+- **串行队列**：同一目标的发送操作排队执行，前一条收到 ACK 后才发下一条
 
 ## 依赖的外部 API
 
@@ -98,7 +114,22 @@
 - `user.connectUser(userId)`：连接远端用户，返回 remote 对象。
 - `user.isRemoteUserOnline(userId)`：返回 boolean，判断对端是否在线。
 - `user.bind(eventName, handler)`：订阅全局事件，返回解绑函数。本模板订阅的事件见下文「对端事件」。
-- `remote.sendToService(serviceId, data, options?)`：向对端服务发消息；返回 `results` 数组，每项形如 `{ status, via }`，`status === "ok"` 表示送达，`via` 取值 `"rtc"` / `"server"` 等用于推断连接方式。本模板不传 `waitForService`，直接异步发出。
+- `remote.sendToService(serviceId, data, options?)`：向对端服务发消息；返回 `results` 数组，每项形如 `{ status, via }`，`status === "ok"` 表示送达，`via` 取值 `"rtc"` / `"server"` 等用于推断连接方式。本模板的 `sendReliable` 传 `{ waitForService: ACK_TIMEOUT }` 以避免首条消息因对端尚未注册服务而空耗一轮重试。
+
+### 模块级可靠投递层（`sendReliable` / `handleIncoming`）
+
+页面模块内部实现的信封层，不依赖外部库。模块级状态（非响应式，定义在 `export default` 工厂函数内）：
+
+- `pendingAcks`（Map）：msgId → `{ resolve, reject, timer, tries }`，发送方等待 ACK 的条目。
+- `seenIds`（Map）：msgId → 首次接收时间戳，接收方去重记录（TTL 5 分钟，每次接收后 `pruneSeen` 清理过期项）。
+- `sendQueues`（Map）：队列 key（对端 userId） → 尾部 Promise，实现串行发送链。
+- `msgSeq`（number）：msgId 自增序号。
+
+Proto 方法：
+
+- `getRemote()`：按角色返回当前发送目标（host → `_customerRemote`，customer → `_remoteUser`）。
+- `sendReliable(payload)`：把业务 payload 包成 `{ msgId, kind: "data", payload }` 信封，排入串行队列，通过 `sendToService` 发出并等 ACK；3s 超时重发，最多 3 次。ACK 到达时 resolve，重试耗尽时 reject。内部也会调用 `applySendResults(results)` 更新连接状态。
+- `handleIncoming(data, ctx)`：接收方统一入口。先判 ACK 分支（`resolveAck`）；否则先回 ACK（`ctx.remoteUser.sendToService` 带 `sessionId` 定向回复），再按 msgId 去重，最后拆信封分发到 `onRemoteMove` / `onRemoteRestart` / hello。
 
 #### 对端事件（`bindPeerEvents` 订阅）
 
@@ -121,11 +152,11 @@
   - `options`：`{ appId, appParams, onProgress }`。本模板固定传 `appParams: { host: this.myUserId }`。
   - 返回 `{ shareUrl, payloadHash }`。
 
-### ever-cache（`https://cdn.jsdelivr.net/gh/kirakiray/ever-cache/src/main.min.js`）
+### NoneOS Core storage（`/nos/storage/main.js`）
 
-通过 `const { storage } = await load(...)` 获取：
+通过 `const { getStorage } = await load("/nos/storage/main.js")` 获取，主系统应用列表用 `getStorage("mazmot")` 空间：
 
-- `await storage.apps`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
+- `await storage.getItem("apps")`：读取本地应用记录数组（每项含 `name` / `virtualDirName` / `dirName` / `appId` / `payloadHash` 等）。
 - `await storage.setItem("apps", apps)`：写回记录。
 
 ### NoneOS Core fs（`/nos/fs/main.js`）
@@ -151,19 +182,19 @@
 1. `myMark = "O"`。
 2. `registerService(SERVICE_ID, { onMessage })` 接收房间方的落子。
 3. `connectUser(hostUserId)` + `isRemoteUserOnline(hostUserId)` 双检。
-4. 在线即写入 `peerUserId` / `connected = true`，调用 `bindPeerEvents()`，并主动发一条 `{ kind: "hello" }` 让房间方感知自己已加入。`sendToService` 的返回值交给 `applySendResults` 推断初始连接方式。
+4. 在线即写入 `peerUserId` / `connected = true`，调用 `bindPeerEvents()`，并通过 `sendReliable` 主动发一条 `{ kind: "hello" }` 让房间方感知自己已加入。`sendReliable` 内部的 `sendToService` 返回值会交给 `applySendResults` 推断初始连接方式。
 
 ### 4. 落子（`placeAt` → `applyAfterMove`）
 
 1. UI 点击空格 → `canPlaceAt` 校验（自己回合 + 空格 + 未结束）。
 2. 本地 `board[index] = mark`。
 3. `applyAfterMove`：`checkWinner` → 有胜者则 `finishGame`；棋盘满则平局；否则切换 `currentTurn`。
-4. `sendToService` 发 `{ kind: "move", index, mark }` 给对端。
-5. 对端 `onRemoteMove` 校验后复现落子并走相同的 `applyAfterMove`。
+4. `sendReliable` 发 `{ kind: "move", index, mark }` 给对端（带 ACK 确认 + 超时重发）。
+5. 对端 `handleIncoming` 拆信封后调用 `onRemoteMove` 校验并复现落子，走相同的 `applyAfterMove`，同时回 ACK。
 
 ### 5. 重开（`requestRestart` / `onRemoteRestart`）
 
-- 点击「再来一局」：本地 `resetBoard` + 发 `{ kind: "restart" }`。
+- 点击「再来一局」：本地 `resetBoard` + 通过 `sendReliable` 发 `{ kind: "restart" }`。
 - 收到 `restart`：本地 `resetBoard`。
 - 比分（`scoreX` / `scoreO` / `rounds`）保留累计。
 
@@ -172,8 +203,8 @@
 由 `initHost` 在后台自动触发（无需用户点击）。流程：
 
 1. `parseSelfIdentity()` 从 `location.pathname`（格式 `/$<namespace>/<dirName>/client/index.html`）解析自身身份。
-2. 并行加载 `fs` / `ever-cache` / `share-mgr`。
-3. 从 `storage.apps` 找记录、缺 `appId` 则 `generateAppId` 并写回。
+2. 并行加载 `fs` / `storage` / `share-mgr`。
+3. 从 `getStorage("mazmot")` 的 `apps` 键找记录、缺 `appId` 则 `generateAppId` 并写回。
 4. `rootDir.get(dirName)` 取目录句柄，组装 `app` 对象。
 5. `publishApp(app, { appId, appParams: { host: myUserId }, onProgress })`。
 6. `payloadHash` 写回 `record.payloadHash`，`shareUrl` 展示在输入框。
@@ -182,13 +213,13 @@
 
 ### 7. 销毁（`detached`）
 
-依序调用四个事件解绑函数（`_unbindConnected` / `_unbindDisconnected` / `_unbindRtt` / `_unbindRtcState`）取消对端事件订阅，再 `this._svc.unregister()` 反注册服务，避免泄漏句柄。
+依序清理可靠投递层的定时器与队列（`pendingAcks` / `sendQueues`），再调用四个事件解绑函数（`_unbindConnected` / `_unbindDisconnected` / `_unbindRtt` / `_unbindRtcState`）取消对端事件订阅，最后 `this._svc.unregister()` 反注册服务，避免泄漏句柄。
 
 ### 8. 连接方式徽章更新（双方共用）
 
 页面顶部状态文案旁的 `.link-badge` 实时显示当前对战通信用的是 **WebRTC 直连**（绿色）还是 **服务器中转**（橙色），或对端离线（红色）。状态来源（按优先级合并）：
 
-1. **sendToService 返回值**：`placeAt` / `requestRestart` / `initCustomer` 内的 hello 调用都会把 `results` 交给 `applySendResults`，命中 `status === "ok"` 时按 `via` 字段推断连接方式；全部失败（offline / error / discovery_failed）则把 `peerOnline` 置为 `false`。
+1. **sendReliable 内部的 sendToService 返回值**：`placeAt` / `requestRestart` / `initCustomer` 的 hello 都走 `sendReliable`，后者在每次 `sendToService` 后调用 `applySendResults`，命中 `status === "ok"` 时按 `via` 字段推断连接方式；全部失败（offline / error / discovery_failed）则把 `peerOnline` 置为 `false`。
 2. **`rtt_update` 事件**：Core 周期性上报 RTT 时附带 `via`，`bindPeerEvents` 监听后调用 `setLinkTypeFromVia` 实时刷新。
 3. **`rtc_state` 事件**：Core 后台静默升级 WebRTC，`state === "connected"` 立即把徽章切到 rtc；`disconnected` / `failed` / `closed` 回退到 relay。
 4. **`remote_user_connected` / `remote_user_disconnected` 事件**：仅更新 `peerOnline`，控制徽章是显示离线红点还是连接方式。

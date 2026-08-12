@@ -9,7 +9,7 @@ description: "Mazmot 自身提供的能力速查：app.json 应用结构、应�
 
 - 文件系统（`/nos/fs/main.js`）、用户 / 联机（`/nos/user/main.js`）、P2P 发布（`/nos/publish/*`）、图标（`/nos/n-icon/*`）等 → 查 **noneos-core-docs** 技能。
 - `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
-- 持久化存储 → 查 **ever-cache** 技能。
+- 持久化存储 → 查 **noneos-core-docs** 技能的 storage 章节。
 - 测试框架本身 → 查 **sibyl-test** 技能。
 - AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
 - **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
@@ -66,7 +66,7 @@ Mazmot 里的每一个应用都遵循统一的目录结构：
 
 ## 2. `apps[]` 持久化记录
 
-Mazmot 把应用列表存在 ever-cache 的 `mazmot` 命名空间下，`storage.apps` 是一个数组，每条记录至少包含：
+Mazmot 把应用列表存在 `getStorage("mazmot")` 空间的 `apps` 键下，它是一个数组，每条记录至少包含：
 
 | 字段 | 说明 |
 | ---- | ---- |
@@ -85,8 +85,9 @@ Mazmot 把应用列表存在 ever-cache 的 `mazmot` 命名空间下，`storage.
 读写示例：
 
 ```js
-import { storage } from "/nos/storage/main.js"; // 或 ever-cache 直接实例化
-const apps = (await storage.apps) || [];
+import { getStorage } from "/nos/storage/main.js";
+const storage = getStorage("mazmot");
+const apps = (await storage.getItem("apps")) || [];
 apps.push({ name: "my-app", source: "local", /* ... */ });
 await storage.setItem("apps", apps);
 ```
@@ -236,7 +237,7 @@ if (focusIfOpened(app.name)) return; // 已打开则聚焦
 clearOpened(app.name);               // 删除时清理
 ```
 
-这是 Mazmot 唯一允许直连 `localStorage`（键 `mazmot-opened-apps`）的场景，用于跨刷新恢复 UI 状态。其它持久化请用 ever-cache。
+这是 Mazmot 唯一允许直连 `localStorage`（键 `mazmot-opened-apps`）的场景，用于跨刷新恢复 UI 状态。其它持久化请用 `/nos/storage/main.js`。
 
 ## 8. run-app 接收端工具函数
 

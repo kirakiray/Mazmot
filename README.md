@@ -42,12 +42,12 @@
 │  │       (Web Components / data binding / routing / UI kit)    │   │
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
-│  ┌──────────┐  ┌──────────┴─┐  ┌────────────┐  ┌──────────┐  │
-│  │ /nos/fs  │  │ /nos/user  │  │/nos/publish│  │ever-cache│  │
-│  │ (virtual │  │ (decent-   │  │ (DataPub-  │  │ (IndexedDB│  │
-│  │  filesys)│  │  identity │  │  lisher)   │  │  storage)│  │
-│  │           │  │  /messaging)│  │            │  │          │  │
-│  └──────────┘  └────────────┘  └────────────┘  └──────────┘  │
+│  ┌──────────┐  ┌──────────┴─┐  ┌────────────┐  ┌────────────┐  │
+│  │ /nos/fs  │  │ /nos/user  │  │/nos/publish│  │/nos/storage│  │
+│  │ (virtual │  │ (decent-   │  │ (DataPub-  │  │ (IndexedDB │  │
+│  │  filesys)│  │  identity │  │  lisher)   │  │   store)  │  │
+│  │           │  │  /messaging)│  │            │  │            │  │
+│  └──────────┘  └────────────┘  └────────────┘  └────────────┘  │
 │                           │                                     │
 ├───────────────────────────┼─────────────────────────────────────┤
 │              NoneOS Core Service Worker (sw.js)                  │
@@ -193,9 +193,8 @@ Anyone opening the link can install and run the app in one click. **The publishe
 Read the corresponding Skill docs before development (see [AGENTS.md](AGENTS.md) for details):
 
 - **ofajs-docs** — page/component module development
-- **noneos-core-docs** — filesystem, user management, service communication
+- **noneos-core-docs** — `/nos/storage` (IndexedDB), filesystem, user management, service communication
 - **punch-ui** — component library and visual conventions
-- **ever-cache** — local storage
 - **sibyl-test** — testing framework
 
 ---
