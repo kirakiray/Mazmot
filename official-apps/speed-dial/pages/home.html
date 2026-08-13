@@ -209,22 +209,6 @@
       opacity: 1;
     }
 
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 56px 16px;
-      text-align: center;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-
-    .empty-state n-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-      opacity: 0.6;
-    }
-
     .dialog-form {
       display: flex;
       flex-direction: column;
@@ -319,71 +303,51 @@
       </div>
     </div>
 
-    <o-if :value="dials.length === 0">
-      <div class="empty-state">
-        <n-icon icon="mdi:bookmark-outline"></n-icon>
-        <p>还没有收藏任何网址</p>
-        <p-button color="primary" size="s" on:click="openAdd">
-          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
-          添加网址
-        </p-button>
-      </div>
-    </o-if>
-
-    <o-if :value="dials.length > 0">
-      <div class="grid">
-        <o-fill :value="visibleDials" fill-key="id">
-          <div
-            class="tile"
-            draggable="true"
-            attr:title="$data.url"
-            attr:dragging="$host.draggingId === $data.id ? 'true' : 'false'"
-            attr:drop-target="$host.dropTargetId === $data.id ? 'true' : 'false'"
-            on:click="$host.openDial($data)"
-            on:dragstart="$host.onDragStart($data.id)"
-            on:dragover="$host.onDragOver($event, $data.id)"
-            on:dragleave="$host.onDragLeave($data.id)"
-            on:drop="$host.onDrop($event, $data.id)"
-            on:dragend="$host.onDragEnd"
-          >
-            <div class="tile-actions">
-              <p-button
-                variant="text"
-                icon
-                size="xs"
-                on:click="$host.openEdit($event, $data)"
-              >
-                <n-icon icon="mdi:pencil-outline"></n-icon>
-              </p-button>
-              <p-button
-                variant="text"
-                icon
-                size="xs"
-                color="error"
-                on:click="$host.removeDial($event, $data)"
-              >
-                <n-icon icon="mdi:close"></n-icon>
-              </p-button>
-            </div>
-            <div class="tile-logo" :style.background="$data.color">
-              {{$host.initial($data)}}
-            </div>
-            <div class="tile-title">{{$data.title}}</div>
-            <div class="tile-host">{{$host.hostOf($data.url)}}</div>
+    <div class="grid">
+      <o-fill :value="visibleDials" fill-key="id">
+        <div
+          class="tile"
+          draggable="true"
+          attr:title="$data.url"
+          attr:dragging="$host.draggingId === $data.id ? 'true' : 'false'"
+          attr:drop-target="$host.dropTargetId === $data.id ? 'true' : 'false'"
+          on:click="$host.openDial($data)"
+          on:dragstart="$host.onDragStart($data.id)"
+          on:dragover="$host.onDragOver($event, $data.id)"
+          on:dragleave="$host.onDragLeave($data.id)"
+          on:drop="$host.onDrop($event, $data.id)"
+          on:dragend="$host.onDragEnd"
+        >
+          <div class="tile-actions">
+            <p-button
+              variant="text"
+              icon
+              size="xs"
+              on:click="$host.openEdit($event, $data)"
+            >
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+            </p-button>
+            <p-button
+              variant="text"
+              icon
+              size="xs"
+              color="error"
+              on:click="$host.removeDial($event, $data)"
+            >
+              <n-icon icon="mdi:close"></n-icon>
+            </p-button>
           </div>
-        </o-fill>
-        <button class="add-tile" on:click="openAdd" aria-label="添加网址">
-          <n-icon icon="mdi:plus"></n-icon>
-        </button>
-      </div>
-    </o-if>
-
-    <o-if :value="dials.length > 0 && visibleDials.length === 0">
-      <div class="empty-state">
-        <n-icon icon="mdi:folder-open-outline"></n-icon>
-        <p>该分组下暂无收藏</p>
-      </div>
-    </o-if>
+          <div class="tile-logo" :style.background="$data.color">
+            {{$host.initial($data)}}
+          </div>
+          <div class="tile-title">{{$data.title}}</div>
+          <div class="tile-host">{{$host.hostOf($data.url)}}</div>
+        </div>
+      </o-fill>
+      <button class="add-tile" on:click="openAdd" aria-label="添加网址">
+        <n-icon icon="mdi:plus"></n-icon>
+      </button>
+    </div>
   </main>
 
   <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
