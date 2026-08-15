@@ -478,13 +478,11 @@ console.log(textOf(second.messages.at(-1).content));
 
 ### 运行测试
 
-两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地），`sb-test -f` 也不接受这种命名。本地运行方式：起一个静态服务器，直接在浏览器打开测试页查看结果（sb-test 组件会自动执行并在页面展示）：
+两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地）。本地统一通过 `local-test` 脚本运行：临时改名为 `.sb.html` → 逐个跑 sb-test（结束后自动还原命名，Ctrl+C 也会还原）：
 
 ```bash
-npx http-server .    # 或任意静态服务器
-# 浏览器访问：
-#   http://localhost:8080/ai/test/ai-supplier-sb.html
-#   http://localhost:8080/ai/test/a-chain-sb.html
+npm run local-test                     # 默认多浏览器
+npm run local-test -- --browsers chrome  # 仅 Chrome
 ```
 
 ### 测试覆盖
