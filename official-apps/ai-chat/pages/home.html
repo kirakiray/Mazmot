@@ -186,8 +186,191 @@
       font-size: 16px;
       line-height: 28px;
       color: var(--md-sys-color-on-surface);
+      overflow-wrap: anywhere;
+      min-width: 0;
+    }
+
+    /* ---------- 助手 Markdown 排版 ---------- */
+
+    .ai-text > :first-child,
+    .ai-text p:first-child {
+      margin-top: 0;
+    }
+
+    .ai-text > :last-child,
+    .ai-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .ai-text p {
+      margin: 0 0 12px;
+    }
+
+    .ai-text h1,
+    .ai-text h2,
+    .ai-text h3 {
+      margin: 20px 0 12px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .ai-text h1 { font-size: 1.25em; }
+    .ai-text h2 { font-size: 1.15em; }
+    .ai-text h3 { font-size: 1.05em; }
+
+    .ai-text h4,
+    .ai-text h5,
+    .ai-text h6 {
+      margin: 16px 0 8px;
+      font-size: 1em;
+      font-weight: 600;
+    }
+
+    .ai-text strong {
+      font-weight: 600;
+    }
+
+    .ai-text a {
+      color: var(--md-sys-color-primary);
+      text-decoration: none;
+    }
+
+    .ai-text a:hover {
+      text-decoration: underline;
+    }
+
+    .ai-text ul,
+    .ai-text ol {
+      margin: 0 0 12px;
+      padding-left: 20px;
+    }
+
+    .ai-text li {
+      margin: 4px 0;
+    }
+
+    .ai-text li > ul,
+    .ai-text li > ol {
+      margin: 4px 0;
+    }
+
+    .ai-text blockquote {
+      margin: 0 0 12px;
+      padding-left: 12px;
+      border-left: 2px solid color-mix(in srgb, var(--md-sys-color-on-surface) 25%, transparent);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .ai-text hr {
+      border: none;
+      height: 1px;
+      margin: 16px 0;
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 15%, transparent);
+    }
+
+    .ai-text :not(pre) > code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.875em;
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+      border-radius: 6px;
+      padding: 1px 5px;
+    }
+
+    .ai-text input[type="checkbox"] {
+      margin-right: 6px;
+      accent-color: var(--md-sys-color-primary);
+    }
+
+    .ai-text img {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+
+    .md-code {
+      margin: 12px 0;
+      border-radius: 12px;
+      background: var(--md-sys-color-surface-variant);
+      overflow: hidden;
+    }
+
+    .md-code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 6px 6px 12px;
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+      border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+    }
+
+    .md-lang {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .md-copy {
+      flex: none;
+      border: none;
+      background: none;
+      padding: 2px 8px;
+      border-radius: 6px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .md-copy:hover {
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .md-code pre {
+      margin: 0;
+      padding: 12px;
+      overflow-x: auto;
+    }
+
+    .md-code pre code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
       white-space: pre-wrap;
-      word-break: break-word;
+      word-break: break-all;
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    .md-table {
+      margin: 12px 0;
+      overflow-x: auto;
+    }
+
+    .md-table table {
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .md-table th,
+    .md-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .md-table th {
+      color: var(--md-sys-color-on-surface-variant);
+      font-weight: 600;
+    }
+
+    .md-table td code {
+      font-size: 12px;
     }
 
     .ai-actions {
@@ -678,7 +861,7 @@
 
               <o-if :value="$data.role === 'assistant'">
                 <div class="ai-block">
-                  <div class="ai-text">{{$data.content}}</div>
+                  <div class="ai-text" :html="$host.renderMd($data.content)"></div>
                   <div
                     class="ai-actions"
                     class:show="!$host.sending && !!$data.content"
@@ -768,7 +951,7 @@
       </section>
 
       <o-if :value="!atBottom && messages.length > 0">
-        <button class="to-bottom" attr:title="回到底部" on:click="toBottomNow">
+        <button class="to-bottom" title="回到底部" on:click="toBottomNow">
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -828,6 +1011,9 @@
       const { createAgent, tool, MemorySaver } = await load(
         "/ai/chain/main.js",
       );
+      const { renderMarkdown } = await load(
+        "/official-apps/ai-chat/lib/markdown.js",
+      );
 
       // 计算器工具：白名单校验后求值，任何失败都以文本回给模型自行纠正
       const calculator = tool(
@@ -883,6 +1069,23 @@
           copiedId: null,
         },
 
+        attached() {
+          // 代码块复制按钮：:html 渲染的内容无法用 on: 绑定，走事件委托
+          this.shadow.ele.addEventListener("click", async (e) => {
+            const btn = e.target.closest?.(".md-copy");
+            if (!btn) return;
+            try {
+              await navigator.clipboard.writeText(btn.dataset.code || "");
+              btn.textContent = "已复制";
+              setTimeout(() => {
+                btn.textContent = "复制";
+              }, 1500);
+            } catch {
+              /* 剪贴板不可用时静默 */
+            }
+          });
+        },
+
         watch: {
           input() {
             this.autoGrow();
@@ -890,6 +1093,11 @@
         },
 
         proto: {
+          // 助手消息按 Markdown 渲染（流式期间每个增量全量重渲，消息体量下开销可忽略）
+          renderMd(text) {
+            return renderMarkdown(text ?? "");
+          },
+
           // 惰性创建 Agent：首次发送时才取 assistant（无 key 时 getAssistant 会抛错）
           ensureAgent() {
             if (agent) return agent;
