@@ -231,33 +231,55 @@
     <!-- 模型：deepseek-v4-flash          -->
     <!-- ============================== -->
 
-    <sb-test name="[真实] chat: 无工具单轮 — 返回 content / model / usage / 轨迹">
+    <sb-test
+      name="[真实] chat: 无工具单轮 — 返回 content / model / usage / 轨迹"
+    >
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
             const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-basic", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-basic",
+                apiKey,
+              );
               const agent = createAgent({ assistant });
               const result = await agent.chat({
                 messages: [{ role: "user", content: "请只回复两个字：你好" }],
               });
 
               const checks = {
-                hasContent: typeof result.content === "string" && result.content.trim().length > 0,
+                hasContent:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
                 hasModel: !!result.model && result.model.includes("deepseek"),
                 hasUsage: result.usage?.total_tokens > 0,
-                noToolCalls: Array.isArray(result.toolCalls) && result.toolCalls.length === 0,
-                traceRoles: result.messages.map((m) => m.role).join(",") === "user,assistant",
-                traceContent: result.messages[0].content === "请只回复两个字：你好",
-                noEmptyToolCallsField: result.messages[1].tool_calls === undefined,
+                noToolCalls:
+                  Array.isArray(result.toolCalls) &&
+                  result.toolCalls.length === 0,
+                traceRoles:
+                  result.messages.map((m) => m.role).join(",") ===
+                  "user,assistant",
+                traceContent:
+                  result.messages[0].content === "请只回复两个字：你好",
+                noEmptyToolCallsField:
+                  result.messages[1].tool_calls === undefined,
               };
 
               return {
@@ -270,7 +292,10 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
@@ -281,16 +306,28 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
             const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-think", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-think",
+                apiKey,
+              );
               // model / thinking 只在 createAgent 声明，chat 不再传
               const agent = createAgent({
                 assistant,
@@ -299,12 +336,16 @@
                 reasoningEffort: "high",
               });
               const result = await agent.chat({
-                messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+                messages: [
+                  { role: "user", content: "9.11 和 9.8 哪个大？简短回答。" },
+                ],
               });
 
               const checks = {
                 modelPassed: result.model.includes("deepseek-v4-flash"),
-                hasContent: typeof result.content === "string" && result.content.trim().length > 0,
+                hasContent:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
                 hasReasoning:
                   typeof result.reasoningContent === "string" &&
                   result.reasoningContent.length > 0,
@@ -321,7 +362,10 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
@@ -334,16 +378,28 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
             const { createAgent, tool } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-tool", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-tool",
+                apiKey,
+              );
 
               const receivedArgs = [];
               const getWeather = tool(
@@ -363,7 +419,8 @@
               const agent = createAgent({
                 assistant,
                 tools: [getWeather],
-                systemPrompt: "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+                systemPrompt:
+                  "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
               });
               const result = await agent.chat({
                 messages: [{ role: "user", content: "北京今天天气怎么样？" }],
@@ -371,19 +428,25 @@
 
               const roles = result.messages.map((m) => m.role).join(",");
               // 动态查找，不依赖 systemPrompt 是否存在
-              const assistantMsg = result.messages.find((m) => m.tool_calls?.length);
+              const assistantMsg = result.messages.find(
+                (m) => m.tool_calls?.length,
+              );
               const toolMsg = result.messages.find((m) => m.role === "tool");
               const checks = {
                 hasFinalContent:
-                  typeof result.content === "string" && result.content.trim().length > 0,
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
                 roles: roles === "system,user,assistant,tool,assistant",
-                toolCalled: assistantMsg.tool_calls?.[0]?.function?.name === "get_weather",
+                toolCalled:
+                  assistantMsg.tool_calls?.[0]?.function?.name ===
+                  "get_weather",
                 toolResultFedBack:
                   toolMsg.role === "tool" &&
                   toolMsg.content === "晴，25℃" &&
                   toolMsg.tool_call_id === assistantMsg.tool_calls?.[0]?.id,
                 toolGotCityArg:
-                  receivedArgs.length === 1 && String(receivedArgs[0]).includes("北京"),
+                  receivedArgs.length === 1 &&
+                  String(receivedArgs[0]).includes("北京"),
                 usageAccumulated: result.usage?.total_tokens > 0,
               };
 
@@ -398,36 +461,57 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="[真实] chat: stream 无工具 — text 增量拼接等于最终 content，末尾 done">
+    <sb-test
+      name="[真实] chat: stream 无工具 — text 增量拼接等于最终 content，末尾 done"
+    >
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
             const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-stream", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-stream",
+                apiKey,
+              );
               const agent = createAgent({ assistant });
 
               const events = [];
               const result = await agent.chat({
-                messages: [{ role: "user", content: "从 1 数到 5，每个数字一行" }],
+                messages: [
+                  { role: "user", content: "从 1 数到 5，每个数字一行" },
+                ],
                 stream: true,
                 onStream: (ev) =>
                   events.push(
-                    ev.type === "text" ? { type: "text", delta: ev.delta } : { type: ev.type },
+                    ev.type === "text"
+                      ? { type: "text", delta: ev.delta }
+                      : { type: ev.type },
                   ),
               });
 
@@ -456,7 +540,10 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
@@ -469,16 +556,28 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
             const { createAgent, tool } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-stream-tool", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-stream-tool",
+                apiKey,
+              );
 
               const getWeather2 = tool(async ({ city }) => "晴，25℃", {
                 name: "get_weather",
@@ -489,7 +588,8 @@
               const agent = createAgent({
                 assistant,
                 tools: [getWeather2],
-                systemPrompt: "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+                systemPrompt:
+                  "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
               });
 
               const stEvents = [];
@@ -498,12 +598,18 @@
                 stream: true,
                 onStream: (ev) =>
                   stEvents.push(
-                    ev.type === "text" ? { type: "text", delta: ev.delta } : { type: ev.type, name: ev.name, result: ev.result },
+                    ev.type === "text"
+                      ? { type: "text", delta: ev.delta }
+                      : { type: ev.type, name: ev.name, result: ev.result },
                   ),
               });
 
-              const idxToolCalls = stEvents.findIndex((ev) => ev.type === "toolCalls");
-              const idxToolResult = stEvents.findIndex((ev) => ev.type === "toolResult");
+              const idxToolCalls = stEvents.findIndex(
+                (ev) => ev.type === "toolCalls",
+              );
+              const idxToolResult = stEvents.findIndex(
+                (ev) => ev.type === "toolResult",
+              );
               const idxTextAfterTool = stEvents.findIndex(
                 (ev, i) => ev.type === "text" && i > idxToolResult,
               );
@@ -520,7 +626,8 @@
                   toolResultEv?.name === "get_weather" &&
                   toolResultEv?.result === "晴，25℃",
                 finalContentNonEmpty:
-                  typeof result.content === "string" && result.content.trim().length > 0,
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
               };
 
               return {
@@ -532,27 +639,45 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
       </template>
     </sb-test>
 
-    <sb-test name="[真实] memory: 同 threadId 第二轮带历史，systemPrompt 不入库">
+    <sb-test
+      name="[真实] memory: 同 threadId 第二轮带历史，systemPrompt 不入库"
+    >
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-            const { createAgent, MemorySaver } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
+            const { createAgent, MemorySaver } =
+              await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-memory", apiKey);
+              const assistant = new DeepseekAssistant(
+                "test-chain-memory",
+                apiKey,
+              );
               const saver = new MemorySaver();
               const agent = createAgent({
                 assistant,
@@ -561,7 +686,9 @@
               });
 
               await agent.chat({
-                messages: [{ role: "user", content: "我叫小林，请记住我的名字。" }],
+                messages: [
+                  { role: "user", content: "我叫小林，请记住我的名字。" },
+                ],
                 threadId: "m1",
               });
               const second = await agent.chat({
@@ -588,7 +715,10 @@
                 },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
@@ -599,12 +729,22 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-            const { createAgent, MemorySaver } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+            const { DeepseekAssistant } =
+              await import("../supplier/deepseek.js");
+            const { createAgent, MemorySaver } =
+              await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch(
+              "/ai/test-api-keys.json",
+            ).then((r) => r.json());
 
             if (!apiKey || apiKey.startsWith("sk-your-")) {
-              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
             }
 
             try {
@@ -617,21 +757,28 @@
               });
 
               await agent.chat({
-                messages: [{ role: "user", content: "我的暗号是苹果，请记住。" }],
+                messages: [
+                  { role: "user", content: "我的暗号是苹果，请记住。" },
+                ],
                 threadId: "iso1",
               });
               await agent.chat({
-                messages: [{ role: "user", content: "我的暗号是香蕉，请记住。" }],
+                messages: [
+                  { role: "user", content: "我的暗号是香蕉，请记住。" },
+                ],
                 threadId: "iso2",
               });
               const backToT1 = await agent.chat({
-                messages: [{ role: "user", content: "我的暗号是什么？只回答暗号本身。" }],
+                messages: [
+                  { role: "user", content: "我的暗号是什么？只回答暗号本身。" },
+                ],
                 threadId: "iso1",
               });
 
               const checks = {
                 isolated:
-                  backToT1.content.includes("苹果") && !backToT1.content.includes("香蕉"),
+                  backToT1.content.includes("苹果") &&
+                  !backToT1.content.includes("香蕉"),
                 t1Kept: (await isoSaver.get("iso1")).length === 4,
                 t2Kept: (await isoSaver.get("iso2")).length === 2,
                 deleteExisting: (await isoSaver.delete("iso1")) === true,
@@ -647,7 +794,10 @@
                 content: { answer: backToT1.content, checks },
               };
             } catch (error) {
-              return { assert: false, content: { error: error.message, stack: error.stack } };
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
             }
           })();
         </script>
