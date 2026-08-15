@@ -172,7 +172,7 @@ schema 字段定义：
 | `assistant` | object（必填） | `getAssistant()` 返回的 supplier 层实例（或测试注入的 fake） |
 | `model` | string | 循环内每次 `assistant.chat` 直传 |
 | `thinking` / `reasoningEffort` / `thinkingKeep` | - | 同名参数直传，语义见 [supplier 层 `chat()` 参数表](../README.md#参数说明) |
-| `tools` | array `[]` | `tool()` 定义的工具列表，可为空（退化为普通对话） |
+| `tools` | array / `() => array` `[]` | `tool()` 定义的工具列表，可为空（退化为普通对话）；传函数时每轮求值，支持会话中途动态增删 |
 | `systemPrompt` | string `""` | 系统提示词，每次运行重新注入、不写入记忆 |
 | `checkpointer` | object `null` | 会话记忆（如 `MemorySaver`），配合 `chat` 的 `threadId` 使用 |
 | `maxSteps` | number `12` | 模型↔工具往返上限，超限抛错 |

@@ -10,7 +10,8 @@ import { findTool, toolsToWire } from "./tools.js";
  * @param {boolean} [opts.thinking]
  * @param {string} [opts.reasoningEffort]
  * @param {string} [opts.thinkingKeep]
- * @param {Array} [opts.tools] - tool() 定义的工具列表，可为空（退化为普通对话）
+ * @param {Array | (() => Array)} [opts.tools] - tool() 定义的工具列表，可为空（退化为普通对话）；
+ *   传函数时每轮循环求值一次（支持 async），返回值决定本轮可用工具，可在会话中途动态增删
  * @param {string} [opts.systemPrompt] - 系统提示词（每次运行重新注入，不写入记忆）
  * @param {object} [opts.checkpointer] - 会话记忆（如 MemorySaver），配合 chat 的 threadId 使用
  * @param {number} [opts.maxSteps=12] - 模型↔工具往返上限，超限抛错
@@ -27,6 +28,10 @@ export const createAgent = ({
   maxSteps = 12,
 } = {}) => {
   if (!assistant) throw new Error("createAgent requires an assistant");
+
+  // tools 支持数组或 () => 数组：函数形式每轮求值（可 async），返回最新可用工具列表
+  const resolveTools = async () =>
+    (typeof tools === "function" ? await tools() : tools) ?? [];
 
   /**
    * 跑完整循环。调用方式与 assistant.chat 同构。
@@ -78,6 +83,8 @@ export const createAgent = ({
 
     for (let step = 1; step <= maxSteps; step++) {
       // ---- 模型节点 ----
+      // 本轮可用工具（函数形式在每轮求值；本轮内 wire 与执行共用同一份，保证一致性）
+      const currentTools = await resolveTools();
       const res = await assistant.chat({
         model,
         thinking,
@@ -87,7 +94,7 @@ export const createAgent = ({
         messages: [...messages],
         stream,
         signal,
-        tools: tools.length ? toolsToWire(tools) : null,
+        tools: currentTools.length ? toolsToWire(currentTools) : null,
         onStream:
           stream && onStream
             ? (data) => {
@@ -137,11 +144,11 @@ export const createAgent = ({
       for (const call of res.toolCalls) {
         const name = call.function?.name ?? call.name;
         const rawArgs = call.function?.arguments ?? call.args ?? "{}";
-        const target = findTool(tools, name);
+        const target = findTool(currentTools, name);
         const result = target
           ? await target.invoke(rawArgs)
           : `没有找到工具：${name}（可用工具：${
-              tools.map((t) => t.name).join(", ") || "无"
+              currentTools.map((t) => t.name).join(", ") || "无"
             }）`;
         messages.push({
           role: "tool",
