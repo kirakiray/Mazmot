@@ -1,6 +1,6 @@
 // 本地专用测试入口：用 sb-test -f 显式运行 ai/test 下的 *-sb.html（不进 CI 的命名）。
 // 依赖 sibyl-test >= 1.0.15 的 -f 多文件 + 后缀不限 .sb.html 能力，无需再临时改名。
-// 用法：npm run local-test [-- sb-test 参数...]，如 npm run local-test -- --browsers chrome
+// 用法：npm run test-ai [-- sb-test 参数...]，如 npm run test-ai -- --browsers chrome
 import { spawn } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
