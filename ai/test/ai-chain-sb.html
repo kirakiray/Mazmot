@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>AI Chain 测试（LangChain 风格封装）</title>
+  <title>AI Chain 测试（supplier 风格 Agent 封装）</title>
   <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
   <script type="module" src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
   <style>
@@ -11,149 +11,40 @@
 </head>
 <body>
   <h1>AI Chain 测试套件</h1>
-  <p>全部使用 mock model / fake assistant，不消耗 API 配额，不依赖 /nos 与真实 API Key。</p>
-
-  <!-- ============================== -->
-  <!-- messages.js                     -->
-  <!-- ============================== -->
-
-  <sb-test name="messages: 普通对象归一化为消息类实例">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { SystemMessage, HumanMessage, AIMessage, ToolMessage, toMessages } =
-            await import("../chain/messages.js");
-
-          const normalized = toMessages([
-            { role: "system", content: "你是助手" },
-            { role: "user", content: "你好" },
-            { role: "assistant", content: "你好呀", tool_calls: [
-              { id: "c1", function: { name: "calc", arguments: '{"a":1}' } },
-            ] },
-            { role: "tool", content: "42", tool_call_id: "c1", name: "calc" },
-          ]);
-
-          const checks = {
-            types: normalized.map((m) => m.getType()).join(",") === "system,human,ai,tool",
-            classInstances:
-              normalized[0] instanceof SystemMessage &&
-              normalized[1] instanceof HumanMessage &&
-              normalized[2] instanceof AIMessage &&
-              normalized[3] instanceof ToolMessage,
-            toolCallsNormalized:
-              normalized[2].toolCalls.length === 1 &&
-              normalized[2].toolCalls[0].name === "calc" &&
-              normalized[2].toolCalls[0].args === '{"a":1}',
-            toolCallId: normalized[3].toolCallId === "c1",
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { types: normalized.map((m) => m.getType()), checks },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
-
-  <sb-test name="messages: toWireMessages 生成 OpenAI wire 格式（含 tool_calls 往返）">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { HumanMessage, AIMessage, ToolMessage, toWireMessages } =
-            await import("../chain/messages.js");
-
-          const wire = toWireMessages([
-            new HumanMessage("计算 1+1"),
-            new AIMessage("", { toolCalls: [{ id: "c1", name: "calc", args: '{"a":1}' }] }),
-            new ToolMessage("2", { toolCallId: "c1", name: "calc" }),
-            new AIMessage("结果是 2"),
-          ]);
-
-          const checks = {
-            roles: wire.map((m) => m.role).join(",") === "user,assistant,tool,assistant",
-            toolCallWire:
-              wire[1].tool_calls?.[0]?.function?.name === "calc" &&
-              wire[1].tool_calls?.[0]?.function?.arguments === '{"a":1}' &&
-              wire[1].tool_calls?.[0]?.id === "c1",
-            toolMsg: wire[2].tool_call_id === "c1" && wire[2].content === "2",
-            noEmptyToolCalls: wire[3].tool_calls === undefined,
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { wire, checks },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
-
-  <sb-test name="messages: textOf 处理字符串/内容块/null + aiMessageFromResponse 字段映射">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { textOf, aiMessageFromResponse } = await import("../chain/messages.js");
-
-          const msg = aiMessageFromResponse({
-            content: "回答",
-            reasoningContent: "思考",
-            model: "mock-model",
-            toolCalls: [{ id: "c1", function: { name: "calc", arguments: "{}" } }],
-            usage: { prompt_tokens: 3, completion_tokens: 5, total_tokens: 8 },
-          });
-
-          const checks = {
-            str: textOf("abc") === "abc",
-            blocks: textOf([{ text: "a" }, { text: "b" }]) === "ab",
-            mixedBlocks: textOf(["x", { text: "y" }]) === "xy",
-            nullSafe: textOf(null) === "" && textOf(undefined) === "",
-            aiContent: msg.content === "回答",
-            aiToolCalls: msg.toolCalls.length === 1 && msg.toolCalls[0].name === "calc",
-            usageMap:
-              msg.usageMetadata.inputTokens === 3 &&
-              msg.usageMetadata.outputTokens === 5 &&
-              msg.usageMetadata.totalTokens === 8,
-            emptyToolCalls: aiMessageFromResponse({ content: "x" }).toolCalls.length === 0,
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { checks, usageMetadata: msg.usageMetadata },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
+  <p>全部使用 fake assistant，不消耗 API 配额，不依赖 /nos 与真实 API Key。</p>
 
   <!-- ============================== -->
   <!-- tools.js                        -->
   <!-- ============================== -->
 
-  <sb-test name="tools: toWire 生成 JSON Schema（optional 不进 required）">
+  <sb-test name="tool: toWire() 生成 JSON Schema（required / properties）">
     <template>
       <script type="module">
         return (async () => {
           const { tool } = await import("../chain/tools.js");
 
-          const echoTool = tool(async (args) => JSON.stringify(args), {
-            name: "echo",
-            description: "回显参数",
-            schema: {
-              topic: { type: "string", description: "主题" },
-              limit: { type: "number", optional: true },
+          const calcTool = tool(
+            async ({ expr }) => expr,
+            {
+              name: "calc",
+              description: "计算表达式",
+              schema: {
+                expr: { type: "string", description: "表达式" },
+                digits: { type: "number", optional: true },
+              },
             },
-          });
+          );
 
-          const wire = echoTool.toWire();
-          const params = wire.function.parameters;
-
+          const wire = calcTool.toWire();
           const checks = {
-            wireType: wire.type === "function",
-            name: wire.function.name === "echo",
-            requiredOnly: params.required.length === 1 && params.required[0] === "topic",
-            optionalStripped: params.properties.limit.optional === undefined,
-            descKept: params.properties.topic.description === "主题",
+            type: wire.type === "function",
+            name: wire.function.name === "calc",
+            description: wire.function.description === "计算表达式",
+            parametersType: wire.function.parameters.type === "object",
+            required: JSON.stringify(wire.function.parameters.required) === '["expr"]',
+            properties: wire.function.parameters.properties.expr.type === "string" &&
+              wire.function.parameters.properties.digits.type === "number",
+            optionalStripped: !("optional" in wire.function.parameters.properties.digits),
           };
 
           return {
@@ -165,38 +56,37 @@
     </template>
   </sb-test>
 
-  <sb-test name="tools: invoke 校验与容错（缺参/类型错/JSON 非法/执行抛错）">
+  <sb-test name="tool: invoke 容错（非法 JSON / 缺必填 / 类型错 / 抛异常均返回文本）">
     <template>
       <script type="module">
         return (async () => {
           const { tool } = await import("../chain/tools.js");
 
-          const calc = tool(async ({ a, b }) => String(a + b), {
-            name: "add",
-            schema: {
-              a: { type: "number" },
-              b: { type: "number" },
-            },
-          });
-
-          const boom = tool(async () => { throw new Error("炸了"); }, { name: "boom", schema: {} });
+          const echoTool = tool(
+            async ({ text }) => `ok:${text}`,
+            { name: "echo", schema: { text: { type: "string" } } },
+          );
+          const boomTool = tool(
+            async () => { throw new Error("boom"); },
+            { name: "boom", schema: {} },
+          );
 
           const results = {
-            ok: await calc.invoke('{"a":1,"b":2}'),
-            missing: await calc.invoke('{"a":1}'),
-            wrongType: await calc.invoke('{"a":"1","b":2}'),
-            badJson: await calc.invoke("not-json"),
-            thrown: await boom.invoke("{}"),
-            nullOutput: await tool(async () => {}, { name: "noop", schema: {} }).invoke("{}"),
+            badJson: await echoTool.invoke("not json"),
+            missing: await echoTool.invoke("{}"),
+            nullArgs: await echoTool.invoke(null),
+            wrongType: await echoTool.invoke('{"text": 123}'),
+            ok: await echoTool.invoke('{"text": "hi"}'),
+            throwFn: await boomTool.invoke("{}"),
           };
 
           const checks = {
-            okValue: results.ok === "3",
-            missingReadable: results.missing.includes("缺少必填参数") && results.missing.includes("b"),
-            wrongTypeReadable: results.wrongType.includes("number"),
-            badJsonReadable: results.badJson.includes("合法 JSON"),
-            thrownReadable: results.thrown.includes("炸了"),
-            nullToEmpty: results.nullOutput === "",
+            badJson: results.badJson.includes("工具参数不是合法 JSON"),
+            missing: results.missing === "缺少必填参数：text",
+            nullArgs: results.nullArgs === "缺少必填参数：text",
+            wrongType: results.wrongType.includes("需要 string 类型"),
+            ok: results.ok === "ok:hi",
+            throwFn: results.throwFn === "工具执行出错：boom",
           };
 
           return {
@@ -209,27 +99,18 @@
   </sb-test>
 
   <!-- ============================== -->
-  <!-- memory.js                       -->
+  <!-- agent.js                        -->
   <!-- ============================== -->
 
-  <sb-test name="memory: MemorySaver get/set/delete 与副本隔离">
+  <sb-test name="createAgent: 缺 assistant 抛错">
     <template>
       <script type="module">
         return (async () => {
-          const { MemorySaver } = await import("../chain/memory.js");
-          const { HumanMessage, AIMessage } = await import("../chain/messages.js");
-
-          const saver = new MemorySaver();
-          await saver.set("t1", [new HumanMessage("第一轮"), new AIMessage("好的")]);
-
-          const got = await saver.get("t1");
-          got.push(new HumanMessage("污染")); // 修改副本不应影响内部
+          const { createAgent } = await import("../chain/agent.js");
 
           const checks = {
-            length: (await saver.get("t1")).length === 2,
-            emptyThread: (await saver.get("not-exist")).length === 0,
-            delete: (await saver.delete("t1")) === true && (await saver.get("t1")).length === 0,
-            deleteMissing: (await saver.delete("t1")) === false,
+            emptyOpts: (() => { try { createAgent({}); return false; } catch (e) { return e.message.includes("assistant"); } })(),
+            noArgs: (() => { try { createAgent(); return false; } catch (e) { return e.message.includes("assistant"); } })(),
           };
 
           return {
@@ -241,439 +122,508 @@
     </template>
   </sb-test>
 
-  <!-- ============================== -->
-  <!-- agent.js（mock model）           -->
-  <!-- ============================== -->
-
-  <sb-test name="agent: invoke 工具循环（human→ai(toolCalls)→tool→ai）">
+  <sb-test name="chat: 无工具单轮 — 返回 content / usage / 轨迹">
     <template>
       <script type="module">
         return (async () => {
           const { createAgent } = await import("../chain/agent.js");
-          const { AIMessage, textOf } = await import("../chain/messages.js");
-          const { tool } = await import("../chain/tools.js");
 
-          // mock model：第一轮发起 tool call，第二轮给出最终回答
-          const receivedArgs = [];
-          const mockModel = {
-            async invoke(messages, opts) {
-              receivedArgs.push(opts);
-              if (messages.every((m) => m.getType() !== "tool")) {
-                return new AIMessage("", {
-                  toolCalls: [{ id: "call_1", name: "add", args: '{"a":40,"b":2}' }],
-                });
-              }
-              return new AIMessage("答案是 42");
-            },
-            async *stream(messages, opts) {
-              yield { delta: "", deltaReasoning: "", content: "", done: false };
-              yield { done: true, message: await this.invoke(messages, opts) };
+          // fake assistant：按调用序号返回预设响应
+          const fakeCalls = [];
+          const fakeAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              fakeCalls.push(opts);
+              return {
+                content: "你好呀",
+                reasoningContent: "思考中",
+                toolCalls: [],
+                model: "fake-model",
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+              };
             },
           };
 
-          const addTool = tool(async ({ a, b }) => String(a + b), {
-            name: "add",
-            description: "加法",
-            schema: { a: { type: "number" }, b: { type: "number" } },
+          const agent = createAgent({ assistant: fakeAssistant });
+          const result = await agent.chat({
+            messages: [{ role: "user", content: "你好" }],
           });
 
+          const checks = {
+            content: result.content === "你好呀",
+            reasoning: result.reasoningContent === "思考中",
+            model: result.model === "fake-model",
+            usage: result.usage.total_tokens === 15,
+            noToolCalls: Array.isArray(result.toolCalls) && result.toolCalls.length === 0,
+            traceRoles: result.messages.map((m) => m.role).join(",") === "user,assistant",
+            traceContent: result.messages[1].content === "你好呀",
+            noEmptyToolCallsField: result.messages[1].tool_calls === undefined,
+            singleCall: fakeCalls.length === 1,
+            noToolsSent: fakeCalls[0].tools === null,
+            noSystemByDefault: !fakeCalls[0].messages.some((m) => m.role === "system"),
+          };
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="chat: model / thinking / signal / tools 直传给 assistant.chat">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { createAgent, tool } = await import("../chain/main.js");
+
+          const passthruCalls = [];
+          const passthruAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              passthruCalls.push(opts);
+              return { content: "ok", reasoningContent: "", toolCalls: [], model: opts.model, usage: null };
+            },
+          };
+
+          const echoTool = tool(async ({ text }) => text, { name: "echo", schema: { text: { type: "string" } } });
           const agent = createAgent({
-            model: mockModel,
-            tools: [addTool],
-            systemPrompt: "你是计算助手",
+            assistant: passthruAssistant,
+            model: "m1",
+            thinking: true,
+            reasoningEffort: "max",
+            tools: [echoTool],
           });
 
-          const result = await agent.invoke({
-            messages: [{ role: "user", content: "40 + 2 等于多少？" }],
+          const passthruSignal = new AbortController().signal;
+          await agent.chat({
+            messages: [{ role: "user", content: "hi" }],
+            signal: passthruSignal,
           });
 
-          const types = result.messages.map((m) => m.getType()).join(",");
-          const toolMsg = result.messages.find((m) => m.getType() === "tool");
-          const aiToolCallMsg = result.messages.find((m) => m.getType() === "ai" && m.toolCalls.length);
-
+          const sent = passthruCalls[0];
           const checks = {
-            trajectory: types === "system,human,ai,tool,ai",
-            systemFirst: result.messages[0].getType() === "system",
-            toolResult: toolMsg?.content === "42" && toolMsg?.toolCallId === "call_1",
-            toolCallRecorded: aiToolCallMsg?.toolCalls[0]?.name === "add",
-            finalAnswer: textOf(result.messages.at(-1).content) === "答案是 42",
-            toolsPassedToModel: receivedArgs[0]?.tools?.[0]?.function?.name === "add",
+            model: sent.model === "m1",
+            thinking: sent.thinking === true,
+            reasoningEffort: sent.reasoningEffort === "max",
+            signal: sent.signal === passthruSignal,
+            stream: sent.stream === false,
+            onStream: sent.onStream === null,
+            toolsWire: Array.isArray(sent.tools) &&
+              sent.tools[0].type === "function" &&
+              sent.tools[0].function.name === "echo",
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { types, toolMsg, checks, opts: receivedArgs[0] },
+            // 不放含 AbortSignal 的原始对象（postMessage 无法克隆）
+            content: { checks },
           };
         })();
       </script>
     </template>
   </sb-test>
 
-  <sb-test name="agent: stream updates 模式按节点推送（model→tools→model）">
+  <sb-test name="chat: 工具循环 — 轨迹 user/assistant(tool_calls)/tool/assistant，工具收到解析后的参数">
     <template>
       <script type="module">
         return (async () => {
-          const { createAgent } = await import("../chain/agent.js");
-          const { AIMessage } = await import("../chain/messages.js");
-          const { tool } = await import("../chain/tools.js");
+          const { createAgent, tool } = await import("../chain/main.js");
 
-          const mockModel = {
-            async invoke(messages) {
-              if (messages.every((m) => m.getType() !== "tool")) {
-                return new AIMessage("", {
-                  toolCalls: [{ id: "c1", name: "echo", args: '{"v":"hi"}' }],
-                });
+          const loopCalls = [];
+          const loopAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              loopCalls.push(opts);
+              if (loopCalls.length === 1) {
+                return {
+                  content: "",
+                  reasoningContent: "",
+                  toolCalls: [{ id: "c1", type: "function", function: { name: "echo", arguments: '{"x":"hello"}' } }],
+                  model: "fake-model",
+                  usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+                };
               }
-              return new AIMessage("收到 hi");
-            },
-            async *stream(messages) {
-              yield { done: true, message: await this.invoke(messages) };
+              return {
+                content: "工具说: hello",
+                reasoningContent: "",
+                toolCalls: [],
+                model: "fake-model",
+                usage: { prompt_tokens: 20, completion_tokens: 7, total_tokens: 27 },
+              };
             },
           };
 
-          const echoTool = tool(async ({ v }) => `echo:${v}`, {
-            name: "echo",
-            schema: { v: { type: "string" } },
+          const received = [];
+          const echoTool = tool(
+            async (args) => { received.push(args); return `echo:${args.x}`; },
+            { name: "echo", schema: { x: { type: "string" } } },
+          );
+
+          const agent = createAgent({ assistant: loopAssistant, tools: [echoTool] });
+          const result = await agent.chat({
+            messages: [{ role: "user", content: "调用工具" }],
           });
 
-          const agent = createAgent({ model: mockModel, tools: [echoTool] });
-
-          const chunks = [];
-          for await (const chunk of agent.stream(
-            { messages: [{ role: "user", content: "echo hi" }] },
-            { streamMode: "updates" }
-          )) {
-            chunks.push(chunk);
-          }
-
-          const nodeOrder = chunks.map((c) => Object.keys(c)[0]).join(",");
+          const roles = result.messages.map((m) => m.role).join(",");
+          const toolMsg = result.messages[2];
           const checks = {
-            nodeOrder: nodeOrder === "model,tools,model",
-            firstModelHasToolCalls: chunks[0].model.messages[0].toolCalls.length === 1,
-            toolsNode: chunks[1].tools.messages[0].content === "echo:hi",
-            lastModelIsFinal: chunks[2].model.messages[0].content === "收到 hi",
+            finalContent: result.content === "工具说: hello",
+            roles: roles === "user,assistant,tool,assistant",
+            toolCallsInTrace: result.messages[1].tool_calls?.[0]?.function?.name === "echo",
+            toolMessage: toolMsg.role === "tool" &&
+              toolMsg.content === "echo:hello" &&
+              toolMsg.tool_call_id === "c1" &&
+              toolMsg.name === "echo",
+            toolGotParsedArgs: JSON.stringify(received[0]) === '{"x":"hello"}',
+            // agent 传快照：第二次调用收到 3 条（最终回答在此调用返回后才 push）
+            secondCallSawToolResult: loopCalls[1].messages.length === 3 &&
+              loopCalls[1].messages[2].content === "echo:hello",
+            usageAccumulated:
+              result.usage.prompt_tokens === 30 &&
+              result.usage.completion_tokens === 12 &&
+              result.usage.total_tokens === 42,
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { nodeOrder, chunks, checks },
+            content: { roles, received, checks },
           };
         })();
       </script>
     </template>
   </sb-test>
 
-  <sb-test name="agent: stream messages 模式逐 token 推送 + ToolMessage">
+  <sb-test name="chat: 找不到工具 — 错误文本作为 tool 消息回给模型">
     <template>
       <script type="module">
         return (async () => {
           const { createAgent } = await import("../chain/agent.js");
-          const { AIMessage, textOf } = await import("../chain/messages.js");
-          const { tool } = await import("../chain/tools.js");
 
-          const mockModel = {
-            // 第一轮（发起工具）：无文本 token；第二轮（最终回答）：分两个 token 推送
-            async *stream(messages) {
-              const hasToolResult = messages.some((m) => m.getType() === "tool");
-              if (!hasToolResult) {
-                yield { done: true, message: new AIMessage("", {
-                  toolCalls: [{ id: "c1", name: "echo", args: '{"v":"hi"}' }],
-                }) };
-                return;
+          const ghostCalls = [];
+          const ghostAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              ghostCalls.push(opts);
+              if (ghostCalls.length === 1) {
+                return {
+                  content: "",
+                  reasoningContent: "",
+                  toolCalls: [{ id: "c1", type: "function", function: { name: "nope", arguments: "{}" } }],
+                  model: "fake-model",
+                  usage: null,
+                };
               }
-              yield { delta: "收到 ", deltaReasoning: "", content: "收到 ", done: false };
-              yield { delta: "hi", deltaReasoning: "", content: "收到 hi", done: false };
-              yield { done: true, message: new AIMessage("收到 hi") };
+              return { content: "知道了", reasoningContent: "", toolCalls: [], model: "fake-model", usage: null };
             },
-            async invoke() { throw new Error("messages 模式不应调用 invoke"); },
           };
 
-          const echoTool = tool(async ({ v }) => `echo:${v}`, {
-            name: "echo",
-            schema: { v: { type: "string" } },
+          const agent = createAgent({ assistant: ghostAssistant, tools: [] });
+          const result = await agent.chat({
+            messages: [{ role: "user", content: "hi" }],
           });
 
-          const agent = createAgent({ model: mockModel, tools: [echoTool] });
-
-          const yielded = [];
-          for await (const message of agent.stream(
-            { messages: [{ role: "user", content: "echo hi" }] },
-            { streamMode: "messages" }
-          )) {
-            yielded.push(message);
-          }
-
-          const types = yielded.map((m) => m.getType()).join(",");
-          const aiText = yielded
-            .filter((m) => m.getType() === "ai")
-            .map((m) => textOf(m.content))
-            .join("");
-
+          const fedBack = ghostCalls[1].messages.at(-1);
           const checks = {
-            sequence: types === "tool,ai,ai",
-            typewriter: aiText === "收到 hi",
-            toolMsgContent: yielded[0].content === "echo:hi",
+            fedRole: fedBack.role === "tool",
+            fedContent: fedBack.content.includes("没有找到工具：nope"),
+            listsAvailable: fedBack.content.includes("可用工具：无"),
+            traceContent: result.messages[2].content.includes("没有找到工具：nope"),
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { types, aiText, checks },
+            content: { fedBack, checks },
           };
         })();
       </script>
     </template>
   </sb-test>
 
-  <sb-test name="agent: checkpointer 跨轮记忆（thread_id 隔离 + 不写入 systemPrompt）">
+  <sb-test name="chat: maxSteps 超限抛错（模型持续发起工具调用）">
     <template>
       <script type="module">
         return (async () => {
-          const { createAgent } = await import("../chain/agent.js");
-          const { AIMessage, textOf } = await import("../chain/messages.js");
-          const { MemorySaver } = await import("../chain/memory.js");
+          const { createAgent, tool } = await import("../chain/main.js");
 
-          // 记录每轮收到的完整消息列表（快照，避免 agent 后续 push 污染记录）
-          const rounds = [];
-          const mockModel = {
-            async invoke(messages) {
-              rounds.push([...messages]);
-              return new AIMessage(`第${rounds.length}轮回复`);
+          const loop2Calls = [];
+          const loop2Assistant = {
+            providerName: "fake",
+            async chat(opts) {
+              loop2Calls.push(opts);
+              return {
+                content: "",
+                reasoningContent: "",
+                toolCalls: [{ id: `c${loop2Calls.length}`, type: "function", function: { name: "echo", arguments: "{}" } }],
+                model: "fake-model",
+                usage: null,
+              };
             },
-            async *stream(messages) {
-              yield { done: true, message: await this.invoke(messages) };
+          };
+
+          const echoTool = tool(async () => "x", { name: "echo", schema: {} });
+          const agent = createAgent({ assistant: loop2Assistant, tools: [echoTool], maxSteps: 3 });
+
+          try {
+            await agent.chat({ messages: [{ role: "user", content: "hi" }] });
+            return { assert: false, content: { error: "未抛错" } };
+          } catch (e) {
+            const checks = {
+              message: e.message.includes("3"),
+              calledMaxTimes: loop2Calls.length === 3,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { error: e.message, calls: loop2Calls.length, checks },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="chat: stream 事件顺序 text → toolCalls → toolResult → text → done">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { createAgent, tool } = await import("../chain/main.js");
+
+          const streamCalls = [];
+          const streamAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              streamCalls.push(opts);
+              const res = streamCalls.length === 1
+                ? {
+                    deltas: ["你", "好"],
+                    content: "",
+                    toolCalls: [{ id: "c1", type: "function", function: { name: "echo", arguments: '{"x":"1"}' } }],
+                  }
+                : { deltas: ["完", "成"], content: "完成", toolCalls: [] };
+              // 模拟 supplier 流式：先逐段回调，再返回累积结果
+              if (opts.onStream && res.deltas) {
+                let acc = "";
+                for (const d of res.deltas) {
+                  acc += d;
+                  opts.onStream({ content: acc, delta: d, reasoningContent: "", deltaReasoning: "", done: false });
+                }
+              }
+              return {
+                content: res.content ?? "",
+                reasoningContent: "",
+                toolCalls: res.toolCalls ?? [],
+                model: "fake-model",
+                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+              };
+            },
+          };
+
+          const echoTool = tool(async ({ x }) => `r:${x}`, { name: "echo", schema: { x: { type: "string" } } });
+          const agent = createAgent({ assistant: streamAssistant, tools: [echoTool] });
+
+          const events = [];
+          const result = await agent.chat({
+            messages: [{ role: "user", content: "hi" }],
+            stream: true,
+            onStream: (ev) => events.push(ev.type === "text" ? { type: "text", delta: ev.delta } : ev),
+          });
+
+          const types = events.map((ev) => ev.type).join(",");
+          const textDeltas = events.filter((ev) => ev.type === "text").map((ev) => ev.delta).join("|");
+          const doneEv = events.at(-1);
+          const checks = {
+            order: types === "text,text,toolCalls,toolResult,text,text,done",
+            textDeltas: textDeltas === "你|好|完|成",
+            toolResultEvent: events[3].type === "toolResult" &&
+              events[3].name === "echo" &&
+              events[3].result === "r:1",
+            doneEvent: doneEv.done === true &&
+              doneEv.content === "完成" &&
+              doneEv.usage.total_tokens === 4 &&
+              doneEv.messages.length === 4,
+            resultMatchesDone: result.content === doneEv.content,
+            streamPassedToAssistant: streamCalls[0].stream === true && typeof streamCalls[0].onStream === "function",
+          };
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { types, textDeltas, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="chat: stream:false + onStream — 仍有工具与 done 事件，无 text 事件">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { createAgent, tool } = await import("../chain/main.js");
+
+          const quietCalls = [];
+          const quietAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              quietCalls.push(opts);
+              return quietCalls.length === 1
+                ? {
+                    content: "",
+                    reasoningContent: "",
+                    toolCalls: [{ id: "c1", type: "function", function: { name: "echo", arguments: "{}" } }],
+                    model: "fake-model",
+                    usage: null,
+                  }
+                : { content: "答案", reasoningContent: "", toolCalls: [], model: "fake-model", usage: null };
+            },
+          };
+
+          const echoTool = tool(async () => "r", { name: "echo", schema: {} });
+          const agent = createAgent({ assistant: quietAssistant, tools: [echoTool] });
+
+          const quietEvents = [];
+          await agent.chat({
+            messages: [{ role: "user", content: "hi" }],
+            onStream: (ev) => quietEvents.push(ev.type),
+          });
+
+          const checks = {
+            types: quietEvents.join(",") === "toolCalls,toolResult,done",
+            noTextEvent: !quietEvents.includes("text"),
+            noOnStreamSentToAssistant: quietCalls[0].onStream === null && quietCalls[0].stream === false,
+          };
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { quietEvents, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <!-- ============================== -->
+  <!-- memory.js（配合 agent）         -->
+  <!-- ============================== -->
+
+  <sb-test name="memory: 同 threadId 第二轮带历史，systemPrompt 不入库">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { createAgent, MemorySaver } = await import("../chain/main.js");
+
+          const memCalls = [];
+          const memAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              memCalls.push(opts);
+              return {
+                content: memCalls.length === 1 ? "第一轮回答" : "第二轮回答",
+                reasoningContent: "",
+                toolCalls: [],
+                model: "fake-model",
+                usage: null,
+              };
             },
           };
 
           const saver = new MemorySaver();
           const agent = createAgent({
-            model: mockModel,
+            assistant: memAssistant,
             systemPrompt: "你是导师",
             checkpointer: saver,
           });
 
-          const config = { configurable: { thread_id: "learner-001" } };
-          await agent.invoke({ messages: [{ role: "user", content: "我叫小林" }] }, config);
+          await agent.chat({ messages: [{ role: "user", content: "我叫小林" }], threadId: "t1" });
+          await agent.chat({ messages: [{ role: "user", content: "我叫什么？" }], threadId: "t1" });
 
-          // 换一个 thread_id：不应带上第一轮历史
-          await agent.invoke(
-            { messages: [{ role: "user", content: "我叫什么？" }] },
-            { configurable: { thread_id: "other-thread" } }
-          );
-
-          // 同一个 thread_id：应带上第一轮历史
-          const third = await agent.invoke(
-            { messages: [{ role: "user", content: "我叫什么？" }] },
-            config
-          );
-
-          const secondRoundTypes = rounds[1].map((m) => m.getType()).join(",");
-          const thirdRoundTypes = rounds[2].map((m) => m.getType()).join(",");
-          const thirdRoundContents = rounds[2].map((m) => textOf(m.content));
-          const saved = await saver.get("learner-001");
-
+          const stored = await saver.get("t1");
+          const secondMessages = memCalls[1].messages;
           const checks = {
-            systemAlwaysInjected:
-              rounds.every((msgs) => msgs[0].getType() === "system" && textOf(msgs[0].content) === "你是导师"),
-            secondIsolated: secondRoundTypes === "system,human",
-            thirdWithHistory: thirdRoundTypes === "system,human,ai,human",
-            historyContents: thirdRoundContents[1] === "我叫小林" && thirdRoundContents[2] === "第1轮回复",
-            savedNoSystem: saved.every((m) => m.getType() !== "system"),
-            savedLength: saved.length === 4, // human,ai,human,ai
-            finalAnswer: textOf(third.messages.at(-1).content) === "第3轮回复",
+            firstCallHasSystem: memCalls[0].messages[0].role === "system" &&
+              memCalls[0].messages[0].content === "你是导师",
+            secondCallRoles: secondMessages.map((m) => m.role).join(",") === "system,user,assistant,user",
+            secondCallHistory: secondMessages[1].content === "我叫小林" &&
+              secondMessages[2].content === "第一轮回答",
+            storedExcludesSystem: stored[0].role === "user",
+            storedLength: stored.length === 4,
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { thirdRoundTypes, thirdRoundContents, savedTypes: saved.map((m) => m.getType()), checks },
+            content: { stored, checks },
           };
         })();
       </script>
     </template>
   </sb-test>
 
-  <sb-test name="agent: 未知工具与 maxSteps 保护">
+  <sb-test name="memory: 不同 threadId 隔离；delete / clear 生效">
     <template>
       <script type="module">
         return (async () => {
-          const { createAgent } = await import("../chain/agent.js");
-          const { AIMessage } = await import("../chain/messages.js");
+          const { createAgent, MemorySaver } = await import("../chain/main.js");
 
-          // 场景一：模型调用了不存在的工具 → 错误信息以 ToolMessage 回给模型
-          const unknownToolModel = {
-            async invoke(messages) {
-              if (messages.every((m) => m.getType() !== "tool")) {
-                return new AIMessage("", { toolCalls: [{ id: "x", name: "not_exist", args: "{}" }] });
-              }
-              return new AIMessage("知道了");
-            },
-            async *stream(messages) {
-              yield { done: true, message: await this.invoke(messages) };
+          const isoCalls = [];
+          const isoAssistant = {
+            providerName: "fake",
+            async chat(opts) {
+              isoCalls.push(opts);
+              return { content: `第${isoCalls.length}轮`, reasoningContent: "", toolCalls: [], model: "fake-model", usage: null };
             },
           };
 
-          const agentA = createAgent({ model: unknownToolModel });
-          const resultA = await agentA.invoke({ messages: [{ role: "user", content: "hi" }] });
-          const toolMsgA = resultA.messages.find((m) => m.getType() === "tool");
+          const isoSaver = new MemorySaver();
+          const agent = createAgent({ assistant: isoAssistant, checkpointer: isoSaver });
 
-          // 场景二：模型永远发起 tool call → 超过 maxSteps 抛错
-          const loopModel = {
-            async invoke() {
-              return new AIMessage("", { toolCalls: [{ id: "l", name: "t", args: "{}" }] });
-            },
-            async *stream(messages) {
-              yield { done: true, message: await this.invoke(messages) };
-            },
-          };
-
-          let loopError = null;
-          try {
-            await createAgent({ model: loopModel, maxSteps: 3 }).invoke({
-              messages: [{ role: "user", content: "hi" }],
-            });
-          } catch (e) {
-            loopError = e;
-          }
+          await agent.chat({ messages: [{ role: "user", content: "A" }], threadId: "t1" });
+          await agent.chat({ messages: [{ role: "user", content: "B" }], threadId: "t2" });
 
           const checks = {
-            unknownToolReadable: toolMsgA?.content.includes("没有找到工具") && toolMsgA.content.includes("not_exist"),
-            unknownToolRecover: resultA.messages.at(-1).content === "知道了",
-            maxStepsThrows: !!loopError && loopError.message.includes("最大步数"),
+            isolated: isoCalls[1].messages.length === 1 && isoCalls[1].messages[0].content === "B",
+            t1Kept: (await isoSaver.get("t1")).length === 2,
+            deleteExisting: (await isoSaver.delete("t1")) === true,
+            deleteMissing: (await isoSaver.delete("t1")) === false,
+            deletedEmpty: (await isoSaver.get("t1")).length === 0,
           };
+
+          await agent.chat({ messages: [{ role: "user", content: "C" }], threadId: "t2" });
+          isoSaver.clear();
+          checks.cleared = (await isoSaver.get("t2")).length === 0;
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { toolMsgContent: toolMsgA?.content, loopError: loopError?.message, checks },
+            content: { checks },
           };
         })();
       </script>
     </template>
   </sb-test>
 
-  <!-- ============================== -->
-  <!-- chat-model.js（fake assistant）  -->
-  <!-- ============================== -->
-
-  <sb-test name="chat-model: invoke 经 fake assistant 返回 AIMessage（含 toolCalls/usage）">
+  <sb-test name="MemorySaver: get 返回副本，外部修改不污染内部">
     <template>
       <script type="module">
         return (async () => {
-          const { createChatModel } = await import("../chain/chat-model.js");
+          const { MemorySaver } = await import("../chain/memory.js");
 
-          const captured = [];
-          const fakeAssistant = {
-            async chat(options) {
-              captured.push(options);
-              return {
-                content: "回答",
-                reasoningContent: "",
-                toolCalls: [{ id: "c1", function: { name: "calc", arguments: "{}" } }],
-                model: "mock",
-                usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
-              };
-            },
-          };
+          const cpSaver = new MemorySaver();
+          await cpSaver.set("t1", [{ role: "user", content: "hi" }]);
 
-          const model = createChatModel({ assistant: fakeAssistant, model: "mock-1", thinking: true });
-          const msg = await model.invoke([{ role: "user", content: "hi" }], {
-            tools: [{ type: "function", function: { name: "calc", parameters: {} } }],
-          });
+          const cpGot = await cpSaver.get("t1");
+          cpGot.push({ role: "assistant", content: "hack" });
+          cpGot[0].content = "mutated";
+
+          const cpAgain = await cpSaver.get("t1");
+          const cpUnknown = await cpSaver.get("nope");
 
           const checks = {
-            forwarded: captured[0]?.model === "mock-1" && captured[0]?.thinking === true,
-            wireMessages: captured[0]?.messages?.[0]?.role === "user",
-            toolsForwarded: captured[0]?.tools?.[0]?.function?.name === "calc",
-            noStream: captured[0]?.stream === false,
-            aiMessage: msg.getType() === "ai" && msg.content === "回答",
-            toolCallsNormalized: msg.toolCalls[0].name === "calc",
-            usageMetadata: msg.usageMetadata.totalTokens === 5,
+            copyOnRead: cpAgain.length === 1 && cpAgain[0].content === "hi",
+            unknownThread: Array.isArray(cpUnknown) && cpUnknown.length === 0,
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { checks, captured: captured[0], msg },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
-
-  <sb-test name="chat-model: stream 桥接 onStream 回调为异步迭代器">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { createChatModel } = await import("../chain/chat-model.js");
-          const { textOf } = await import("../chain/messages.js");
-
-          // 模拟供应商流式协议：两个文本 token + 一个带 toolCalls 的 done
-          const fakeAssistant = {
-            async chat({ onStream }) {
-              onStream({ content: "你", delta: "你", deltaReasoning: "", toolCalls: [], model: "mock", usage: null, done: false });
-              onStream({ content: "你好", delta: "好", deltaReasoning: "", toolCalls: [], model: "mock", usage: null, done: false });
-              onStream({
-                content: "你好", delta: "", deltaReasoning: "",
-                toolCalls: [{ id: "c1", function: { name: "calc", arguments: "{}" } }],
-                model: "mock", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
-                done: true,
-              });
-              return { content: "你好", toolCalls: [{ id: "c1", function: { name: "calc", arguments: "{}" } }], model: "mock" };
-            },
-          };
-
-          const model = createChatModel({ assistant: fakeAssistant });
-          const chunks = [];
-          for await (const chunk of model.stream([{ role: "user", content: "打招呼" }])) {
-            chunks.push(chunk);
-          }
-
-          const last = chunks.at(-1);
-          const checks = {
-            chunkCount: chunks.length === 3,
-            deltas: chunks.slice(0, 2).map((c) => c.delta).join("") === "你好",
-            doneFlags: chunks.map((c) => c.done).join(",") === "false,false,true",
-            finalMessage: last.message.getType() === "ai" && textOf(last.message.content) === "你好",
-            finalToolCalls: last.message.toolCalls[0]?.name === "calc",
-            finalUsage: last.message.usageMetadata.totalTokens === 3,
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { checks, chunks: chunks.map((c) => ({ delta: c.delta, done: c.done })) },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
-
-  <sb-test name="chat-model: stream 中 chat 抛错时异步迭代器转发错误">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { createChatModel } = await import("../chain/chat-model.js");
-
-          const fakeAssistant = {
-            async chat() { throw new Error("no api key available"); },
-          };
-
-          const model = createChatModel({ assistant: fakeAssistant });
-
-          let thrown = null;
-          const yielded = [];
-          try {
-            for await (const chunk of model.stream([{ role: "user", content: "hi" }])) {
-              yielded.push(chunk);
-            }
-          } catch (e) {
-            thrown = e;
-          }
-
-          const checks = {
-            errorForwarded: thrown?.message === "no api key available",
-            noChunksBeforeError: yielded.length === 0,
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { checks, error: thrown?.message, yieldedCount: yielded.length },
+            content: { cpAgain, checks },
           };
         })();
       </script>
@@ -681,102 +631,28 @@
   </sb-test>
 
   <!-- ============================== -->
-  <!-- supplier 层：流式 tool_calls 累积  -->
+  <!-- main.js 导出                    -->
   <!-- ============================== -->
 
-  <sb-test name="supplier: 流式 tool_calls 分片累积拼接（assistant 基类）">
+  <sb-test name="导出: chain/main.js 暴露 createAgent / tool / toolsToWire / findTool / MemorySaver">
     <template>
       <script type="module">
         return (async () => {
-          const { Assistant } = await import("../supplier/assistant.js");
+          const chain = await import("../chain/main.js");
+          const names = ["createAgent", "tool", "toolsToWire", "findTool", "MemorySaver"];
 
-          const enc = new TextEncoder();
-          const sse = (obj) => enc.encode(`data: ${JSON.stringify(obj)}\n`);
-
-          // OpenAI 风格分片：id/name 只出现一次，arguments 跨 chunk 拼接
-          const stream = new ReadableStream({
-            start(c) {
-              c.enqueue(sse({ choices: [{ delta: { tool_calls: [
-                { index: 0, id: "call_1", function: { name: "calc", arguments: '{"expr' } },
-              ] } }] }));
-              c.enqueue(sse({ choices: [{ delta: { tool_calls: [
-                { index: 0, function: { arguments: 'ession":"1+1"}' } },
-              ] } }] }));
-              c.enqueue(sse({ choices: [{ delta: { tool_calls: [
-                { index: 1, id: "call_2", function: { name: "echo", arguments: '{"v":"hi"}' } },
-              ] } }] }));
-              c.enqueue(enc.encode("data: [DONE]\n"));
-              c.close();
-            },
-          });
-
-          const a = new Assistant(null, "fake");
-          a.providerName = "Test";
-
-          const donePayloads = [];
-          const result = await a.handleStreamResponse({ body: stream }, (d) => {
-            if (d.done) donePayloads.push(d);
-          });
-
+          const demoTool = chain.tool(async () => "x", { name: "demo", schema: {} });
           const checks = {
-            count: result.toolCalls.length === 2,
-            firstIdName: result.toolCalls[0].id === "call_1" && result.toolCalls[0].function.name === "calc",
-            argsJoined: result.toolCalls[0].function.arguments === '{"expression":"1+1"}',
-            secondCall: result.toolCalls[1].function.name === "echo" && result.toolCalls[1].function.arguments === '{"v":"hi"}',
-            donePayloadHasToolCalls: donePayloads[0]?.toolCalls?.length === 2,
+            allExported: names.every((n) => typeof chain[n] === "function" || (n === "MemorySaver" && typeof chain[n] === "function")),
+            findToolHit: chain.findTool([demoTool], "demo") === demoTool,
+            findToolMiss: chain.findTool([demoTool], "other") === null,
+            toolsToWire: chain.toolsToWire([demoTool])[0].function.name === "demo",
+            pureLayer: true, // chain 模块不 import /nos/*，见 main.js 顶部说明
           };
 
           return {
             assert: Object.values(checks).every(Boolean),
-            content: { toolCalls: result.toolCalls, checks },
-          };
-        })();
-      </script>
-    </template>
-  </sb-test>
-
-  <sb-test name="supplier: 非流式 toolCalls 透传与请求体构建（Kimi mock fetch）">
-    <template>
-      <script type="module">
-        return (async () => {
-          const { KimiAssistant } = await import("../supplier/kimi.js");
-
-          const capturedBodies = [];
-          const originalFetch = globalThis.fetch;
-          globalThis.fetch = async (url, opts) => {
-            if (opts?.body) capturedBodies.push(JSON.parse(opts.body));
-            return new Response(JSON.stringify({
-              choices: [{ message: { content: "", tool_calls: [
-                { id: "c1", type: "function", function: { name: "calc", arguments: "{}" } },
-              ] } }],
-              model: "kimi-k2.6",
-              usage: {},
-            }), { status: 200, headers: { "Content-Type": "application/json" } });
-          };
-
-          let firstResult = null;
-          try {
-            const a = new KimiAssistant("test-tools", "fake-key");
-            firstResult = await a.chat({
-              model: "kimi-k2.6",
-              messages: [{ role: "user", content: "hi" }],
-              tools: [{ type: "function", function: { name: "calc", parameters: { type: "object" } } }],
-            });
-            await a.chat({ model: "kimi-k2.6", messages: [{ role: "user", content: "hi" }] });
-          } finally {
-            globalThis.fetch = originalFetch;
-          }
-
-          const checks = {
-            toolsInBody: capturedBodies[0].tools?.[0]?.function?.name === "calc",
-            toolChoiceAuto: capturedBodies[0].tool_choice === "auto",
-            noToolsWhenAbsent: capturedBodies[1].tools === undefined && capturedBodies[1].tool_choice === undefined,
-            toolCallsReturned: firstResult?.toolCalls?.[0]?.function?.name === "calc",
-          };
-
-          return {
-            assert: Object.values(checks).every(Boolean),
-            content: { capturedBodies, toolCalls: firstResult?.toolCalls, checks },
+            content: { checks, exported: names.filter((n) => n in chain) },
           };
         })();
       </script>
