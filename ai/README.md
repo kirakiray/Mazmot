@@ -186,6 +186,8 @@ const response = await assistant.chat({
 | reasoningEffort | string | "high" | DeepSeek / Kimi `kimi-k3` 专用，推理强度（DeepSeek：`high` / `max`；kimi-k3：`low` / `high` / `max`） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
 | signal | AbortSignal | null | 传入 `AbortSignal` 用于取消请求；abort 后 `chat` 会抛出 `AbortError`，底层连接和流读取立即释放 |
+| tools | array | null | OpenAI 风格函数定义（function calling）：`[{ type: "function", function: { name, description, parameters } }]`，一般由 [chain 层](#chain-langchain-风格封装) 的 `tool().toWire()` 生成 |
+| toolChoice | string | "auto" | 配合 `tools` 使用，透传给供应商（如 `"auto"` / `"none"` / `{ type: "function", function: { name } }`） |
 
 > Kimi 不同模型的思考行为差异较大，详见 [Kimi 思考模型文档](https://platform.kimi.com/docs/guide/use-thinking-models)：
 > - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（官方默认 "max"，本库默认降为 "high"）
@@ -199,6 +201,7 @@ const response = await assistant.chat({
 {
   content: "AI 回复内容",
   reasoningContent: "思考过程（启用 thinking 时）",
+  toolCalls: [], // 模型发起的函数调用（wire 格式），无工具时为空数组；流式模式下同样返回累积结果
   model: "使用的模型",
   usage: { prompt_tokens: 10, completion_tokens: 20 },
   raw: { /* 原始响应 */ }
@@ -287,6 +290,8 @@ await assistant.chat({
     console.log("当前累计内容:", data.content);
     console.log("本次增量:", data.delta);
     console.log("思考增量:", data.deltaReasoning);
+    console.log("函数调用增量:", data.deltaToolCalls); // 触发 tool call 的分片，无则为 null
+    console.log("累计函数调用:", data.toolCalls); // 累积的 tool_calls（wire 格式）
     console.log("是否完成:", data.done);
   },
 });
@@ -318,6 +323,138 @@ try {
 }
 ```
 
+## Chain（LangChain 风格封装）
+
+`ai/chain/` 在 supplier 层之上封装了一套类似 LangChain 的使用流：chat model、工具调用、Agent 循环与会话记忆。消息既可用类实例（`HumanMessage` 等），也兼容 `{ role, content }` 普通对象。
+
+```javascript
+import {
+  createChatModel, createAgent, tool, MemorySaver, textOf,
+} from "/ai/chain/main.js";
+```
+
+### 基础对话（对应 01-chat）
+
+```javascript
+const chatModel = createChatModel(); // 不传 keyId 时随机选一条已保存的 key
+
+const response = await chatModel.invoke([
+  { role: "system", content: "你是一位耐心的资深前端导师。用简洁中文回答。" },
+  { role: "user", content: "解释 React 中受控组件和非受控组件的区别。" },
+]);
+
+console.log(textOf(response.content)); // AI 回复
+console.log(response.usageMetadata); // { inputTokens, outputTokens, totalTokens }
+```
+
+`createChatModel(defaults)` 的 defaults 支持 `keyId` / `model` / `thinking` / `reasoningEffort` / `thinkingKeep` / `assistant`（直接注入 Assistant 实例，测试用），调用 `invoke` / `stream` 时可用 options 覆盖。走 `keyId` 取 key 时才会按需加载 `../main.js`（其依赖 `/nos/storage`），因此 chain 模块本身可在 NoneOS Core 就绪前安全引入。
+
+### Agent + 工具（对应 02-agent）
+
+浏览器没有 zod，schema 用简写对象，内部转成 JSON Schema：
+
+```javascript
+const calculator = tool(
+  async ({ expression }) => {
+    if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
+      return "表达式只能包含数字、空格和 + - * / ( )。";
+    }
+    try {
+      return String(Function(`"use strict"; return (${expression})`)());
+    } catch {
+      return "无法解析这个表达式。";
+    }
+  },
+  {
+    name: "calculator",
+    description: "计算一个基础算术表达式。当问题涉及精确计算时必须使用它。",
+    schema: {
+      expression: { type: "string", description: "例如：(128 * 0.85 + 20) / 2" },
+    },
+  },
+);
+
+const agent = createAgent({
+  model: chatModel,
+  tools: [calculator],
+  systemPrompt: "你是前端技术助手。需要精确数值时调用 calculator。",
+});
+
+const result = await agent.invoke({
+  messages: [{ role: "user", content: "(128 * 0.85 + 20) / 2 等于多少？" }],
+});
+
+// 完整轨迹：system → human → ai(toolCalls) → tool → ai(最终回答)
+for (const message of result.messages) {
+  console.log(`[${message.getType()}]`, textOf(message.content));
+  if (message.toolCalls?.length) console.log("tool_calls:", message.toolCalls);
+}
+
+console.log(textOf(result.messages.at(-1).content)); // 最终回答
+```
+
+工具执行失败（参数非法 / 抛异常）不会中断循环，错误信息会以文本形式回给模型，让模型自行纠正。
+
+### 流式 Agent（对应 02-agent-stream）
+
+两种 streamMode，对应 LangGraph 的同名模式：
+
+```javascript
+const input = { messages: [{ role: "user", content: "128 * 0.85 等于多少？" }] };
+
+// 模式一 updates：每个节点（model / tools）跑完推送该节点新增的消息，适合调试决策链路
+for await (const chunk of agent.stream(input, { streamMode: "updates" })) {
+  for (const [node, update] of Object.entries(chunk)) {
+    for (const message of update.messages) {
+      console.log(`[${node}/${message.getType()}]`, textOf(message.content));
+    }
+  }
+}
+
+// 模式二 messages：逐 token 推送 AIMessage 增量（打字机效果）+ 完整 ToolMessage
+let typed = "";
+for await (const message of agent.stream(input, { streamMode: "messages" })) {
+  if (message.getType() !== "ai") continue; // 过滤掉工具消息
+  typed += textOf(message.content); // 逐步渲染到 UI，实现打字机效果
+}
+```
+
+### 会话记忆（对应 03-memory）
+
+`MemorySaver` 按 `thread_id` 保存消息（仅内存，刷新即失）；`systemPrompt` 每次运行重新注入、不写入记忆：
+
+```javascript
+const agentWithMemory = createAgent({
+  model: chatModel,
+  tools: [],
+  checkpointer: new MemorySaver(),
+  systemPrompt: "你是前端导师。记住同一个会话中用户已经说过的信息。",
+});
+
+const config = { configurable: { thread_id: "frontend-learner-001" } };
+
+await agentWithMemory.invoke(
+  { messages: [{ role: "user", content: "我叫小林，正在把 Vue 2 项目迁到 Vue 3。" }] },
+  config
+);
+
+// 第二轮复用同一 thread_id，Agent 自动带上第一轮历史
+const second = await agentWithMemory.invoke(
+  { messages: [{ role: "user", content: "根据刚才的信息，给我一个优先处理的迁移风险。" }] },
+  config
+);
+console.log(textOf(second.messages.at(-1).content));
+```
+
+需要持久化记忆时，实现 `{ get, set, delete }` 异步接口的对象即可作为 checkpointer 传入（如基于 `/nos/storage` 的实现）。
+
+### Agent 其他说明
+
+- `maxSteps`（默认 12）：模型↔工具往返上限，超限抛错，防止模型陷入工具循环。
+- `stream(input, { signal })` / `invoke(input, { signal })` 支持传入 `AbortSignal` 取消请求。
+- `input` 可传 `{ messages: [...] }` 或直接传消息数组。
+- `MemorySaver` 提供 `get` / `set` / `delete` / `clear`；`delete` / `clear` 可手动清理某个 thread 的记忆。
+
 ## 测试
 
 本项目使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器测试。
@@ -341,19 +478,21 @@ try {
 
 ### 运行测试
 
-```bash
-# 仅在 Chrome 中快速测试
-npx sb-test -f ai/test/ai-supplier.sb.html --browsers chrome
+两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地），`sb-test -f` 也不接受这种命名。本地运行方式：起一个静态服务器，直接在浏览器打开测试页查看结果（sb-test 组件会自动执行并在页面展示）：
 
-# 多浏览器测试（Chrome / Firefox / WebKit）
-npx sb-test -f ai/test/ai-supplier.sb.html
+```bash
+npx http-server .    # 或任意静态服务器
+# 浏览器访问：
+#   http://localhost:8080/ai/test/ai-supplier-sb.html
+#   http://localhost:8080/ai/test/a-chain-sb.html
 ```
 
 ### 测试覆盖
 
 - DeepSeek / Kimi 的普通对话、思考模式、流式输出、模型列表、余额查询
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
-- Assistant 基类的错误处理
+- Assistant 基类的错误处理与流式 tool_calls 累积
+- Chain 层（`ai/chain/`，`a-chain-sb.html`）：消息互转、工具 schema 校验、Agent 工具循环、双 streamMode、MemorySaver（mock model / fake assistant，不消耗 API 配额）
 
 ## Demo
 
@@ -381,10 +520,17 @@ ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
 ├── test-api-keys.json       # 测试用 API Key（已 gitignore）
 ├── README.md
-└── supplier/                # AI 提供商实现
-    ├── assistant.js         # Assistant 基类（公共流式/错误处理）
-    ├── deepseek.js          # DeepSeek 实现
-    └── kimi.js              # Kimi 实现
+├── supplier/                # AI 提供商实现
+│   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）
+│   ├── deepseek.js          # DeepSeek 实现
+│   └── kimi.js              # Kimi 实现
+└── chain/                   # LangChain 风格使用流（基于 supplier 层）
+    ├── main.js              # chain 入口（统一 re-export）
+    ├── messages.js          # 消息类 + wire 格式互转 + textOf
+    ├── tools.js             # tool() 定义 + 简写 schema → JSON Schema
+    ├── memory.js            # MemorySaver（thread_id 会话记忆）
+    ├── chat-model.js        # createChatModel()（invoke / stream）
+    └── agent.js             # createAgent()（模型↔工具循环 + 双 streamMode）
 
 others/ai-manager-demo/      # 演示应用（引用 ../../ai/main.js）
 ├── index.html               # 入口页面

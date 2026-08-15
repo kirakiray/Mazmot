@@ -27,6 +27,7 @@ export class Assistant {
       reasoningContent: "",
       model: "",
       usage: null,
+      toolCalls: [],
     };
 
     // signal 已 aborted 的快速路径
@@ -69,6 +70,24 @@ export class Assistant {
           if (delta?.reasoning_content) {
             result.reasoningContent += delta.reasoning_content;
           }
+          if (delta?.tool_calls) {
+            // OpenAI 风格：tool_calls 按序号分片推送（id/name 只出现一次，arguments 逐段拼接）
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              const slot =
+                result.toolCalls[idx] ??
+                (result.toolCalls[idx] = {
+                  id: "",
+                  type: "function",
+                  function: { name: "", arguments: "" },
+                });
+              if (tc.id) slot.id = tc.id;
+              if (tc.function?.name) slot.function.name += tc.function.name;
+              if (tc.function?.arguments) {
+                slot.function.arguments += tc.function.arguments;
+              }
+            }
+          }
           if (parsed.model) {
             result.model = parsed.model;
           }
@@ -82,6 +101,8 @@ export class Assistant {
               reasoningContent: result.reasoningContent,
               delta: delta?.content || "",
               deltaReasoning: delta?.reasoning_content || "",
+              deltaToolCalls: delta?.tool_calls || null,
+              toolCalls: result.toolCalls,
               model: result.model,
               usage: result.usage,
               done: false,
@@ -118,6 +139,8 @@ export class Assistant {
           reasoningContent: result.reasoningContent,
           delta: "",
           deltaReasoning: "",
+          deltaToolCalls: null,
+          toolCalls: result.toolCalls,
           model: result.model,
           usage: result.usage,
           done: true,

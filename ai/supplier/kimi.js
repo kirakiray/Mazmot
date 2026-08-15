@@ -16,6 +16,8 @@ export class KimiAssistant extends Assistant {
     onStream = null,
     thinkingKeep = null, // 仅 kimi-k2.6 支持："all" 启用保留式思考
     signal,
+    tools = null, // OpenAI 风格函数定义：[{ type: "function", function: { name, description, parameters } }]
+    toolChoice = null,
   }) {
     const requestBody = {
       model,
@@ -37,6 +39,11 @@ export class KimiAssistant extends Assistant {
       };
     }
     // 其他未知模型：保持最小请求体，不强行注入 thinking 参数
+
+    if (tools?.length) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = toolChoice ?? "auto";
+    }
 
     const response = await fetch(`${this.BASE_URL}/chat/completions`, {
       method: "POST",
@@ -60,6 +67,7 @@ export class KimiAssistant extends Assistant {
     return {
       content: data.choices[0].message.content,
       reasoningContent: data.choices[0].message.reasoning_content,
+      toolCalls: data.choices[0].message.tool_calls || [],
       model: data.model,
       usage: data.usage,
       raw: data,
