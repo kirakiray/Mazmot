@@ -607,7 +607,7 @@ npm run test-ai -- --browsers chrome  # 仅 Chrome
 - DeepSeek / Kimi 的普通对话、思考模式、流式输出、模型列表、余额查询
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
 - Assistant 基类的错误处理与流式 tool_calls 累积
-- Chain 层（`ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、Agent 工具循环、参数直传、onStream 事件序列、MemorySaver（fake assistant，不消耗 API 配额）
+- Chain 层（`ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `ai/test-api-keys.json` 填 key）
 
 ## Demo
 

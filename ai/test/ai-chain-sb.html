@@ -21,11 +21,13 @@
   <body>
     <h1>AI Chain 测试套件</h1>
     <p>
-      全部使用 fake assistant，不消耗 API 配额，不依赖 /nos 与真实 API Key。
+      Agent 行为用例使用真实 DeepSeek API（deepseek-v4-flash），需先在
+      <code>ai/test-api-keys.json</code> 填入 key；纯函数用例（tool schema /
+      容错 / MemorySaver）不发请求。
     </p>
 
     <!-- ============================== -->
-    <!-- tools.js                        -->
+    <!-- tools.js（纯函数，不发请求）    -->
     <!-- ============================== -->
 
     <sb-test name="tool: toWire() 生成 JSON Schema（required / properties）">
@@ -116,7 +118,7 @@
     </sb-test>
 
     <!-- ============================== -->
-    <!-- agent.js                        -->
+    <!-- 纯构造 / 导出（不发请求）       -->
     <!-- ============================== -->
 
     <sb-test name="createAgent: 缺 assistant 抛错">
@@ -152,682 +154,6 @@
         </script>
       </template>
     </sb-test>
-
-    <sb-test name="chat: 无工具单轮 — 返回 content / usage / 轨迹">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent } = await import("../chain/agent.js");
-
-            // fake assistant：按调用序号返回预设响应
-            const fakeCalls = [];
-            const fakeAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                fakeCalls.push(opts);
-                return {
-                  content: "你好呀",
-                  reasoningContent: "思考中",
-                  toolCalls: [],
-                  model: "fake-model",
-                  usage: {
-                    prompt_tokens: 10,
-                    completion_tokens: 5,
-                    total_tokens: 15,
-                  },
-                };
-              },
-            };
-
-            const agent = createAgent({ assistant: fakeAssistant });
-            const result = await agent.chat({
-              messages: [{ role: "user", content: "你好" }],
-            });
-
-            const checks = {
-              content: result.content === "你好呀",
-              reasoning: result.reasoningContent === "思考中",
-              model: result.model === "fake-model",
-              usage: result.usage.total_tokens === 15,
-              noToolCalls:
-                Array.isArray(result.toolCalls) &&
-                result.toolCalls.length === 0,
-              traceRoles:
-                result.messages.map((m) => m.role).join(",") ===
-                "user,assistant",
-              traceContent: result.messages[1].content === "你好呀",
-              noEmptyToolCallsField:
-                result.messages[1].tool_calls === undefined,
-              singleCall: fakeCalls.length === 1,
-              noToolsSent: fakeCalls[0].tools === null,
-              noSystemByDefault: !fakeCalls[0].messages.some(
-                (m) => m.role === "system",
-              ),
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test
-      name="chat: model / thinking / signal / tools 直传给 assistant.chat"
-    >
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, tool } = await import("../chain/main.js");
-
-            const passthruCalls = [];
-            const passthruAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                passthruCalls.push(opts);
-                return {
-                  content: "ok",
-                  reasoningContent: "",
-                  toolCalls: [],
-                  model: opts.model,
-                  usage: null,
-                };
-              },
-            };
-
-            const echoTool = tool(async ({ text }) => text, {
-              name: "echo",
-              schema: { text: { type: "string" } },
-            });
-            const agent = createAgent({
-              assistant: passthruAssistant,
-              model: "m1",
-              thinking: true,
-              reasoningEffort: "max",
-              tools: [echoTool],
-            });
-
-            const passthruSignal = new AbortController().signal;
-            await agent.chat({
-              messages: [{ role: "user", content: "hi" }],
-              signal: passthruSignal,
-            });
-
-            const sent = passthruCalls[0];
-            const checks = {
-              model: sent.model === "m1",
-              thinking: sent.thinking === true,
-              reasoningEffort: sent.reasoningEffort === "max",
-              signal: sent.signal === passthruSignal,
-              stream: sent.stream === false,
-              onStream: sent.onStream === null,
-              toolsWire:
-                Array.isArray(sent.tools) &&
-                sent.tools[0].type === "function" &&
-                sent.tools[0].function.name === "echo",
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              // 不放含 AbortSignal 的原始对象（postMessage 无法克隆）
-              content: { checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test
-      name="chat: 工具循环 — 轨迹 user/assistant(tool_calls)/tool/assistant，工具收到解析后的参数"
-    >
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, tool } = await import("../chain/main.js");
-
-            const loopCalls = [];
-            const loopAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                loopCalls.push(opts);
-                if (loopCalls.length === 1) {
-                  return {
-                    content: "",
-                    reasoningContent: "",
-                    toolCalls: [
-                      {
-                        id: "c1",
-                        type: "function",
-                        function: { name: "echo", arguments: '{"x":"hello"}' },
-                      },
-                    ],
-                    model: "fake-model",
-                    usage: {
-                      prompt_tokens: 10,
-                      completion_tokens: 5,
-                      total_tokens: 15,
-                    },
-                  };
-                }
-                return {
-                  content: "工具说: hello",
-                  reasoningContent: "",
-                  toolCalls: [],
-                  model: "fake-model",
-                  usage: {
-                    prompt_tokens: 20,
-                    completion_tokens: 7,
-                    total_tokens: 27,
-                  },
-                };
-              },
-            };
-
-            const received = [];
-            const echoTool = tool(
-              async (args) => {
-                received.push(args);
-                return `echo:${args.x}`;
-              },
-              { name: "echo", schema: { x: { type: "string" } } },
-            );
-
-            const agent = createAgent({
-              assistant: loopAssistant,
-              tools: [echoTool],
-            });
-            const result = await agent.chat({
-              messages: [{ role: "user", content: "调用工具" }],
-            });
-
-            const roles = result.messages.map((m) => m.role).join(",");
-            const toolMsg = result.messages[2];
-            const checks = {
-              finalContent: result.content === "工具说: hello",
-              roles: roles === "user,assistant,tool,assistant",
-              toolCallsInTrace:
-                result.messages[1].tool_calls?.[0]?.function?.name === "echo",
-              toolMessage:
-                toolMsg.role === "tool" &&
-                toolMsg.content === "echo:hello" &&
-                toolMsg.tool_call_id === "c1" &&
-                toolMsg.name === "echo",
-              toolGotParsedArgs:
-                JSON.stringify(received[0]) === '{"x":"hello"}',
-              // agent 传快照：第二次调用收到 3 条（最终回答在此调用返回后才 push）
-              secondCallSawToolResult:
-                loopCalls[1].messages.length === 3 &&
-                loopCalls[1].messages[2].content === "echo:hello",
-              usageAccumulated:
-                result.usage.prompt_tokens === 30 &&
-                result.usage.completion_tokens === 12 &&
-                result.usage.total_tokens === 42,
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { roles, received, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="chat: 找不到工具 — 错误文本作为 tool 消息回给模型">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent } = await import("../chain/agent.js");
-
-            const ghostCalls = [];
-            const ghostAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                ghostCalls.push(opts);
-                if (ghostCalls.length === 1) {
-                  return {
-                    content: "",
-                    reasoningContent: "",
-                    toolCalls: [
-                      {
-                        id: "c1",
-                        type: "function",
-                        function: { name: "nope", arguments: "{}" },
-                      },
-                    ],
-                    model: "fake-model",
-                    usage: null,
-                  };
-                }
-                return {
-                  content: "知道了",
-                  reasoningContent: "",
-                  toolCalls: [],
-                  model: "fake-model",
-                  usage: null,
-                };
-              },
-            };
-
-            const agent = createAgent({ assistant: ghostAssistant, tools: [] });
-            const result = await agent.chat({
-              messages: [{ role: "user", content: "hi" }],
-            });
-
-            const fedBack = ghostCalls[1].messages.at(-1);
-            const checks = {
-              fedRole: fedBack.role === "tool",
-              fedContent: fedBack.content.includes("没有找到工具：nope"),
-              listsAvailable: fedBack.content.includes("可用工具：无"),
-              traceContent:
-                result.messages[2].content.includes("没有找到工具：nope"),
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { fedBack, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="chat: maxSteps 超限抛错（模型持续发起工具调用）">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, tool } = await import("../chain/main.js");
-
-            const loop2Calls = [];
-            const loop2Assistant = {
-              providerName: "fake",
-              async chat(opts) {
-                loop2Calls.push(opts);
-                return {
-                  content: "",
-                  reasoningContent: "",
-                  toolCalls: [
-                    {
-                      id: `c${loop2Calls.length}`,
-                      type: "function",
-                      function: { name: "echo", arguments: "{}" },
-                    },
-                  ],
-                  model: "fake-model",
-                  usage: null,
-                };
-              },
-            };
-
-            const echoTool = tool(async () => "x", {
-              name: "echo",
-              schema: {},
-            });
-            const agent = createAgent({
-              assistant: loop2Assistant,
-              tools: [echoTool],
-              maxSteps: 3,
-            });
-
-            try {
-              await agent.chat({ messages: [{ role: "user", content: "hi" }] });
-              return { assert: false, content: { error: "未抛错" } };
-            } catch (e) {
-              const checks = {
-                message: e.message.includes("3"),
-                calledMaxTimes: loop2Calls.length === 3,
-              };
-              return {
-                assert: Object.values(checks).every(Boolean),
-                content: { error: e.message, calls: loop2Calls.length, checks },
-              };
-            }
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test
-      name="chat: stream 事件顺序 text → toolCalls → toolResult → text → done"
-    >
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, tool } = await import("../chain/main.js");
-
-            const streamCalls = [];
-            const streamAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                streamCalls.push(opts);
-                const res =
-                  streamCalls.length === 1
-                    ? {
-                        deltas: ["你", "好"],
-                        content: "",
-                        toolCalls: [
-                          {
-                            id: "c1",
-                            type: "function",
-                            function: { name: "echo", arguments: '{"x":"1"}' },
-                          },
-                        ],
-                      }
-                    : { deltas: ["完", "成"], content: "完成", toolCalls: [] };
-                // 模拟 supplier 流式：先逐段回调，再返回累积结果
-                if (opts.onStream && res.deltas) {
-                  let acc = "";
-                  for (const d of res.deltas) {
-                    acc += d;
-                    opts.onStream({
-                      content: acc,
-                      delta: d,
-                      reasoningContent: "",
-                      deltaReasoning: "",
-                      done: false,
-                    });
-                  }
-                }
-                return {
-                  content: res.content ?? "",
-                  reasoningContent: "",
-                  toolCalls: res.toolCalls ?? [],
-                  model: "fake-model",
-                  usage: {
-                    prompt_tokens: 1,
-                    completion_tokens: 1,
-                    total_tokens: 2,
-                  },
-                };
-              },
-            };
-
-            const echoTool = tool(async ({ x }) => `r:${x}`, {
-              name: "echo",
-              schema: { x: { type: "string" } },
-            });
-            const agent = createAgent({
-              assistant: streamAssistant,
-              tools: [echoTool],
-            });
-
-            const events = [];
-            const result = await agent.chat({
-              messages: [{ role: "user", content: "hi" }],
-              stream: true,
-              onStream: (ev) =>
-                events.push(
-                  ev.type === "text" ? { type: "text", delta: ev.delta } : ev,
-                ),
-            });
-
-            const types = events.map((ev) => ev.type).join(",");
-            const textDeltas = events
-              .filter((ev) => ev.type === "text")
-              .map((ev) => ev.delta)
-              .join("|");
-            const doneEv = events.at(-1);
-            const checks = {
-              order: types === "text,text,toolCalls,toolResult,text,text,done",
-              textDeltas: textDeltas === "你|好|完|成",
-              toolResultEvent:
-                events[3].type === "toolResult" &&
-                events[3].name === "echo" &&
-                events[3].result === "r:1",
-              doneEvent:
-                doneEv.done === true &&
-                doneEv.content === "完成" &&
-                doneEv.usage.total_tokens === 4 &&
-                doneEv.messages.length === 4,
-              resultMatchesDone: result.content === doneEv.content,
-              streamPassedToAssistant:
-                streamCalls[0].stream === true &&
-                typeof streamCalls[0].onStream === "function",
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { types, textDeltas, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test
-      name="chat: stream:false + onStream — 仍有工具与 done 事件，无 text 事件"
-    >
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, tool } = await import("../chain/main.js");
-
-            const quietCalls = [];
-            const quietAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                quietCalls.push(opts);
-                return quietCalls.length === 1
-                  ? {
-                      content: "",
-                      reasoningContent: "",
-                      toolCalls: [
-                        {
-                          id: "c1",
-                          type: "function",
-                          function: { name: "echo", arguments: "{}" },
-                        },
-                      ],
-                      model: "fake-model",
-                      usage: null,
-                    }
-                  : {
-                      content: "答案",
-                      reasoningContent: "",
-                      toolCalls: [],
-                      model: "fake-model",
-                      usage: null,
-                    };
-              },
-            };
-
-            const echoTool = tool(async () => "r", {
-              name: "echo",
-              schema: {},
-            });
-            const agent = createAgent({
-              assistant: quietAssistant,
-              tools: [echoTool],
-            });
-
-            const quietEvents = [];
-            await agent.chat({
-              messages: [{ role: "user", content: "hi" }],
-              onStream: (ev) => quietEvents.push(ev.type),
-            });
-
-            const checks = {
-              types: quietEvents.join(",") === "toolCalls,toolResult,done",
-              noTextEvent: !quietEvents.includes("text"),
-              noOnStreamSentToAssistant:
-                quietCalls[0].onStream === null &&
-                quietCalls[0].stream === false,
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { quietEvents, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <!-- ============================== -->
-    <!-- memory.js（配合 agent）         -->
-    <!-- ============================== -->
-
-    <sb-test name="memory: 同 threadId 第二轮带历史，systemPrompt 不入库">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, MemorySaver } =
-              await import("../chain/main.js");
-
-            const memCalls = [];
-            const memAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                memCalls.push(opts);
-                return {
-                  content: memCalls.length === 1 ? "第一轮回答" : "第二轮回答",
-                  reasoningContent: "",
-                  toolCalls: [],
-                  model: "fake-model",
-                  usage: null,
-                };
-              },
-            };
-
-            const saver = new MemorySaver();
-            const agent = createAgent({
-              assistant: memAssistant,
-              systemPrompt: "你是导师",
-              checkpointer: saver,
-            });
-
-            await agent.chat({
-              messages: [{ role: "user", content: "我叫小林" }],
-              threadId: "t1",
-            });
-            await agent.chat({
-              messages: [{ role: "user", content: "我叫什么？" }],
-              threadId: "t1",
-            });
-
-            const stored = await saver.get("t1");
-            const secondMessages = memCalls[1].messages;
-            const checks = {
-              firstCallHasSystem:
-                memCalls[0].messages[0].role === "system" &&
-                memCalls[0].messages[0].content === "你是导师",
-              secondCallRoles:
-                secondMessages.map((m) => m.role).join(",") ===
-                "system,user,assistant,user",
-              secondCallHistory:
-                secondMessages[1].content === "我叫小林" &&
-                secondMessages[2].content === "第一轮回答",
-              storedExcludesSystem: stored[0].role === "user",
-              storedLength: stored.length === 4,
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { stored, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="memory: 不同 threadId 隔离；delete / clear 生效">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { createAgent, MemorySaver } =
-              await import("../chain/main.js");
-
-            const isoCalls = [];
-            const isoAssistant = {
-              providerName: "fake",
-              async chat(opts) {
-                isoCalls.push(opts);
-                return {
-                  content: `第${isoCalls.length}轮`,
-                  reasoningContent: "",
-                  toolCalls: [],
-                  model: "fake-model",
-                  usage: null,
-                };
-              },
-            };
-
-            const isoSaver = new MemorySaver();
-            const agent = createAgent({
-              assistant: isoAssistant,
-              checkpointer: isoSaver,
-            });
-
-            await agent.chat({
-              messages: [{ role: "user", content: "A" }],
-              threadId: "t1",
-            });
-            await agent.chat({
-              messages: [{ role: "user", content: "B" }],
-              threadId: "t2",
-            });
-
-            const checks = {
-              isolated:
-                isoCalls[1].messages.length === 1 &&
-                isoCalls[1].messages[0].content === "B",
-              t1Kept: (await isoSaver.get("t1")).length === 2,
-              deleteExisting: (await isoSaver.delete("t1")) === true,
-              deleteMissing: (await isoSaver.delete("t1")) === false,
-              deletedEmpty: (await isoSaver.get("t1")).length === 0,
-            };
-
-            await agent.chat({
-              messages: [{ role: "user", content: "C" }],
-              threadId: "t2",
-            });
-            isoSaver.clear();
-            checks.cleared = (await isoSaver.get("t2")).length === 0;
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="MemorySaver: get 返回副本，外部修改不污染内部">
-      <template>
-        <script type="module">
-          return (async () => {
-            const { MemorySaver } = await import("../chain/memory.js");
-
-            const cpSaver = new MemorySaver();
-            await cpSaver.set("t1", [{ role: "user", content: "hi" }]);
-
-            const cpGot = await cpSaver.get("t1");
-            cpGot.push({ role: "assistant", content: "hack" });
-            cpGot[0].content = "mutated";
-
-            const cpAgain = await cpSaver.get("t1");
-            const cpUnknown = await cpSaver.get("nope");
-
-            const checks = {
-              copyOnRead: cpAgain.length === 1 && cpAgain[0].content === "hi",
-              unknownThread: Array.isArray(cpUnknown) && cpUnknown.length === 0,
-            };
-
-            return {
-              assert: Object.values(checks).every(Boolean),
-              content: { cpAgain, checks },
-            };
-          })();
-        </script>
-      </template>
-    </sb-test>
-
-    <!-- ============================== -->
-    <!-- main.js 导出                    -->
-    <!-- ============================== -->
 
     <sb-test
       name="导出: chain/main.js 暴露 createAgent / tool / toolsToWire / findTool / MemorySaver"
@@ -865,6 +191,464 @@
               assert: Object.values(checks).every(Boolean),
               content: { checks, exported: names.filter((n) => n in chain) },
             };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="MemorySaver: get 返回副本，外部修改不污染内部">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { MemorySaver } = await import("../chain/memory.js");
+
+            const cpSaver = new MemorySaver();
+            await cpSaver.set("t1", [{ role: "user", content: "hi" }]);
+
+            const cpGot = await cpSaver.get("t1");
+            cpGot.push({ role: "assistant", content: "hack" });
+            cpGot[0].content = "mutated";
+
+            const cpAgain = await cpSaver.get("t1");
+            const cpUnknown = await cpSaver.get("nope");
+
+            const checks = {
+              copyOnRead: cpAgain.length === 1 && cpAgain[0].content === "hi",
+              unknownThread: Array.isArray(cpUnknown) && cpUnknown.length === 0,
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { cpAgain, checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============================== -->
+    <!-- 以下为真实 DeepSeek API 测试     -->
+    <!-- 模型：deepseek-v4-flash          -->
+    <!-- ============================== -->
+
+    <sb-test name="[真实] chat: 无工具单轮 — 返回 content / model / usage / 轨迹">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-basic", apiKey);
+              const agent = createAgent({ assistant });
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "请只回复两个字：你好" }],
+              });
+
+              const checks = {
+                hasContent: typeof result.content === "string" && result.content.trim().length > 0,
+                hasModel: !!result.model && result.model.includes("deepseek"),
+                hasUsage: result.usage?.total_tokens > 0,
+                noToolCalls: Array.isArray(result.toolCalls) && result.toolCalls.length === 0,
+                traceRoles: result.messages.map((m) => m.role).join(",") === "user,assistant",
+                traceContent: result.messages[0].content === "请只回复两个字：你好",
+                noEmptyToolCallsField: result.messages[1].tool_calls === undefined,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  content: result.content,
+                  model: result.model,
+                  usage: result.usage,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] createAgent 参数直传：model 固定 + thinking 出思考">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-think", apiKey);
+              // model / thinking 只在 createAgent 声明，chat 不再传
+              const agent = createAgent({
+                assistant,
+                model: "deepseek-v4-flash",
+                thinking: true,
+                reasoningEffort: "high",
+              });
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+              });
+
+              const checks = {
+                modelPassed: result.model.includes("deepseek-v4-flash"),
+                hasContent: typeof result.content === "string" && result.content.trim().length > 0,
+                hasReasoning:
+                  typeof result.reasoningContent === "string" &&
+                  result.reasoningContent.length > 0,
+                hasUsage: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  content: result.content,
+                  reasoningPreview: result.reasoningContent?.slice(0, 120),
+                  model: result.model,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] chat: 工具循环 — 轨迹 user/assistant(tool_calls)/tool/assistant，工具结果回传"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent, tool } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-tool", apiKey);
+
+              const receivedArgs = [];
+              const getWeather = tool(
+                async ({ city }) => {
+                  receivedArgs.push(city);
+                  return "晴，25℃";
+                },
+                {
+                  name: "get_weather",
+                  description: "查询指定城市的实时天气",
+                  schema: {
+                    city: { type: "string", description: "城市名，如：北京" },
+                  },
+                },
+              );
+
+              const agent = createAgent({
+                assistant,
+                tools: [getWeather],
+                systemPrompt: "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+              });
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "北京今天天气怎么样？" }],
+              });
+
+              const roles = result.messages.map((m) => m.role).join(",");
+              // 动态查找，不依赖 systemPrompt 是否存在
+              const assistantMsg = result.messages.find((m) => m.tool_calls?.length);
+              const toolMsg = result.messages.find((m) => m.role === "tool");
+              const checks = {
+                hasFinalContent:
+                  typeof result.content === "string" && result.content.trim().length > 0,
+                roles: roles === "system,user,assistant,tool,assistant",
+                toolCalled: assistantMsg.tool_calls?.[0]?.function?.name === "get_weather",
+                toolResultFedBack:
+                  toolMsg.role === "tool" &&
+                  toolMsg.content === "晴，25℃" &&
+                  toolMsg.tool_call_id === assistantMsg.tool_calls?.[0]?.id,
+                toolGotCityArg:
+                  receivedArgs.length === 1 && String(receivedArgs[0]).includes("北京"),
+                usageAccumulated: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  roles,
+                  finalContent: result.content,
+                  receivedArgs,
+                  usage: result.usage,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] chat: stream 无工具 — text 增量拼接等于最终 content，末尾 done">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-stream", apiKey);
+              const agent = createAgent({ assistant });
+
+              const events = [];
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "从 1 数到 5，每个数字一行" }],
+                stream: true,
+                onStream: (ev) =>
+                  events.push(
+                    ev.type === "text" ? { type: "text", delta: ev.delta } : { type: ev.type },
+                  ),
+              });
+
+              const textDeltas = events
+                .filter((ev) => ev.type === "text")
+                .map((ev) => ev.delta)
+                .join("");
+              const lastEv = events.at(-1);
+              const checks = {
+                hasTextEvents: textDeltas.length > 0,
+                deltasMatchFinal: textDeltas === result.content,
+                lastIsDone: lastEv?.type === "done",
+                onlyTextAndDone: events.every(
+                  (ev) => ev.type === "text" || ev.type === "done",
+                ),
+                hasUsage: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  finalContent: result.content,
+                  streamedLength: textDeltas.length,
+                  eventCount: events.length,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] chat: stream + 工具循环 — 事件顺序 toolCalls → toolResult → text → done"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent, tool } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-stream-tool", apiKey);
+
+              const getWeather2 = tool(async ({ city }) => "晴，25℃", {
+                name: "get_weather",
+                description: "查询指定城市的实时天气",
+                schema: { city: { type: "string", description: "城市名" } },
+              });
+
+              const agent = createAgent({
+                assistant,
+                tools: [getWeather2],
+                systemPrompt: "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+              });
+
+              const stEvents = [];
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "上海今天天气怎么样？" }],
+                stream: true,
+                onStream: (ev) =>
+                  stEvents.push(
+                    ev.type === "text" ? { type: "text", delta: ev.delta } : { type: ev.type, name: ev.name, result: ev.result },
+                  ),
+              });
+
+              const idxToolCalls = stEvents.findIndex((ev) => ev.type === "toolCalls");
+              const idxToolResult = stEvents.findIndex((ev) => ev.type === "toolResult");
+              const idxTextAfterTool = stEvents.findIndex(
+                (ev, i) => ev.type === "text" && i > idxToolResult,
+              );
+              const lastEv = stEvents.at(-1);
+              const toolResultEv = stEvents[idxToolResult];
+
+              const checks = {
+                hasToolCalls: idxToolCalls !== -1,
+                hasToolResult: idxToolResult !== -1,
+                order: idxToolCalls !== -1 && idxToolCalls < idxToolResult,
+                textAfterToolResult: idxTextAfterTool > idxToolResult,
+                lastIsDone: lastEv?.type === "done",
+                toolResultPayload:
+                  toolResultEv?.name === "get_weather" &&
+                  toolResultEv?.result === "晴，25℃",
+                finalContentNonEmpty:
+                  typeof result.content === "string" && result.content.trim().length > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  types: stEvents.map((ev) => ev.type).join(","),
+                  finalContent: result.content,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] memory: 同 threadId 第二轮带历史，systemPrompt 不入库">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent, MemorySaver } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-memory", apiKey);
+              const saver = new MemorySaver();
+              const agent = createAgent({
+                assistant,
+                systemPrompt: "你是测试助手，回答尽量简短。",
+                checkpointer: saver,
+              });
+
+              await agent.chat({
+                messages: [{ role: "user", content: "我叫小林，请记住我的名字。" }],
+                threadId: "m1",
+              });
+              const second = await agent.chat({
+                messages: [{ role: "user", content: "我叫什么名字？" }],
+                threadId: "m1",
+              });
+
+              const stored = await saver.get("m1");
+              const checks = {
+                remembersName: second.content.includes("小林"),
+                storedRoles:
+                  stored.map((m) => m.role).join(",") ===
+                  "user,assistant,user,assistant",
+                storedExcludesSystem: !stored.some((m) => m.role === "system"),
+                traceHasSystemFirst: true,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  secondAnswer: second.content,
+                  storedLength: stored.length,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] memory: 不同 threadId 隔离；delete / clear 生效">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { DeepseekAssistant } = await import("../supplier/deepseek.js");
+            const { createAgent, MemorySaver } = await import("../chain/main.js");
+            const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+
+            if (!apiKey || apiKey.startsWith("sk-your-")) {
+              return { assert: false, content: { error: "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key" } };
+            }
+
+            try {
+              const assistant = new DeepseekAssistant("test-chain-iso", apiKey);
+              const isoSaver = new MemorySaver();
+              const agent = createAgent({
+                assistant,
+                systemPrompt: "你是测试助手，回答尽量简短。",
+                checkpointer: isoSaver,
+              });
+
+              await agent.chat({
+                messages: [{ role: "user", content: "我的暗号是苹果，请记住。" }],
+                threadId: "iso1",
+              });
+              await agent.chat({
+                messages: [{ role: "user", content: "我的暗号是香蕉，请记住。" }],
+                threadId: "iso2",
+              });
+              const backToT1 = await agent.chat({
+                messages: [{ role: "user", content: "我的暗号是什么？只回答暗号本身。" }],
+                threadId: "iso1",
+              });
+
+              const checks = {
+                isolated:
+                  backToT1.content.includes("苹果") && !backToT1.content.includes("香蕉"),
+                t1Kept: (await isoSaver.get("iso1")).length === 4,
+                t2Kept: (await isoSaver.get("iso2")).length === 2,
+                deleteExisting: (await isoSaver.delete("iso1")) === true,
+                deleteMissing: (await isoSaver.delete("iso1")) === false,
+                deletedEmpty: (await isoSaver.get("iso1")).length === 0,
+              };
+
+              isoSaver.clear();
+              checks.cleared = (await isoSaver.get("iso2")).length === 0;
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { answer: backToT1.content, checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
           })();
         </script>
       </template>
