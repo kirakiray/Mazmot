@@ -478,10 +478,10 @@ console.log(textOf(second.messages.at(-1).content));
 
 ### 运行测试
 
-两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地）。本地统一通过 `local-test` 脚本运行：临时改名为 `.sb.html` → 逐个跑 sb-test（结束后自动还原命名，Ctrl+C 也会还原）：
+两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地）。本地统一通过 `local-test` 脚本运行（依赖 sibyl-test ≥ 1.0.15 的 `-f` 多文件 + 后缀不限 `.sb.html` 能力，一次跑完两个文件）：
 
 ```bash
-npm run local-test                     # 默认多浏览器
+npm run local-test                       # 默认多浏览器
 npm run local-test -- --browsers chrome  # 仅 Chrome
 ```
 
