@@ -11,6 +11,30 @@
       type="module"
       src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
     ></script>
+    <script>
+      // 全局测试夹具：真实 API 用例共用同一个 DeepseekAssistant 实例
+      //（Assistant 仅持有 id / apiKey，无会话状态，跨用例复用安全）。
+      // 同步脚本 + 惰性单例：首个调用的用例触发初始化，后续复用同一个 Promise。
+      globalThis.getChainFixture = () => {
+        globalThis.__chainFixture ??= (async () => {
+          const [{ DeepseekAssistant }, chain, config] = await Promise.all([
+            import("../supplier/deepseek.js"),
+            import("../chain/main.js"),
+            fetch("/ai/test-api-keys.json").then((r) => r.json()),
+          ]);
+          const apiKey = config.deepseek;
+          const ready = !!apiKey && !String(apiKey).startsWith("sk-your-");
+          return {
+            ready,
+            assistant: ready
+              ? new DeepseekAssistant("test-chain", apiKey)
+              : null,
+            chain, // { createAgent, tool, toolsToWire, findTool, MemorySaver }
+          };
+        })();
+        return globalThis.__chainFixture;
+      };
+    </script>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -237,14 +261,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -253,12 +272,9 @@
                 },
               };
             }
+            const { createAgent } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-basic",
-                apiKey,
-              );
               const agent = createAgent({ assistant });
               const result = await agent.chat({
                 messages: [{ role: "user", content: "请只回复两个字：你好" }],
@@ -306,14 +322,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -322,12 +333,9 @@
                 },
               };
             }
+            const { createAgent } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-think",
-                apiKey,
-              );
               // model / thinking 只在 createAgent 声明，chat 不再传
               const agent = createAgent({
                 assistant,
@@ -378,14 +386,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent, tool } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -394,13 +397,9 @@
                 },
               };
             }
+            const { createAgent, tool } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-tool",
-                apiKey,
-              );
-
               const receivedArgs = [];
               const getWeather = tool(
                 async ({ city }) => {
@@ -477,14 +476,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -493,12 +487,9 @@
                 },
               };
             }
+            const { createAgent } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-stream",
-                apiKey,
-              );
               const agent = createAgent({ assistant });
 
               const events = [];
@@ -556,14 +547,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent, tool } = await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -572,13 +558,9 @@
                 },
               };
             }
+            const { createAgent, tool } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-stream-tool",
-                apiKey,
-              );
-
               const getWeather2 = tool(async ({ city }) => "晴，25℃", {
                 name: "get_weather",
                 description: "查询指定城市的实时天气",
@@ -655,15 +637,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent, MemorySaver } =
-              await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -672,12 +648,9 @@
                 },
               };
             }
+            const { createAgent, MemorySaver } = chain;
 
             try {
-              const assistant = new DeepseekAssistant(
-                "test-chain-memory",
-                apiKey,
-              );
               const saver = new MemorySaver();
               const agent = createAgent({
                 assistant,
@@ -729,15 +702,9 @@
       <template>
         <script type="module">
           return (async () => {
-            const { DeepseekAssistant } =
-              await import("../supplier/deepseek.js");
-            const { createAgent, MemorySaver } =
-              await import("../chain/main.js");
-            const { deepseek: apiKey } = await fetch(
-              "/ai/test-api-keys.json",
-            ).then((r) => r.json());
-
-            if (!apiKey || apiKey.startsWith("sk-your-")) {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
               return {
                 assert: false,
                 content: {
@@ -746,9 +713,9 @@
                 },
               };
             }
+            const { createAgent, MemorySaver } = chain;
 
             try {
-              const assistant = new DeepseekAssistant("test-chain-iso", apiKey);
               const isoSaver = new MemorySaver();
               const agent = createAgent({
                 assistant,
