@@ -1,0 +1,148 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+    }
+
+    .dialog-form {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      padding: 16px;
+    }
+
+    .dialog-form p-input {
+      width: 100%;
+    }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .color-label {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-right: 4px;
+    }
+
+    .color-dot {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 2px solid transparent;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .color-dot.active {
+      border-color: var(--md-sys-color-on-surface);
+    }
+
+    .tip {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+
+  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
+    <span slot="title">{{editing ? '编辑网址' : '添加网址'}}</span>
+    <div class="dialog-form">
+      <p-input sync:value="form.url" placeholder="example.com">
+        <span slot="label">网址</span>
+      </p-input>
+      <p-input sync:value="form.title" placeholder="留空则自动使用域名">
+        <span slot="label">标题</span>
+      </p-input>
+      <p-input sync:value="form.group" placeholder="留空为「未分组」">
+        <span slot="label">分组</span>
+      </p-input>
+      <div class="color-row">
+        <span class="color-label">图标颜色</span>
+        <o-fill :value="palette">
+          <button
+            class="color-dot"
+            class:active="$host.form.color === $data"
+            :style.background="$data"
+            on:click="$host.form.color = $data"
+          ></button>
+        </o-fill>
+      </div>
+      <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
+    </div>
+    <div slot="bottom">
+      <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
+      <p-button color="primary" on:click="save">保存</p-button>
+    </div>
+  </p-dialog>
+
+  <script>
+    const PALETTE = [
+      "#4f6df5",
+      "#e0573e",
+      "#2fa36b",
+      "#c9852b",
+      "#8b5cf6",
+      "#0d9488",
+      "#d946a4",
+      "#5b6570",
+    ];
+
+    export default async ({ load }) => {
+      const { toast } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      return {
+        data: {
+          dialogOpen: false,
+          editingId: "",
+          palette: PALETTE,
+          form: { url: "", title: "", group: "", color: PALETTE[0] },
+        },
+
+        proto: {
+          get editing() {
+            return !!this.editingId;
+          },
+
+          // 由宿主页面调用：id 非空为编辑模式；新增模式按 count 轮换取默认色
+          openForm({ id = "", url = "", title = "", group = "", color, count = 0 }) {
+            this.editingId = id;
+            this.form.url = url;
+            this.form.title = title;
+            this.form.group = group;
+            this.form.color = color || PALETTE[count % PALETTE.length];
+            this.dialogOpen = true;
+          },
+
+          save() {
+            if (!this.form.url.trim()) {
+              toast({ content: "请输入网址", color: "error" });
+              return;
+            }
+            this.emit("dial-save", {
+              data: {
+                id: this.editingId,
+                url: this.form.url,
+                title: this.form.title,
+                group: this.form.group,
+                color: this.form.color,
+              },
+              bubbles: true,
+              composed: true,
+            });
+            this.dialogOpen = false;
+          },
+        },
+      };
+    };
+  </script>
+</template>

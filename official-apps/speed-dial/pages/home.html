@@ -209,49 +209,6 @@
       opacity: 1;
     }
 
-    .dialog-form {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-      padding: 16px;
-    }
-
-    .dialog-form p-input {
-      width: 100%;
-    }
-
-    .color-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .color-label {
-      font-size: 13px;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-right: 4px;
-    }
-
-    .color-dot {
-      width: 26px;
-      height: 26px;
-      padding: 0;
-      border: 2px solid transparent;
-      border-radius: 50%;
-      cursor: pointer;
-    }
-
-    .color-dot.active {
-      border-color: var(--md-sys-color-on-surface);
-    }
-
-    .tip {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.6;
-    }
-
     @media (max-width: 600px) {
       .grid {
         gap: 12px;
@@ -268,9 +225,7 @@
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <main class="container">
@@ -350,52 +305,16 @@
     </div>
   </main>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
-    <span slot="title">{{editingId ? '编辑网址' : '添加网址'}}</span>
-    <div class="dialog-form">
-      <p-input sync:value="form.url" placeholder="example.com">
-        <span slot="label">网址</span>
-      </p-input>
-      <p-input sync:value="form.title" placeholder="留空则自动使用域名">
-        <span slot="label">标题</span>
-      </p-input>
-      <p-input sync:value="form.group" placeholder="留空为「未分组」">
-        <span slot="label">分组</span>
-      </p-input>
-      <div class="color-row">
-        <span class="color-label">图标颜色</span>
-        <o-fill :value="palette">
-          <button
-            class="color-dot"
-            class:active="$host.form.color === $data"
-            :style.background="$data"
-            on:click="$host.form.color = $data"
-          ></button>
-        </o-fill>
-      </div>
-      <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
-    </div>
-    <div slot="bottom">
-      <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-      <p-button color="primary" on:click="saveDial">保存</p-button>
-    </div>
-  </p-dialog>
+  <o-page
+    id="dial-form"
+    src="./dial-form.html"
+    on:dial-save="onDialSave"
+  ></o-page>
 
   <script>
-    const PALETTE = [
-      "#4f6df5",
-      "#e0573e",
-      "#2fa36b",
-      "#c9852b",
-      "#8b5cf6",
-      "#0d9488",
-      "#d946a4",
-      "#5b6570",
-    ];
-
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
-      const { toast, confirm } = await load(
+      const { confirm } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
       );
       const store = getStorage("speed-dial");
@@ -404,12 +323,8 @@
         data: {
           dials: [],
           activeGroup: "",
-          dialogOpen: false,
-          editingId: "",
           draggingId: "",
           dropTargetId: "",
-          palette: PALETTE,
-          form: { url: "", title: "", group: "", color: PALETTE[0] },
         },
 
         proto: {
@@ -453,55 +368,53 @@
           },
 
           openAdd() {
-            this.editingId = "";
-            this.form.url = "";
-            this.form.title = "";
-            this.form.group =
-              this.activeGroup === "未分组" ? "" : this.activeGroup;
-            this.form.color = PALETTE[this.dials.length % PALETTE.length];
-            this.dialogOpen = true;
+            this.getDialForm()?.openForm({
+              count: this.dials.length,
+              group: this.activeGroup === "未分组" ? "" : this.activeGroup,
+            });
           },
 
           openEdit(event, dial) {
             event.stopPropagation();
-            this.editingId = dial.id;
-            this.form.url = dial.url;
-            this.form.title = dial.title;
-            this.form.group = dial.group === "未分组" ? "" : dial.group;
-            this.form.color = dial.color;
-            this.dialogOpen = true;
+            this.getDialForm()?.openForm({
+              id: dial.id,
+              url: dial.url,
+              title: dial.title,
+              group: dial.group === "未分组" ? "" : dial.group,
+              color: dial.color,
+            });
           },
 
-          async saveDial() {
-            const url = this.normalizeUrl(this.form.url);
-            if (!url) {
-              toast({ content: "请输入网址", color: "error" });
-              return;
-            }
+          getDialForm() {
+            const page = this.shadow.$("#dial-form");
+            return page?.openForm ? page : null;
+          },
 
-            const title = this.form.title.trim() || this.hostOf(url);
-            const group = this.form.group.trim() || "未分组";
+          async onDialSave(event) {
+            const { id, url, title, group, color } = event.data;
+            const finalUrl = this.normalizeUrl(url);
+            const finalTitle = title.trim() || this.hostOf(finalUrl);
+            const finalGroup = group.trim() || "未分组";
 
-            if (this.editingId) {
-              const target = this.dials.find((d) => d.id === this.editingId);
+            if (id) {
+              const target = this.dials.find((d) => d.id === id);
               if (target) {
-                target.url = url;
-                target.title = title;
-                target.group = group;
-                target.color = this.form.color;
+                target.url = finalUrl;
+                target.title = finalTitle;
+                target.group = finalGroup;
+                target.color = color;
               }
             } else {
               this.dials.push({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                url,
-                title,
-                group,
-                color: this.form.color,
+                url: finalUrl,
+                title: finalTitle,
+                group: finalGroup,
+                color,
                 createdAt: Date.now(),
               });
             }
 
-            this.dialogOpen = false;
             await this.persist();
           },
 
