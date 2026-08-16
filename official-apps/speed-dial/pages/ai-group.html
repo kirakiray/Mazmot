@@ -52,13 +52,30 @@
 
     .suggestion-row {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       gap: 8px;
     }
 
-    .suggestion-row p-input {
+    /* 固定高度原生输入框：多行建议内部滚动，不撑高弹窗 */
+    .suggest-input {
       flex: 1;
       min-width: 0;
+      height: 64px;
+      box-sizing: border-box;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.4);
+      background: none;
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+    }
+
+    .suggest-input:focus {
+      border-color: var(--md-sys-color-primary);
     }
 
     /* 分组列表固定高度内部滚动，不撑高弹窗 */
@@ -147,7 +164,6 @@
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 520px">
@@ -171,16 +187,6 @@
             {{totalCount > dialCount ? '仅分析前 ' + dialCount + ' 条（共 ' + totalCount + ' 条）' : '未勾选的分组保持原样'}}
           </span>
         </div>
-        <div class="suggestion-row">
-          <p-input
-            sync:value="suggestion"
-            placeholder="填写分组建议，如：分成工作、娱乐、学习三类"
-          ></p-input>
-          <p-button variant="outlined" size="s" on:click="reGroup">
-            <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
-            <span>重新分组</span>
-          </p-button>
-        </div>
         <div class="group-list">
           <o-fill :value="previewGroups" fill-key="name">
             <div class="group-block" class:unchecked="!$data.checked">
@@ -199,6 +205,17 @@
               </div>
             </div>
           </o-fill>
+        </div>
+        <div class="suggestion-row">
+          <textarea
+            class="suggest-input"
+            sync:value="suggestion"
+            placeholder="填写分组建议，如：分成工作、娱乐、学习三类"
+          ></textarea>
+          <p-button variant="outlined" size="s" on:click="reGroup">
+            <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
+            <span>重新分组</span>
+          </p-button>
         </div>
       </o-if>
     </div>

@@ -118,7 +118,7 @@ speed-dial/
 - `openGroup(dials)`：宿主调用的入口，接收 `plainDials()` 纯对象数组，截断到前 `MAX_CLASSIFY`（200）条后重置状态、打开弹窗并自动开始分析（无输入阶段）
 - `analyze(list, suggestion)`：惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })`，prompt 要求模型输出 `[{"id","group"}]` JSON 数组（中文组名 2~6 字、共 2~8 组、id 原样返回）；带 `suggestion` 时在规则前插入「用户对分组的额外要求（优先级最高）」块 → `parseGroups()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 id 在送入列表内、组名截 20 字、按 id 去重）→ 聚合成预览分组：**AI 未覆盖的网址保持原 `dial.group`（空则「未分组」）**，进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message 并关闭弹窗；await 返回后弹窗已被关闭则丢弃结果
-- 预览阶段：头部计数下方是建议输入行（`p-input` `sync:value="suggestion"` + 「重新分组」按钮）；外层 `o-fill`（`fill-key="name"`）渲染分组块，内层嵌套 `o-fill`（`:value="$data.items" fill-key="id"`）渲染组内条目（标题 + 域名）；每组一个 `p-checkbox`（`sync:checked="$data.checked"`）控制是否应用，未勾选组降透明度；分组列表固定 `max-height: 380px` 内部滚动
+- 预览阶段：外层 `o-fill`（`fill-key="name"`）渲染分组块，内层嵌套 `o-fill`（`:value="$data.items" fill-key="id"`）渲染组内条目（标题 + 域名）；每组一个 `p-checkbox`（`sync:checked="$data.checked"`）控制是否应用，未勾选组降透明度；分组列表固定 `max-height: 380px` 内部滚动；列表下方是建议输入行——**原生 `<textarea>` 固定高度 64px 内部滚动**（同 AI 导入不用 p-textarea 的原因，多行建议不撑高弹窗）+「重新分组」按钮
 - `reGroup()`：建议为空 toast 报错；否则回到 `analyzing` 阶段（loading 文案切换为「按你的建议重新分组」）并带 `suggestion` 复用 `dialList` 重新分析，新结果覆盖预览；建议文本保留可继续修改重分
 - 头部提示：超 200 条时显示「仅分析前 N 条（共 M 条）」，否则显示「未勾选的分组保持原样」
 - `applyGroups()`：未勾选任何组 toast 报错；否则收集勾选组的 `{ id, group }`，`emit("ai-group-apply", { data: { items }, bubbles: true, composed: true })` 上抛并关闭弹窗
