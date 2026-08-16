@@ -265,6 +265,15 @@
         <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
         <span>AI 导入</span>
       </p-button>
+      <p-button
+        class="group-btn"
+        variant="outlined"
+        size="s"
+        on:click="openGroup"
+      >
+        <n-icon icon="mdi:folder-sync-outline" slot="prefix"></n-icon>
+        <span>AI 分组</span>
+      </p-button>
     </div>
 
     <div class="grid">
@@ -324,6 +333,12 @@
     id="ai-import"
     src="./ai-import.html"
     on:ai-import-save="onAiImportSave"
+  ></o-page>
+
+  <o-page
+    id="ai-group"
+    src="./ai-group.html"
+    on:ai-group-apply="onAiGroupApply"
   ></o-page>
 
   <script>
@@ -413,6 +428,46 @@
           getAiImport() {
             const page = this.shadow.$("#ai-import");
             return page?.openImport ? page : null;
+          },
+
+          openGroup() {
+            if (!this.dials.length) {
+              toast({
+                content: "还没有收藏的网址，先添加或导入一些吧",
+                color: "error",
+              });
+              return;
+            }
+            this.getAiGroup()?.openGroup(this.plainDials());
+          },
+
+          getAiGroup() {
+            const page = this.shadow.$("#ai-group");
+            return page?.openGroup ? page : null;
+          },
+
+          async onAiGroupApply(event) {
+            const items = Array.isArray(event.data?.items)
+              ? event.data.items
+              : [];
+            const map = new Map(
+              items.map(({ id, group }) => [id, group]),
+            );
+            let changed = 0;
+            for (const dial of this.dials) {
+              const group = map.get(dial.id);
+              if (typeof group === "string" && group && group !== dial.group) {
+                dial.group = group;
+                changed++;
+              }
+            }
+            await this.persist();
+            if (changed) this.activeGroup = ""; // 原筛选组可能已被改名，回到全部
+            toast({
+              content: changed
+                ? `已更新 ${changed} 个网址的分组`
+                : "分组没有变化",
+            });
           },
 
           async onAiImportSave(event) {

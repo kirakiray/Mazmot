@@ -1,0 +1,420 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+    }
+
+    .dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .analyzing {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 40px 0;
+      font-size: 14px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .spin {
+      font-size: 20px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .result-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .result-count {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .result-tip {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .suggestion-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .suggestion-row p-input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* 分组列表固定高度内部滚动，不撑高弹窗 */
+    .group-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 380px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .group-list o-fill {
+      display: contents;
+    }
+
+    .group-block {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface) r g b / 0.12);
+      transition: opacity 0.15s ease;
+    }
+
+    .group-block.unchecked {
+      opacity: 0.5;
+    }
+
+    .group-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .group-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .group-count {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .group-items {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 8px;
+    }
+
+    .group-items o-fill {
+      display: contents;
+    }
+
+    .group-item {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 3px 0 3px 6px;
+      min-width: 0;
+    }
+
+    .item-title {
+      flex: 0 1 auto;
+      min-width: 0;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .item-host {
+      flex: 0 1 auto;
+      min-width: 0;
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 520px">
+    <span slot="title">AI 自动分组</span>
+
+    <div class="dialog-body">
+      <o-if :value="phase === 'analyzing'">
+        <div class="analyzing">
+          <n-icon icon="mdi:loading" class="spin"></n-icon>
+          <span>{{suggestion ? 'AI 正在按你的建议重新分组…' : 'AI 正在为 ' + dialCount + ' 个网址划分分组…'}}</span>
+        </div>
+      </o-if>
+
+      <o-if :value="phase === 'review'">
+        <div class="result-head">
+          <span class="result-count"
+            >分为 {{previewGroups.length}} 组 · 已选
+            {{selectedGroupCount}} 组</span
+          >
+          <span class="result-tip">
+            {{totalCount > dialCount ? '仅分析前 ' + dialCount + ' 条（共 ' + totalCount + ' 条）' : '未勾选的分组保持原样'}}
+          </span>
+        </div>
+        <div class="suggestion-row">
+          <p-input
+            sync:value="suggestion"
+            placeholder="填写分组建议，如：分成工作、娱乐、学习三类"
+          ></p-input>
+          <p-button variant="outlined" size="s" on:click="reGroup">
+            <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
+            <span>重新分组</span>
+          </p-button>
+        </div>
+        <div class="group-list">
+          <o-fill :value="previewGroups" fill-key="name">
+            <div class="group-block" class:unchecked="!$data.checked">
+              <div class="group-head">
+                <p-checkbox sync:checked="$data.checked"></p-checkbox>
+                <span class="group-name">{{$data.name}}</span>
+                <span class="group-count">{{$data.items.length}} 个</span>
+              </div>
+              <div class="group-items">
+                <o-fill :value="$data.items" fill-key="id">
+                  <div class="group-item">
+                    <span class="item-title">{{$data.title}}</span>
+                    <span class="item-host">{{$data.host}}</span>
+                  </div>
+                </o-fill>
+              </div>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
+    </div>
+
+    <div slot="bottom">
+      <o-if :value="phase === 'analyzing'">
+        <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
+      </o-if>
+      <o-if :value="phase === 'review'">
+        <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
+        <p-button color="primary" on:click="applyGroups">应用分组</p-button>
+      </o-if>
+    </div>
+  </p-dialog>
+
+  <script>
+    // 单次送入 AI 分类的网址上限，超出部分保持原分组
+    const MAX_CLASSIFY = 200;
+
+    const SYSTEM_PROMPT =
+      "你是书签分类助手，负责帮用户把收藏的网址整理成简洁合理的分组。";
+
+    const buildPrompt = (dials, suggestion = "") => {
+      const lines = [
+        "请把下面收藏的网址整理成若干分组，输出严格的 JSON 数组，每项格式：",
+        '{"id":"原样返回的id","group":"分组名"}',
+        "要求：",
+        "1. 分组名用简短中文（2~6 个字），如「开发工具」「社交娱乐」「新闻资讯」「购物」「学习」等，能概括该组网址的共同主题；",
+        "2. 分组数量控制在 2~8 个，把主题相近的网址归到同一组，不要几乎每个网址单独一组；",
+        "3. 每个网址必须且只能归入一个分组，id 必须原样返回，不得修改或省略；",
+        "4. 只输出 JSON 数组本身，不要输出任何其它文字或代码块标记。",
+      ];
+      if (suggestion) {
+        // 用户填写的建议优先级最高，冲突时覆盖默认规则
+        lines.splice(
+          4,
+          0,
+          "用户对分组的额外要求（优先级最高，与上面规则冲突时以此为准）：",
+          `<建议开始>`,
+          suggestion,
+          `<建议结束>`,
+        );
+      }
+      lines.push(
+        "",
+        "<网址列表开始>",
+        JSON.stringify(dials.map(({ id, title, url }) => ({ id, title, url }))),
+        "<网址列表结束>",
+      );
+      return lines.join("\n");
+    };
+
+    // 解析 AI 回复：容错代码块包裹，校验 id 在传入列表内、分组名非空，按 id 去重
+    const parseGroups = (reply, validIds) => {
+      const map = new Map();
+      const text = String(reply || "")
+        .replace(/```(?:json)?/gi, "")
+        .trim();
+      const match = text.match(/\[[\s\S]*\]/);
+      if (!match) return map;
+
+      let list;
+      try {
+        list = JSON.parse(match[0]);
+      } catch {
+        return map;
+      }
+      if (!Array.isArray(list)) return map;
+
+      for (const item of list) {
+        const id = typeof item?.id === "string" ? item.id : "";
+        const group =
+          typeof item?.group === "string"
+            ? item.group.trim().slice(0, 20)
+            : "";
+        if (!id || !group || !validIds.has(id) || map.has(id)) continue;
+        map.set(id, group);
+      }
+      return map;
+    };
+
+    const hostOf = (url) => {
+      try {
+        return new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        return url;
+      }
+    };
+
+    export default async ({ load }) => {
+      const { toast } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+
+      let getAssistant = null;
+      const ensureAssistant = async () => {
+        if (!getAssistant) {
+          ({ getAssistant } = await load("/ai/main.js"));
+        }
+        return getAssistant();
+      };
+
+      return {
+        data: {
+          dialogOpen: false,
+          phase: "analyzing", // analyzing 分析中 / review 预览确认
+          dialCount: 0, // 实际送分析的条数
+          totalCount: 0, // 宿主传入的总条数
+          dialList: [], // 送分析的原始列表（plainDials 截断后），供重新分组复用
+          suggestion: "", // 用户填写的分组建议
+          previewGroups: [], // [{ name, items: [{ id, title, host }], checked }]
+        },
+
+        proto: {
+          get selectedGroupCount() {
+            return this.previewGroups.filter((g) => g.checked).length;
+          },
+
+          // 由宿主页面调用：接收 plainDials，重置状态并立即开始分析
+          openGroup(dials) {
+            const list = Array.isArray(dials)
+              ? dials.slice(0, MAX_CLASSIFY)
+              : [];
+            this.totalCount = Array.isArray(dials) ? dials.length : 0;
+            this.phase = "analyzing";
+            this.previewGroups = [];
+            this.dialList = list;
+            this.suggestion = "";
+            this.dialCount = list.length;
+            this.dialogOpen = true;
+            this.analyze(list);
+          },
+
+          async analyze(list, suggestion = "") {
+            try {
+              const assistant = await ensureAssistant();
+              const { content: reply } = await assistant.chat({
+                thinking: false,
+                messages: [
+                  { role: "system", content: SYSTEM_PROMPT },
+                  { role: "user", content: buildPrompt(list, suggestion) },
+                ],
+              });
+
+              if (!this.dialogOpen) return; // 用户已关闭弹窗，丢弃结果
+              const map = parseGroups(
+                reply,
+                new Set(list.map((d) => d.id)),
+              );
+
+              // 聚合成预览分组：AI 未覆盖的网址保持原分组
+              const buckets = new Map();
+              for (const dial of list) {
+                const name = map.get(dial.id) || dial.group || "未分组";
+                if (!buckets.has(name)) buckets.set(name, []);
+                buckets.get(name).push({
+                  id: dial.id,
+                  title: dial.title,
+                  host: hostOf(dial.url),
+                });
+              }
+              this.previewGroups = [...buckets].map(([name, items]) => ({
+                name,
+                items,
+                checked: true,
+              }));
+              this.phase = "review";
+            } catch (err) {
+              if (err?.message === "no api key available") {
+                toast({
+                  content: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                  color: "error",
+                });
+              } else {
+                toast({
+                  content: `分组失败：${err?.message || err}`,
+                  color: "error",
+                });
+              }
+              this.dialogOpen = false;
+            }
+          },
+
+          // 按用户填写的建议重新分组（覆盖当前预览结果）
+          reGroup() {
+            const suggestion = this.suggestion.trim();
+            if (!suggestion) {
+              toast({ content: "请先填写分组建议", color: "error" });
+              return;
+            }
+            this.phase = "analyzing";
+            this.previewGroups = [];
+            this.analyze(this.dialList, suggestion);
+          },
+
+          applyGroups() {
+            const items = [];
+            for (const group of this.previewGroups) {
+              if (!group.checked) continue;
+              for (const item of group.items) {
+                items.push({ id: item.id, group: group.name });
+              }
+            }
+            if (!items.length) {
+              toast({ content: "请至少勾选一个分组", color: "error" });
+              return;
+            }
+            this.emit("ai-group-apply", {
+              data: { items },
+              bubbles: true,
+              composed: true, // 穿透 Shadow DOM，宿主才能监听
+            });
+            this.dialogOpen = false;
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -1,8 +1,8 @@
 # 网页收藏夹（speed-dial）上下文说明
 
-Speed Dial 风格的网页收藏夹应用：分组筛选、拖拽排序、AI 导入（从任意文本/文件中识别网址批量收藏），数据全部保存在本地（NoneOS storage）。本文件是本应用的**活文档**，与代码保持一致；修改代码必须同步更新本文件（规则见 [AGENTS.md](AGENTS.md)）。
+Speed Dial 风格的网页收藏夹应用：分组筛选、拖拽排序、AI 导入（从任意文本/文件中识别网址批量收藏）、AI 自动分组（按主题整理已有收藏），数据全部保存在本地（NoneOS storage）。本文件是本应用的**活文档**，与代码保持一致；修改代码必须同步更新本文件（规则见 [AGENTS.md](AGENTS.md)）。
 
-> 注意：历史描述中的"搜索"功能当前代码**未实现**，仅分组筛选；AI 导入需联网且依赖宿主已配置 AI Key。
+> 注意：历史描述中的"搜索"功能当前代码**未实现**，仅分组筛选；AI 导入 / AI 分组需联网且依赖宿主已配置 AI Key。
 
 ## 目录结构
 
@@ -18,6 +18,7 @@ speed-dial/
     ├── home.html       # 主页面：收藏卡片网格 + 分组筛选 + 删除/拖拽排序 + 持久化
     ├── dial-form.html  # 添加/编辑弹窗页面模块（内嵌于 home 的 o-page，保存经 dial-save 事件上抛）
     ├── ai-import.html  # AI 导入弹窗页面模块（内嵌于 home 的 o-page，识别结果经 ai-import-save 事件上抛）
+    ├── ai-group.html   # AI 自动分组弹窗页面模块（内嵌于 home 的 o-page，分组结果经 ai-group-apply 事件上抛）
     └── palette.js      # 图标底色八色板常量（dial-form 取色器与 AI 导入自动配色共用）
 ```
 
@@ -53,12 +54,13 @@ speed-dial/
 |------|------|
 | `index.html` | 入口：jsdelivr 加载 ofa.js `@latest#debug` + router，引 pui-global.css，`<o-app src="./app-config.js">` |
 | `app-config.js` | 导出 `home`（页面路径）与 `pageAnime`（切换动画：opacity + 左右 30px 平移） |
-| `pages/home.html` | 主页面：状态、计算属性、增删、拖拽、持久化；内嵌 `<o-page id="dial-form">` 与 `<o-page id="ai-import">`，分别监听 `dial-save` / `ai-import-save` 事件落库 |
+| `pages/home.html` | 主页面：状态、计算属性、增删、拖拽、持久化；内嵌 `<o-page id="dial-form">`、`<o-page id="ai-import">` 与 `<o-page id="ai-group">`，分别监听 `dial-save` / `ai-import-save` / `ai-group-apply` 事件落库 |
 | `pages/dial-form.html` | 添加/编辑弹窗页面模块：自带 `p-dialog` + 表单状态，暴露 `openForm()` 供宿主打开，保存时校验空 URL 并 `emit("dial-save")` 冒泡上抛表单值 |
 | `pages/ai-import.html` | AI 导入弹窗页面模块：输入文本/选文件 → `getAssistant()` 提取网址 → 勾选后 `emit("ai-import-save")` 冒泡上抛所选列表 |
+| `pages/ai-group.html` | AI 自动分组弹窗页面模块：接收宿主全部收藏 → `getAssistant()` 按主题划分分组 → 按组勾选后 `emit("ai-group-apply")` 冒泡上抛 `{id, group}` 列表 |
 | `pages/palette.js` | 八色板常量 `PALETTE`，dial-form 取色器与 AI 导入自动配色共用 |
 | `app.json` | manifest；`createdAt` 在分发时由 `__app.json` 的 replacements 替换 |
-| `__app.json` | 分发清单：`files` 列出 app.json / index.html / app-config.js / pages 下四个文件 |
+| `__app.json` | 分发清单：`files` 列出 app.json / index.html / app-config.js / pages 下五个文件 |
 
 ## home.html 页面要点
 
@@ -77,6 +79,8 @@ speed-dial/
 - `openAdd()` / `openEdit(event, dial)`：`stopPropagation` 后调用 `getDialForm()?.openForm(...)` 打开弹窗页面（新增传 `count`/默认分组，编辑传 `id`/原值；`"未分组"` 反向转空串）
 - `onDialSave(event)`：处理弹窗上抛的 `dial-save` 事件（`event.data` = `{ id, url, title, group, color }`），负责 `normalizeUrl` 归一化、标题/分组兜底、编辑原地改字段或新增 push（生成 id/createdAt），最后 `persist()`
 - `openImport()` / `getAiImport()`：调 `getAiImport()?.openImport()` 打开 AI 导入弹窗（同 `getDialForm` 模式）
+- `openGroup()` / `getAiGroup()`：收藏为空时 toast 提示并拦截；否则调 `getAiGroup()?.openGroup(this.plainDials())` 打开 AI 分组弹窗
+- `onAiGroupApply(event)`：处理 AI 分组上抛的 `ai-group-apply` 事件（`event.data.items` = `[{ id, group }]`），按 id 匹配更新 `dial.group`（分组名非空且变化才计入），最后 `persist()`；有变更时把 `activeGroup` 重置为 `""`（原筛选组可能已被改名），并 toast 提示更新数量
 - `onAiImportSave(event)`：处理 AI 导入上抛的 `ai-import-save` 事件（`event.data.items` = `[{ url, title }]`）；逐条 `normalizeUrl`、跳过空 URL 与已收藏 URL（按 url 去重）、标题兜底 `hostOf`、分组取当前 `activeGroup`（空则「未分组」）、颜色按 `dials.length % PALETTE.length` 轮选，最后 `persist()` 并 toast 提示新增数量
 - `removeDial(event, dial)`：punch-ui `confirm` 确认后 splice 删除再 `persist()`
 - 拖拽：`onDragStart/onDragOver/onDragLeave/onDrop/onDragEnd`，drop 时在 `plainDials()` 拷贝上 splice 换位后整体回写 `this.dials`
@@ -105,6 +109,20 @@ speed-dial/
 - 勾选阶段：`o-fill` + `p-checkbox`（`sync:checked="$data.checked"`）逐条勾选，支持 `toggleAll()` 全选/全不选（`selectedCount` / `allChecked` getter 统计）
 - `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`back()` 返回输入阶段（保留已输入文本，可重新识别）
 - 分工约定同 dial-form：**本页只管识别与选择，归一化/去重/配色/落库由 home 的 `onAiImportSave` 处理**
+
+## ai-group.html AI 自动分组弹窗页面要点
+
+以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏「AI 分组」按钮触发，两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
+
+- 状态（`data`）：`dialogOpen`、`phase`、`dialCount`（实际送分析的条数）、`totalCount`（宿主传入总条数）、`previewGroups`（`[{ name, items: [{ id, title, host }], checked }]`）
+- `openGroup(dials)`：宿主调用的入口，接收 `plainDials()` 纯对象数组，截断到前 `MAX_CLASSIFY`（200）条后重置状态、打开弹窗并自动开始分析（无输入阶段）
+- `analyze(list, suggestion)`：惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })`，prompt 要求模型输出 `[{"id","group"}]` JSON 数组（中文组名 2~6 字、共 2~8 组、id 原样返回）；带 `suggestion` 时在规则前插入「用户对分组的额外要求（优先级最高）」块 → `parseGroups()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 id 在送入列表内、组名截 20 字、按 id 去重）→ 聚合成预览分组：**AI 未覆盖的网址保持原 `dial.group`（空则「未分组」）**，进 `review` 阶段
+- 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message 并关闭弹窗；await 返回后弹窗已被关闭则丢弃结果
+- 预览阶段：头部计数下方是建议输入行（`p-input` `sync:value="suggestion"` + 「重新分组」按钮）；外层 `o-fill`（`fill-key="name"`）渲染分组块，内层嵌套 `o-fill`（`:value="$data.items" fill-key="id"`）渲染组内条目（标题 + 域名）；每组一个 `p-checkbox`（`sync:checked="$data.checked"`）控制是否应用，未勾选组降透明度；分组列表固定 `max-height: 380px` 内部滚动
+- `reGroup()`：建议为空 toast 报错；否则回到 `analyzing` 阶段（loading 文案切换为「按你的建议重新分组」）并带 `suggestion` 复用 `dialList` 重新分析，新结果覆盖预览；建议文本保留可继续修改重分
+- 头部提示：超 200 条时显示「仅分析前 N 条（共 M 条）」，否则显示「未勾选的分组保持原样」
+- `applyGroups()`：未勾选任何组 toast 报错；否则收集勾选组的 `{ id, group }`，`emit("ai-group-apply", { data: { items }, bubbles: true, composed: true })` 上抛并关闭弹窗
+- 分工约定同上：**本页只管分析与选择，落库由 home 的 `onAiGroupApply` 处理**
 
 交互细节：
 
