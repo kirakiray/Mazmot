@@ -175,7 +175,6 @@
             ></button>
           </o-fill>
         </x-if>
-        <p-switch sync:value="noBg" size="s">无底色</p-switch>
       </div>
       <div class="icon-row">
         <span class="color-label">网址图标</span>
@@ -194,6 +193,7 @@
             恢复默认
           </p-button>
         </o-if>
+        <p-switch sync:value="noBg" size="s">无底色</p-switch>
       </div>
       <div class="icon-search">
         <input
@@ -234,7 +234,7 @@
   </p-dialog>
 
   <script>
-    // 从 URL 提取图标搜索关键词（主域名，如 github.com → github）
+    // 从 URL 提取图标搜索关键词（取主域名的倒数第二段，如 gist.github.com → github）
     const iconKeyword = (url) => {
       const value = (url || "").trim();
       if (!value) return "";
@@ -242,7 +242,9 @@
         const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
           ? value
           : `https://${value}`;
-        return new URL(full).hostname.replace(/^www\./, "").split(".")[0];
+        const parts = new URL(full).hostname.replace(/^www\./, "").split(".");
+        // 单段（如 localhost）直接用；多段取倒数第二段（主域名）
+        return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
       } catch {
         return "";
       }

@@ -95,7 +95,7 @@ speed-dial/
 以 `<o-page id="dial-form">` 常驻内嵌于 home（**o-page 初始化后不允许改 src**，传参走方法调用而非 query）：
 
 - 状态（`data`）：`dialogOpen`（弹窗开关）、`editingId`（空串=新增）、`palette`、`form`（url/title/group/color/icon）、`iconQuery`（图标搜索关键词）、`iconResults`（iconify 图标名数组）、`searching`、`noBg`（p-switch 值，`"on"` = 无底色）
-- `openForm({ id, url, title, group, color, icon, count })`：宿主调用的入口，回填表单并打开弹窗；`color` 缺省时按 `count % PALETTE.length` 轮选取默认色，`noBg` 按传入 `color` 是否为空串初始化（编辑无底色收藏时开关自动开启）；打开后按 `iconKeyword(url)`（主域名，github.com → github）自动静默搜一次图标，方便直接选品牌标
+- `openForm({ id, url, title, group, color, icon, count })`：宿主调用的入口，回填表单并打开弹窗；`color` 缺省时按 `count % PALETTE.length` 轮选取默认色，`noBg` 按传入 `color` 是否为空串初始化（编辑无底色收藏时开关自动开启）；打开后按 `iconKeyword(url)`（去 `www.` 后取 hostname 倒数第二段，gist.github.com → github；单段如 localhost 直接用）自动静默搜一次图标，方便直接选品牌标
 - 色板行：`x-if :value="noBg === 'off'"` 包裹色板（无底色时隐藏色板选择），行尾 `p-switch`（`sync:value="noBg"`，`"on"/"off"`）「无底色」开关靠右；图标预览块在无底色时透明背景无边框（`.icon-preview.no-bg` 仅换内容色），图标/首字母用 on-surface-variant 色
 - 图标选择区（色板行下方）：预览块实时显示选中图标或首字母（`previewInitial` getter，标题优先其次主域名）+「恢复默认」清空 icon；搜索行是原生 `<input>`（`sync:value="iconQuery"`，Enter 触发搜索）+「搜索图标」按钮；结果为 `o-fill` 渲染的 8 列图标网格（`n-icon :icon="$data"`，固定 `max-height: 168px` 内部滚动，点击选中高亮，`attr:title` 显示图标名）；`.dialog-form` 整体 `max-height: 60vh` 内部滚动防撑高弹窗
 - `searchIcons(silent)`：调 iconify 搜索 API（`api.iconify.design/search?limit=32`），取 `icons` 前 32 个；`silent`（自动搜索）时失败/空结果不弹 toast
