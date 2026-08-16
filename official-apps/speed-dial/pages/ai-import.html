@@ -11,8 +11,49 @@
       padding: 16px;
     }
 
-    .dialog-body p-textarea {
+    .drop-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 2px dashed transparent;
+      transition:
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+    }
+
+    .drop-area.drag-over {
+      border-color: var(--md-sys-color-primary);
+      background-color: rgb(
+        from var(--md-sys-color-primary) r g b / 0.06
+      );
+    }
+
+    .input-label {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* 固定高度原生输入框：超长内容在内部滚动，不撑高弹窗 */
+    .plain-input {
       width: 100%;
+      height: 240px;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.4);
+      background: none;
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+    }
+
+    .plain-input:focus {
+      border-color: var(--md-sys-color-primary);
     }
 
     .file-row {
@@ -106,7 +147,6 @@
   </style>
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
@@ -116,24 +156,31 @@
 
     <div class="dialog-body">
       <o-if :value="phase === 'input'">
-        <p-textarea
-          sync:value="inputText"
-          rows="6"
-          placeholder="粘贴任意文本：笔记、聊天记录、网页内容、书签导出文件……AI 会自动找出其中值得收藏的网址"
+        <div
+          class="drop-area"
+          class:drag-over="dragOver"
+          on:dragover="onDragOver($event)"
+          on:dragleave="dragOver = false"
+          on:drop="onDrop($event)"
         >
-          <span slot="label">文本内容</span>
-        </p-textarea>
-        <div class="file-row">
-          <p-button variant="outlined" size="s" on:click="pickFile">
-            <n-icon icon="mdi:file-upload-outline" slot="prefix"></n-icon>
-            <span>选择文件</span>
-          </p-button>
-          <span class="file-name" attr:title="fileName">{{fileName}}</span>
+          <span class="input-label">文本内容</span>
+          <textarea
+            class="plain-input"
+            sync:value="inputText"
+            placeholder="粘贴任意文本：笔记、聊天记录、网页内容、书签导出文件……AI 会自动找出其中值得收藏的网址"
+          ></textarea>
+          <div class="file-row">
+            <p-button variant="outlined" size="s" on:click="pickFile">
+              <n-icon icon="mdi:file-upload-outline" slot="prefix"></n-icon>
+              <span>选择文件</span>
+            </p-button>
+            <span class="file-name" attr:title="fileName">{{fileName}}</span>
+          </div>
+          <p class="tip">
+            支持粘贴文本、拖拽文件到此处，或选择任意文本类文件（.txt / .md /
+            .html / .json 等）；文件内容仅在本地读取后交由 AI 识别。
+          </p>
         </div>
-        <p class="tip">
-          支持读取任意文本类文件（.txt / .md / .html / .json
-          等）的内容后交给 AI 识别；识别与添加全部在本地完成。
-        </p>
       </o-if>
 
       <o-if :value="phase === 'review'">
@@ -162,7 +209,11 @@
     <div slot="bottom">
       <o-if :value="phase === 'input'">
         <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-        <p-button color="primary" :disabled="analyzing" on:click="analyze">
+        <p-button
+          color="primary"
+          attr:disabled="analyzing"
+          on:click="analyze"
+        >
           {{analyzing ? 'AI 识别中…' : 'AI 识别'}}
         </p-button>
       </o-if>
@@ -265,6 +316,7 @@
           phase: "input", // input 输入阶段 / review 勾选阶段
           inputText: "",
           fileName: "",
+          dragOver: false,
           candidates: [], // [{ url, title, checked }]
           analyzing: false,
         },
@@ -295,12 +347,27 @@
             this.shadow.$("#file-input").ele.click();
           },
 
+          onDragOver(event) {
+            event.preventDefault(); // 允许 drop
+            this.dragOver = true;
+          },
+
+          async onDrop(event) {
+            event.preventDefault();
+            this.dragOver = false;
+            const file = event.dataTransfer?.files?.[0];
+            if (file) await this.readFile(file);
+          },
+
           async onFileChange() {
             const input = this.shadow.$("#file-input");
             const file = input.ele.files && input.ele.files[0];
             input.ele.value = ""; // 允许重复选择同一文件
-            if (!file) return;
+            if (file) await this.readFile(file);
+          },
 
+          // 读取文本文件写入输入框（选择与拖拽共用）
+          async readFile(file) {
             try {
               const text = await file.text();
               const truncated = text.length > MAX_CONTENT_CHARS;

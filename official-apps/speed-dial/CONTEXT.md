@@ -24,7 +24,7 @@ speed-dial/
 ## 技术栈
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
-- **punch-ui** 组件：`p-input` / `p-textarea` / `p-button` / `p-checkbox` / `p-dialog`（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`
+- **punch-ui** 组件：`p-input` / `p-button` / `p-checkbox` / `p-dialog`（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
 - **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
 - **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
@@ -97,9 +97,9 @@ speed-dial/
 
 以 `<o-page id="ai-import">` 常驻内嵌于 home，工具栏「AI 导入」按钮触发，两阶段流程（`phase` 状态：`input` / `review`，`o-if` 切换）：
 
-- 状态（`data`）：`dialogOpen`、`phase`、`inputText`（textarea 文本）、`fileName`（已选文件名展示）、`candidates`（`[{ url, title, checked }]`）、`analyzing`
+- 状态（`data`）：`dialogOpen`、`phase`、`inputText`（textarea 文本）、`fileName`（已选文件名展示）、`dragOver`（拖拽悬停高亮）、`candidates`（`[{ url, title, checked }]`）、`analyzing`
 - `openImport()`：宿主调用的入口，重置全部状态并打开弹窗
-- 输入阶段：`p-textarea` 粘贴任意文本 + 隐藏原生 `<input type="file">`（`pickFile()` 触发点击，`onFileChange()` 用 `file.text()` 读内容写入 `inputText`，读完清空 `input.value` 以便重选同一文件；超 50000 字符截断并在文件名后标注）
+- 输入阶段：**原生 `<textarea>` 固定高度 240px 内部滚动**（不用 p-textarea，它会随内容自动增高撑爆弹窗），`sync:value` 绑定 `inputText`；整个输入区是拖放目标（`onDragOver` preventDefault + `dragOver` 高亮，`onDrop` 取 `dataTransfer.files[0]`）；另有隐藏原生 `<input type="file">`（`pickFile()` 触发点击）；`readFile(file)` 为选择/拖拽共用的读取逻辑（`file.text()` 读内容写入 `inputText`，读完清空 `input.value` 以便重选同一文件；超 50000 字符截断并在文件名后标注）
 - `analyze()`：非空校验 → 惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })` 用固定 prompt 要求模型只输出 JSON 数组 → `parseSites()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 url 能解析出带点域名、按 url 去重、title 兜底域名）→ 空结果 toast 报错停留，否则进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message；await 返回后若弹窗已被关闭则丢弃结果
 - 勾选阶段：`o-fill` + `p-checkbox`（`sync:checked="$data.checked"`）逐条勾选，支持 `toggleAll()` 全选/全不选（`selectedCount` / `allChecked` getter 统计）
