@@ -17,7 +17,7 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
   - 必须带 `#debug`，开发期保留调试信息
   - 顶层入口 HTML（如 `index.html` / `apps/*/index.html`）可酌情锁定具体版本（如 `@4.7.1`）；组件 / 页面模块 / 测试页一律用 `@latest`
 - **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
-- **Punch-UI**：统一使用 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`（CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`）
+- **Punch-UI**：组件不强制使用，但**用到时**必须统一走 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`（CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`），禁止引入其他来源的 punch-ui 资源
 
 ### 按加载位置区分前缀（重要）
 
@@ -67,8 +67,9 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 ## UI 与视觉规范
 
-- **组件库**：项目深度集成 `punch-ui` 组件库。
-- **视觉系统**：严格遵循 `punch-ui` 的颜色方案与设计语言。
+- **组件库**：项目集成 `punch-ui` 组件库，但**不强制**使用其组件，可按需自写 UI。
+- **视觉系统（强制）**：无论是否使用 punch-ui 组件，颜色体系必须严格遵循 `punch-ui` 的颜色方案与设计语言。
+- **快捷指令**：`prompt` / `alert` / `confirm` 这类单行 JS 直接调用的浏览器原生对话框，也应尽量使用 `punch-ui` 提供的对应 API，保持视觉统一。
 - **开发参考**：在实现 UI 相关功能前，请查阅 `punch-ui` 知识库以保持风格一致性。
 - **图标**：业务代码统一使用 `<n-icon icon="mdi:xxx">`（由 NoneOS Core 提供，底层基于 `iconify-icon` 实现）。
   - **禁止**业务代码直接调用 `iconify-icon` 的 API 或将其作为依赖加载（`n-icon` 会按需加载底层运行时）。
@@ -90,6 +91,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 6. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
 7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
 8. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
+9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户：是将其浓缩成 Skill（供后续任务复用），还是记录到 [CONTEXT.md](CONTEXT.md) 中备注，由用户决定后再落档，不要擅自处置。
 
 ## 目录与文件放置规则
 

@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Chain 测试（supplier 风格 Agent 封装）</title>
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug"
+      type="module"
+    ></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+    <script>
+      // 全局测试夹具：真实 API 用例共用同一个 DeepseekAssistant 实例
+      //（Assistant 仅持有 id / apiKey，无会话状态，跨用例复用安全）。
+      // 同步脚本 + 惰性单例：首个调用的用例触发初始化，后续复用同一个 Promise。
+      globalThis.getChainFixture = () => {
+        globalThis.__chainFixture ??= (async () => {
+          const [{ DeepseekAssistant }, chain, config] = await Promise.all([
+            import("../supplier/deepseek.js"),
+            import("../chain/main.js"),
+            fetch("/ai/test-api-keys.json").then((r) => r.json()),
+          ]);
+          const apiKey = config.deepseek;
+          const ready = !!apiKey && !String(apiKey).startsWith("sk-your-");
+          return {
+            ready,
+            assistant: ready
+              ? new DeepseekAssistant("test-chain", apiKey)
+              : null,
+            chain, // { createAgent, tool, toolsToWire, findTool, MemorySaver }
+          };
+        })();
+        return globalThis.__chainFixture;
+      };
+    </script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>AI Chain 测试套件</h1>
+    <p>
+      Agent 行为用例使用真实 DeepSeek API（deepseek-v4-flash），需先在
+      <code>ai/test-api-keys.json</code> 填入 key；纯函数用例（tool schema /
+      容错 / MemorySaver）不发请求。
+    </p>
+
+    <!-- ============================== -->
+    <!-- tools.js（纯函数，不发请求）    -->
+    <!-- ============================== -->
+
+    <sb-test name="tool: toWire() 生成 JSON Schema（required / properties）">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { tool } = await import("../chain/tools.js");
+
+            const calcTool = tool(async ({ expr }) => expr, {
+              name: "calc",
+              description: "计算表达式",
+              schema: {
+                expr: { type: "string", description: "表达式" },
+                digits: { type: "number", optional: true },
+              },
+            });
+
+            const wire = calcTool.toWire();
+            const checks = {
+              type: wire.type === "function",
+              name: wire.function.name === "calc",
+              description: wire.function.description === "计算表达式",
+              parametersType: wire.function.parameters.type === "object",
+              required:
+                JSON.stringify(wire.function.parameters.required) ===
+                '["expr"]',
+              properties:
+                wire.function.parameters.properties.expr.type === "string" &&
+                wire.function.parameters.properties.digits.type === "number",
+              optionalStripped: !(
+                "optional" in wire.function.parameters.properties.digits
+              ),
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { wire, checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="tool: invoke 容错（非法 JSON / 缺必填 / 类型错 / 抛异常均返回文本）"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { tool } = await import("../chain/tools.js");
+
+            const echoTool = tool(async ({ text }) => `ok:${text}`, {
+              name: "echo",
+              schema: { text: { type: "string" } },
+            });
+            const boomTool = tool(
+              async () => {
+                throw new Error("boom");
+              },
+              { name: "boom", schema: {} },
+            );
+
+            const results = {
+              badJson: await echoTool.invoke("not json"),
+              missing: await echoTool.invoke("{}"),
+              nullArgs: await echoTool.invoke(null),
+              wrongType: await echoTool.invoke('{"text": 123}'),
+              ok: await echoTool.invoke('{"text": "hi"}'),
+              throwFn: await boomTool.invoke("{}"),
+            };
+
+            const checks = {
+              badJson: results.badJson.includes("工具参数不是合法 JSON"),
+              missing: results.missing === "缺少必填参数：text",
+              nullArgs: results.nullArgs === "缺少必填参数：text",
+              wrongType: results.wrongType.includes("需要 string 类型"),
+              ok: results.ok === "ok:hi",
+              throwFn: results.throwFn === "工具执行出错：boom",
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { results, checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============================== -->
+    <!-- 纯构造 / 导出（不发请求）       -->
+    <!-- ============================== -->
+
+    <sb-test name="createAgent: 缺 assistant 抛错">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { createAgent } = await import("../chain/agent.js");
+
+            const checks = {
+              emptyOpts: (() => {
+                try {
+                  createAgent({});
+                  return false;
+                } catch (e) {
+                  return e.message.includes("assistant");
+                }
+              })(),
+              noArgs: (() => {
+                try {
+                  createAgent();
+                  return false;
+                } catch (e) {
+                  return e.message.includes("assistant");
+                }
+              })(),
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="导出: chain/main.js 暴露 createAgent / tool / toolsToWire / findTool / MemorySaver"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const chain = await import("../chain/main.js");
+            const names = [
+              "createAgent",
+              "tool",
+              "toolsToWire",
+              "findTool",
+              "MemorySaver",
+            ];
+
+            const demoTool = chain.tool(async () => "x", {
+              name: "demo",
+              schema: {},
+            });
+            const checks = {
+              allExported: names.every(
+                (n) =>
+                  typeof chain[n] === "function" ||
+                  (n === "MemorySaver" && typeof chain[n] === "function"),
+              ),
+              findToolHit: chain.findTool([demoTool], "demo") === demoTool,
+              findToolMiss: chain.findTool([demoTool], "other") === null,
+              toolsToWire:
+                chain.toolsToWire([demoTool])[0].function.name === "demo",
+              pureLayer: true, // chain 模块不 import /nos/*，见 main.js 顶部说明
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, exported: names.filter((n) => n in chain) },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="MemorySaver: get 返回副本，外部修改不污染内部">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { MemorySaver } = await import("../chain/memory.js");
+
+            const cpSaver = new MemorySaver();
+            await cpSaver.set("t1", [{ role: "user", content: "hi" }]);
+
+            const cpGot = await cpSaver.get("t1");
+            cpGot.push({ role: "assistant", content: "hack" });
+            cpGot[0].content = "mutated";
+
+            const cpAgain = await cpSaver.get("t1");
+            const cpUnknown = await cpSaver.get("nope");
+
+            const checks = {
+              copyOnRead: cpAgain.length === 1 && cpAgain[0].content === "hi",
+              unknownThread: Array.isArray(cpUnknown) && cpUnknown.length === 0,
+            };
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { cpAgain, checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <!-- ============================== -->
+    <!-- 以下为真实 DeepSeek API 测试     -->
+    <!-- 模型：deepseek-v4-flash          -->
+    <!-- ============================== -->
+
+    <sb-test
+      name="[真实] chat: 无工具单轮 — 返回 content / model / usage / 轨迹"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent } = chain;
+
+            try {
+              const agent = createAgent({ assistant });
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "请只回复两个字：你好" }],
+              });
+
+              const checks = {
+                hasContent:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
+                hasModel: !!result.model && result.model.includes("deepseek"),
+                hasUsage: result.usage?.total_tokens > 0,
+                noToolCalls:
+                  Array.isArray(result.toolCalls) &&
+                  result.toolCalls.length === 0,
+                traceRoles:
+                  result.messages.map((m) => m.role).join(",") ===
+                  "user,assistant",
+                traceContent:
+                  result.messages[0].content === "请只回复两个字：你好",
+                noEmptyToolCallsField:
+                  result.messages[1].tool_calls === undefined,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  content: result.content,
+                  model: result.model,
+                  usage: result.usage,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] createAgent 参数直传：model 固定 + thinking 出思考">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent } = chain;
+
+            try {
+              // model / thinking 只在 createAgent 声明，chat 不再传
+              const agent = createAgent({
+                assistant,
+                model: "deepseek-v4-flash",
+                thinking: true,
+                reasoningEffort: "high",
+              });
+              const result = await agent.chat({
+                messages: [
+                  { role: "user", content: "9.11 和 9.8 哪个大？简短回答。" },
+                ],
+              });
+
+              const checks = {
+                modelPassed: result.model.includes("deepseek-v4-flash"),
+                hasContent:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
+                hasReasoning:
+                  typeof result.reasoningContent === "string" &&
+                  result.reasoningContent.length > 0,
+                hasUsage: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  content: result.content,
+                  reasoningPreview: result.reasoningContent?.slice(0, 120),
+                  model: result.model,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] chat: 工具循环 — 轨迹 user/assistant(tool_calls)/tool/assistant，工具结果回传"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent, tool } = chain;
+
+            try {
+              const receivedArgs = [];
+              const getWeather = tool(
+                async ({ city }) => {
+                  receivedArgs.push(city);
+                  return "晴，25℃";
+                },
+                {
+                  name: "get_weather",
+                  description: "查询指定城市的实时天气",
+                  schema: {
+                    city: { type: "string", description: "城市名，如：北京" },
+                  },
+                },
+              );
+
+              const agent = createAgent({
+                assistant,
+                tools: [getWeather],
+                systemPrompt:
+                  "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+              });
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "北京今天天气怎么样？" }],
+              });
+
+              const roles = result.messages.map((m) => m.role).join(",");
+              // 动态查找，不依赖 systemPrompt 是否存在
+              const assistantMsg = result.messages.find(
+                (m) => m.tool_calls?.length,
+              );
+              const toolMsg = result.messages.find((m) => m.role === "tool");
+              const checks = {
+                hasFinalContent:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
+                roles: roles === "system,user,assistant,tool,assistant",
+                toolCalled:
+                  assistantMsg.tool_calls?.[0]?.function?.name ===
+                  "get_weather",
+                toolResultFedBack:
+                  toolMsg.role === "tool" &&
+                  toolMsg.content === "晴，25℃" &&
+                  toolMsg.tool_call_id === assistantMsg.tool_calls?.[0]?.id,
+                toolGotCityArg:
+                  receivedArgs.length === 1 &&
+                  String(receivedArgs[0]).includes("北京"),
+                usageAccumulated: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  roles,
+                  finalContent: result.content,
+                  receivedArgs,
+                  usage: result.usage,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] tools 函数形式：会话中途动态加入工具生效">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent, tool } = chain;
+
+            try {
+              // 动态工具池：先为空，第一轮对话后加入天气工具
+              const dynamicTools = [];
+              const agent = createAgent({
+                assistant,
+                tools: () => dynamicTools,
+                systemPrompt:
+                  "你是天气助手，回答天气问题必须先调用 get_weather 工具；工具不可用时直接说明无法查询。",
+              });
+
+              // 第一轮：没有任何工具，模型只能直接回答（轨迹不含 tool 消息）
+              const before = await agent.chat({
+                messages: [{ role: "user", content: "北京今天天气怎么样？" }],
+              });
+
+              // 会话中途加入工具（同一个 agent，不重建）
+              dynamicTools.push(
+                tool(async ({ city }) => "晴，25℃", {
+                  name: "get_weather",
+                  description: "查询指定城市的实时天气",
+                  schema: {
+                    city: { type: "string", description: "城市名，如：上海" },
+                  },
+                }),
+              );
+
+              // 第二轮：函数形式每轮求值，新工具立即可用
+              const after = await agent.chat({
+                messages: [{ role: "user", content: "上海今天天气怎么样？" }],
+              });
+
+              const beforeRoles = before.messages
+                .map((m) => m.role)
+                .join(",");
+              const afterAssistantMsg = after.messages.find(
+                (m) => m.tool_calls?.length,
+              );
+              const afterToolMsg = after.messages.find(
+                (m) => m.role === "tool",
+              );
+              const checks = {
+                beforeNoToolCall: !before.messages.some(
+                  (m) => m.role === "tool",
+                ),
+                beforeAnswered: beforeRoles === "system,user,assistant",
+                afterToolCalled:
+                  afterAssistantMsg?.tool_calls?.[0]?.function?.name ===
+                  "get_weather",
+                afterResultFedBack: afterToolMsg?.content === "晴，25℃",
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  beforeRoles,
+                  afterAnswer: after.content,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] chat: stream 无工具 — text 增量拼接等于最终 content，末尾 done"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent } = chain;
+
+            try {
+              const agent = createAgent({ assistant });
+
+              const events = [];
+              const result = await agent.chat({
+                messages: [
+                  { role: "user", content: "从 1 数到 5，每个数字一行" },
+                ],
+                stream: true,
+                onStream: (ev) =>
+                  events.push(
+                    ev.type === "text"
+                      ? { type: "text", delta: ev.delta }
+                      : { type: ev.type },
+                  ),
+              });
+
+              const textDeltas = events
+                .filter((ev) => ev.type === "text")
+                .map((ev) => ev.delta)
+                .join("");
+              const lastEv = events.at(-1);
+              const checks = {
+                hasTextEvents: textDeltas.length > 0,
+                deltasMatchFinal: textDeltas === result.content,
+                lastIsDone: lastEv?.type === "done",
+                onlyTextAndDone: events.every(
+                  (ev) => ev.type === "text" || ev.type === "done",
+                ),
+                hasUsage: result.usage?.total_tokens > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  finalContent: result.content,
+                  streamedLength: textDeltas.length,
+                  eventCount: events.length,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] chat: stream + 工具循环 — 事件顺序 toolCalls → toolResult → text → done"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent, tool } = chain;
+
+            try {
+              const getWeather2 = tool(async ({ city }) => "晴，25℃", {
+                name: "get_weather",
+                description: "查询指定城市的实时天气",
+                schema: { city: { type: "string", description: "城市名" } },
+              });
+
+              const agent = createAgent({
+                assistant,
+                tools: [getWeather2],
+                systemPrompt:
+                  "你是天气助手，回答天气问题必须先调用 get_weather 工具，禁止编造。",
+              });
+
+              const stEvents = [];
+              const result = await agent.chat({
+                messages: [{ role: "user", content: "上海今天天气怎么样？" }],
+                stream: true,
+                onStream: (ev) =>
+                  stEvents.push(
+                    ev.type === "text"
+                      ? { type: "text", delta: ev.delta }
+                      : { type: ev.type, name: ev.name, result: ev.result },
+                  ),
+              });
+
+              const idxToolCalls = stEvents.findIndex(
+                (ev) => ev.type === "toolCalls",
+              );
+              const idxToolResult = stEvents.findIndex(
+                (ev) => ev.type === "toolResult",
+              );
+              const idxTextAfterTool = stEvents.findIndex(
+                (ev, i) => ev.type === "text" && i > idxToolResult,
+              );
+              const lastEv = stEvents.at(-1);
+              const toolResultEv = stEvents[idxToolResult];
+
+              const checks = {
+                hasToolCalls: idxToolCalls !== -1,
+                hasToolResult: idxToolResult !== -1,
+                order: idxToolCalls !== -1 && idxToolCalls < idxToolResult,
+                textAfterToolResult: idxTextAfterTool > idxToolResult,
+                lastIsDone: lastEv?.type === "done",
+                toolResultPayload:
+                  toolResultEv?.name === "get_weather" &&
+                  toolResultEv?.result === "晴，25℃",
+                finalContentNonEmpty:
+                  typeof result.content === "string" &&
+                  result.content.trim().length > 0,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  types: stEvents.map((ev) => ev.type).join(","),
+                  finalContent: result.content,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="[真实] memory: 同 threadId 第二轮带历史，systemPrompt 不入库"
+    >
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent, MemorySaver } = chain;
+
+            try {
+              const saver = new MemorySaver();
+              const agent = createAgent({
+                assistant,
+                systemPrompt: "你是测试助手，回答尽量简短。",
+                checkpointer: saver,
+              });
+
+              await agent.chat({
+                messages: [
+                  { role: "user", content: "我叫小林，请记住我的名字。" },
+                ],
+                threadId: "m1",
+              });
+              const second = await agent.chat({
+                messages: [{ role: "user", content: "我叫什么名字？" }],
+                threadId: "m1",
+              });
+
+              const stored = await saver.get("m1");
+              const checks = {
+                remembersName: second.content.includes("小林"),
+                storedRoles:
+                  stored.map((m) => m.role).join(",") ===
+                  "user,assistant,user,assistant",
+                storedExcludesSystem: !stored.some((m) => m.role === "system"),
+                traceHasSystemFirst: true,
+              };
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  secondAnswer: second.content,
+                  storedLength: stored.length,
+                  checks,
+                },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="[真实] memory: 不同 threadId 隔离；delete / clear 生效">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { ready, assistant, chain } =
+              await globalThis.getChainFixture();
+            if (!ready) {
+              return {
+                assert: false,
+                content: {
+                  error:
+                    "请先在 ai/test-api-keys.json 填入真实的 DeepSeek API Key",
+                },
+              };
+            }
+            const { createAgent, MemorySaver } = chain;
+
+            try {
+              const isoSaver = new MemorySaver();
+              const agent = createAgent({
+                assistant,
+                systemPrompt: "你是测试助手，回答尽量简短。",
+                checkpointer: isoSaver,
+              });
+
+              await agent.chat({
+                messages: [
+                  { role: "user", content: "我的暗号是苹果，请记住。" },
+                ],
+                threadId: "iso1",
+              });
+              await agent.chat({
+                messages: [
+                  { role: "user", content: "我的暗号是香蕉，请记住。" },
+                ],
+                threadId: "iso2",
+              });
+              const backToT1 = await agent.chat({
+                messages: [
+                  { role: "user", content: "我的暗号是什么？只回答暗号本身。" },
+                ],
+                threadId: "iso1",
+              });
+
+              const checks = {
+                isolated:
+                  backToT1.content.includes("苹果") &&
+                  !backToT1.content.includes("香蕉"),
+                t1Kept: (await isoSaver.get("iso1")).length === 4,
+                t2Kept: (await isoSaver.get("iso2")).length === 2,
+                deleteExisting: (await isoSaver.delete("iso1")) === true,
+                deleteMissing: (await isoSaver.delete("iso1")) === false,
+                deletedEmpty: (await isoSaver.get("iso1")).length === 0,
+              };
+
+              isoSaver.clear();
+              checks.cleared = (await isoSaver.get("iso2")).length === 0;
+
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { answer: backToT1.content, checks },
+              };
+            } catch (error) {
+              return {
+                assert: false,
+                content: { error: error.message, stack: error.stack },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -16,6 +16,8 @@ const { content } = await assistant.chat({
 
 下面先讲应用侧常用的 Assistant API，再附上完整的 key 管理 API（给 AI Key 管理器或代理服务用）。
 
+> 需要在对话中让模型自动调用工具（Agent 循环）、会话记忆等，请查 [ai-chain.md](./ai-chain.md)（`/ai/chain/`）。
+
 ## 应用侧常用 API
 
 由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
@@ -267,13 +269,13 @@ try {
 
 ## 测试
 
-使用 sibyl-test，位于 `/ai/test/ai-supplier.sb.html`：
+使用 sibyl-test，supplier 层测试位于 `/ai/test/ai-supplier-sb.html`：
 
 ```bash
 # 填入真实 key（已 gitignore）
 # /ai/test-api-keys.json: { "deepseek": "sk-...", "kimi": "sk-..." }
 
-npx sb-test -f ai/test/ai-supplier.sb.html --browsers chrome
+npx sb-test -f ai/test/ai-supplier-sb.html --browsers chrome
 ```
 
 覆盖范围：main.js 全部导出（离线）、AbortSignal 取消、DeepSeek/Kimi 对话/思考/流式、Kimi 各模型思考参数分支构建、错误处理。
@@ -282,12 +284,14 @@ npx sb-test -f ai/test/ai-supplier.sb.html --browsers chrome
 
 ```
 ai/
-├── main.js                  # API Key 管理 + Assistant 工厂
+├── main.js                       # API Key 管理 + Assistant 工厂
 ├── supplier/
-│   ├── assistant.js         # Assistant 基类（handleStreamResponse / _buildError）
-│   ├── deepseek.js          # DeepSeek 实现
-│   └── kimi.js              # Kimi 实现
+│   ├── assistant.js              # Assistant 基类（handleStreamResponse / _buildError）
+│   ├── deepseek.js               # DeepSeek 实现
+│   └── kimi.js                   # Kimi 实现
+├── chain/                        # Agent 封装（见 ai-chain.md）
 ├── test/
-│   └── ai-supplier.sb.html  # sibyl-test 测试
-└── test-api-keys.json       # 本地测试 key（gitignore）
+│   ├── ai-supplier-sb.html       # supplier 层测试（sibyl-test）
+│   └── ai-chain-sb.html          # Agent 循环测试（真实 deepseek-v4-flash）
+└── test-api-keys.json            # 本地测试 key（gitignore）
 ```

@@ -1,6 +1,9 @@
-import { storage } from "/nos/storage/main.js";
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
+
+// /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
+// 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
+let storage = null;
 
 // 内部私有数组，不再依赖 stanz；外部通过 getApiKeys / onApiKeysChange 访问
 const _apiKeys = [];
@@ -20,6 +23,7 @@ const _emit = () => {
 };
 
 const _persist = () => {
+  if (!storage) return; // 仅内存模式（nos storage 未就绪）
   storage.setItem("apiKeys", _snapshot()).catch((err) => {
     console.error("Failed to persist apiKeys:", err);
   });
@@ -55,11 +59,16 @@ export const onApiKeysChange = (callback) => {
  */
 export const getApiKeys = () => _snapshot();
 
-// 初始化：从 storage 加载已保存的 key
+// 初始化：从 storage 加载已保存的 key（storage 不可用时保持空列表）
 await (async () => {
-  const savedData = await storage.apiKeys;
-  if (savedData && Array.isArray(savedData)) {
-    _apiKeys.push(...savedData);
+  try {
+    ({ storage } = await import("/nos/storage/main.js"));
+    const savedData = await storage.getItem("apiKeys");
+    if (savedData && Array.isArray(savedData)) {
+      _apiKeys.push(...savedData);
+    }
+  } catch (err) {
+    console.warn("nos storage unavailable, apiKeys 仅内存模式:", err?.message ?? err);
   }
 })();
 

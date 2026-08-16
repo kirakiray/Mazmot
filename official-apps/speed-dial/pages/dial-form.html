@@ -1,0 +1,381 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+    }
+
+    .dialog-form {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      padding: 16px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .dialog-form p-input {
+      width: 100%;
+    }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .color-label {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-right: 4px;
+    }
+
+    .color-dot {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 2px solid transparent;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .color-dot.active {
+      border-color: var(--md-sys-color-on-surface);
+    }
+
+    .icon-row p-switch {
+      margin-left: auto;
+    }
+
+    .icon-preview.no-bg {
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .icon-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .icon-preview {
+      min-width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      text-transform: uppercase;
+    }
+
+    .icon-preview n-icon {
+      font-size: 22px;
+    }
+
+    .icon-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 0;
+      height: 36px;
+      box-sizing: border-box;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid
+        rgb(from var(--md-sys-color-on-surface-variant) r g b / 0.4);
+      background: none;
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--md-sys-color-primary);
+    }
+
+    /* 图标结果网格固定高度内部滚动 */
+    .icon-grid {
+      max-height: 168px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      padding: 2px;
+    }
+
+    .icon-grid o-fill {
+      display: contents;
+    }
+
+    .icon-option {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background-color: rgb(
+        from var(--md-sys-color-surface-variant) r g b / 0.5
+      );
+      color: var(--md-sys-color-on-surface);
+      cursor: pointer;
+    }
+
+    .icon-option:hover {
+      background-color: var(--md-sys-color-surface-variant);
+    }
+
+    .icon-option.active {
+      border-color: var(--md-sys-color-primary);
+      color: var(--md-sys-color-primary);
+    }
+
+    .tip {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+  </style>
+
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
+    <span slot="title">{{editing ? '编辑网址' : '添加网址'}}</span>
+    <div class="dialog-form">
+      <p-input sync:value="form.url" placeholder="example.com">
+        <span slot="label">网址</span>
+      </p-input>
+      <p-input sync:value="form.title" placeholder="留空则自动使用域名">
+        <span slot="label">标题</span>
+      </p-input>
+      <p-input sync:value="form.group" placeholder="留空为「未分组」">
+        <span slot="label">分组</span>
+      </p-input>
+      <div class="color-row">
+        <span class="color-label">图标颜色</span>
+        <x-if :value="noBg === 'off'">
+          <o-fill :value="palette">
+            <button
+              class="color-dot"
+              class:active="$host.form.color === $data"
+              :style.background="$data"
+              on:click="$host.form.color = $data"
+            ></button>
+          </o-fill>
+        </x-if>
+      </div>
+      <div class="icon-row">
+        <span class="color-label">网址图标</span>
+        <div
+          class="icon-preview"
+          class:no-bg="noBg === 'on'"
+          :style.background="noBg === 'on' ? 'transparent' : form.color"
+        >
+          <x-if :value="form.icon">
+            <n-icon :icon="form.icon"></n-icon>
+          </x-if>
+          <x-if :value="!form.icon">{{previewInitial}}</x-if>
+        </div>
+        <o-if :value="!!form.icon">
+          <p-button variant="text" size="s" on:click="form.icon = ''">
+            恢复默认
+          </p-button>
+        </o-if>
+        <p-switch sync:value="noBg" size="s">无底色</p-switch>
+      </div>
+      <div class="icon-search">
+        <input
+          class="search-input"
+          sync:value="iconQuery"
+          placeholder="搜索图标，如 github、video、购物"
+          on:keydown="onIconKey($event)"
+        />
+        <p-button
+          variant="outlined"
+          size="s"
+          attr:disabled="searching"
+          on:click="searchIcons()"
+        >
+          {{searching ? '搜索中…' : '搜索图标'}}
+        </p-button>
+      </div>
+      <o-if :value="iconResults.length > 0">
+        <div class="icon-grid">
+          <o-fill :value="iconResults">
+            <button
+              class="icon-option"
+              class:active="$host.form.icon === $data"
+              attr:title="$data"
+              on:click="$host.form.icon = $data"
+            >
+              <n-icon :icon="$data"></n-icon>
+            </button>
+          </o-fill>
+        </div>
+      </o-if>
+      <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
+    </div>
+    <div slot="bottom">
+      <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
+      <p-button color="primary" on:click="save">保存</p-button>
+    </div>
+  </p-dialog>
+
+  <script>
+    // 从 URL 提取图标搜索关键词（取主域名的倒数第二段，如 gist.github.com → github）
+    const iconKeyword = (url) => {
+      const value = (url || "").trim();
+      if (!value) return "";
+      try {
+        const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
+          ? value
+          : `https://${value}`;
+        const parts = new URL(full).hostname.replace(/^www\./, "").split(".");
+        // 单段（如 localhost）直接用；多段取倒数第二段（主域名）
+        return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+      } catch {
+        return "";
+      }
+    };
+
+    export default async ({ load }) => {
+      const { toast } = await load(
+        "https://punch-ui-v2.pages.dev/packages/util.js",
+      );
+      const { PALETTE } = await load("./palette.js");
+
+      return {
+        data: {
+          dialogOpen: false,
+          editingId: "",
+          palette: PALETTE,
+          form: {
+            url: "",
+            title: "",
+            group: "",
+            color: PALETTE[0],
+            icon: "",
+          },
+          iconQuery: "",
+          iconResults: [], // iconify 图标名数组（如 "mdi:github"）
+          searching: false,
+          noBg: "off", // p-switch：on = 无底色（color 落库空串）
+        },
+
+        proto: {
+          get editing() {
+            return !!this.editingId;
+          },
+
+          // 图标为空时的预览首字母（标题优先，其次主域名）
+          get previewInitial() {
+            const title = this.form.title.trim();
+            if (title) return title.slice(0, 1).toUpperCase();
+            const keyword =
+              iconKeyword(this.form.url) ||
+              this.form.url.trim().slice(0, 1) ||
+              "?";
+            return keyword.slice(0, 1).toUpperCase();
+          },
+
+          // 由宿主页面调用：id 非空为编辑模式；新增模式按 count 轮换取默认色
+          openForm({
+            id = "",
+            url = "",
+            title = "",
+            group = "",
+            color,
+            icon = "",
+            count = 0,
+          }) {
+            this.editingId = id;
+            this.form.url = url;
+            this.form.title = title;
+            this.form.group = group;
+            this.form.color = color || PALETTE[count % PALETTE.length];
+            this.noBg = color ? "off" : "on"; // 编辑无底色收藏时默认开启
+            this.form.icon = icon;
+            this.iconQuery = "";
+            this.iconResults = [];
+            this.dialogOpen = true;
+
+            // 编辑已有网址时按主域名自动搜一次图标，方便直接选品牌标
+            const keyword = iconKeyword(url);
+            if (keyword) {
+              this.iconQuery = keyword;
+              this.searchIcons(true);
+            }
+          },
+
+          onIconKey(event) {
+            if (event.key === "Enter") this.searchIcons();
+          },
+
+          // 搜索 iconify 图标；silent 为 true 时静默失败（自动搜索用）
+          async searchIcons(silent = false) {
+            const q = this.iconQuery.trim();
+            if (!q) {
+              if (!silent) {
+                toast({ content: "请输入图标关键词", color: "error" });
+              }
+              return;
+            }
+            this.searching = true;
+            try {
+              const res = await fetch(
+                `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=32`,
+              );
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const { icons = [] } = await res.json();
+              this.iconResults = icons.slice(0, 32);
+              if (!icons.length && !silent) {
+                toast({ content: "未找到相关图标" });
+              }
+            } catch (err) {
+              if (!silent) {
+                toast({
+                  content: `图标搜索失败：${err?.message || err}`,
+                  color: "error",
+                });
+              }
+            } finally {
+              this.searching = false;
+            }
+          },
+
+          save() {
+            if (!this.form.url.trim()) {
+              toast({ content: "请输入网址", color: "error" });
+              return;
+            }
+            this.emit("dial-save", {
+              data: {
+                id: this.editingId,
+                url: this.form.url,
+                title: this.form.title,
+                group: this.form.group,
+                color: this.noBg === "on" ? "" : this.form.color,
+                icon: this.form.icon,
+              },
+              bubbles: true,
+              composed: true,
+            });
+            this.dialogOpen = false;
+          },
+        },
+      };
+    };
+  </script>
+</template>

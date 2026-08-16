@@ -12,6 +12,8 @@ export class DeepseekAssistant extends Assistant {
     messages,
     onStream = null,
     signal,
+    tools = null, // OpenAI 风格函数定义：[{ type: "function", function: { name, description, parameters } }]
+    toolChoice = null,
   }) {
     const requestBody = {
       model,
@@ -22,6 +24,11 @@ export class DeepseekAssistant extends Assistant {
 
     if (thinking) {
       requestBody.reasoning_effort = reasoningEffort;
+    }
+
+    if (tools?.length) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = toolChoice ?? "auto";
     }
 
     const response = await fetch(`${this.BASE_URL}/chat/completions`, {
@@ -46,6 +53,7 @@ export class DeepseekAssistant extends Assistant {
     return {
       content: data.choices[0].message.content,
       reasoningContent: data.choices[0].message.reasoning_content,
+      toolCalls: data.choices[0].message.tool_calls || [],
       model: data.model,
       usage: data.usage,
       raw: data,

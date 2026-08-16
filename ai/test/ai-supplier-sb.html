@@ -733,7 +733,10 @@
     <template>
       <script type="module">
         return (async () => {
-          const { getAssistant } = await import("../main.js");
+          const { saveKey, getAssistant, getApiKeys, removeKey } = await import("../main.js");
+
+          // 该分支要求列表非空（空列表抛的是 no api key available），自播种一条数据
+          await saveKey("sk-test-ga-notfound-abcdefgh", "kimi");
 
           let thrown = null;
           try {
@@ -741,6 +744,10 @@
           } catch (e) {
             thrown = e;
           }
+
+          getApiKeys()
+            .filter((k) => k.apiKey.startsWith("sk-test-ga-notfound-"))
+            .forEach((k) => removeKey(k.id));
 
           return {
             assert: !!thrown && thrown.message.includes("key not found"),

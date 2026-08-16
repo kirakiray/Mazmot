@@ -186,6 +186,8 @@ const response = await assistant.chat({
 | reasoningEffort | string | "high" | DeepSeek / Kimi `kimi-k3` 专用，推理强度（DeepSeek：`high` / `max`；kimi-k3：`low` / `high` / `max`） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
 | signal | AbortSignal | null | 传入 `AbortSignal` 用于取消请求；abort 后 `chat` 会抛出 `AbortError`，底层连接和流读取立即释放 |
+| tools | array | null | OpenAI 风格函数定义（function calling）：`[{ type: "function", function: { name, description, parameters } }]`，一般由 [chain 层](./chain/README.md) 的 `tool().toWire()` 生成 |
+| toolChoice | string | "auto" | 配合 `tools` 使用，透传给供应商（如 `"auto"` / `"none"` / `{ type: "function", function: { name } }`） |
 
 > Kimi 不同模型的思考行为差异较大，详见 [Kimi 思考模型文档](https://platform.kimi.com/docs/guide/use-thinking-models)：
 > - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（官方默认 "max"，本库默认降为 "high"）
@@ -199,6 +201,7 @@ const response = await assistant.chat({
 {
   content: "AI 回复内容",
   reasoningContent: "思考过程（启用 thinking 时）",
+  toolCalls: [], // 模型发起的函数调用（wire 格式），无工具时为空数组；流式模式下同样返回累积结果
   model: "使用的模型",
   usage: { prompt_tokens: 10, completion_tokens: 20 },
   raw: { /* 原始响应 */ }
@@ -287,6 +290,8 @@ await assistant.chat({
     console.log("当前累计内容:", data.content);
     console.log("本次增量:", data.delta);
     console.log("思考增量:", data.deltaReasoning);
+    console.log("函数调用增量:", data.deltaToolCalls); // 触发 tool call 的分片，无则为 null
+    console.log("累计函数调用:", data.toolCalls); // 累积的 tool_calls（wire 格式）
     console.log("是否完成:", data.done);
   },
 });
@@ -318,6 +323,17 @@ try {
 }
 ```
 
+## Chain（Agent 封装）
+
+`ai/chain/` 在 supplier 层之上封装「模型 ↔ 工具」自动循环的 Agent：模型发起 tool call → 执行工具 → 结果回给模型，直到产出最终回答。本层是**纯函数库**（不依赖 `/nos/*`），assistant 实例由调用方传入；调用方式与 `assistant.chat` 同构。
+
+```javascript
+import { getAssistant } from "/ai/main.js";
+import { createAgent, tool, MemorySaver } from "/ai/chain/main.js";
+```
+
+快速上手（基础对话 / Agent + 工具 / 流式 onStream / 会话记忆）与完整 API 参考（`tool` / `createAgent` / `chat` 参数、onStream 事件表、`MemorySaver` 与持久化 checkpointer）见 [chain/README.md](./chain/README.md)。
+
 ## 测试
 
 本项目使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器测试。
@@ -341,19 +357,19 @@ try {
 
 ### 运行测试
 
-```bash
-# 仅在 Chrome 中快速测试
-npx sb-test -f ai/test/ai-supplier.sb.html --browsers chrome
+两个测试文件均以 `-sb.html` 结尾（而非 `.sb.html`），**故意不被 `npm test` / CI 自动发现**（真实 API Key 仅存本地）。本地统一通过 `test-ai` 脚本运行（依赖 sibyl-test ≥ 1.0.15 的 `-f` 多文件 + 后缀不限 `.sb.html` 能力，一次跑完两个文件）：
 
-# 多浏览器测试（Chrome / Firefox / WebKit）
-npx sb-test -f ai/test/ai-supplier.sb.html
+```bash
+npm run test-ai                       # 默认多浏览器
+npm run test-ai -- --browsers chrome  # 仅 Chrome
 ```
 
 ### 测试覆盖
 
 - DeepSeek / Kimi 的普通对话、思考模式、流式输出、模型列表、余额查询
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
-- Assistant 基类的错误处理
+- Assistant 基类的错误处理与流式 tool_calls 累积
+- Chain 层（`ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `ai/test-api-keys.json` 填 key）
 
 ## Demo
 
@@ -381,10 +397,16 @@ ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
 ├── test-api-keys.json       # 测试用 API Key（已 gitignore）
 ├── README.md
-└── supplier/                # AI 提供商实现
-    ├── assistant.js         # Assistant 基类（公共流式/错误处理）
-    ├── deepseek.js          # DeepSeek 实现
-    └── kimi.js              # Kimi 实现
+├── supplier/                # AI 提供商实现
+│   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）
+│   ├── deepseek.js          # DeepSeek 实现
+│   └── kimi.js              # Kimi 实现
+└── chain/                   # Agent 封装（基于 supplier 层，纯函数库）
+    ├── README.md            # Chain 教程与 API 参考
+    ├── main.js              # chain 入口（统一 re-export）
+    ├── tools.js             # tool() 定义 + 简写 schema → JSON Schema
+    ├── memory.js            # MemorySaver（threadId 会话记忆）
+    └── agent.js             # createAgent()（模型↔工具循环 + onStream 事件）
 
 others/ai-manager-demo/      # 演示应用（引用 ../../ai/main.js）
 ├── index.html               # 入口页面

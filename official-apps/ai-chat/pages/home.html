@@ -1,0 +1,543 @@
+<template page>
+  <link rel="stylesheet" href="./home.css" />
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">💬</div>
+        <div>
+          <div class="brand-name">AI 聊天</div>
+        </div>
+      </div>
+      <button
+        class="icon-btn"
+        title="清空会话"
+        attr:disabled="!messages.length || sending"
+        on:click="handleClear"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M3 6h18" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="chat-wrap">
+      <section class="chat-scroll" id="chatScroll" on:scroll="onChatScroll">
+        <div class="column">
+          <o-if :value="messages.length === 0 && !sending">
+            <div class="hero">
+              <div class="hero-icon">🧮</div>
+              <h2>有什么可以帮你？</h2>
+              <p class="hero-sub">
+                模型遇到计算问题会自动调用计算器工具获取精确结果
+              </p>
+              <div class="chips">
+                <button class="chip" on:click="useChip('(128 * 0.85 + 20) / 2 等于多少？')">
+                  算一下 (128 * 0.85 + 20) / 2
+                </button>
+                <button class="chip" on:click="useChip('123456789 的平方是多少？')">
+                  大数精确平方
+                </button>
+              </div>
+            </div>
+          </o-if>
+
+          <o-fill :value="messages" fill-key="id">
+            <div
+              class="msg"
+              class:new-group="$data.newGroup"
+              attr:role="$data.role"
+            >
+              <o-if :value="$data.role === 'user'">
+                <div class="user-bubble">{{$data.content}}</div>
+              </o-if>
+
+              <o-if :value="$data.role === 'assistant'">
+                <div class="ai-block">
+                  <div class="ai-text" :html="$host.renderMd($data.content)"></div>
+                  <div
+                    class="ai-actions"
+                    class:show="!$host.sending && !!$data.content"
+                  >
+                    <button
+                      class="icon-btn"
+                      class:copied="$host.copiedId === $data.id"
+                      attr:title="$host.copiedId === $data.id ? '已复制' : '复制'"
+                      on:click="$host.copyMsg($data.id)"
+                    >
+                        <svg
+                          class="icon-copy"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <svg
+                          class="icon-check"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </button>
+                  </div>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'tool'">
+                <div
+                  class="tool-row"
+                  class:open="$data.open"
+                  class:pending="$data.pending"
+                >
+                  <button class="tool-head" on:click="$host.toggleTool($data.id)">
+                    <span class="tool-chev">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </span>
+                    <span class="tool-title">调用 {{$data.name}}</span>
+                    <span class="tool-sep"></span>
+                    <span class="tool-summary">{{$data.summary}}</span>
+                    <span class="tool-state">
+                      <span class="tool-dot"></span>
+                      <span class="tool-result">= {{$data.result}}</span>
+                    </span>
+                  </button>
+                  <o-if :value="$data.open">
+                    <div class="tool-body">
+                      <div class="tool-line">
+                        <span class="tool-label">参数</span>
+                        <span class="tool-value">{{$data.args}}</span>
+                      </div>
+                      <div class="tool-line">
+                        <span class="tool-label">结果</span>
+                        <span class="tool-value">{{$data.result}}</span>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+            </div>
+          </o-fill>
+
+          <o-if :value="sending">
+            <div class="turn-status">思考中…</div>
+          </o-if>
+        </div>
+      </section>
+
+      <o-if :value="!atBottom && messages.length > 0">
+        <button class="to-bottom" title="回到底部" on:click="toBottomNow">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </o-if>
+    </div>
+
+    <footer class="composer-wrap">
+      <o-if :value="keyError">
+        <div class="key-error">{{keyError}}</div>
+      </o-if>
+      <div class="composer">
+        <textarea
+          id="inputer"
+          sync:value="input"
+          rows="1"
+          placeholder="给 AI 发送消息…"
+          attr:disabled="sending"
+          on:keydown="handleKeydown($event)"
+        ></textarea>
+        <div class="composer-row">
+          <span class="composer-meta">🧮 计算器工具已启用</span>
+          <button
+            class="send-btn"
+            attr:disabled="!input.trim() || sending"
+            on:click="handleSend"
+            title="发送（Enter）"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 19V5" />
+              <path d="M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="disclaimer">内容由 AI 生成，请注意甄别</div>
+    </footer>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const { getAssistant } = await load("/ai/main.js");
+      const { createAgent, tool, MemorySaver } = await load(
+        "/ai/chain/main.js",
+      );
+      const { renderMarkdown } = await load(
+        "/official-apps/ai-chat/lib/markdown.js",
+      );
+
+      // 计算器工具：白名单校验后求值，任何失败都以文本回给模型自行纠正
+      const calculator = tool(
+        async ({ expression }) => {
+          if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
+            return "表达式只能包含数字、空格和 + - * / ( )。";
+          }
+          try {
+            return String(Function(`"use strict"; return (${expression})`)());
+          } catch {
+            return "无法解析这个表达式。";
+          }
+        },
+        {
+          name: "calculator",
+          description:
+            "计算一个基础算术表达式。当问题涉及精确计算时必须使用它。",
+          schema: {
+            expression: {
+              type: "string",
+              description: "例如：(128 * 0.85 + 20) / 2",
+            },
+          },
+        },
+      );
+
+      const THREAD_ID = "main";
+      let agent = null;
+      // 当前流式输出目标气泡（模型每轮的文本都写进它；发起工具调用时关闭，下一轮新开）
+      let activeBubble = null;
+
+      // 会话持久化：Core 就绪环境走 /nos/storage（独立空间），刷新后历史与 Agent 记忆均保留；
+      // 无 Core（直接静态访问）时降级为内存模式
+      let store = null;
+      try {
+        const { getStorage } = await load("/nos/storage/main.js");
+        store = getStorage("ai-chat");
+      } catch {
+        store = null;
+      }
+
+      const MESSAGES_KEY = "messages";
+
+      // 会话记忆：storage 可用时实现与 MemorySaver 相同的 { get, set, delete } 接口，
+      // Agent 多轮上下文跨刷新保留；否则退回纯内存
+      const checkpointer = store
+        ? {
+            async get(threadId) {
+              return (await store.getItem(`thread:${threadId}`)) ?? [];
+            },
+            async set(threadId, messages) {
+              await store.setItem(`thread:${threadId}`, messages);
+            },
+            async delete(threadId) {
+              await store.removeItem(`thread:${threadId}`);
+            },
+          }
+        : new MemorySaver();
+
+      const prettyArgs = (raw) => {
+        try {
+          const obj = JSON.parse(raw);
+          const text = Object.entries(obj)
+            .map(([k, v]) => `${k} = ${v}`)
+            .join("，");
+          return text || raw;
+        } catch {
+          return raw;
+        }
+      };
+
+      return {
+        data: {
+          messages: [],
+          input: "",
+          sending: false,
+          keyError: "",
+          nextId: 1,
+          atBottom: true,
+          copiedId: null,
+        },
+
+        ready() {
+          // 恢复上次会话：工具行一律视为完成态、默认收起
+          if (!store) return;
+          store.getItem(MESSAGES_KEY).then((saved) => {
+            if (!Array.isArray(saved) || !saved.length) return;
+            this.messages = saved.map((m) => ({ ...m, pending: false, open: false }));
+            this.nextId = Math.max(...saved.map((m) => m.id)) + 1;
+            this.followScroll(true);
+          });
+        },
+
+        attached() {
+          // 代码块复制按钮：:html 渲染的内容无法用 on: 绑定，走事件委托
+          this.shadow.on("click", async (e) => {
+            const btn = e.target.closest?.(".md-copy");
+            if (!btn) return;
+            try {
+              await navigator.clipboard.writeText(btn.dataset.code || "");
+              btn.textContent = "已复制";
+              setTimeout(() => {
+                btn.textContent = "复制";
+              }, 1500);
+            } catch {
+              /* 剪贴板不可用时静默 */
+            }
+          });
+        },
+
+        watch: {
+          input() {
+            this.autoGrow();
+          },
+        },
+
+        proto: {
+          // 助手消息按 Markdown 渲染（流式期间每个增量全量重渲，消息体量下开销可忽略）
+          renderMd(text) {
+            return renderMarkdown(text ?? "");
+          },
+
+          // 惰性创建 Agent：首次发送时才取 assistant（无 key 时 getAssistant 会抛错）
+          ensureAgent() {
+            if (agent) return agent;
+            const assistant = getAssistant();
+            agent = createAgent({
+              assistant,
+              tools: [calculator],
+              systemPrompt:
+                "你是一个友好的聊天助手，回答保持简洁。涉及算术计算时，必须调用 calculator 工具获取精确结果，不要心算。",
+              checkpointer,
+            });
+            return agent;
+          },
+
+          autoGrow() {
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#inputer")?.ele;
+              if (!el) return;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            });
+          },
+
+          // 底部跟随：atBottom 时随内容增长贴底；读者上滚则不打扰
+          followScroll(force = false) {
+            if (!force && !this.atBottom) return;
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#chatScroll")?.ele;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          },
+
+          onChatScroll() {
+            const el = this.shadow.$("#chatScroll")?.ele;
+            if (!el) return;
+            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            this.atBottom = dist <= 24;
+          },
+
+          toBottomNow() {
+            this.atBottom = true;
+            this.followScroll(true);
+          },
+
+          useChip(text) {
+            this.input = text;
+            this.autoGrow();
+            this.shadow.$("#inputer")?.ele.focus();
+          },
+
+          handleKeydown(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+              // 输入法组词中的 Enter 不算发送
+              if (event.isComposing) return;
+              event.preventDefault();
+              this.handleSend();
+            }
+          },
+
+          toggleTool(id) {
+            const item = this.messages.find((m) => m.id === id);
+            if (item) item.open = !item.open;
+          },
+
+          async copyMsg(id) {
+            const item = this.messages.find((m) => m.id === id);
+            if (!item) return;
+            try {
+              await navigator.clipboard.writeText(item.content);
+              this.copiedId = id;
+              clearTimeout(this._copyTimer);
+              this._copyTimer = setTimeout(() => {
+                this.copiedId = null;
+              }, 1500);
+            } catch {
+              /* 剪贴板不可用时静默 */
+            }
+          },
+
+          // 新开一个 assistant 气泡并设为流式写入目标（push 后从数组取回响应式代理）
+          newBubble() {
+            this.messages.push({
+              id: this.nextId++,
+              role: "assistant",
+              content: "",
+              newGroup: false,
+            });
+            activeBubble = this.messages[this.messages.length - 1];
+            return activeBubble;
+          },
+
+          handleStreamEvent(ev) {
+            if (ev.type === "text" && ev.delta) {
+              const bubble = activeBubble ?? this.newBubble();
+              bubble.content += ev.delta;
+              this.followScroll();
+            } else if (ev.type === "toolCalls") {
+              // 发起工具调用：结束当前气泡，工具行紧跟其后，最终回答再新开
+              if (activeBubble && !activeBubble.content) {
+                const idx = this.messages.indexOf(activeBubble);
+                if (idx > -1) this.messages.splice(idx, 1);
+              }
+              activeBubble = null;
+              for (const call of ev.toolCalls) {
+                const args = call.function?.arguments ?? call.args ?? "{}";
+                this.messages.push({
+                  id: this.nextId++,
+                  role: "tool",
+                  name: call.function?.name ?? call.name,
+                  args,
+                  summary: prettyArgs(args),
+                  result: "",
+                  pending: true,
+                  open: false,
+                  newGroup: false,
+                  toolCallId: call.id,
+                });
+              }
+              this.followScroll();
+            } else if (ev.type === "toolResult") {
+              const item = this.messages.find(
+                (m) => m.toolCallId === ev.toolCallId,
+              );
+              if (item) {
+                item.result = ev.result;
+                item.pending = false;
+              }
+              this.followScroll();
+            } else if (ev.type === "done") {
+              // 兜底：整轮只有工具调用（无流式文本）时用最终结果落一个气泡
+              if (activeBubble) {
+                if (ev.content) activeBubble.content = ev.content;
+              } else if (ev.content) {
+                this.newBubble().content = ev.content;
+              }
+            }
+          },
+
+          async handleSend() {
+            const text = this.input.trim();
+            if (!text || this.sending) return;
+
+            this.input = "";
+            this.keyError = "";
+            this.messages.push({
+              id: this.nextId++,
+              role: "user",
+              content: text,
+              newGroup: true,
+            });
+            // 用户自己的话必须可见：强制贴底并接管跟随
+            this.atBottom = true;
+            this.followScroll(true);
+
+            try {
+              this.ensureAgent();
+            } catch {
+              this.keyError =
+                "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。";
+              return;
+            }
+
+            this.sending = true;
+            this.followScroll(true);
+
+            try {
+              await agent.chat({
+                messages: [{ role: "user", content: text }],
+                threadId: THREAD_ID,
+                stream: true,
+                onStream: (ev) => this.handleStreamEvent(ev),
+              });
+            } catch (error) {
+              const bubble = activeBubble ?? this.newBubble();
+              bubble.content +=
+                (bubble.content ? "\n\n" : "") + `出错了：${error.message}`;
+            } finally {
+              activeBubble = null;
+              this.sending = false;
+              this.followScroll();
+              // 落盘本轮会话（响应式代理不能直接进 IndexedDB，逐项转纯对象）
+              if (store) {
+                await store.setItem(
+                  MESSAGES_KEY,
+                  this.messages.map((m) => ({ ...m })),
+                );
+              }
+            }
+          },
+
+          async handleClear() {
+            this.messages = [];
+            activeBubble = null;
+            this.copiedId = null;
+            this.atBottom = true;
+            await checkpointer.delete(THREAD_ID);
+            if (store) await store.removeItem(MESSAGES_KEY);
+          },
+        },
+      };
+    };
+  </script>
+</template>

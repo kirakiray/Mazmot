@@ -173,6 +173,14 @@
       text-transform: uppercase;
     }
 
+    .tile-logo.no-bg {
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .tile-logo-icon {
+      font-size: 28px;
+    }
+
     .tile-title {
       font-size: 14px;
       font-weight: 500;
@@ -209,65 +217,6 @@
       opacity: 1;
     }
 
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 56px 16px;
-      text-align: center;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-
-    .empty-state n-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-      opacity: 0.6;
-    }
-
-    .dialog-form {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-      padding: 16px;
-    }
-
-    .dialog-form p-input {
-      width: 100%;
-    }
-
-    .color-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .color-label {
-      font-size: 13px;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-right: 4px;
-    }
-
-    .color-dot {
-      width: 26px;
-      height: 26px;
-      padding: 0;
-      border: 2px solid transparent;
-      border-radius: 50%;
-      cursor: pointer;
-    }
-
-    .color-dot.active {
-      border-color: var(--md-sys-color-on-surface);
-    }
-
-    .tip {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.6;
-    }
-
     @media (max-width: 600px) {
       .grid {
         gap: 12px;
@@ -284,9 +233,7 @@
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <main class="container">
@@ -317,135 +264,115 @@
           </button>
         </o-fill>
       </div>
+      <p-button
+        class="import-btn"
+        variant="outlined"
+        size="s"
+        on:click="openImport"
+      >
+        <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
+        <span>AI 导入</span>
+      </p-button>
+      <p-button
+        class="group-btn"
+        variant="outlined"
+        size="s"
+        on:click="openGroup"
+      >
+        <n-icon icon="mdi:folder-sync-outline" slot="prefix"></n-icon>
+        <span>AI 分组</span>
+      </p-button>
     </div>
 
-    <o-if :value="dials.length === 0">
-      <div class="empty-state">
-        <n-icon icon="mdi:bookmark-outline"></n-icon>
-        <p>还没有收藏任何网址</p>
-        <p-button color="primary" size="s" on:click="openAdd">
-          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
-          添加网址
-        </p-button>
-      </div>
-    </o-if>
-
-    <o-if :value="dials.length > 0">
-      <div class="grid">
-        <o-fill :value="visibleDials" fill-key="id">
-          <div
-            class="tile"
-            draggable="true"
-            attr:title="$data.url"
-            attr:dragging="$host.draggingId === $data.id ? 'true' : 'false'"
-            attr:drop-target="$host.dropTargetId === $data.id ? 'true' : 'false'"
-            on:click="$host.openDial($data)"
-            on:dragstart="$host.onDragStart($data.id)"
-            on:dragover="$host.onDragOver($event, $data.id)"
-            on:dragleave="$host.onDragLeave($data.id)"
-            on:drop="$host.onDrop($event, $data.id)"
-            on:dragend="$host.onDragEnd"
-          >
-            <div class="tile-actions">
-              <p-button
-                variant="text"
-                icon
-                size="xs"
-                on:click="$host.openEdit($event, $data)"
-              >
-                <n-icon icon="mdi:pencil-outline"></n-icon>
-              </p-button>
-              <p-button
-                variant="text"
-                icon
-                size="xs"
-                color="error"
-                on:click="$host.removeDial($event, $data)"
-              >
-                <n-icon icon="mdi:close"></n-icon>
-              </p-button>
-            </div>
-            <div class="tile-logo" :style.background="$data.color">
-              {{$host.initial($data)}}
-            </div>
-            <div class="tile-title">{{$data.title}}</div>
-            <div class="tile-host">{{$host.hostOf($data.url)}}</div>
+    <div class="grid">
+      <o-fill :value="visibleDials" fill-key="id">
+        <div
+          class="tile"
+          draggable="true"
+          attr:title="$data.url"
+          attr:dragging="$host.draggingId === $data.id ? 'true' : 'false'"
+          attr:drop-target="$host.dropTargetId === $data.id ? 'true' : 'false'"
+          on:click="$host.openDial($data)"
+          on:dragstart="$host.onDragStart($data.id)"
+          on:dragover="$host.onDragOver($event, $data.id)"
+          on:dragleave="$host.onDragLeave($data.id)"
+          on:drop="$host.onDrop($event, $data.id)"
+          on:dragend="$host.onDragEnd"
+        >
+          <div class="tile-actions">
+            <p-button
+              variant="text"
+              icon
+              size="xs"
+              on:click="$host.openEdit($event, $data)"
+            >
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+            </p-button>
+            <p-button
+              variant="text"
+              icon
+              size="xs"
+              color="error"
+              on:click="$host.removeDial($event, $data)"
+            >
+              <n-icon icon="mdi:close"></n-icon>
+            </p-button>
           </div>
-        </o-fill>
-        <button class="add-tile" on:click="openAdd" aria-label="添加网址">
-          <n-icon icon="mdi:plus"></n-icon>
-        </button>
-      </div>
-    </o-if>
-
-    <o-if :value="dials.length > 0 && visibleDials.length === 0">
-      <div class="empty-state">
-        <n-icon icon="mdi:folder-open-outline"></n-icon>
-        <p>该分组下暂无收藏</p>
-      </div>
-    </o-if>
+          <div
+            class="tile-logo"
+            class:no-bg="!$data.color"
+            :style.background="$data.color || 'transparent'"
+          >
+            <x-if :value="$data.icon">
+              <n-icon :icon="$data.icon" class="tile-logo-icon"></n-icon>
+            </x-if>
+            <x-if :value="!$data.icon">
+              {{$host.initial($data)}}
+            </x-if>
+          </div>
+          <div class="tile-title">{{$data.title}}</div>
+          <div class="tile-host">{{$host.hostOf($data.url)}}</div>
+        </div>
+      </o-fill>
+      <button class="add-tile" on:click="openAdd" aria-label="添加网址">
+        <n-icon icon="mdi:plus"></n-icon>
+      </button>
+    </div>
   </main>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
-    <span slot="title">{{editingId ? '编辑网址' : '添加网址'}}</span>
-    <div class="dialog-form">
-      <p-input sync:value="form.url" placeholder="example.com">
-        <span slot="label">网址</span>
-      </p-input>
-      <p-input sync:value="form.title" placeholder="留空则自动使用域名">
-        <span slot="label">标题</span>
-      </p-input>
-      <p-input sync:value="form.group" placeholder="留空为「未分组」">
-        <span slot="label">分组</span>
-      </p-input>
-      <div class="color-row">
-        <span class="color-label">图标颜色</span>
-        <o-fill :value="palette">
-          <button
-            class="color-dot"
-            class:active="$host.form.color === $data"
-            :style.background="$data"
-            on:click="$host.form.color = $data"
-          ></button>
-        </o-fill>
-      </div>
-      <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
-    </div>
-    <div slot="bottom">
-      <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-      <p-button color="primary" on:click="saveDial">保存</p-button>
-    </div>
-  </p-dialog>
+  <o-page
+    id="dial-form"
+    src="./dial-form.html"
+    on:dial-save="onDialSave"
+  ></o-page>
+
+  <o-page
+    id="ai-import"
+    src="./ai-import.html"
+    on:ai-import-save="onAiImportSave"
+  ></o-page>
+
+  <o-page
+    id="ai-group"
+    src="./ai-group.html"
+    on:ai-group-apply="onAiGroupApply"
+  ></o-page>
 
   <script>
-    const PALETTE = [
-      "#4f6df5",
-      "#e0573e",
-      "#2fa36b",
-      "#c9852b",
-      "#8b5cf6",
-      "#0d9488",
-      "#d946a4",
-      "#5b6570",
-    ];
-
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
-      const { toast, confirm } = await load(
+      const { confirm, toast } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
       );
+      const { PALETTE } = await load("./palette.js");
       const store = getStorage("speed-dial");
 
       return {
         data: {
           dials: [],
           activeGroup: "",
-          dialogOpen: false,
-          editingId: "",
           draggingId: "",
           dropTargetId: "",
-          palette: PALETTE,
-          form: { url: "", title: "", group: "", color: PALETTE[0] },
         },
 
         proto: {
@@ -489,55 +416,134 @@
           },
 
           openAdd() {
-            this.editingId = "";
-            this.form.url = "";
-            this.form.title = "";
-            this.form.group =
-              this.activeGroup === "未分组" ? "" : this.activeGroup;
-            this.form.color = PALETTE[this.dials.length % PALETTE.length];
-            this.dialogOpen = true;
+            this.getDialForm()?.openForm({
+              count: this.dials.length,
+              group: this.activeGroup === "未分组" ? "" : this.activeGroup,
+            });
           },
 
           openEdit(event, dial) {
             event.stopPropagation();
-            this.editingId = dial.id;
-            this.form.url = dial.url;
-            this.form.title = dial.title;
-            this.form.group = dial.group === "未分组" ? "" : dial.group;
-            this.form.color = dial.color;
-            this.dialogOpen = true;
+            this.getDialForm()?.openForm({
+              id: dial.id,
+              url: dial.url,
+              title: dial.title,
+              group: dial.group === "未分组" ? "" : dial.group,
+              color: dial.color,
+              icon: dial.icon || "",
+            });
           },
 
-          async saveDial() {
-            const url = this.normalizeUrl(this.form.url);
-            if (!url) {
-              toast({ content: "请输入网址", color: "error" });
+          getDialForm() {
+            const page = this.shadow.$("#dial-form");
+            return page?.openForm ? page : null;
+          },
+
+          openImport() {
+            this.getAiImport()?.openImport();
+          },
+
+          getAiImport() {
+            const page = this.shadow.$("#ai-import");
+            return page?.openImport ? page : null;
+          },
+
+          openGroup() {
+            if (!this.dials.length) {
+              toast({
+                content: "还没有收藏的网址，先添加或导入一些吧",
+                color: "error",
+              });
               return;
             }
+            this.getAiGroup()?.openGroup(this.plainDials());
+          },
 
-            const title = this.form.title.trim() || this.hostOf(url);
-            const group = this.form.group.trim() || "未分组";
+          getAiGroup() {
+            const page = this.shadow.$("#ai-group");
+            return page?.openGroup ? page : null;
+          },
 
-            if (this.editingId) {
-              const target = this.dials.find((d) => d.id === this.editingId);
+          async onAiGroupApply(event) {
+            const items = Array.isArray(event.data?.items)
+              ? event.data.items
+              : [];
+            const map = new Map(
+              items.map(({ id, group }) => [id, group]),
+            );
+            let changed = 0;
+            for (const dial of this.dials) {
+              const group = map.get(dial.id);
+              if (typeof group === "string" && group && group !== dial.group) {
+                dial.group = group;
+                changed++;
+              }
+            }
+            await this.persist();
+            if (changed) this.activeGroup = ""; // 原筛选组可能已被改名，回到全部
+            toast({
+              content: changed
+                ? `已更新 ${changed} 个网址的分组`
+                : "分组没有变化",
+            });
+          },
+
+          async onAiImportSave(event) {
+            const items = Array.isArray(event.data?.items)
+              ? event.data.items
+              : [];
+            const group = this.activeGroup || "未分组";
+            let added = 0;
+            for (const item of items) {
+              const finalUrl = this.normalizeUrl(item.url || "");
+              if (!finalUrl) continue;
+              if (this.dials.some((d) => d.url === finalUrl)) continue;
+              this.dials.push({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                url: finalUrl,
+                title: (item.title || "").trim() || this.hostOf(finalUrl),
+                group,
+                color: PALETTE[this.dials.length % PALETTE.length],
+                icon: "",
+                createdAt: Date.now(),
+              });
+              added++;
+            }
+            await this.persist();
+            toast({
+              content: added
+                ? `已添加 ${added} 个网址`
+                : "没有可新增的网址（可能都已收藏）",
+            });
+          },
+
+          async onDialSave(event) {
+            const { id, url, title, group, color, icon } = event.data;
+            const finalUrl = this.normalizeUrl(url);
+            const finalTitle = title.trim() || this.hostOf(finalUrl);
+            const finalGroup = group.trim() || "未分组";
+
+            if (id) {
+              const target = this.dials.find((d) => d.id === id);
               if (target) {
-                target.url = url;
-                target.title = title;
-                target.group = group;
-                target.color = this.form.color;
+                target.url = finalUrl;
+                target.title = finalTitle;
+                target.group = finalGroup;
+                target.color = color;
+                target.icon = icon || "";
               }
             } else {
               this.dials.push({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                url,
-                title,
-                group,
-                color: this.form.color,
+                url: finalUrl,
+                title: finalTitle,
+                group: finalGroup,
+                color,
+                icon: icon || "",
                 createdAt: Date.now(),
               });
             }
 
-            this.dialogOpen = false;
             await this.persist();
           },
 
@@ -599,6 +605,7 @@
               title: dial.title,
               group: dial.group,
               color: dial.color,
+              icon: dial.icon || "",
               createdAt: dial.createdAt,
             }));
           },
