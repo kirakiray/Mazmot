@@ -26,7 +26,7 @@ speed-dial/
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
 - **punch-ui** 组件：`p-input` / `p-button` / `p-checkbox` / `p-dialog`（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
-- **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify
+- **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify；表单内的图标选择用 iconify 官方搜索 API `https://api.iconify.design/search?query=...&limit=32`（选中项存 iconify 图标名，运行时由 n-icon 联网渲染）
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
 - **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
 
@@ -40,7 +40,8 @@ speed-dial/
   url: string,       // 已规范化的完整 URL（无协议时自动补 https://）
   title: string,     // 留空则自动取 hostname
   group: string,     // 分组名，空输入落库为 "未分组"
-  color: string,     // 图标底色，取自 PALETTE 八色
+  color: string,     // 图标底色，取自 PALETTE 八色；空串 = 无底色（淡描边样式）
+  icon: string,      // iconify 图标名（如 "mdi:github"），空串 = 首字母文字
   createdAt: number, // 创建时间戳
 }
 ```
@@ -76,15 +77,16 @@ speed-dial/
 - `normalizeUrl(input)`：trim，已有协议（`scheme://`）原样返回，否则补 `https://`；空串原样返回
 - `hostOf(url)`：解析 hostname 并去掉 `www.`，解析失败返回原串
 - `openDial(dial)`：`window.open(url, "_blank", "noopener")`；拖拽中（`draggingId` 非空）不触发
-- `openAdd()` / `openEdit(event, dial)`：`stopPropagation` 后调用 `getDialForm()?.openForm(...)` 打开弹窗页面（新增传 `count`/默认分组，编辑传 `id`/原值；`"未分组"` 反向转空串）
-- `onDialSave(event)`：处理弹窗上抛的 `dial-save` 事件（`event.data` = `{ id, url, title, group, color }`），负责 `normalizeUrl` 归一化、标题/分组兜底、编辑原地改字段或新增 push（生成 id/createdAt），最后 `persist()`
+- 卡片图标渲染：`dial.icon` 非空时 `n-icon :icon` 渲染图标，否则 `initial(dial)` 首字母（两个 `x-if` 非显式切换）；`dial.color` 为空串时 `.tile-logo.no-bg` 无底色（透明背景 + 淡描边，内容用 on-surface-variant 色）
+- `openAdd()` / `openEdit(event, dial)`：`stopPropagation` 后调用 `getDialForm()?.openForm(...)` 打开弹窗页面（新增传 `count`/默认分组，编辑传 `id`/原值（含 `icon`）；`"未分组"` 反向转空串）
+- `onDialSave(event)`：处理弹窗上抛的 `dial-save` 事件（`event.data` = `{ id, url, title, group, color, icon }`），负责 `normalizeUrl` 归一化、标题/分组兜底、`icon` 空值归一为空串、编辑原地改字段或新增 push（生成 id/createdAt），最后 `persist()`
 - `openImport()` / `getAiImport()`：调 `getAiImport()?.openImport()` 打开 AI 导入弹窗（同 `getDialForm` 模式）
 - `openGroup()` / `getAiGroup()`：收藏为空时 toast 提示并拦截；否则调 `getAiGroup()?.openGroup(this.plainDials())` 打开 AI 分组弹窗
 - `onAiGroupApply(event)`：处理 AI 分组上抛的 `ai-group-apply` 事件（`event.data.items` = `[{ id, group }]`），按 id 匹配更新 `dial.group`（分组名非空且变化才计入），最后 `persist()`；有变更时把 `activeGroup` 重置为 `""`（原筛选组可能已被改名），并 toast 提示更新数量
 - `onAiImportSave(event)`：处理 AI 导入上抛的 `ai-import-save` 事件（`event.data.items` = `[{ url, title }]`）；逐条 `normalizeUrl`、跳过空 URL 与已收藏 URL（按 url 去重）、标题兜底 `hostOf`、分组取当前 `activeGroup`（空则「未分组」）、颜色按 `dials.length % PALETTE.length` 轮选，最后 `persist()` 并 toast 提示新增数量
 - `removeDial(event, dial)`：punch-ui `confirm` 确认后 splice 删除再 `persist()`
 - 拖拽：`onDragStart/onDragOver/onDragLeave/onDrop/onDragEnd`，drop 时在 `plainDials()` 拷贝上 splice 换位后整体回写 `this.dials`
-- `plainDials()`：把响应式对象拍平为纯对象数组（仅保留 6 个持久化字段），**写库必须经过它**，避免代理对象入库
+- `plainDials()`：把响应式对象拍平为纯对象数组（仅保留 7 个持久化字段，`icon` 空值归一为空串），**写库必须经过它**，避免代理对象入库
 - `persist()`：`store.setItem("dials", this.plainDials())`
 - `attached()`：读 `store.getItem("dials")`，数组则恢复
 
@@ -92,9 +94,12 @@ speed-dial/
 
 以 `<o-page id="dial-form">` 常驻内嵌于 home（**o-page 初始化后不允许改 src**，传参走方法调用而非 query）：
 
-- 状态（`data`）：`dialogOpen`（弹窗开关）、`editingId`（空串=新增）、`palette`、`form`（url/title/group/color）
-- `openForm({ id, url, title, group, color, count })`：宿主调用的入口，回填表单并打开弹窗；`color` 缺省时按 `count % PALETTE.length` 轮选取默认色
-- `save()`：URL 为空 → punch-ui `toast` 报错不关闭；否则 `emit("dial-save", { data: { id, url, title, group, color }, bubbles: true, composed: true })` 冒泡上抛原始表单值（不做事后加工），并关闭弹窗
+- 状态（`data`）：`dialogOpen`（弹窗开关）、`editingId`（空串=新增）、`palette`、`form`（url/title/group/color/icon）、`iconQuery`（图标搜索关键词）、`iconResults`（iconify 图标名数组）、`searching`、`noBg`（p-switch 值，`"on"` = 无底色）
+- `openForm({ id, url, title, group, color, icon, count })`：宿主调用的入口，回填表单并打开弹窗；`color` 缺省时按 `count % PALETTE.length` 轮选取默认色，`noBg` 按传入 `color` 是否为空串初始化（编辑无底色收藏时开关自动开启）；打开后按 `iconKeyword(url)`（主域名，github.com → github）自动静默搜一次图标，方便直接选品牌标
+- 色板行：`x-if :value="noBg === 'off'"` 包裹色板（无底色时隐藏色板选择），行尾 `p-switch`（`sync:value="noBg"`，`"on"/"off"`）「无底色」开关靠右；图标预览块在无底色时透明背景无边框（`.icon-preview.no-bg` 仅换内容色），图标/首字母用 on-surface-variant 色
+- 图标选择区（色板行下方）：预览块实时显示选中图标或首字母（`previewInitial` getter，标题优先其次主域名）+「恢复默认」清空 icon；搜索行是原生 `<input>`（`sync:value="iconQuery"`，Enter 触发搜索）+「搜索图标」按钮；结果为 `o-fill` 渲染的 8 列图标网格（`n-icon :icon="$data"`，固定 `max-height: 168px` 内部滚动，点击选中高亮，`attr:title` 显示图标名）；`.dialog-form` 整体 `max-height: 60vh` 内部滚动防撑高弹窗
+- `searchIcons(silent)`：调 iconify 搜索 API（`api.iconify.design/search?limit=32`），取 `icons` 前 32 个；`silent`（自动搜索）时失败/空结果不弹 toast
+- `save()`：URL 为空 → punch-ui `toast` 报错不关闭；否则 `emit("dial-save", { data: { id, url, title, group, color, icon }, bubbles: true, composed: true })` 冒泡上抛原始表单值（`color` 在 `noBg === "on"` 时上抛空串，`form.color` 始终保留色板选择以便切回），并关闭弹窗
 - 分工约定：**弹窗只管表单完整性（非空校验），home 负责业务归一化与落库**；取消/遮罩关闭仅本页置 `dialogOpen = false`，不通知宿主
 
 ## ai-import.html AI 导入弹窗页面要点

@@ -173,6 +173,14 @@
       text-transform: uppercase;
     }
 
+    .tile-logo.no-bg {
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .tile-logo-icon {
+      font-size: 28px;
+    }
+
     .tile-title {
       font-size: 14px;
       font-weight: 500;
@@ -310,8 +318,17 @@
               <n-icon icon="mdi:close"></n-icon>
             </p-button>
           </div>
-          <div class="tile-logo" :style.background="$data.color">
-            {{$host.initial($data)}}
+          <div
+            class="tile-logo"
+            class:no-bg="!$data.color"
+            :style.background="$data.color || 'transparent'"
+          >
+            <x-if :value="$data.icon">
+              <n-icon :icon="$data.icon" class="tile-logo-icon"></n-icon>
+            </x-if>
+            <x-if :value="!$data.icon">
+              {{$host.initial($data)}}
+            </x-if>
           </div>
           <div class="tile-title">{{$data.title}}</div>
           <div class="tile-host">{{$host.hostOf($data.url)}}</div>
@@ -413,6 +430,7 @@
               title: dial.title,
               group: dial.group === "未分组" ? "" : dial.group,
               color: dial.color,
+              icon: dial.icon || "",
             });
           },
 
@@ -486,6 +504,7 @@
                 title: (item.title || "").trim() || this.hostOf(finalUrl),
                 group,
                 color: PALETTE[this.dials.length % PALETTE.length],
+                icon: "",
                 createdAt: Date.now(),
               });
               added++;
@@ -499,7 +518,7 @@
           },
 
           async onDialSave(event) {
-            const { id, url, title, group, color } = event.data;
+            const { id, url, title, group, color, icon } = event.data;
             const finalUrl = this.normalizeUrl(url);
             const finalTitle = title.trim() || this.hostOf(finalUrl);
             const finalGroup = group.trim() || "未分组";
@@ -511,6 +530,7 @@
                 target.title = finalTitle;
                 target.group = finalGroup;
                 target.color = color;
+                target.icon = icon || "";
               }
             } else {
               this.dials.push({
@@ -519,6 +539,7 @@
                 title: finalTitle,
                 group: finalGroup,
                 color,
+                icon: icon || "",
                 createdAt: Date.now(),
               });
             }
@@ -584,6 +605,7 @@
               title: dial.title,
               group: dial.group,
               color: dial.color,
+              icon: dial.icon || "",
               createdAt: dial.createdAt,
             }));
           },
