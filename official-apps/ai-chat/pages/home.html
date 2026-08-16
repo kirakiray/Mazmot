@@ -244,9 +244,36 @@
 
       const THREAD_ID = "main";
       let agent = null;
-      let checkpointer = null;
       // 当前流式输出目标气泡（模型每轮的文本都写进它；发起工具调用时关闭，下一轮新开）
       let activeBubble = null;
+
+      // 会话持久化：Core 就绪环境走 /nos/storage（独立空间），刷新后历史与 Agent 记忆均保留；
+      // 无 Core（直接静态访问）时降级为内存模式
+      let store = null;
+      try {
+        const { getStorage } = await load("/nos/storage/main.js");
+        store = getStorage("ai-chat");
+      } catch {
+        store = null;
+      }
+
+      const MESSAGES_KEY = "messages";
+
+      // 会话记忆：storage 可用时实现与 MemorySaver 相同的 { get, set, delete } 接口，
+      // Agent 多轮上下文跨刷新保留；否则退回纯内存
+      const checkpointer = store
+        ? {
+            async get(threadId) {
+              return (await store.getItem(`thread:${threadId}`)) ?? [];
+            },
+            async set(threadId, messages) {
+              await store.setItem(`thread:${threadId}`, messages);
+            },
+            async delete(threadId) {
+              await store.removeItem(`thread:${threadId}`);
+            },
+          }
+        : new MemorySaver();
 
       const prettyArgs = (raw) => {
         try {
@@ -269,6 +296,17 @@
           nextId: 1,
           atBottom: true,
           copiedId: null,
+        },
+
+        ready() {
+          // 恢复上次会话：工具行一律视为完成态、默认收起
+          if (!store) return;
+          store.getItem(MESSAGES_KEY).then((saved) => {
+            if (!Array.isArray(saved) || !saved.length) return;
+            this.messages = saved.map((m) => ({ ...m, pending: false, open: false }));
+            this.nextId = Math.max(...saved.map((m) => m.id)) + 1;
+            this.followScroll(true);
+          });
         },
 
         attached() {
@@ -304,7 +342,6 @@
           ensureAgent() {
             if (agent) return agent;
             const assistant = getAssistant();
-            checkpointer = new MemorySaver();
             agent = createAgent({
               assistant,
               tools: [calculator],
@@ -481,6 +518,13 @@
               activeBubble = null;
               this.sending = false;
               this.followScroll();
+              // 落盘本轮会话（响应式代理不能直接进 IndexedDB，逐项转纯对象）
+              if (store) {
+                await store.setItem(
+                  MESSAGES_KEY,
+                  this.messages.map((m) => ({ ...m })),
+                );
+              }
             }
           },
 
@@ -489,7 +533,8 @@
             activeBubble = null;
             this.copiedId = null;
             this.atBottom = true;
-            await checkpointer?.delete(THREAD_ID);
+            await checkpointer.delete(THREAD_ID);
+            if (store) await store.removeItem(MESSAGES_KEY);
           },
         },
       };
