@@ -256,6 +256,15 @@
           </button>
         </o-fill>
       </div>
+      <p-button
+        class="import-btn"
+        variant="outlined"
+        size="s"
+        on:click="openImport"
+      >
+        <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
+        <span>AI 导入</span>
+      </p-button>
     </div>
 
     <div class="grid">
@@ -311,12 +320,19 @@
     on:dial-save="onDialSave"
   ></o-page>
 
+  <o-page
+    id="ai-import"
+    src="./ai-import.html"
+    on:ai-import-save="onAiImportSave"
+  ></o-page>
+
   <script>
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
-      const { confirm } = await load(
+      const { confirm, toast } = await load(
         "https://punch-ui-v2.pages.dev/packages/util.js",
       );
+      const { PALETTE } = await load("./palette.js");
       const store = getStorage("speed-dial");
 
       return {
@@ -388,6 +404,43 @@
           getDialForm() {
             const page = this.shadow.$("#dial-form");
             return page?.openForm ? page : null;
+          },
+
+          openImport() {
+            this.getAiImport()?.openImport();
+          },
+
+          getAiImport() {
+            const page = this.shadow.$("#ai-import");
+            return page?.openImport ? page : null;
+          },
+
+          async onAiImportSave(event) {
+            const items = Array.isArray(event.data?.items)
+              ? event.data.items
+              : [];
+            const group = this.activeGroup || "未分组";
+            let added = 0;
+            for (const item of items) {
+              const finalUrl = this.normalizeUrl(item.url || "");
+              if (!finalUrl) continue;
+              if (this.dials.some((d) => d.url === finalUrl)) continue;
+              this.dials.push({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                url: finalUrl,
+                title: (item.title || "").trim() || this.hostOf(finalUrl),
+                group,
+                color: PALETTE[this.dials.length % PALETTE.length],
+                createdAt: Date.now(),
+              });
+              added++;
+            }
+            await this.persist();
+            toast({
+              content: added
+                ? `已添加 ${added} 个网址`
+                : "没有可新增的网址（可能都已收藏）",
+            });
           },
 
           async onDialSave(event) {
