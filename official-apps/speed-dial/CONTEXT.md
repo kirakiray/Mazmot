@@ -25,7 +25,7 @@ speed-dial/
 ## 技术栈
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
-- **punch-ui** 组件：`p-input` / `p-button` / `p-checkbox` / `p-dialog` / `p-menu`（`p-menu` + `p-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
+- **punch-ui** 组件：`p-input` / `p-button` / `p-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」为下拉子项） / `p-checkbox` / `p-dialog` / `p-menu`（`p-menu` + `p-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
 - **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify；表单内的图标选择用 iconify 官方搜索 API `https://api.iconify.design/search?query=...&limit=32`（选中项存 iconify 图标名，运行时由 n-icon 联网渲染）
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
 - **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
@@ -120,12 +120,12 @@ speed-dial/
 - `analyze()`：非空校验 → 惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })` 用固定 prompt 要求模型只输出 JSON 数组 → `parseSites()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 url 能解析出带点域名、按 url 去重、title 兜底域名）→ 空结果 toast 报错停留，否则进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message；await 返回后若弹窗已被关闭则丢弃结果
 - 勾选阶段：`o-fill` + `p-checkbox`（`sync:checked="$data.checked"`）逐条勾选，支持 `toggleAll()` 全选/全不选（`selectedCount` / `allChecked` getter 统计）
-- `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`back()` 返回输入阶段（保留已输入文本，可重新识别）
+- `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`backToInput()` 返回输入阶段（保留已输入文本，可重新识别；不用 `back` 命名，与 ofa.js proto 内置方法重名会注册报错）
 - 分工约定同 dial-form：**本页只管识别与选择，归一化/去重/配色/落库由 home 的 `onAiImportSave` 处理**
 
 ## ai-group.html AI 自动分组弹窗页面要点
 
-以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏「AI 分组」按钮触发，两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
+以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏 `p-split-button` 主操作「AI 分组」触发（「AI 导入」为同按钮下拉子项），两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
 
 - 状态（`data`）：`dialogOpen`、`phase`、`dialCount`（实际送分析的条数）、`totalCount`（宿主传入总条数）、`previewGroups`（`[{ name, items: [{ id, title, host }], checked }]`）
 - `openGroup(dials)`：宿主调用的入口，接收 `plainDials()` 纯对象数组，截断到前 `MAX_CLASSIFY`（200）条后重置状态、打开弹窗并自动开始分析（无输入阶段）
