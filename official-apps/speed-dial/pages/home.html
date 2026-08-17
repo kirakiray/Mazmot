@@ -42,6 +42,44 @@
       font-size: 26px;
     }
 
+    .search-bar {
+      max-width: 560px;
+      margin: 0 auto 20px;
+    }
+
+    .search-bar p-input {
+      width: 100%;
+    }
+
+    .engine-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 8px;
+      background: none;
+      color: var(--md-sys-color-on-surface-variant);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 0.15s ease;
+    }
+
+    .engine-btn:hover {
+      background-color: var(--md-sys-color-surface-variant);
+    }
+
+    .engine-btn n-icon {
+      font-size: 16px;
+    }
+
+    .engine-active {
+      color: var(--md-sys-color-primary);
+      font-weight: 600;
+    }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -234,6 +272,9 @@
   </style>
 
   <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/menu/menu.html"></l-m>
+  <l-m src="https://punch-ui-v2.pages.dev/packages/menu/menu-item.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <main class="container">
@@ -242,6 +283,33 @@
         <n-icon icon="mdi:bookmark-multiple"></n-icon>
       </div>
     </header>
+
+    <div class="search-bar">
+      <p-input
+        id="search-input"
+        sync:value="searchText"
+        placeholder="输入关键词，回车搜索"
+        on:keydown="onSearchKey($event)"
+      >
+        <p-menu slot="prefix" align="left">
+          <button class="engine-btn" slot="trigger">
+            <span>{{currentEngine.name}}</span>
+            <n-icon icon="mdi:chevron-down"></n-icon>
+          </button>
+          <o-fill :value="engines">
+            <p-menu-item on:click="$host.setEngine($data.id)">
+              <span
+                class:engine-active="$host.engineId === $data.id"
+                >{{$data.name}}</span
+              >
+            </p-menu-item>
+          </o-fill>
+        </p-menu>
+        <p-button slot="suffix" variant="text" icon on:click="doSearch" aria-label="搜索">
+          <n-icon icon="mdi:magnify"></n-icon>
+        </p-button>
+      </p-input>
+    </div>
 
     <div class="toolbar">
       <div class="group-bar">
@@ -359,6 +427,18 @@
   ></o-page>
 
   <script>
+    // 可选搜索引擎；当前选择持久化在 speed-dial 空间的 searchEngine 键（存引擎 id）
+    const ENGINES = [
+      { id: "google", name: "Google", url: "https://www.google.com/search?q=" },
+      { id: "bing", name: "Bing", url: "https://www.bing.com/search?q=" },
+      { id: "baidu", name: "百度", url: "https://www.baidu.com/s?wd=" },
+      {
+        id: "duckduckgo",
+        name: "DuckDuckGo",
+        url: "https://duckduckgo.com/?q=",
+      },
+    ];
+
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
       const { confirm, toast } = await load(
@@ -373,6 +453,9 @@
           activeGroup: "",
           draggingId: "",
           dropTargetId: "",
+          searchText: "",
+          engineId: "google",
+          engines: ENGINES,
         },
 
         proto: {
@@ -388,6 +471,30 @@
               counter.set(name, (counter.get(name) || 0) + 1);
             }
             return [...counter].map(([name, count]) => ({ name, count }));
+          },
+
+          get currentEngine() {
+            return (
+              ENGINES.find((engine) => engine.id === this.engineId) ||
+              ENGINES[0]
+            );
+          },
+
+          onSearchKey(event) {
+            if (event.key === "Enter") this.doSearch();
+          },
+
+          doSearch() {
+            const query = this.searchText.trim();
+            if (!query) return;
+            // 应用在独立标签页整页运行，直接当前页跳转搜索引擎
+            location.href = this.currentEngine.url + encodeURIComponent(query);
+          },
+
+          async setEngine(id) {
+            if (!ENGINES.some((engine) => engine.id === id)) return;
+            this.engineId = id;
+            await store.setItem("searchEngine", id);
           },
 
           hostOf(url) {
@@ -616,10 +723,21 @@
         },
 
         async attached() {
-          const saved = await store.getItem("dials");
+          const [saved, savedEngine] = await Promise.all([
+            store.getItem("dials"),
+            store.getItem("searchEngine"),
+          ]);
           if (Array.isArray(saved)) {
             this.dials = saved;
           }
+          if (
+            typeof savedEngine === "string" &&
+            ENGINES.some((engine) => engine.id === savedEngine)
+          ) {
+            this.engineId = savedEngine;
+          }
+          // 应用打开时聚焦搜索框
+          this.shadow.$("#search-input")?.focus();
         },
       };
     };
