@@ -2,7 +2,7 @@
 
 Speed Dial 风格的网页收藏夹应用：分组筛选、拖拽排序、AI 导入（从任意文本/文件中识别网址批量收藏）、AI 自动分组（按主题整理已有收藏），数据全部保存在本地（NoneOS storage）。本文件是本应用的**活文档**，与代码保持一致；修改代码必须同步更新本文件（规则见 [AGENTS.md](AGENTS.md)）。
 
-> 注意：历史描述中的"搜索"功能当前代码**未实现**，仅分组筛选；AI 导入 / AI 分组需联网且依赖宿主已配置 AI Key。
+> 注意：搜索框是**网络搜索**（输入关键词跳转所选搜索引擎，默认 Google，可切换 Bing / 百度 / DuckDuckGo，选择持久化），不是本地收藏筛选，本地筛选仅靠分组 chips；AI 导入 / AI 分组需联网且依赖宿主已配置 AI Key。
 
 ## 目录结构
 
@@ -25,7 +25,7 @@ speed-dial/
 ## 技术栈
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
-- **punch-ui** 组件：`p-input` / `p-button` / `p-checkbox` / `p-dialog`（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
+- **punch-ui** 组件：`p-input` / `p-button` / `p-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」为下拉子项） / `p-checkbox` / `p-dialog` / `p-menu`（`p-menu` + `p-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `https://punch-ui-v2.pages.dev/packages/...` 加载）+ `util.js` 的 `toast` / `confirm`；AI 导入的多行输入用原生 textarea（p-textarea 自动增高不符合固定高度需求）
 - **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify；表单内的图标选择用 iconify 官方搜索 API `https://api.iconify.design/search?query=...&limit=32`（选中项存 iconify 图标名，运行时由 n-icon 联网渲染）
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
 - **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
@@ -49,6 +49,8 @@ speed-dial/
 - **PALETTE**：`pages/palette.js` 导出的 8 个品牌色（dial-form 与 home 共用）；手动新增时按 `dials.length % PALETTE.length` 轮选取色（由 home 传 `count` 参数给 `openForm`），AI 导入落库时由 home 按当时 `dials.length` 轮选取色
 - **"未分组"** 是保留组名：表单留空保存为 `"未分组"`，编辑回填时反向转回空串
 
+存储空间 `speed-dial` 另有一个独立键 `searchEngine`（字符串）：搜索引擎 id，取值 `google`（默认）/ `bing` / `baidu` / `duckduckgo`，与 home 模块内 `ENGINES` 常量的 `id` 对应；非法值回落 `google`。
+
 ## 关键代码文件速查
 
 | 文件 | 职责 |
@@ -65,15 +67,21 @@ speed-dial/
 
 ## home.html 页面要点
 
-状态（`data`）：`dials`（收藏数组）、`activeGroup`（当前筛选组，`""` 为全部）、`draggingId` / `dropTargetId`（拖拽中）。弹窗状态（`dialogOpen` / `form` / `editingId`）已下沉到 `pages/dial-form.html`，AI 导入弹窗状态已下沉到 `pages/ai-import.html`。
+状态（`data`）：`dials`（收藏数组）、`activeGroup`（当前筛选组，`""` 为全部）、`draggingId` / `dropTargetId`（拖拽中）、`searchText`（搜索框输入）、`engineId`（当前搜索引擎 id，默认 `"google"`）、`engines`（模块级 `ENGINES` 常量注入，供 `o-fill` 渲染菜单）。弹窗状态（`dialogOpen` / `form` / `editingId`）已下沉到 `pages/dial-form.html`，AI 导入弹窗状态已下沉到 `pages/ai-import.html`。
+
+搜索框（品牌图标与工具栏之间，`.search-bar` 居中 max-width 560px）：`p-input`（`sync:value="searchText"`，Enter 提交）+ prefix 插槽内 `p-menu`（`align="left"`）引擎切换——触发按钮显示当前引擎名 + `mdi:chevron-down`，菜单项由 `o-fill :value="engines"` 渲染（当前项文字高亮 `.engine-active`，点击调 `setEngine` 后菜单自动关闭）+ suffix 插槽 `mdi:magnify` 搜索按钮。
 
 计算属性（`proto` getter）：
 
 - `visibleDials`：`activeGroup` 为空返回全部，否则按 `dial.group === activeGroup` 过滤
 - `groups`：由 `dials` 实时聚合出 `[{ name, count }]`，空 group 记作「未分组」
+- `currentEngine`：按 `engineId` 从 `ENGINES` 查引擎对象，查不到回落 `ENGINES[0]`
 
 关键方法（`proto`）：
 
+- `onSearchKey(event)`：搜索框 keydown（keydown 是 composed 事件，可穿透 `p-input` shadow），Enter 触发 `doSearch()`
+- `doSearch()`：`searchText` trim 非空时 `location.href = currentEngine.url + encodeURIComponent(q)` **当前页跳转**搜索引擎（应用本就在独立标签页整页运行，无需开新标签）；空输入不动作
+- `setEngine(id)`：id 在 `ENGINES` 内才生效，更新 `engineId` 并 `await store.setItem("searchEngine", id)` 持久化
 - `normalizeUrl(input)`：trim，已有协议（`scheme://`）原样返回，否则补 `https://`；空串原样返回
 - `hostOf(url)`：解析 hostname 并去掉 `www.`，解析失败返回原串
 - `openDial(dial)`：`window.open(url, "_blank", "noopener")`；拖拽中（`draggingId` 非空）不触发
@@ -88,7 +96,7 @@ speed-dial/
 - 拖拽：`onDragStart/onDragOver/onDragLeave/onDrop/onDragEnd`，drop 时在 `plainDials()` 拷贝上 splice 换位后整体回写 `this.dials`
 - `plainDials()`：把响应式对象拍平为纯对象数组（仅保留 7 个持久化字段，`icon` 空值归一为空串），**写库必须经过它**，避免代理对象入库
 - `persist()`：`store.setItem("dials", this.plainDials())`
-- `attached()`：读 `store.getItem("dials")`，数组则恢复
+- `attached()`：`Promise.all` 并行读 `dials` 与 `searchEngine`（引擎 id 校验在 `ENGINES` 内才应用，否则保持默认 google），最后 `this.shadow.$("#search-input")?.focus()` 实现**应用打开时搜索框自动聚焦**
 
 ## dial-form.html 弹窗页面要点
 
@@ -112,12 +120,12 @@ speed-dial/
 - `analyze()`：非空校验 → 惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })` 用固定 prompt 要求模型只输出 JSON 数组 → `parseSites()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 url 能解析出带点域名、按 url 去重、title 兜底域名）→ 空结果 toast 报错停留，否则进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message；await 返回后若弹窗已被关闭则丢弃结果
 - 勾选阶段：`o-fill` + `p-checkbox`（`sync:checked="$data.checked"`）逐条勾选，支持 `toggleAll()` 全选/全不选（`selectedCount` / `allChecked` getter 统计）
-- `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`back()` 返回输入阶段（保留已输入文本，可重新识别）
+- `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`backToInput()` 返回输入阶段（保留已输入文本，可重新识别；不用 `back` 命名，与 ofa.js proto 内置方法重名会注册报错）
 - 分工约定同 dial-form：**本页只管识别与选择，归一化/去重/配色/落库由 home 的 `onAiImportSave` 处理**
 
 ## ai-group.html AI 自动分组弹窗页面要点
 
-以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏「AI 分组」按钮触发，两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
+以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏 `p-split-button` 主操作「AI 分组」触发（「AI 导入」为同按钮下拉子项），两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
 
 - 状态（`data`）：`dialogOpen`、`phase`、`dialCount`（实际送分析的条数）、`totalCount`（宿主传入总条数）、`previewGroups`（`[{ name, items: [{ id, title, host }], checked }]`）
 - `openGroup(dials)`：宿主调用的入口，接收 `plainDials()` 纯对象数组，截断到前 `MAX_CLASSIFY`（200）条后重置状态、打开弹窗并自动开始分析（无输入阶段）

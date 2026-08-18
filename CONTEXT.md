@@ -93,8 +93,6 @@ Mazmot/
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
 │
-├── mcp-tool/                 # 独立子项目：web-bridge MCP 工具（通用工具，让 AI 在任意静态网页应用内执行 JS 调试，支持跨浏览器多应用联调），当前仅有设计文档 DESIGN.md，未实现
-│
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │
 └── old/                      # v1/v2/v3/v4 历史版本（不参与新逻辑，含废弃的 container 模式）
