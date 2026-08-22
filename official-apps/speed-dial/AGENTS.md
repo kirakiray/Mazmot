@@ -33,10 +33,10 @@
 - **依赖 URL（自包含规范）**：
   - **ofa.js**：入口 HTML 用 `https://cdn.jsdelivr.net/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`；页面 / 组件模块一律用 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`（本地前缀，由 NoneOS Core Service Worker 拦截），必须带 `#debug`，禁止写死 jsdelivr 完整 URL。
   - **ofa.js router**：`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号）。
-  - **Punch-UI**：组件不强制使用，但**用到时**必须从 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html` 加载，CSS 用 `https://punch-ui-v2.pages.dev/packages/css/pui-global.css`，禁止引入其他来源的 punch-ui 资源。
+  - **Senti-UI**：本应用已完全改用 senti-ui（`st-*` 组件）。组件统一从 `/gh/ofajs/senti-ui@latest/packages/<component>/<component>.html` 加载（本地前缀，始终用 `@latest`，不锁版本）；命令式工具用 `/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js` 与 `/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js|alert.js|prompt.js`（**default 导出**，`load()` 取值要写 `const { default: toast } = await load(...)`）。禁止引入其他来源的组件资源。
 - **存储**：数据统一存 `/nos/storage/main.js` 的 `getStorage("speed-dial")` 独立空间；**禁止** `localStorage`、禁止塞进默认空间。页面模块内必须 `const load = lm(import.meta); await load("/nos/storage/main.js")` 按需加载，**禁止顶层 `import "/nos/*"`**。
 - **图标**：统一 `<n-icon icon="mdi:xxx">`，页面需声明 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，禁止直接依赖 `iconify-icon`。
-- **视觉**：UI 组件**不强制**使用 punch-ui 组件，可按需自写；但颜色体系**必须**遵循 punch-ui 设计语言（CSS 变量 `--md-sys-color-*`）。`prompt` / `alert` / `confirm` 这类 JS 层直接调用的对话框，**尽量**使用 punch-ui 提供的对应 API（如 `util.js` 的 `toast` / `confirm`），保持视觉统一。
+- **视觉**：UI 组件**不强制**使用 senti-ui 组件，可按需自写；但颜色体系**必须**遵循 senti-ui 的 M3 设计语言（CSS 变量 `--md-sys-color-*`，写自定义颜色前先查阅 `senti-ui` Skill 的 theming 文档，文字/背景用配对 token）。`prompt` / `alert` / `confirm` 这类 JS 层直接调用的对话框，**尽量**使用 senti-ui 提供的命令式工具（`toast` / `confirm` / `alert`），保持视觉统一。注意组件 API 约定：senti 组件**没有** `size` 预设与 `tonal` variant（用 `style="font-size: 12px"` 等比缩放、tonal 用 container 配对色）；`st-switch` / `st-checkbox` 是 `checked` 布尔属性（绑定用 `attr:checked` + `on:change` 回写数据，不支持字符串值映射）。
 
 ## 自动化测试规则
 
