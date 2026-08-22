@@ -12,7 +12,7 @@
 | ---- | ---- | ---- |
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
 | 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
-| UI | Punch-UI v2 | Material Design 风格组件（`p-list`、`p-dialog`、`p-button` 等） |
+| UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量（`apps/main` 已从 Punch-UI 迁移） |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
 
@@ -251,7 +251,7 @@ clearOpened → 关闭窗口
 生成 4 个文件，存放在目标目录的 `client/` 子目录下（给用户新建的子应用用的模板）：
 
 - `app.json` — 应用元数据（name / displayName / version / icon / entry / permissions / capabilities）
-- `index.html` — 入口 HTML，加载 ofa.js + router + Punch-UI + `./app-config.js`
+- `index.html` — 入口 HTML，加载 ofa.js + router + 自带 M3 深浅色配色 + `./app-config.js`
 - `app-config.js` — 定义 `home` 页面路径和过渡动画
 - `pages/home.html` — Hello World 页面模块
 

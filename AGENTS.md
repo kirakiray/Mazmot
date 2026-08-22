@@ -11,13 +11,14 @@
 
 ## 依赖 URL 规范
 
-ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片化。
+ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片化。
 
 - **ofa.js**：入口 HTML 与页面/组件模块的前缀不同，见下方「按加载位置区分前缀」。
   - 必须带 `#debug`，开发期保留调试信息
   - 顶层入口 HTML（如 `index.html` / `apps/*/index.html`）可酌情锁定具体版本（如 `@4.7.1`）；组件 / 页面模块 / 测试页一律用 `@latest`
 - **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
-- **Punch-UI**：组件不强制使用，但**用到时**必须统一走 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`（CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`），禁止引入其他来源的 punch-ui 资源
+- **Punch-UI（已废弃，逐步退出）**：**新代码一律禁止引入**。仅维护存量 punch-ui 代码时允许继续使用既有 URL（`https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`，CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`），并应趁机迁移到 senti-ui，禁止引入其他来源的 punch-ui 资源
+- **Senti-UI**：统一走 `/gh/ofajs/senti-ui@latest/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用；**始终用 `@latest`，不锁定版本**）；**例外**：顶层入口 HTML（如 `apps/main/index.html` 的主题引导 `.../packages/boot/st-boot.js`）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/...`），与 ofa.js 入口规则同理（入口加载时 SW 可能尚未注册）。**同理，会在 Core 就绪前渲染首屏的页面模块也走完整 URL**（如 `apps/run-app/run-app.html`——它是自装 Core 的首访入口，进度页 UI 必须在 SW 注册前可用，`/gh/` 此时不可用）。禁止混用无版本裸路径或其他来源的 senti-ui 资源
 
 ### 按加载位置区分前缀（重要）
 
@@ -67,10 +68,11 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 ## UI 与视觉规范
 
-- **组件库**：项目集成 `punch-ui` 组件库，但**不强制**使用其组件，可按需自写 UI。
-- **视觉系统（强制）**：无论是否使用 punch-ui 组件，颜色体系必须严格遵循 `punch-ui` 的颜色方案与设计语言。
-- **快捷指令**：`prompt` / `alert` / `confirm` 这类单行 JS 直接调用的浏览器原生对话框，也应尽量使用 `punch-ui` 提供的对应 API，保持视觉统一。
-- **开发参考**：在实现 UI 相关功能前，请查阅 `punch-ui` 知识库以保持风格一致性。
+- **组件库**：统一使用 `senti-ui` 组件库（`st-*` 组件，基于 ofa.js + Material Design 3），不强制全用组件，可按需自写 UI。
+- **视觉系统（强制）**：无论是否使用 senti-ui 组件，颜色体系必须严格遵循 `senti-ui` 的颜色方案与设计语言（Material Design 3）。
+- **快捷指令**：`prompt` / `alert` / `confirm` 这类单行 JS 直接调用的浏览器原生对话框，也应尽量使用 `senti-ui` 提供的对应 API，保持视觉统一。
+- **开发参考**：在实现 UI 相关功能前，请查阅 `senti-ui` 知识库以保持风格一致性。
+- **Punch-UI 退出中（强制）**：`punch-ui` 将逐步退出，**新页面 / 新组件 / 新应用一律禁止使用 punch-ui**（包括 `punch-ui-v2.pages.dev` 的任何资源），UI 需求统一由 `senti-ui` 承担；存量 punch-ui 代码在迁移前保持现状，改动到对应文件时应顺手迁移为 `st-*` 组件，不要再新增任何 punch-ui 依赖。
 - **图标**：业务代码统一使用 `<n-icon icon="mdi:xxx">`（由 NoneOS Core 提供，底层基于 `iconify-icon` 实现）。
   - **禁止**业务代码直接调用 `iconify-icon` 的 API 或将其作为依赖加载（`n-icon` 会按需加载底层运行时）。
   - CSS 子选择器统一引用 `n-icon` 标签名（如 `.step-circle n-icon { ... }`），保持与业务代码一致的封装层级，避免直接触碰底层渲染节点。
@@ -91,7 +93,12 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 6. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
 7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
 8. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
-9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户：是将其浓缩成 Skill（供后续任务复用），还是记录到 [CONTEXT.md](CONTEXT.md) 中备注，由用户决定后再落档，不要擅自处置。
+9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户，由用户决定后再落档，不要擅自处置：
+   - **可复用的通用知识**（框架用法、组件模式、API 坑点等）→ 沉淀到 `.agents/skills/` 中（项目级 Skill，参考 [.agents/skills/mazmot-api/](.agents/skills/mazmot-api/SKILL.md) 的结构），供后续任务复用。
+   - **Mazmot API 知识同步（强制）**：项目自身的 API 发生变更（`app.json` 结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API、payload / manifest 字段等）时，必须同步更新 [.agents/skills/mazmot-api/](.agents/skills/mazmot-api/SKILL.md) 下的对应文档，保持知识库与代码一致，不得只改代码不更新 Skill。
+   - **项目专属的架构事实、流程、约定**→ 记录到 [CONTEXT.md](CONTEXT.md) 对应章节。
+   - **针对 AI 代理的长期开发规范**→ 补充到本文件（AGENTS.md）。
+   - **历史决策、一次性迁移记录**→ 写入 git 提交信息，不要污染文档（见第 6 条）。
 
 ## 目录与文件放置规则
 
@@ -140,7 +147,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **ofa.js-docs**
   - [GitHub 在线源码](https://github.com/ofajs/ofa.js/tree/main/skills/ofajs-docs)
   - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/ofa.js/refs/heads/main/skills/ofajs-docs.zip)
-- **punch-ui-docs**
+- **punch-ui-docs（仅维护存量 punch-ui 代码时查阅，新代码用 senti-ui 知识库）**
   - [GitHub 在线源码](https://github.com/ofajs/Punch-UI/tree/v2/skills/punch-ui)
   - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/Punch-UI/refs/heads/v2/skills/punch-ui.zip)
 - **noneos-core-docs**

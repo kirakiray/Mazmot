@@ -47,7 +47,7 @@
       margin: 0 auto 20px;
     }
 
-    .search-bar p-input {
+    .search-bar st-input {
       width: 100%;
     }
 
@@ -271,11 +271,11 @@
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/split-button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/menu/menu.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/menu/menu-item.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/split-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <main class="container">
@@ -286,30 +286,30 @@
     </header>
 
     <div class="search-bar">
-      <p-input
+      <st-input
         id="search-input"
         sync:value="searchText"
         placeholder="输入关键词，回车搜索"
         on:keydown="onSearchKey($event)"
       >
-        <p-menu slot="prefix" align="left">
+        <st-menu slot="prefix" align="left">
           <button class="engine-btn" slot="trigger">
             <span>{{currentEngine.name}}</span>
             <n-icon icon="mdi:chevron-down"></n-icon>
           </button>
           <o-fill :value="engines">
-            <p-menu-item on:click="$host.setEngine($data.id)">
+            <st-menu-item on:click="$host.setEngine($data.id)">
               <span
                 class:engine-active="$host.engineId === $data.id"
                 >{{$data.name}}</span
               >
-            </p-menu-item>
+            </st-menu-item>
           </o-fill>
-        </p-menu>
-        <p-button slot="suffix" variant="text" icon on:click="doSearch" aria-label="搜索">
+        </st-menu>
+        <st-icon-button slot="suffix" style="font-size: 13px" on:click="doSearch" title="搜索" aria-label="搜索">
           <n-icon icon="mdi:magnify"></n-icon>
-        </p-button>
-      </p-input>
+        </st-icon-button>
+      </st-input>
     </div>
 
     <div class="toolbar">
@@ -333,16 +333,14 @@
           </button>
         </o-fill>
       </div>
-      <p-split-button variant="outlined" size="s" on:click="openGroup">
+      <st-split-button variant="outlined" style="font-size: 13px" on:click="openGroup">
         <n-icon icon="mdi:folder-sync-outline" slot="prefix"></n-icon>
         <span>AI 分组</span>
-        <div slot="menu">
-          <p-menu-item on:click="openImport">
-            <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
-            <span>AI 导入</span>
-          </p-menu-item>
-        </div>
-      </p-split-button>
+        <st-menu-item slot="menu" on:click="openImport">
+          <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
+          <span>AI 导入</span>
+        </st-menu-item>
+      </st-split-button>
     </div>
 
     <div class="grid">
@@ -361,23 +359,21 @@
           on:dragend="$host.onDragEnd"
         >
           <div class="tile-actions">
-            <p-button
-              variant="text"
-              icon
-              size="xs"
+            <st-icon-button
+              style="font-size: 12px"
+              title="编辑"
               on:click="$host.openEdit($event, $data)"
             >
               <n-icon icon="mdi:pencil-outline"></n-icon>
-            </p-button>
-            <p-button
-              variant="text"
-              icon
-              size="xs"
+            </st-icon-button>
+            <st-icon-button
               color="error"
+              style="font-size: 12px"
+              title="删除"
               on:click="$host.removeDial($event, $data)"
             >
               <n-icon icon="mdi:close"></n-icon>
-            </p-button>
+            </st-icon-button>
           </div>
           <div
             class="tile-logo"
@@ -434,8 +430,11 @@
 
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
-      const { confirm, toast } = await load(
-        "https://punch-ui-v2.pages.dev/packages/util.js",
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+      );
+      const { default: confirm } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
       );
       const { PALETTE } = await load("./palette.js");
       const store = getStorage("speed-dial");
@@ -551,7 +550,7 @@
           openGroup() {
             if (!this.dials.length) {
               toast({
-                content: "还没有收藏的网址，先添加或导入一些吧",
+                message: "还没有收藏的网址，先添加或导入一些吧",
                 color: "error",
               });
               return;
@@ -582,7 +581,7 @@
             await this.persist();
             if (changed) this.activeGroup = ""; // 原筛选组可能已被改名，回到全部
             toast({
-              content: changed
+              message: changed
                 ? `已更新 ${changed} 个网址的分组`
                 : "分组没有变化",
             });
@@ -611,7 +610,7 @@
             }
             await this.persist();
             toast({
-              content: added
+              message: added
                 ? `已添加 ${added} 个网址`
                 : "没有可新增的网址（可能都已收藏）",
             });

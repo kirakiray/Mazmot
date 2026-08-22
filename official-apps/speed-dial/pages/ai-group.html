@@ -159,15 +159,18 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .dlg-page::part(panel) {
+      width: min(520px, 100%);
+    }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 520px">
-    <span slot="title">AI 自动分组</span>
+  <st-dialog class="dlg-page" sync:open="dialogOpen" auto-close>
+    <h2 slot="headline">AI 自动分组</h2>
 
     <div class="dialog-body">
       <o-if :value="phase === 'analyzing'">
@@ -191,7 +194,7 @@
           <o-fill :value="previewGroups" fill-key="name">
             <div class="group-block" class:unchecked="!$data.checked">
               <div class="group-head">
-                <p-checkbox sync:checked="$data.checked"></p-checkbox>
+                <st-checkbox attr:checked="$data.checked" on:change="$host.onGroupCheck($event, $data)"></st-checkbox>
                 <span class="group-name">{{$data.name}}</span>
                 <span class="group-count">{{$data.items.length}} 个</span>
               </div>
@@ -212,24 +215,24 @@
             sync:value="suggestion"
             placeholder="填写分组建议，如：分成工作、娱乐、学习三类"
           ></textarea>
-          <p-button variant="outlined" size="s" on:click="reGroup">
+          <st-button variant="outlined" style="font-size: 13px" on:click="reGroup">
             <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
             <span>重新分组</span>
-          </p-button>
+          </st-button>
         </div>
       </o-if>
     </div>
 
-    <div slot="bottom">
+    <div slot="actions">
       <o-if :value="phase === 'analyzing'">
-        <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
+        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
       </o-if>
       <o-if :value="phase === 'review'">
-        <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-        <p-button color="primary" on:click="applyGroups">应用分组</p-button>
+        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
+        <st-button on:click="applyGroups">应用分组</st-button>
       </o-if>
     </div>
-  </p-dialog>
+  </st-dialog>
 
   <script>
     // 单次送入 AI 分类的网址上限，超出部分保持原分组
@@ -306,8 +309,8 @@
     };
 
     export default async ({ load }) => {
-      const { toast } = await load(
-        "https://punch-ui-v2.pages.dev/packages/util.js",
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
       );
 
       let getAssistant = null;
@@ -330,6 +333,11 @@
         },
 
         proto: {
+          // st-checkbox 勾选后回写数据（原 punch 的 sync:checked）
+          onGroupCheck(event, item) {
+            item.checked = event.target.hasAttribute("checked");
+          },
+
           get selectedGroupCount() {
             return this.previewGroups.filter((g) => g.checked).length;
           },
@@ -386,12 +394,12 @@
             } catch (err) {
               if (err?.message === "no api key available") {
                 toast({
-                  content: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                  message: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
                   color: "error",
                 });
               } else {
                 toast({
-                  content: `分组失败：${err?.message || err}`,
+                  message: `分组失败：${err?.message || err}`,
                   color: "error",
                 });
               }
@@ -403,7 +411,7 @@
           reGroup() {
             const suggestion = this.suggestion.trim();
             if (!suggestion) {
-              toast({ content: "请先填写分组建议", color: "error" });
+              toast({ message: "请先填写分组建议", color: "error" });
               return;
             }
             this.phase = "analyzing";
@@ -420,7 +428,7 @@
               }
             }
             if (!items.length) {
-              toast({ content: "请至少勾选一个分组", color: "error" });
+              toast({ message: "请至少勾选一个分组", color: "error" });
               return;
             }
             this.emit("ai-group-apply", {

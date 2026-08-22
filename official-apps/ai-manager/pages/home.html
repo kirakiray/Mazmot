@@ -83,7 +83,7 @@
       min-width: 160px;
     }
 
-    .provider-field p-select {
+    .provider-field st-select {
       width: 100%;
     }
 
@@ -92,7 +92,7 @@
       min-width: 240px;
     }
 
-    .key-field p-input {
+    .key-field st-input {
       width: 100%;
     }
 
@@ -333,17 +333,28 @@
         justify-content: stretch;
       }
 
-      .form-actions p-button {
+      .form-actions st-button {
         flex: 1;
       }
     }
+    .dlg-privacy::part(panel) {
+      width: min(480px, 100%);
+    }
+    .field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <main class="container">
@@ -374,55 +385,50 @@
       <h2 class="section-title">添加 API Key</h2>
       <div class="form-row">
         <div class="provider-field">
-          <p-select sync:value="provider">
-            <span slot="label">提供商</span>
-            <p-option value="deepseek">DeepSeek</p-option>
-            <p-option value="kimi">Kimi</p-option>
-          </p-select>
+          <label class="field-label">提供商</label>
+          <st-select sync:value="provider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="kimi">Kimi</option>
+          </st-select>
         </div>
         <div class="key-field">
-          <p-input
+          <label class="field-label">API Key</label>
+          <st-input
             sync:value="apiKey"
             attr:type="showPassword ? 'text' : 'password'"
             placeholder="请输入 API Key"
           >
-            <span slot="label">API Key</span>
-            <p-button
+            <st-icon-button
               slot="suffix"
-              variant="text"
-              icon
-              size="s"
+              style="font-size: 13px"
+              title="显示/隐藏 API Key"
               on:click="togglePassword"
             >
               <n-icon
                 attr:icon="showPassword ? 'mdi:eye-off' : 'mdi:eye'"
               ></n-icon>
-            </p-button>
-          </p-input>
+            </st-icon-button>
+          </st-input>
         </div>
       </div>
 
       <div class="form-actions">
-        <p-button
-          variant="outlined"
-          attr:disabled="!apiKey || submitting"
+        <st-button variant="outlined" style="font-size: 13px" attr:disabled="!apiKey || submitting"
           on:click="handleValidate"
         >
           <span slot="prefix">
             <n-icon icon="mdi:check-circle-outline"></n-icon>
           </span>
           验证
-        </p-button>
-        <p-button
-          color="primary"
-          attr:disabled="!apiKey || submitting"
+        </st-button>
+        <st-button style="font-size: 13px" attr:disabled="!apiKey || submitting"
           on:click="handleSave"
         >
           <span slot="prefix">
             <n-icon icon="mdi:content-save-outline"></n-icon>
           </span>
           保存
-        </p-button>
+        </st-button>
       </div>
     </section>
 
@@ -440,12 +446,12 @@
       </o-if>
 
       <o-if :value="apiKeys.length > 0">
-        <p-list>
+        <st-list>
           <o-fill :value="apiKeys">
-            <p-list-item
+            <st-list-item
               collapsible
               button
-              on:click-main="$host.handleExpand($data.id)"
+              attr:data-id="$data.id"
             >
               <span slot="prefix">
                 <span
@@ -470,20 +476,16 @@
                 class="item-actions"
                 style="z-index: 3; position: relative"
               >
-                <p-button
-                  variant="text"
-                  icon
-                  size="s"
+                <st-icon-button
                   color="error"
+                  style="font-size: 13px"
                   on:click="$host.handleDelete($data.id)"
                   title="删除"
-                >
-                  <n-icon icon="mdi:delete-outline"></n-icon>
-                </p-button>
+                ><n-icon icon="mdi:delete-outline"></n-icon></st-icon-button>
               </div>
 
-              <p-list slot="sublist" style="--sublist-indent: 0px">
-                <p-list-item>
+              <st-list slot="sublist" style="--st-list-step: 0px">
+                <st-list-item>
                   <span slot="prefix" class="detail-icon models-icon">
                     <n-icon icon="mdi:brain"></n-icon>
                   </span>
@@ -501,8 +503,8 @@
                       </o-if>
                     </span>
                   </div>
-                </p-list-item>
-                <p-list-item>
+                </st-list-item>
+                <st-list-item>
                   <span slot="prefix" class="detail-icon balance-icon">
                     <n-icon icon="mdi:wallet-outline"></n-icon>
                   </span>
@@ -521,21 +523,21 @@
                       </o-if>
                     </span>
                   </div>
-                </p-list-item>
-              </p-list>
-            </p-list-item>
+                </st-list-item>
+              </st-list>
+            </st-list-item>
           </o-fill>
-        </p-list>
+        </st-list>
       </o-if>
     </section>
   </main>
 
-  <p-dialog
+  <st-dialog
+    class="dlg-privacy"
     sync:open="privacyDialogOpen"
     auto-close
-    style="--dialog-max-width: 480px"
   >
-    <span slot="title">密钥安全说明</span>
+    <h2 slot="headline">密钥安全说明</h2>
     <div class="privacy-detail-content">
       <p>我们非常重视您的密钥安全，以下是本应用的隐私保障：</p>
       <div class="privacy-item">
@@ -583,12 +585,10 @@
         </div>
       </div>
     </div>
-    <div slot="bottom">
-      <p-button color="primary" on:click="privacyDialogOpen = false"
-        >我知道了</p-button
-      >
+    <div slot="actions">
+      <st-button on:click="privacyDialogOpen = false">我知道了</st-button>
     </div>
-  </p-dialog>
+  </st-dialog>
 
   <script>
     export default async ({ load }) => {
@@ -600,8 +600,11 @@
         testApiKey,
         getAssistant,
       } = await load("/ai/main.js");
-      const { toast, confirm } = await load(
-        "https://punch-ui-v2.pages.dev/packages/util.js",
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+      );
+      const { default: confirm } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
       );
 
       return {
@@ -747,6 +750,18 @@
 
         attached() {
           this.apiKeys = getApiKeys();
+          // st-list-item 折叠点击只切换 expanded 属性、不派发事件，
+          // 用 MutationObserver 监听展开，触发模型/余额懒加载（原 punch 的 click-main）
+          this._expandObserver = new MutationObserver((muts) => {
+            for (const m of muts) {
+              if (m.attributeName === "expanded" && m.target.hasAttribute("expanded")) {
+                const id = m.target.getAttribute("data-id");
+                if (id) this.handleExpand(id);
+              }
+            }
+          });
+          const srRoot = this.shadow && (this.shadow.ele || this.shadow);
+          if (srRoot) this._expandObserver.observe(srRoot, { subtree: true, attributes: true, attributeFilter: ["expanded"] });
           this._unsub = onApiKeysChange((keys) => {
             this.apiKeys = keys;
           });
@@ -766,6 +781,7 @@
         },
 
         detached() {
+          this._expandObserver?.disconnect();
           this._unsub?.();
           this.apiKeys = [];
           this.detailMap = {};

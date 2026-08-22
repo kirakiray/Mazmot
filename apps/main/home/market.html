@@ -181,7 +181,7 @@
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <div class="market-body">
@@ -211,26 +211,22 @@
               </div>
               <div class="row-btn">
                 <o-if :value="$host.isInstalled($data.id)">
-                  <p-button
-                    color="primary"
-                    variant="tonal"
-                    size="s"
+                  <st-button
+                    style="font-size: 13px"
                     on:click="$host.openInstalledApp($event, $data)"
                   >
                     打开应用
-                  </p-button>
+                  </st-button>
                 </o-if>
                 <o-if :value="!$host.isInstalled($data.id)">
-                  <p-button
-                    color="primary"
-                    variant="tonal"
-                    size="s"
+                  <st-button
+                    style="font-size: 13px"
                     on:click="$host.quickInstall($event, $data)"
                     attr:disabled="$data.installing"
                   >
                     <o-if :value="!$data.installing">获取</o-if>
                     <o-if :value="$data.installing">安装中...</o-if>
-                  </p-button>
+                  </st-button>
                 </o-if>
               </div>
             </div>
@@ -272,21 +268,21 @@
 
         <div class="detail-actions">
           <o-if :value="isInstalled(selectedApp.id)">
-            <p-button
+            <st-button
               color="primary"
               on:click="openInstalledDetail"
             >
               打开应用
-            </p-button>
+            </st-button>
           </o-if>
           <o-if :value="!isInstalled(selectedApp.id)">
-            <p-button
+            <st-button
               color="primary"
               on:click="installSelected"
               attr:disabled="installing"
             >
               安装
-            </p-button>
+            </st-button>
           </o-if>
         </div>
 
@@ -299,22 +295,20 @@
 
   <div class="footer">
     <o-if :value="view === 'detail'">
-      <p-button variant="text" on:click="backToList">
+      <st-button variant="text" on:click="backToList">
         <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
         返回
-      </p-button>
+      </st-button>
     </o-if>
     <div style="flex: 1"></div>
-    <p-button variant="text" on:click="closeDialog">关闭</p-button>
+    <st-button variant="text" on:click="closeDialog">关闭</st-button>
   </div>
 
   <script>
     import { init } from "/nos/fs/main.js";
     import { getStorage } from "/nos/storage/main.js";
-    import {
-      toast,
-      alert,
-    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import alert from "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js";
     import { loadOfficialApps, installOfficialApp } from "./official-app-writer.js";
     import { generateAppId } from "/lib/share-mgr.js";
     import { getRunUrl } from "/lib/app-runner.js";
@@ -382,7 +376,7 @@
           async _openInstalled(appMeta) {
             const installed = this._findInstalledApp(appMeta.id);
             if (!installed) {
-              toast({ content: "未找到已安装的应用记录", type: "warning" });
+              toast({ message: "未找到已安装的应用记录", color: "tertiary" });
               return;
             }
             try {
@@ -405,8 +399,8 @@
             } catch (err) {
               console.error("打开应用失败：", err);
               toast({
-                content: "打开应用失败：" + (err.message || err),
-                type: "error",
+                message: "打开应用失败：" + (err.message || err),
+                color: "error",
               });
             }
           },
@@ -420,8 +414,8 @@
             } catch (err) {
               console.warn("加载官方应用列表失败：", err);
               toast({
-                content: "加载应用列表失败：" + (err.message || err),
-                type: "error",
+                message: "加载应用列表失败：" + (err.message || err),
+                color: "error",
               });
             } finally {
               this.loading = false;
@@ -457,7 +451,7 @@
           async installApp(appMeta) {
             if (this.installing) return;
             if (this.isInstalled(appMeta.id)) {
-              toast({ content: "该应用已安装", type: "info" });
+              toast({ message: "该应用已安装", color: "secondary" });
               return;
             }
 
@@ -510,7 +504,7 @@
               // 同步共享 stanz 状态，挂载的模板会自动更新
               await syncOfficialAppState();
               this.progressText = "安装完成";
-              toast({ content: `${appMeta.name} 安装成功`, type: "success" });
+              toast({ message: `${appMeta.name} 安装成功`, color: "success" });
             } catch (err) {
               console.error("安装失败：", err);
               this.progressText = "安装失败：" + (err.message || err);
