@@ -71,6 +71,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **视觉系统（强制）**：无论是否使用 punch-ui 组件，颜色体系必须严格遵循 `punch-ui` 的颜色方案与设计语言。
 - **快捷指令**：`prompt` / `alert` / `confirm` 这类单行 JS 直接调用的浏览器原生对话框，也应尽量使用 `punch-ui` 提供的对应 API，保持视觉统一。
 - **开发参考**：在实现 UI 相关功能前，请查阅 `punch-ui` 知识库以保持风格一致性。
+- **迁移进行中**：项目正在将 `punch-ui` 迁移到 `senti-ui`，**优先使用 `senti-ui`**（`st-*` 组件），并查阅 `senti-ui` 知识库；存量 punch-ui 代码在迁移完成前保持现状。
 - **图标**：业务代码统一使用 `<n-icon icon="mdi:xxx">`（由 NoneOS Core 提供，底层基于 `iconify-icon` 实现）。
   - **禁止**业务代码直接调用 `iconify-icon` 的 API 或将其作为依赖加载（`n-icon` 会按需加载底层运行时）。
   - CSS 子选择器统一引用 `n-icon` 标签名（如 `.step-circle n-icon { ... }`），保持与业务代码一致的封装层级，避免直接触碰底层渲染节点。
@@ -91,7 +92,12 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 6. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
 7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
 8. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
-9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户：是将其浓缩成 Skill（供后续任务复用），还是记录到 [CONTEXT.md](CONTEXT.md) 中备注，由用户决定后再落档，不要擅自处置。
+9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户，由用户决定后再落档，不要擅自处置：
+   - **可复用的通用知识**（框架用法、组件模式、API 坑点等）→ 沉淀到 `.agents/skills/` 中（项目级 Skill，参考 [.agents/skills/mazmot-api/](.agents/skills/mazmot-api/SKILL.md) 的结构），供后续任务复用。
+   - **Mazmot API 知识同步（强制）**：项目自身的 API 发生变更（`app.json` 结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API、payload / manifest 字段等）时，必须同步更新 [.agents/skills/mazmot-api/](.agents/skills/mazmot-api/SKILL.md) 下的对应文档，保持知识库与代码一致，不得只改代码不更新 Skill。
+   - **项目专属的架构事实、流程、约定**→ 记录到 [CONTEXT.md](CONTEXT.md) 对应章节。
+   - **针对 AI 代理的长期开发规范**→ 补充到本文件（AGENTS.md）。
+   - **历史决策、一次性迁移记录**→ 写入 git 提交信息，不要污染文档（见第 6 条）。
 
 ## 目录与文件放置规则
 
