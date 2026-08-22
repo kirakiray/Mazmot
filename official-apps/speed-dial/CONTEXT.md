@@ -25,7 +25,7 @@ speed-dial/
 ## 技术栈
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
-- **senti-ui** 组件：`st-input` / `st-button` / `st-icon-button` / `st-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」为下拉子项） / `st-checkbox` / `st-dialog` / `st-menu`（`st-menu` + `st-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `/gh/ofajs/senti-ui@1.0.7/packages/...` 加载）+ `toast.js` / `confirm.js` 的 `toast` / `confirm`（default 导出）；AI 导入的多行输入用原生 textarea（st-textarea 自动增高不符合固定高度需求）
+- **senti-ui** 组件：`st-input` / `st-button` / `st-icon-button` / `st-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」为下拉子项） / `st-checkbox` / `st-dialog` / `st-menu`（`st-menu` + `st-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `/gh/ofajs/senti-ui@latest/packages/...` 加载）+ `toast.js` / `confirm.js` 的 `toast` / `confirm`（default 导出）；AI 导入的多行输入用原生 textarea（st-textarea 自动增高不符合固定高度需求）
 - **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify；表单内的图标选择用 iconify 官方搜索 API `https://api.iconify.design/search?query=...&limit=32`（选中项存 iconify 图标名，运行时由 n-icon 联网渲染）
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
 - **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加

@@ -18,7 +18,7 @@ ofa.js / ofa.js router / Punch-UI 的 CDN URL 必须统一，避免版本碎片�
   - 顶层入口 HTML（如 `index.html` / `apps/*/index.html`）可酌情锁定具体版本（如 `@4.7.1`）；组件 / 页面模块 / 测试页一律用 `@latest`
 - **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
 - **Punch-UI**：组件不强制使用，但**用到时**必须统一走 `https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`（CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`），禁止引入其他来源的 punch-ui 资源
-- **Senti-UI**：统一走 `/gh/ofajs/senti-ui@<version>/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用），当前锁定版本 `@1.0.6`；**例外**：顶层入口 HTML（如 `apps/main/index.html` 的主题引导 `.../packages/boot/st-boot.js`）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@1.0.7/...`），与 ofa.js 入口规则同理（入口加载时 SW 可能尚未注册）。禁止混用无版本或其他来源的 senti-ui 资源
+- **Senti-UI**：统一走 `/gh/ofajs/senti-ui@latest/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用；**始终用 `@latest`，不锁定版本**）；**例外**：顶层入口 HTML（如 `apps/main/index.html` 的主题引导 `.../packages/boot/st-boot.js`）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/...`），与 ofa.js 入口规则同理（入口加载时 SW 可能尚未注册）。禁止混用无版本裸路径或其他来源的 senti-ui 资源
 
 ### 按加载位置区分前缀（重要）
 
