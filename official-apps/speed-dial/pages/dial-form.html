@@ -13,7 +13,7 @@
       overflow-y: auto;
     }
 
-    .dialog-form p-input {
+    .dialog-form st-input {
       width: 100%;
     }
 
@@ -43,7 +43,7 @@
       border-color: var(--md-sys-color-on-surface);
     }
 
-    .icon-row p-switch {
+    .icon-row st-switch {
       margin-left: auto;
     }
 
@@ -143,26 +143,33 @@
       color: var(--md-sys-color-on-surface-variant);
       line-height: 1.6;
     }
+    .dlg-form::part(panel) {
+      width: min(460px, 100%);
+    }
+    .field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/switch/switch.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/switch/switch.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 460px">
-    <span slot="title">{{editing ? '编辑网址' : '添加网址'}}</span>
+  <st-dialog class="dlg-form" sync:open="dialogOpen" auto-close>
+    <h2 slot="headline">{{editing ? '编辑网址' : '添加网址'}}</h2>
     <div class="dialog-form">
-      <p-input sync:value="form.url" placeholder="example.com">
-        <span slot="label">网址</span>
-      </p-input>
-      <p-input sync:value="form.title" placeholder="留空则自动使用域名">
-        <span slot="label">标题</span>
-      </p-input>
-      <p-input sync:value="form.group" placeholder="留空为「未分组」">
-        <span slot="label">分组</span>
-      </p-input>
+      <label class="field-label">网址</label>
+      <st-input sync:value="form.url" placeholder="example.com"></st-input>
+      <label class="field-label">标题</label>
+      <st-input sync:value="form.title" placeholder="留空则自动使用域名"></st-input>
+      <label class="field-label">分组</label>
+      <st-input sync:value="form.group" placeholder="留空为「未分组」"></st-input>
       <div class="color-row">
         <span class="color-label">图标颜色</span>
         <x-if :value="noBg === 'off'">
@@ -189,11 +196,14 @@
           <x-if :value="!form.icon">{{previewInitial}}</x-if>
         </div>
         <o-if :value="!!form.icon">
-          <p-button variant="text" size="s" on:click="form.icon = ''">
+          <st-button variant="text" style="font-size: 12px" on:click="form.icon = ''">
             恢复默认
-          </p-button>
+          </st-button>
         </o-if>
-        <p-switch sync:value="noBg" size="s">无底色</p-switch>
+        <st-switch
+          attr:checked="noBg === 'on'"
+          on:change="toggleNoBg($event)"
+          >无底色</st-switch>
       </div>
       <div class="icon-search">
         <input
@@ -202,14 +212,14 @@
           placeholder="搜索图标，如 github、video、购物"
           on:keydown="onIconKey($event)"
         />
-        <p-button
+        <st-button
           variant="outlined"
-          size="s"
+          style="font-size: 13px"
           attr:disabled="searching"
           on:click="searchIcons()"
         >
           {{searching ? '搜索中…' : '搜索图标'}}
-        </p-button>
+        </st-button>
       </div>
       <o-if :value="iconResults.length > 0">
         <div class="icon-grid">
@@ -227,11 +237,11 @@
       </o-if>
       <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
     </div>
-    <div slot="bottom">
-      <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-      <p-button color="primary" on:click="save">保存</p-button>
+    <div slot="actions">
+      <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
+      <st-button on:click="save">保存</st-button>
     </div>
-  </p-dialog>
+  </st-dialog>
 
   <script>
     // 从 URL 提取图标搜索关键词（取主域名的倒数第二段，如 gist.github.com → github）
@@ -251,8 +261,8 @@
     };
 
     export default async ({ load }) => {
-      const { toast } = await load(
-        "https://punch-ui-v2.pages.dev/packages/util.js",
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@1.0.7/packages/snackbar/toast.js",
       );
       const { PALETTE } = await load("./palette.js");
 
@@ -271,7 +281,7 @@
           iconQuery: "",
           iconResults: [], // iconify 图标名数组（如 "mdi:github"）
           searching: false,
-          noBg: "off", // p-switch：on = 无底色（color 落库空串）
+          noBg: "off", // "on" = 无底色（color 落库空串）
         },
 
         proto: {
@@ -319,6 +329,10 @@
             }
           },
 
+          toggleNoBg(event) {
+            this.noBg = event.target.hasAttribute("checked") ? "on" : "off";
+          },
+
           onIconKey(event) {
             if (event.key === "Enter") this.searchIcons();
           },
@@ -328,7 +342,7 @@
             const q = this.iconQuery.trim();
             if (!q) {
               if (!silent) {
-                toast({ content: "请输入图标关键词", color: "error" });
+                toast({ message: "请输入图标关键词", color: "error" });
               }
               return;
             }
@@ -341,12 +355,12 @@
               const { icons = [] } = await res.json();
               this.iconResults = icons.slice(0, 32);
               if (!icons.length && !silent) {
-                toast({ content: "未找到相关图标" });
+                toast({ message: "未找到相关图标" });
               }
             } catch (err) {
               if (!silent) {
                 toast({
-                  content: `图标搜索失败：${err?.message || err}`,
+                  message: `图标搜索失败：${err?.message || err}`,
                   color: "error",
                 });
               }
@@ -357,7 +371,7 @@
 
           save() {
             if (!this.form.url.trim()) {
-              toast({ content: "请输入网址", color: "error" });
+              toast({ message: "请输入网址", color: "error" });
               return;
             }
             this.emit("dial-save", {

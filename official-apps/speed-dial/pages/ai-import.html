@@ -144,15 +144,18 @@
     #file-input {
       display: none;
     }
+    .dlg-page::part(panel) {
+      width: min(560px, 100%);
+    }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/checkbox/checkbox.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
-  <p-dialog sync:open="dialogOpen" auto-close style="--dialog-max-width: 560px">
-    <span slot="title">AI 导入网址</span>
+  <st-dialog class="dlg-page" sync:open="dialogOpen" auto-close>
+    <h2 slot="headline">AI 导入网址</h2>
 
     <div class="dialog-body">
       <o-if :value="phase === 'input'">
@@ -170,10 +173,10 @@
             placeholder="粘贴任意文本：笔记、聊天记录、网页内容、书签导出文件……AI 会自动找出其中值得收藏的网址"
           ></textarea>
           <div class="file-row">
-            <p-button variant="outlined" size="s" on:click="pickFile">
+            <st-button variant="outlined" style="font-size: 13px" on:click="pickFile">
               <n-icon icon="mdi:file-upload-outline" slot="prefix"></n-icon>
               <span>选择文件</span>
-            </p-button>
+            </st-button>
             <span class="file-name" attr:title="fileName">{{fileName}}</span>
           </div>
           <p class="tip">
@@ -188,14 +191,14 @@
           <span class="result-count"
             >识别到 {{candidates.length}} 个 · 已选 {{selectedCount}} 个</span
           >
-          <p-button variant="text" size="s" on:click="toggleAll">
+          <st-button variant="text" style="font-size: 12px" on:click="toggleAll">
             {{allChecked ? '全不选' : '全选'}}
-          </p-button>
+          </st-button>
         </div>
         <div class="result-list">
           <o-fill :value="candidates" fill-key="url">
             <div class="result-item">
-              <p-checkbox sync:checked="$data.checked"></p-checkbox>
+              <st-checkbox attr:checked="$data.checked" on:change="$host.onUrlCheck($event, $data)"></st-checkbox>
               <div class="result-info">
                 <div class="result-title">{{$data.title}}</div>
                 <div class="result-url">{{$data.url}}</div>
@@ -206,23 +209,21 @@
       </o-if>
     </div>
 
-    <div slot="bottom">
+    <div slot="actions">
       <o-if :value="phase === 'input'">
-        <p-button variant="text" on:click="dialogOpen = false">取消</p-button>
-        <p-button
-          color="primary"
-          attr:disabled="analyzing"
+        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
+        <st-button style="font-size: 13px" attr:disabled="analyzing"
           on:click="analyze"
         >
           {{analyzing ? 'AI 识别中…' : 'AI 识别'}}
-        </p-button>
+        </st-button>
       </o-if>
       <o-if :value="phase === 'review'">
-        <p-button variant="text" on:click="back">返回</p-button>
-        <p-button color="primary" on:click="confirmImport">添加所选</p-button>
+        <st-button variant="text" on:click="back">返回</st-button>
+        <st-button on:click="confirmImport">添加所选</st-button>
       </o-if>
     </div>
-  </p-dialog>
+  </st-dialog>
 
   <input type="file" id="file-input" on:change="onFileChange" />
 
@@ -298,8 +299,8 @@
     };
 
     export default async ({ load }) => {
-      const { toast } = await load(
-        "https://punch-ui-v2.pages.dev/packages/util.js",
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@1.0.7/packages/snackbar/toast.js",
       );
 
       let getAssistant = null;
@@ -322,6 +323,11 @@
         },
 
         proto: {
+          // st-checkbox 勾选后回写数据（原 punch 的 sync:checked）
+          onUrlCheck(event, item) {
+            item.checked = event.target.hasAttribute("checked");
+          },
+
           get selectedCount() {
             return this.candidates.filter((item) => item.checked).length;
           },
@@ -378,14 +384,14 @@
                 truncated ? "（已截断）" : ""
               }`;
             } catch {
-              toast({ content: "文件读取失败，请选择文本类文件", color: "error" });
+              toast({ message: "文件读取失败，请选择文本类文件", color: "error" });
             }
           },
 
           async analyze() {
             const content = this.inputText.trim();
             if (!content) {
-              toast({ content: "请先输入文本或选择文件", color: "error" });
+              toast({ message: "请先输入文本或选择文件", color: "error" });
               return;
             }
 
@@ -407,7 +413,7 @@
               if (!this.dialogOpen) return; // 用户已关闭弹窗，丢弃结果
               const items = parseSites(reply);
               if (!items.length) {
-                toast({ content: "未识别到可收藏的网址", color: "error" });
+                toast({ message: "未识别到可收藏的网址", color: "error" });
                 return;
               }
               this.candidates = items;
@@ -415,12 +421,12 @@
             } catch (err) {
               if (err?.message === "no api key available") {
                 toast({
-                  content: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                  message: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
                   color: "error",
                 });
               } else {
                 toast({
-                  content: `识别失败：${err?.message || err}`,
+                  message: `识别失败：${err?.message || err}`,
                   color: "error",
                 });
               }
@@ -442,7 +448,7 @@
           confirmImport() {
             const selected = this.candidates.filter((item) => item.checked);
             if (!selected.length) {
-              toast({ content: "请至少选择一个网址", color: "error" });
+              toast({ message: "请至少选择一个网址", color: "error" });
               return;
             }
             this.emit("ai-import-save", {
