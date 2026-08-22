@@ -96,8 +96,15 @@
     .form-field {
       margin-bottom: 16px;
     }
-    .form-field p-input,
-    .form-field p-textarea {
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .form-field st-input,
+    .form-field st-textarea {
       width: 100%;
     }
     .field-error {
@@ -235,11 +242,9 @@
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m
-    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
-  ></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/textarea/textarea.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@1.0.7/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <!-- 步骤导航条 -->
@@ -277,9 +282,9 @@
       <div class="section-header">
         <div class="section-title">应用市场</div>
       </div>
-      <p-button color="primary" variant="outlined" on:click="openMarket">
+      <st-button color="primary" variant="outlined" on:click="openMarket">
         浏览市场
-      </p-button>
+      </st-button>
       <div class="section-desc">浏览官方收录的应用，一键安装。</div>
     </div>
 
@@ -289,17 +294,17 @@
         <div class="section-title">创建或导入应用</div>
       </div>
       <div class="btn-group">
-        <p-button color="primary" variant="outlined" on:click="chooseVirtual">
+        <st-button color="primary" variant="outlined" on:click="chooseVirtual">
           虚拟目录
-        </p-button>
-        <p-button
+        </st-button>
+        <st-button
           color="primary"
           variant="outlined"
           on:click="chooseLocal"
           attr:disabled="!supportLocalDir"
         >
           本地目录
-        </p-button>
+        </st-button>
       </div>
       <div class="section-desc">
         虚拟目录基于 NoneOS
@@ -324,19 +329,20 @@
       <div
         style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap"
       >
-        <p-input
-          placeholder="https://example.com/app.zip"
-          disabled
-          style="flex: 1 0 320px"
-        >
-          <span slot="label">应用包地址</span>
-        </p-input>
-        <p-button color="primary" variant="outlined" disabled> 安装 </p-button>
+        <div style="flex: 1 0 320px">
+          <label class="form-label">应用包地址</label>
+          <st-input
+            placeholder="https://example.com/app.zip"
+            disabled
+            style="width: 100%"
+          ></st-input>
+        </div>
+        <st-button variant="outlined" disabled> 安装 </st-button>
       </div>
       <div style="margin-top: 12px">
-        <p-button color="primary" variant="outlined" disabled>
+        <st-button variant="outlined" disabled>
           选择安装包
-        </p-button>
+        </st-button>
       </div>
       <div class="section-desc">
         通过外部 URL 自动下载安装，或选择本地开发的 ZIP 安装包。
@@ -357,26 +363,22 @@
       </div>
 
       <div class="form-field">
-        <p-input
+        <label class="form-label">应用名称 *</label>
+        <st-input
           sync:value="appName"
           placeholder="例如：my-app"
-          hang-label
           on:input="onNameInput"
-        >
-          <span slot="label">应用名称 *</span>
-        </p-input>
+        ></st-input>
         <div class="field-error">{{nameError}}</div>
       </div>
 
       <div class="form-field">
-        <p-textarea
+        <label class="form-label">应用描述</label>
+        <st-textarea
           sync:value="appDesc"
           placeholder="简单描述你的应用（可选）"
-          hang-label
           rows="3"
-        >
-          <span slot="label">应用描述</span>
-        </p-textarea>
+        ></st-textarea>
       </div>
 
       <div class="form-field">
@@ -411,15 +413,15 @@
     </div>
 
     <div class="footer">
-      <p-button variant="text" on:click="backToStep1">上一步</p-button>
-      <p-button
+      <st-button variant="text" on:click="backToStep1">上一步</st-button>
+      <st-button
         color="primary"
         on:click="confirmAppInfo"
         attr:loading="submitting"
         attr:disabled="submitting"
       >
         确认
-      </p-button>
+      </st-button>
     </div>
   </o-if>
 
@@ -474,24 +476,22 @@
     </div>
 
     <div class="footer">
-      <p-button
+      <st-button
         color="primary"
         on:click="closeDialog"
         attr:disabled="!finished"
       >
         完成
-      </p-button>
+      </st-button>
     </div>
   </o-if>
 
   <script>
     import { open, get, init } from "/nos/fs/main.js";
     import { getStorage } from "/nos/storage/main.js";
-    import {
-      toast,
-      alert,
-      confirm,
-    } from "https://punch-ui-v2.pages.dev/packages/util.js";
+    import toast from "/gh/ofajs/senti-ui@1.0.7/packages/snackbar/toast.js";
+    import alert from "/gh/ofajs/senti-ui@1.0.7/packages/dialog/alert.js";
+    import confirm from "/gh/ofajs/senti-ui@1.0.7/packages/dialog/confirm.js";
     import { writeTemplateFiles, loadTemplates } from "./template-writer.js";
     import { generateAppId } from "/lib/share-mgr.js";
 
@@ -575,8 +575,8 @@
               console.error(err);
               if (err && err.name !== "AbortError") {
                 toast({
-                  content: "选择目录失败：" + (err.message || err),
-                  type: "error",
+                  message: "选择目录失败：" + (err.message || err),
+                  color: "error",
                 });
               }
             }
@@ -649,7 +649,7 @@
                 createdAt: Date.now(),
               });
               await storage.setItem("apps", apps);
-              toast({ content: "已导入应用", type: "success" });
+              toast({ message: "已导入应用", color: "success" });
               // 通知外层 home.html 关闭弹窗并刷新列表
               this.emit("close-dialog", { bubbles: true, composed: true });
               this.resetState();
@@ -819,7 +819,7 @@
 
               this.progressText = "全部文件写入完成";
               this.finished = true;
-              toast({ content: "应用创建成功", type: "success" });
+              toast({ message: "应用创建成功", color: "success" });
             } catch (err) {
               console.error(err);
               this.progressText = "写入失败：" + (err.message || err);
