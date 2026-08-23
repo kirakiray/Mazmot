@@ -269,10 +269,12 @@
       z-index: 3;
     }
 
-    /* 设置弹窗：左侧导航 + 右侧内容 */
+    /* 设置弹窗：左侧导航 + 右侧内容。
+       高度直接定在自身（80vh），不依赖 st-dialog 内部结构；
+       视口过矮时由组件 .body 的 overflow 兜底裁剪 */
     .settings-body {
       display: flex;
-      min-height: 240px;
+      height: 80vh;
       text-align: start;
     }
     .settings-nav {
@@ -280,6 +282,7 @@
       flex-shrink: 0;
       padding-right: 8px;
       border-right: 1px solid var(--md-sys-color-surface-variant);
+      overflow-y: auto;
     }
     .settings-nav st-list-item {
       border-radius: 12px;
@@ -290,7 +293,9 @@
     .settings-content {
       flex: 1;
       min-width: 0;
+      min-height: 0;
       padding: 8px 4px 8px 20px;
+      overflow-y: auto;
     }
     .settings-field-label {
       font-size: 12px;
@@ -301,7 +306,6 @@
     .dlg-settings::part(panel) {
       width: 100%;
       max-width: 800px; /* 与主内容容器 .container 一致 */
-      min-height: 80vh;
     }
 
     /* 对话框面板宽度（st-dialog 面板在 shadow 内，用 ::part 定制） */
