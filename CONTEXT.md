@@ -165,7 +165,7 @@ handleUpdate → confirm → installOfficialApp({ dirHandle: app._handle, appId:
 覆盖写入 client/ 下的源文件（应用自身 IndexedDB 数据不受影响）→ refreshApps
 ```
 
-> **官方应用运行时自识别（含在线直开调试）**：官方应用在运行时从 `location.pathname` 识别自身身份，需同时匹配两种模式——本地安装 `/$mazmot-apps/<dirName>/client/index.html` 与在线直开 `/official-apps/<id>/...`（开发者不安装直接打开调试的场景）。参考 `official-apps/smart-assistant/pages/host.html` 的 `parseSelfIdentity`。生成分享链接统一走 `buildOfficialRunUrl`（HTTP 渠道，不依赖发布者在线），两种模式下产出的链接一致；只识别本地安装路径会导致在线调试时分享链接生成失败。
+> **官方应用运行时自识别（含在线直开调试）**：为方便官方仓库开发者调试分享功能，官方应用可以不安装、直接在线打开（`/official-apps/<id>/...`）来验证分享链接等能力。应用在运行时从 `location.pathname` 识别自身身份，需同时匹配两种模式——本地安装 `/$mazmot-apps/<dirName>/client/index.html` 与在线直开 `/official-apps/<id>/...`。参考 `official-apps/smart-assistant/pages/host.html` 的 `parseSelfIdentity`。生成分享链接统一走 `buildOfficialRunUrl`（HTTP 渠道，不依赖发布者在线），两种模式下产出的链接一致；只识别本地安装路径会导致在线调试时分享链接生成失败。
 
 ### 4. 删除应用
 
