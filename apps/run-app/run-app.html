@@ -214,6 +214,8 @@
   <!-- run-app 是首次访问的入口页，渲染时 NoneOS Core SW 可能尚未注册，
        /gh/ 本地前缀不可用，故 apps/run-app/ 下所有资源统一使用完整 jsdelivr URL -->
   <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <!-- locale-text 同样直连 core.noneos.com：页面可能在 Core SW 注册前渲染，/nos/ 前缀不可用 -->
+  <l-m src="https://core.noneos.com/nos/locale-text/locale-text.html"></l-m>
 
   <!--
     隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core。
@@ -258,7 +260,9 @@
         </o-if>
         <o-if :value="history.length > 0">
           <details class="history">
-            <summary>历史步骤（{{history.length}}）</summary>
+            <summary>
+              <locale-text attr:data-n="history.length"><span lang="cn">历史步骤（{n}）</span><span lang="en">History ({n})</span></locale-text>
+            </summary>
             <ol class="history-list">
               <o-fill :value="history">
                 <li>{{$data.text}}</li>
@@ -271,7 +275,9 @@
       <!-- 确认安装（本地已有其它应用） -->
       <o-if :value="step === 'confirm'">
         <div class="intro">
-          当前系统已初始化，已存在 <b>{{otherApps.length}}</b> 个应用：
+          <locale-text><span lang="cn">当前系统已初始化，已存在</span><span lang="en">The system is already initialized, with</span></locale-text>
+          <b>{{otherApps.length}}</b>
+          <locale-text><span lang="cn">个应用：</span><span lang="en">existing app(s):</span></locale-text>
         </div>
         <div class="confirm-list">
           <o-fill :value="otherApps">
@@ -284,11 +290,11 @@
           </o-fill>
         </div>
         <div class="confirm-warn">
-          请确认是否安装该应用。应用间能够访问彼此的数据，请确认此虚拟系统内不存在敏感数据，或数据可对该应用开发者信任后再确认安装。
+          <locale-text><span lang="cn">请确认是否安装该应用。应用间能够访问彼此的数据，请确认此虚拟系统内不存在敏感数据，或数据可对该应用开发者信任后再确认安装。</span><span lang="en">Please confirm installing this app. Apps can access each other's data. Make sure there is no sensitive data in this virtual system, or that you trust the developer, before confirming.</span></locale-text>
         </div>
         <div class="actions">
-          <st-button variant="text" on:click="cancelInstall">取消</st-button>
-          <st-button on:click="agreeInstall">确认安装</st-button>
+          <st-button variant="text" on:click="cancelInstall"><locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text></st-button>
+          <st-button on:click="agreeInstall"><locale-text><span lang="cn">确认安装</span><span lang="en">Confirm Install</span></locale-text></st-button>
         </div>
       </o-if>
 
@@ -296,7 +302,7 @@
       <o-if :value="step === 'error'">
         <div class="error-text">{{errorText}}</div>
         <o-if :value="errorStep">
-          <div class="error-step">出错步骤：{{errorStep}}</div>
+          <div class="error-step"><locale-text attr:data-step="errorStep"><span lang="cn">出错步骤：{step}</span><span lang="en">Failed at step: {step}</span></locale-text></div>
         </o-if>
         <o-if :value="errorDetail">
           <div class="error-detail">{{errorDetail}}</div>
@@ -308,7 +314,9 @@
         </o-if>
         <o-if :value="history.length > 0">
           <details class="history">
-            <summary>历史步骤（{{history.length}}）</summary>
+            <summary>
+              <locale-text attr:data-n="history.length"><span lang="cn">历史步骤（{n}）</span><span lang="en">History ({n})</span></locale-text>
+            </summary>
             <ol class="history-list">
               <o-fill :value="history">
                 <li>{{$data.text}}</li>
@@ -317,7 +325,7 @@
           </details>
         </o-if>
         <div class="actions">
-          <st-button variant="text" on:click="goHome">返回主页</st-button>
+          <st-button variant="text" on:click="goHome"><locale-text><span lang="cn">返回主页</span><span lang="en">Back to Home</span></locale-text></st-button>
         </div>
       </o-if>
     </div>
@@ -327,18 +335,23 @@
     // 进度分段：0-40% 给 Core 检测/安装，40-100% 给应用安装
     const CORE_END = 40;
 
+    // 本地化取词函数：默认回退中文；页面模块工厂内加载
+    // core.noneos.com 的 get-locale-text.js 后替换为真实实现。
+    // （不能顶层 import /nos/*，本页可能在 Core SW 注册前执行。）
+    let gl = (item) => item.cn;
+
     // 用户能感知的步骤序列（用于「n/N · 描述」展示）；
     // 部分步骤（比如确认）会视场景跳过，不影响总数。
     const STEPS = [
-      "检测 NoneOS Core",
-      "加载依赖模块",
-      "解析短链接",
-      "连接发布者并获取分享清单",
-      "检查本地已装应用",
-      "确认安装",
-      "拉取应用清单",
-      "下载并写入应用文件",
-      "启动应用",
+      { cn: "检测 NoneOS Core", en: "Detect NoneOS Core" },
+      { cn: "加载依赖模块", en: "Loading dependencies" },
+      { cn: "解析短链接", en: "Parsing share link" },
+      { cn: "连接发布者并获取分享清单", en: "Connecting to publisher and fetching manifest" },
+      { cn: "检查本地已装应用", en: "Checking installed apps" },
+      { cn: "确认安装", en: "Confirm install" },
+      { cn: "拉取应用清单", en: "Fetching app manifest" },
+      { cn: "下载并写入应用文件", en: "Downloading and writing app files" },
+      { cn: "启动应用", en: "Launching app" },
     ];
     const TOTAL_STEPS = STEPS.length;
 
@@ -346,23 +359,33 @@
     // 百分比为 appProgress 的旧刻度（5-100），由 mapAppProgress 映射到 CORE_END-100。
     // 集中定义，避免散落在各方法里成为难搜的魔数。
     const STEP = {
-      parseLink: { pct: 5, text: "解析短链接..." },
-      connectPub: { pct: 8, text: "连接发布者..." },
-      connectSrv: { pct: 8, text: "连接信令服务器..." },
-      waitRtc: { pct: 9, text: "等待建立直连通道..." },
-      connectedRtc: { pct: 10, text: "已连接发布者（RTC 直连）" },
-      connectedRelay: { pct: 10, text: "已连接发布者（经中继）" },
-      fetchPayload: { pct: 14, text: "拉取分享清单..." },
-      payloadChunks: { pct: 18, text: "下载分享清单内容..." },
-      checkInstalled: { pct: 22, text: "检查本地已装应用..." },
-      appManifest: { pct: 30, text: "拉取应用清单..." },
-      assemble: { pct: 78, text: "组装应用包..." },
-      writeUpdate: { pct: 82, text: "覆盖写入应用文件..." },
-      writeNew: { pct: 82, text: "写入虚拟文件系统..." },
-      record: { pct: 92, text: "记录应用信息..." },
+      parseLink: { pct: 5, text: { cn: "解析短链接...", en: "Parsing share link..." } },
+      connectPub: { pct: 8, text: { cn: "连接发布者...", en: "Connecting to publisher..." } },
+      connectSrv: { pct: 8, text: { cn: "连接信令服务器...", en: "Connecting to signaling server..." } },
+      waitRtc: { pct: 9, text: { cn: "等待建立直连通道...", en: "Waiting for direct connection..." } },
+      connectedRtc: { pct: 10, text: { cn: "已连接发布者（RTC 直连）", en: "Publisher connected (RTC direct)" } },
+      connectedRelay: { pct: 10, text: { cn: "已连接发布者（经中继）", en: "Publisher connected (via relay)" } },
+      fetchPayload: { pct: 14, text: { cn: "拉取分享清单...", en: "Fetching share manifest..." } },
+      payloadChunks: { pct: 18, text: { cn: "下载分享清单内容...", en: "Downloading manifest content..." } },
+      checkInstalled: { pct: 22, text: { cn: "检查本地已装应用...", en: "Checking installed apps..." } },
+      appManifest: { pct: 30, text: { cn: "拉取应用清单...", en: "Fetching app manifest..." } },
+      assemble: { pct: 78, text: { cn: "组装应用包...", en: "Assembling app package..." } },
+      writeUpdate: { pct: 82, text: { cn: "覆盖写入应用文件...", en: "Overwriting app files..." } },
+      writeNew: { pct: 82, text: { cn: "写入虚拟文件系统...", en: "Writing to virtual file system..." } },
+      record: { pct: 92, text: { cn: "记录应用信息...", en: "Recording app info..." } },
     };
 
     export default async ({ load }) => {
+      // 本地化函数：直连 core.noneos.com 加载（不经 Core SW，
+      // 与下方 storage 同一模式），首次渲染前就绪。
+      try {
+        const localeMod = await load(
+          "https://core.noneos.com/nos/locale-text/get-locale-text.js",
+        );
+        gl = localeMod.getLocaleText;
+      } catch (_) {
+        // 加载失败时保持中文回退，不阻断安装流程
+      }
       // 抽出的纯函数（便于单测），run-app.html 只做壳。
       const utils = await load("./lib/run-app-utils.js");
       const {
@@ -432,14 +455,18 @@
         data: {
           step: "core", // core | verifying | confirm | installing | error
           iconText: "📦",
-          titleText: "正在打开应用...",
-          subtitleText: "校验运行环境",
-          statusText: "1/" + TOTAL_STEPS + " · 正在检测 NoneOS Core...",
+          titleText: gl({ cn: "正在打开应用...", en: "Opening app..." }),
+          subtitleText: gl({ cn: "校验运行环境", en: "Verifying environment" }),
+          statusText:
+            "1/" +
+            TOTAL_STEPS +
+            " · " +
+            gl({ cn: "正在检测 NoneOS Core...", en: "Detecting NoneOS Core..." }),
           progress: 0,
           errorText: "",
           errorStep: "",
           errorDetail: "",
-          copyBtnText: "复制诊断信息",
+          copyBtnText: gl({ cn: "复制诊断信息", en: "Copy Diagnostics" }),
           stepIndex: 1, // 当前进行到第几步（1-based）
           otherApps: [], // { name, meta }
           history: [], // [{ text }] 已经展示过的状态文案（用于折叠框回看）
@@ -479,7 +506,9 @@
           setMeta(payload) {
             this.iconText = payload.icon || "📦";
             this.titleText =
-              payload.displayName || payload.recordName || "未命名应用";
+              payload.displayName ||
+              payload.recordName ||
+              gl({ cn: "未命名应用", en: "Unnamed App" });
             this.subtitleText = `v${payload.version || "0.1.0"}`;
           },
           // 生成错误的详细信息（含 message / stack / 关键上下文），方便开发者排查
@@ -508,10 +537,10 @@
               const ids = await collectSessionIds(this._remoteUser);
               if (diag._state.snapshots.pathOnFail) {
                 diag._state.snapshots.pathOnFail.sessionIds = ids;
-                // 重新拼一次 errorDetail，让 sessionIds 也显示出来
-                this.errorDetail =
+              // 重新拼一次 errorDetail，让 sessionIds 也显示出来
+              this.errorDetail =
                   this.buildErrorDetail(err) +
-                  "\n\n--- 诊断信息 ---\n" +
+                  "\n\n" + gl({ cn: "--- 诊断信息 ---", en: "--- Diagnostics ---" }) + "\n" +
                   diag.format();
               }
             })();
@@ -520,13 +549,16 @@
             this.errorText = message;
             this.errorStep =
               this.stepIndex >= 1 && this.stepIndex <= TOTAL_STEPS
-                ? `${this.stepIndex}/${TOTAL_STEPS} · ${STEPS[this.stepIndex - 1]}`
+                ? `${this.stepIndex}/${TOTAL_STEPS} · ${gl(STEPS[this.stepIndex - 1])}`
                 : "";
+            const diagHeader =
+              gl({ cn: "--- 诊断信息 ---", en: "--- Diagnostics ---" }) + "\n";
             this.errorDetail = err
               ? this.buildErrorDetail(err) +
-                "\n\n--- 诊断信息 ---\n" +
+                "\n\n" +
+                diagHeader +
                 diag.format()
-              : "--- 诊断信息 ---\n" + diag.format();
+              : diagHeader + diag.format();
             this.progress = 0;
             this.step = "error";
             // 同时打到控制台，便于结合 DevTools 查看
@@ -535,7 +567,11 @@
           async copyErrorDetail() {
             const text =
               (this.errorText ? this.errorText + "\n\n" : "") +
-              (this.errorStep ? "出错步骤：" + this.errorStep + "\n\n" : "") +
+              (this.errorStep
+                ? gl({ cn: "出错步骤：", en: "Failed at step: " }) +
+                  this.errorStep +
+                  "\n\n"
+                : "") +
               (this.errorDetail || "");
             try {
               if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -551,12 +587,12 @@
                 document.execCommand("copy");
                 document.body.removeChild(ta);
               }
-              this.copyBtnText = "已复制 ✓";
+              this.copyBtnText = gl({ cn: "已复制 ✓", en: "Copied ✓" });
             } catch (_) {
-              this.copyBtnText = "复制失败";
+              this.copyBtnText = gl({ cn: "复制失败", en: "Copy failed" });
             }
             setTimeout(() => {
-              this.copyBtnText = "复制诊断信息";
+              this.copyBtnText = gl({ cn: "复制诊断信息", en: "Copy Diagnostics" });
             }, 2000);
           },
           goApp(recordName) {
@@ -590,30 +626,34 @@
 
           // ============ nos-version 事件处理（模板 on: 声明式绑定） ============
           onCoreCheckStart() {
-            this.setProgress(2, "正在检测 NoneOS Core...");
+            this.setProgress(2, gl({ cn: "正在检测 NoneOS Core...", en: "Detecting NoneOS Core..." }));
           },
           onCoreUninstalled() {
-            this.setProgress(5, "首次运行，正在安装 NoneOS Core...");
+            this.setProgress(5, gl({ cn: "首次运行，正在安装 NoneOS Core...", en: "First run, installing NoneOS Core..." }));
           },
           onCoreUpgradable(e) {
             const d = e.detail || {};
             this.setProgress(
               5,
-              `NoneOS Core 升级中（${d.version || "?"} → ${d.lastVersion || "?"}）...`,
+              gl(
+                { cn: "NoneOS Core 升级中（{a} → {b}）...", en: "Upgrading NoneOS Core ({a} → {b})..." },
+                { a: d.version || "?", b: d.lastVersion || "?" },
+              ),
             );
           },
           onCoreInstallStart() {
-            this.setProgress(6, "NoneOS Core 安装准备中...");
+            this.setProgress(6, gl({ cn: "NoneOS Core 安装准备中...", en: "Preparing NoneOS Core installation..." }));
           },
           onCoreInstallProgress(e) {
             const d = e.detail || {};
             const p = mapCoreInstallProgress(d.step, d.total, CORE_END);
-            this.setProgress(p, `NoneOS Core：${d.desc || "安装中"}`);
+            const desc = d.desc || gl({ cn: "安装中", en: "installing" });
+            this.setProgress(p, gl({ cn: "NoneOS Core：{desc}", en: "NoneOS Core: {desc}" }, { desc }));
           },
           onCoreInstalled() {
             if (coreDone) return;
             coreDone = true;
-            this.setProgress(CORE_END, "NoneOS Core 就绪");
+            this.setProgress(CORE_END, gl({ cn: "NoneOS Core 就绪", en: "NoneOS Core ready" }));
             coreResolve();
           },
           onCoreError(event) {
@@ -638,7 +678,18 @@
               });
             } catch (_) {}
             const err = new Error(
-              `NoneOS Core ${d.phase || "初始化"}失败：${detailMsg || "未知错误（组件未提供错误详情，请展开诊断信息查看 coreError 快照）"}`,
+              gl(
+                { cn: "NoneOS Core {phase}失败：{msg}", en: "NoneOS Core {phase} failed: {msg}" },
+                {
+                  phase: d.phase || gl({ cn: "初始化", en: "initialization" }),
+                  msg:
+                    detailMsg ||
+                    gl({
+                      cn: "未知错误（组件未提供错误详情，请展开诊断信息查看 coreError 快照）",
+                      en: "Unknown error (no details from the component; see the coreError snapshot in diagnostics)",
+                    }),
+                },
+              ),
             );
             // 保留原始报错对象，让 buildErrorDetail 能打印其 stack / cause
             if (rawErr) err.cause = rawErr;
@@ -674,7 +725,7 @@
 
             diag.mark("fastJump hit", { name: hit.name, source: hit.source });
             this.enterStep(TOTAL_STEPS);
-            this.setProgress(100, "内容无变化，正在跳转...");
+            this.setProgress(100, gl({ cn: "内容无变化，正在跳转...", en: "No changes, redirecting..." }));
             window.location.replace(buildAppUrlWithParams(url, this._appParams));
             return true;
           },
@@ -749,18 +800,18 @@
               await coreReady;
               diag.mark("core ready");
             } catch (err) {
-              this.fail("运行环境初始化失败", err);
+              this.fail(gl({ cn: "运行环境初始化失败", en: "Failed to initialize environment" }), err);
               return;
             }
 
             // 步骤 2：加载依赖模块
             this.enterStep(2);
-            this.setProgress(CORE_END + 2, "加载依赖模块...");
+            this.setProgress(CORE_END + 2, gl({ cn: "加载依赖模块...", en: "Loading dependencies..." }));
             try {
               await this.loadDeps();
               diag.mark("loadDeps done");
             } catch (err) {
-              this.fail("依赖模块加载失败", err);
+              this.fail(gl({ cn: "依赖模块加载失败", en: "Failed to load dependencies" }), err);
               return;
             }
 
@@ -821,7 +872,7 @@
             if (!check) return;
             if (check.skip) {
               this.enterStep(TOTAL_STEPS);
-              this.setProgress(100, "已是最新，正在跳转...");
+              this.setProgress(100, gl({ cn: "已是最新，正在跳转...", en: "Already up to date, redirecting..." }));
               this.goApp(check.recordName);
               return;
             }
@@ -846,12 +897,17 @@
           async parseShareLink() {
             const { parseShareUrl } = this._modules.shareMgr;
             this.enterStep(3);
-            this.appProgress(STEP.parseLink.pct, STEP.parseLink.text);
+            this.appProgress(STEP.parseLink.pct, gl(STEP.parseLink.text));
             const parsed = parseShareUrl(window.location.search);
             if (!parsed) {
               this.fail(
-                "分享链接无效",
-                new Error("未在 URL 中检测到分享参数（?u=...&h=... 或 ?app=...）。"),
+                gl({ cn: "分享链接无效", en: "Invalid share link" }),
+                new Error(
+                  gl({
+                    cn: "未在 URL 中检测到分享参数（?u=...&h=... 或 ?app=...）。",
+                    en: "No share parameters found in the URL (?u=...&h=... or ?app=...).",
+                  }),
+                ),
               );
               return null;
             }
@@ -881,13 +937,18 @@
               // 步骤 3 续：拉取官方应用元数据
               this.appProgress(
                 STEP.fetchPayload.pct,
-                "拉取官方应用信息...",
+                gl({ cn: "拉取官方应用信息...", en: "Fetching official app info..." }),
               );
               const meta = await loadOfficialAppMeta(officialId);
               if (!meta) {
                 this.fail(
-                  "官方应用不存在",
-                  new Error(`未找到官方应用：${officialId}`),
+                  gl({ cn: "官方应用不存在", en: "Official app not found" }),
+                  new Error(
+                    gl(
+                      { cn: "未找到官方应用：{id}", en: "Official app not found: {id}" },
+                      { id: officialId },
+                    ),
+                  ),
                 );
                 return;
               }
@@ -905,7 +966,7 @@
               this.enterStep(5);
               this.appProgress(
                 STEP.checkInstalled.pct,
-                STEP.checkInstalled.text,
+                gl(STEP.checkInstalled.text),
               );
               const apps = (await storage.getItem("apps")) || [];
               const existing = findOfficialInstalled(apps, officialId);
@@ -922,14 +983,14 @@
                   name: existing.name,
                 });
                 this.enterStep(TOTAL_STEPS);
-                this.setProgress(100, "已是最新，正在跳转...");
+                this.setProgress(100, gl({ cn: "已是最新，正在跳转...", en: "Already up to date, redirecting..." }));
                 this.goApp(existing.name);
                 return;
               }
 
               // 步骤 7/8：写入应用文件（复用官方应用市场的 installOfficialApp）
               this.enterStep(7);
-              this.appProgress(STEP.writeNew.pct, STEP.writeNew.text);
+              this.appProgress(STEP.writeNew.pct, gl(STEP.writeNew.text));
               const rootDir = await init(namespace);
               const vHandle = await rootDir.get(officialId, {
                 create: "dir",
@@ -942,15 +1003,15 @@
                   this.appProgress(
                     STEP.writeNew.pct,
                     status === "writing"
-                      ? `正在写入 ${path} ...`
-                      : `已写入 ${path}`,
+                      ? gl({ cn: "正在写入 {path} ...", en: "Writing {path} ..." }, { path })
+                      : gl({ cn: "已写入 {path}", en: "Wrote {path}" }, { path }),
                   );
                 },
               });
               diag.mark("official install done");
 
               // 步骤：记录到应用列表
-              this.appProgress(STEP.record.pct, STEP.record.text);
+              this.appProgress(STEP.record.pct, gl(STEP.record.text));
               if (existing) {
                 // 更新已装记录的版本号
                 existing.version = meta.version;
@@ -973,10 +1034,10 @@
 
               // 步骤 9：启动应用
               this.enterStep(TOTAL_STEPS);
-              this.setProgress(100, "启动应用...");
+              this.setProgress(100, gl({ cn: "启动应用...", en: "Launching app..." }));
               this.goApp(officialId);
             } catch (err) {
-              this.fail("安装官方应用失败", err);
+              this.fail(gl({ cn: "安装官方应用失败", en: "Failed to install official app" }), err);
             }
           },
 
@@ -987,7 +1048,7 @@
             const { ensurePublisher, isPublicKeyOfUser } = shareMgr;
 
             this.enterStep(4);
-            this.appProgress(STEP.connectPub.pct, STEP.connectPub.text);
+            this.appProgress(STEP.connectPub.pct, gl(STEP.connectPub.text));
             let remoteUser = null;
             let publisher = null;
             try {
@@ -1000,7 +1061,7 @@
 
               // 等待本地用户连上信令服务器后再 connectUser，
               // 否则 connectedUrls 为空会立刻抛 "not online on any connected server"。
-              this.appProgress(STEP.connectSrv.pct, STEP.connectSrv.text);
+              this.appProgress(STEP.connectSrv.pct, gl(STEP.connectSrv.text));
               const srv = await ensureServerConnected(ctx.user);
               this.updateHandshakeStatus();
               diag.mark("ensureServerConnected done", {
@@ -1020,8 +1081,12 @@
                   .map((e) => `${e.url}: ${e.msg}`)
                   .join("；");
                 throw new Error(
-                  "无法连接到任何信令服务器，请检查网络后重试。" +
-                    (reason ? `（${reason}）` : ""),
+                  gl(
+                    reason
+                      ? { cn: "无法连接到任何信令服务器，请检查网络后重试。（{r}）", en: "Cannot connect to any signaling server. Check your network and try again. ({r})" }
+                      : { cn: "无法连接到任何信令服务器，请检查网络后重试。", en: "Cannot connect to any signaling server. Check your network and try again." },
+                    { r: reason },
+                  ),
                 );
               }
 
@@ -1046,7 +1111,7 @@
 
               // 等待 RTC 直连就绪（最多 3s），避免关键请求撞上 relay → RTC 切换窗口期。
               // 如果 3s 内没升上来，就继续走 relay，不阻塞。
-              this.appProgress(STEP.waitRtc.pct, STEP.waitRtc.text);
+              this.appProgress(STEP.waitRtc.pct, gl(STEP.waitRtc.text));
               const waited = await waitForRtcReady(remoteUser, 3000);
               diag.mark("waitForRtcReady done", waited);
 
@@ -1058,17 +1123,17 @@
                 if (rttInfo.via === "rtc") {
                   this.appProgress(
                     STEP.connectedRtc.pct,
-                    STEP.connectedRtc.text,
+                    gl(STEP.connectedRtc.text),
                   );
                 } else if (rttInfo.via === "server") {
                   this.appProgress(
                     STEP.connectedRelay.pct,
-                    STEP.connectedRelay.text,
+                    gl(STEP.connectedRelay.text),
                   );
                 }
               }
 
-              this.appProgress(STEP.fetchPayload.pct, STEP.fetchPayload.text);
+              this.appProgress(STEP.fetchPayload.pct, gl(STEP.fetchPayload.text));
               diag.mark("payload requestManifest start");
               const payload = await fetchSharePayload({
                 publisher,
@@ -1085,7 +1150,7 @@
                     });
                     this.appProgress(
                       STEP.payloadChunks.pct,
-                      STEP.payloadChunks.text,
+                      gl(STEP.payloadChunks.text),
                     );
                   } else if (evt.type === "chunk-retry") {
                     diag.logEvent("chunk retry", {
@@ -1100,9 +1165,9 @@
               return { payload, remoteUser, publisher };
             } catch (err) {
               if (err && err.code === "PAYLOAD_SIGNER_MISMATCH") {
-                this.fail("签发者身份不匹配", err);
+                this.fail(gl({ cn: "签发者身份不匹配", en: "Signer identity mismatch" }), err);
               } else {
-                this.fail("获取分享清单失败", err);
+                this.fail(gl({ cn: "获取分享清单失败", en: "Failed to fetch share manifest" }), err);
               }
               return null;
             }
@@ -1117,7 +1182,7 @@
             this.enterStep(5);
             this.appProgress(
               STEP.checkInstalled.pct,
-              STEP.checkInstalled.text,
+              gl(STEP.checkInstalled.text),
             );
             let installed = null;
             try {
@@ -1132,7 +1197,7 @@
                   (installed && installed.installedVersion) || "",
               });
             } catch (err) {
-              this.fail("检查本地已装应用失败", err);
+              this.fail(gl({ cn: "检查本地已装应用失败", en: "Failed to check installed apps" }), err);
               return null;
             }
 
@@ -1169,11 +1234,11 @@
 
               this.enterStep(6);
               this.otherApps = others.map(formatOtherAppEntry);
-              this.setProgress(CORE_END, "等待用户确认安装...");
+              this.setProgress(CORE_END, gl({ cn: "等待用户确认安装...", en: "Waiting for user confirmation..." }));
               diag.mark("confirm shown");
               const agreed = await new Promise((resolve) => {
                 this._confirmResolver = resolve;
-                this.titleText = "确认安装此应用？";
+                this.titleText = gl({ cn: "确认安装此应用？", en: "Install this app?" });
                 this.subtitleText = `${payload.displayName || payload.recordName || ""} v${payload.version || "0.1.0"}`;
                 this.step = "confirm";
               });
@@ -1181,8 +1246,10 @@
               diag.mark(agreed ? "confirm agreed" : "confirm canceled");
               if (!agreed) {
                 this.fail(
-                  "已取消安装",
-                  new Error("你取消了此次应用安装。"),
+                  gl({ cn: "已取消安装", en: "Installation canceled" }),
+                  new Error(
+                    gl({ cn: "你取消了此次应用安装。", en: "You canceled this app installation." }),
+                  ),
                 );
                 return false;
               }
@@ -1206,7 +1273,7 @@
             const { shareMgr } = this._modules;
             try {
               this.enterStep(7);
-              this.appProgress(STEP.appManifest.pct, STEP.appManifest.text);
+              this.appProgress(STEP.appManifest.pct, gl(STEP.appManifest.text));
               diag.mark("app requestManifest start", {
                 pathNow: pathInfoOf(this._remoteUser),
               });
@@ -1229,7 +1296,10 @@
                   } else if (evt.type === "chunk-progress") {
                     this.appProgress(
                       30 + Math.floor((evt.index / evt.total) * 45),
-                      `下载文件块 ${evt.index} / ${evt.total}...`,
+                      gl(
+                        { cn: "下载文件块 {i} / {t}...", en: "Downloading chunk {i} / {t}..." },
+                        { i: evt.index, t: evt.total },
+                      ),
                     );
                   } else if (evt.type === "chunk-retry") {
                     diag.logEvent("chunk retry", {
@@ -1239,25 +1309,25 @@
                     });
                   } else if (evt.type === "assemble") {
                     this.enterStep(8);
-                    this.appProgress(STEP.assemble.pct, STEP.assemble.text);
+                    this.appProgress(STEP.assemble.pct, gl(STEP.assemble.text));
                   } else if (evt.type === "write") {
                     this.appProgress(
                       STEP.writeUpdate.pct,
                       evt.isUpdate
-                        ? STEP.writeUpdate.text
-                        : STEP.writeNew.text,
+                        ? gl(STEP.writeUpdate.text)
+                        : gl(STEP.writeNew.text),
                     );
                   } else if (evt.type === "record") {
-                    this.appProgress(STEP.record.pct, STEP.record.text);
+                    this.appProgress(STEP.record.pct, gl(STEP.record.text));
                   }
                 },
               });
               // 步骤 9：启动应用
               this.enterStep(TOTAL_STEPS);
-              this.setProgress(100, "启动应用...");
+              this.setProgress(100, gl({ cn: "启动应用...", en: "Launching app..." }));
               this.goApp(recordName);
             } catch (err) {
-              this.fail("安装失败", err);
+              this.fail(gl({ cn: "安装失败", en: "Installation failed" }), err);
             }
           },
 

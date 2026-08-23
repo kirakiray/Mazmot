@@ -64,7 +64,7 @@ mz/comps/
 - **定位**：系统级浮动入口，将 [apps/network/](apps/network/) 应用以可拖拽缩放的窗口形式嵌入当前页面。
 - **核心能力**：
   - 内部使用 `<m-rnd-box>` 承载窗口，支持展开 / 收起两种状态。
-  - 展开状态显示 Network 窗口标题栏，主体通过 `<o-app src="../../apps/network/app-config.js">` 加载网络应用。
+  - 展开状态显示 Network 窗口标题栏，主体通过 `<o-app src="/apps/network/app-config.js">（站内绝对路径）` 加载网络应用。
   - 收起状态渲染为可拖拽的圆形气泡，点击后展开。
   - 使用 `getStorage("mazmot-rdn-network")` 空间持久化 `collapsed` 状态。
 - **注意**：该组件依赖 `rnd-box` 组件，需确保 [rnd-box/rnd-box.html](rnd-box/rnd-box.html) 可被加载。

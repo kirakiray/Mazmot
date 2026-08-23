@@ -162,18 +162,22 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/switch/switch.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <st-dialog class="dlg-form" sync:open="dialogOpen" auto-close>
-    <h2 slot="headline">{{editing ? '编辑网址' : '添加网址'}}</h2>
+    <h2 slot="headline">
+      <x-if :value="editing"><locale-text><span lang="cn">编辑网址</span><span lang="en">Edit Site</span></locale-text></x-if>
+      <x-if :value="!editing"><locale-text><span lang="cn">添加网址</span><span lang="en">Add Site</span></locale-text></x-if>
+    </h2>
     <div class="dialog-form">
-      <label class="field-label">网址</label>
+      <label class="field-label"><locale-text><span lang="cn">网址</span><span lang="en">URL</span></locale-text></label>
       <st-input sync:value="form.url" placeholder="example.com"></st-input>
-      <label class="field-label">标题</label>
-      <st-input sync:value="form.title" placeholder="留空则自动使用域名"></st-input>
-      <label class="field-label">分组</label>
-      <st-input sync:value="form.group" placeholder="留空为「未分组」"></st-input>
+      <label class="field-label"><locale-text><span lang="cn">标题</span><span lang="en">Title</span></locale-text></label>
+      <st-input sync:value="form.title" attr:placeholder="t('titlePh')"></st-input>
+      <label class="field-label"><locale-text><span lang="cn">分组</span><span lang="en">Group</span></locale-text></label>
+      <st-input sync:value="form.group" attr:placeholder="t('groupPh')"></st-input>
       <div class="color-row">
-        <span class="color-label">图标颜色</span>
+        <span class="color-label"><locale-text><span lang="cn">图标颜色</span><span lang="en">Icon Color</span></locale-text></span>
         <x-if :value="noBg === 'off'">
           <o-fill :value="palette">
             <button
@@ -186,7 +190,7 @@
         </x-if>
       </div>
       <div class="icon-row">
-        <span class="color-label">网址图标</span>
+        <span class="color-label"><locale-text><span lang="cn">网址图标</span><span lang="en">Site Icon</span></locale-text></span>
         <div
           class="icon-preview"
           class:no-bg="noBg === 'on'"
@@ -199,19 +203,19 @@
         </div>
         <o-if :value="!!form.icon">
           <st-button variant="text" style="font-size: 12px" on:click="form.icon = ''">
-            恢复默认
+            <locale-text><span lang="cn">恢复默认</span><span lang="en">Reset</span></locale-text>
           </st-button>
         </o-if>
         <st-switch
           attr:checked="noBg === 'on'"
           on:change="toggleNoBg($event)"
-          >无底色</st-switch>
+        ><locale-text><span lang="cn">无底色</span><span lang="en">No Background</span></locale-text></st-switch>
       </div>
       <div class="icon-search">
         <input
           class="search-input"
           sync:value="iconQuery"
-          placeholder="搜索图标，如 github、video、购物"
+          attr:placeholder="t('iconSearchPh')"
           on:keydown="onIconKey($event)"
         />
         <st-button
@@ -220,7 +224,8 @@
           attr:disabled="searching"
           on:click="searchIcons()"
         >
-          {{searching ? '搜索中…' : '搜索图标'}}
+          <x-if :value="searching"><locale-text><span lang="cn">搜索中…</span><span lang="en">Searching…</span></locale-text></x-if>
+          <x-if :value="!searching"><locale-text><span lang="cn">搜索图标</span><span lang="en">Search Icons</span></locale-text></x-if>
         </st-button>
       </div>
       <o-if :value="iconResults.length > 0">
@@ -237,11 +242,11 @@
           </o-fill>
         </div>
       </o-if>
-      <p class="tip">点击卡片即在新标签页打开，长按拖拽可调整顺序。</p>
+      <p class="tip"><locale-text><span lang="cn">点击卡片即在新标签页打开，长按拖拽可调整顺序。</span><span lang="en">Click a card to open it in a new tab; drag to reorder.</span></locale-text></p>
     </div>
     <div slot="actions">
-      <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
-      <st-button on:click="save">保存</st-button>
+      <st-button variant="text" on:click="dialogOpen = false"><locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text></st-button>
+      <st-button on:click="save"><locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text></st-button>
     </div>
   </st-dialog>
 
@@ -266,7 +271,21 @@
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
       );
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
       const { PALETTE } = await load("./palette.js");
+
+      // 属性类文案（placeholder 等）翻译表；模板正文文案用 <locale-text> 组件
+      const L10N = {
+        titlePh: { cn: "留空则自动使用域名", en: "Leave blank to use the domain name" },
+        groupPh: { cn: "留空为「未分组」", en: "Leave blank for \"Ungrouped\"" },
+        iconSearchPh: { cn: "搜索图标，如 github、video、购物", en: "Search icons, e.g. github, video, shopping" },
+      };
+      const t = (key) => {
+        const item = L10N[key];
+        return item ? getLocaleText(item) : key;
+      };
 
       return {
         data: {
@@ -287,6 +306,10 @@
         },
 
         proto: {
+          t(key) {
+            return t(key);
+          },
+
           get editing() {
             return !!this.editingId;
           },
@@ -344,7 +367,13 @@
             const q = this.iconQuery.trim();
             if (!q) {
               if (!silent) {
-                toast({ message: "请输入图标关键词", color: "error" });
+                toast({
+                  message: getLocaleText({
+                    cn: "请输入图标关键词",
+                    en: "Please enter an icon keyword",
+                  }),
+                  color: "error",
+                });
               }
               return;
             }
@@ -357,12 +386,20 @@
               const { icons = [] } = await res.json();
               this.iconResults = icons.slice(0, 32);
               if (!icons.length && !silent) {
-                toast({ message: "未找到相关图标" });
+                toast({
+                  message: getLocaleText({
+                    cn: "未找到相关图标",
+                    en: "No matching icons found",
+                  }),
+                });
               }
             } catch (err) {
               if (!silent) {
                 toast({
-                  message: `图标搜索失败：${err?.message || err}`,
+                  message: getLocaleText(
+                    { cn: "图标搜索失败：{msg}", en: "Icon search failed: {msg}" },
+                    { msg: err?.message || err },
+                  ),
                   color: "error",
                 });
               }
@@ -373,7 +410,13 @@
 
           save() {
             if (!this.form.url.trim()) {
-              toast({ message: "请输入网址", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "请输入网址",
+                  en: "Please enter a URL",
+                }),
+                color: "error",
+              });
               return;
             }
             this.emit("dial-save", {

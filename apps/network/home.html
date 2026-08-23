@@ -274,6 +274,7 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <div class="container">
     <o-if :value="error">
@@ -287,15 +288,15 @@
       </div>
       <div class="me-body">
         <div class="me-row">
-          <span class="k">用户名</span>
+          <span class="k"><locale-text><span lang="cn">用户名</span><span lang="en">Username</span></locale-text></span>
           <span class="v" attr:title="username">{{username || "-"}}</span>
         </div>
         <div class="me-row">
-          <span class="k">当前 UserId</span>
+          <span class="k"><locale-text><span lang="cn">当前 UserId</span><span lang="en">User ID</span></locale-text></span>
           <span class="v" attr:title="userId">{{userId || "-"}}</span>
         </div>
         <div class="me-row">
-          <span class="k">当前 Session</span>
+          <span class="k"><locale-text><span lang="cn">当前 Session</span><span lang="en">Session</span></locale-text></span>
           <span class="v" attr:title="sessionId">{{sessionId || "-"}}</span>
         </div>
       </div>
@@ -304,14 +305,14 @@
         icon
         size="s"
         on:click="copySessionId"
-        title="复制 Session ID"
+        attr:title="t('copySessionId')"
       ><n-icon icon="mdi:content-copy"></n-icon></st-icon-button>
     </div>
 
     <!-- 服务器区块 -->
     <div class="section">
       <div class="section-header">
-        <h2>服务器</h2>
+        <h2><locale-text><span lang="cn">服务器</span><span lang="en">Servers</span></locale-text></h2>
         <div class="actions">
           <span class="count">{{serverList.length}}</span>
           <st-icon-button
@@ -319,20 +320,20 @@
             icon
             size="s"
             on:click="goto('./traffic.html')"
-            title="流量监控"
+            attr:title="t('trafficMonitor')"
           ><n-icon icon="mdi:chart-line"></n-icon></st-icon-button>
           <st-icon-button
         style="font-size: 13px"
             icon
             size="s"
             on:click="refreshAll"
-            title="刷新"
+            attr:title="t('refresh')"
           ><n-icon icon="mdi:refresh"></n-icon></st-icon-button>
         </div>
       </div>
 
       <o-if :value="serverList.length === 0">
-        <div class="empty">暂无服务器</div>
+        <div class="empty"><locale-text><span lang="cn">暂无服务器</span><span lang="en">No servers</span></locale-text></div>
       </o-if>
 
       <o-if :value="serverList.length > 0">
@@ -360,12 +361,12 @@
     <!-- 用户区块 -->
     <div class="section">
       <div class="section-header">
-        <h2>已连接用户</h2>
+        <h2><locale-text><span lang="cn">已连接用户</span><span lang="en">Connected Users</span></locale-text></h2>
         <span class="count">{{userList.length}}</span>
       </div>
 
       <o-if :value="userList.length === 0">
-        <div class="empty">暂无已连接的用户</div>
+        <div class="empty"><locale-text><span lang="cn">暂无已连接的用户</span><span lang="en">No connected users</span></locale-text></div>
       </o-if>
 
       <o-if :value="userList.length > 0">
@@ -393,8 +394,19 @@
 
   <script>
     import { getUser } from "/nos/user/main.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
     const NAMESPACE = "default";
+
+    const L10N = {
+      copySessionId: { cn: "复制 Session ID", en: "Copy Session ID" },
+      trafficMonitor: { cn: "流量监控", en: "Traffic Monitor" },
+      refresh: { cn: "刷新", en: "Refresh" },
+    };
+    const t = (key) => {
+      const i = L10N[key];
+      return i ? getLocaleText(i) : key;
+    };
 
     function shortId(userId) {
       if (!userId) return "";
@@ -423,7 +435,10 @@
               this.username = "";
             }
           } catch (err) {
-            this.error = "初始化用户失败：" + (err.message || String(err));
+            this.error = getLocaleText(
+              { cn: "初始化用户失败：{msg}", en: "Failed to initialize user: {msg}" },
+              { msg: err.message || String(err) },
+            );
             console.error("[network] 初始化用户失败：", err);
             return;
           }
@@ -434,6 +449,9 @@
           this._unbindEvents();
         },
         proto: {
+          t(key) {
+            return t(key);
+          },
           _bindEvents() {
             if (!this._user) return;
             this._unbindHandlers = [
@@ -478,7 +496,10 @@
               list.forEach((item) => this.serverList.push(item));
             } catch (err) {
               console.error("[network] 获取服务器失败：", err);
-              this.error = "获取服务器列表失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "获取服务器列表失败：{msg}", en: "Failed to get server list: {msg}" },
+                { msg: err.message || err },
+              );
             }
           },
           async refreshUsers() {
@@ -509,7 +530,10 @@
               list.forEach((item) => this.userList.push(item));
             } catch (err) {
               console.error("[network] 获取用户失败：", err);
-              this.error = "获取用户列表失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "获取用户列表失败：{msg}", en: "Failed to get user list: {msg}" },
+                { msg: err.message || err },
+              );
             }
           },
           buildServerHref(url) {

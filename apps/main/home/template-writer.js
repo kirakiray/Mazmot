@@ -12,12 +12,30 @@
 //   APP_DESC_JSON  - 应用描述（不带外层引号的 JSON 字符串片段，可安全嵌入 "..." 中）
 //   CREATED_AT     - 创建时间（毫秒时间戳）
 
+import { getLang } from "/nos/locale-text/get-locale-text.js";
+
 const TEMPLATES_ROOT = new URL("./templates/", import.meta.url);
+
+/**
+ * 按当前语言解析 __template.json 的 name/desc。
+ * 回退链：i18n[当前语言] → 基准英文（meta.name / meta.desc）。
+ * @param {Object} meta __template.json 解析结果
+ * @returns {{ name: string, desc: string }}
+ */
+function resolveLocalizedMeta(meta) {
+  const langMap = (meta && meta.i18n) || {};
+  const langEntry = langMap[getLang()] || {};
+  return {
+    name: langEntry.name || meta.name || "",
+    desc: langEntry.desc || meta.desc || "",
+  };
+}
 
 /**
  * 加载模板列表清单。
  * manifest.json 只存放模板 id 列表，每个模板的 name/desc
- * 从对应模板目录下的 __template.json 读取。
+ * 从对应模板目录下的 __template.json 读取（name/desc 基准值为英文，
+ * 可选 i18n 字段按语言覆盖，展示时按当前语言解析）。
  * @returns {Promise<Array<{ id: string, name: string, desc?: string }>>}
  */
 export async function loadTemplates() {
@@ -42,10 +60,11 @@ export async function loadTemplates() {
         continue;
       }
       const meta = await metaRes.json();
+      const { name, desc } = resolveLocalizedMeta(meta);
       templates.push({
         id,
-        name: meta.name || id,
-        desc: meta.desc || "",
+        name: name || id,
+        desc,
       });
     } catch (err) {
       console.warn(`加载模板 ${id} 元数据失败：`, err);

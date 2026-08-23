@@ -25,7 +25,26 @@ export async function readAppFiles(handle) {
     console.warn("未发现 client 目录，将从根目录读取文件");
   }
 
-  const allFiles = await targetHandle.flat();
+  // 递归收集目录下所有文件句柄
+  // 兼容旧版 NoneOS Core：DirHandle 可能没有 flat() / entries()（同属 mixin），
+  // 回退用类自带的 keys() + get() 手动遍历
+  const collectFiles = async (dir, result = []) => {
+    if (typeof dir.flat === "function") {
+      return await dir.flat();
+    }
+    for await (const key of dir.keys()) {
+      const item = await dir.get(key);
+      if (!item) continue;
+      if (item.kind === "dir") {
+        await collectFiles(item, result);
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  };
+
+  const allFiles = await collectFiles(targetHandle);
   const rootPrefix = targetHandle.path ? targetHandle.path + "/" : "";
   const files = await Promise.all(
     allFiles.map(async (f) => {

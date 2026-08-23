@@ -1,14 +1,34 @@
 // 官方应用市场 - 应用加载与安装
 // 官方应用位于仓库根目录下的 `official-apps/<id>/`，通过各应用下的 `__app.json`
 // 描述应用元数据（name/icon/desc）与文件清单。
+// name/desc 基准值为英文，可选 i18n 字段按语言覆盖：
+//   "i18n": { "cn": { "name": "...", "desc": "..." } }
+// 展示时按当前语言解析，回退链：目标语言 → 基准英文。
 // 安装时根据 __app.json 中的 replacements 清单替换变量（如 CREATED_AT），
 // 然后写入虚拟目录的 client/ 子目录。
+
+import { getLang } from "/nos/locale-text/get-locale-text.js";
 
 const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
 
 /**
+ * 按当前语言解析 __app.json 的 name/desc。
+ * 回退链：i18n[当前语言] → 基准英文（meta.name / meta.desc）。
+ * @param {Object} meta __app.json 解析结果
+ * @returns {{ name: string, desc: string }}
+ */
+function resolveLocalizedMeta(meta) {
+  const langMap = (meta && meta.i18n) || {};
+  const langEntry = langMap[getLang()] || {};
+  return {
+    name: langEntry.name || meta.name || "",
+    desc: langEntry.desc || meta.desc || "",
+  };
+}
+
+/**
  * 读取单个官方应用的元数据（含版本号）。
- * name/icon/desc 来自 __app.json，version 来自应用自身的 app.json。
+ * name/icon/desc 来自 __app.json（name/desc 已按当前语言解析），version 来自应用自身的 app.json。
  * @param {string} id 官方应用 ID
  * @returns {Promise<{ id: string, name: string, icon: string, desc: string, version: string } | null>}
  */
@@ -32,11 +52,12 @@ export async function loadOfficialAppMeta(id) {
     console.warn(`读取官方应用 ${id} 版本号失败：`, err);
   }
 
+  const { name, desc } = resolveLocalizedMeta(meta);
   return {
     id,
-    name: meta.name || id,
+    name: name || id,
     icon: meta.icon || "📦",
-    desc: meta.desc || "",
+    desc,
     version,
   };
 }
@@ -191,9 +212,10 @@ export async function installOfficialApp({
     }
   }
 
+  const { name, desc } = resolveLocalizedMeta(meta);
   return {
-    name: meta.name || appId,
-    desc: meta.desc || "",
+    name: name || appId,
+    desc,
     icon: meta.icon || "📦",
     files,
   };

@@ -356,6 +356,7 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <main class="container">
     <header class="app-header">
@@ -364,8 +365,8 @@
           <n-icon icon="mdi:key"></n-icon>
         </div>
         <div class="brand-text">
-          <h1>AI 密钥管理器</h1>
-          <p>集中管理 DeepSeek / Kimi 的 API Key</p>
+          <h1><locale-text><span lang="cn">AI 密钥管理器</span><span lang="en">AI Key Manager</span></locale-text></h1>
+          <p><locale-text><span lang="cn">集中管理 DeepSeek / Kimi 的 API Key</span><span lang="en">Manage DeepSeek / Kimi API Keys in one place</span></locale-text></p>
         </div>
       </div>
     </header>
@@ -373,19 +374,19 @@
     <div class="privacy-notice">
       <n-icon icon="mdi:shield-check-outline"></n-icon>
       <div class="privacy-body">
-        <strong>密钥仅保存在本地浏览器</strong
-        >，本应用无后端服务器，密钥不会上传到任何地方。
+        <strong><locale-text><span lang="cn">密钥仅保存在本地浏览器</span><span lang="en">Keys are stored only in your browser</span></locale-text></strong
+        ><locale-text><span lang="cn">，本应用无后端服务器，密钥不会上传到任何地方。</span><span lang="en">. This app has no backend server; keys are never uploaded anywhere.</span></locale-text>
         <button class="privacy-detail-link" on:click="showPrivacyDetail">
-          了解详情
+          <locale-text><span lang="cn">了解详情</span><span lang="en">Learn more</span></locale-text>
         </button>
       </div>
     </div>
 
     <section class="form-card">
-      <h2 class="section-title">添加 API Key</h2>
+      <h2 class="section-title"><locale-text><span lang="cn">添加 API Key</span><span lang="en">Add API Key</span></locale-text></h2>
       <div class="form-row">
         <div class="provider-field">
-          <label class="field-label">提供商</label>
+          <label class="field-label"><locale-text><span lang="cn">提供商</span><span lang="en">Provider</span></locale-text></label>
           <st-select sync:value="provider">
             <option value="deepseek">DeepSeek</option>
             <option value="kimi">Kimi</option>
@@ -396,12 +397,12 @@
           <st-input
             sync:value="apiKey"
             attr:type="showPassword ? 'text' : 'password'"
-            placeholder="请输入 API Key"
+            attr:placeholder="t('inputPlaceholder')"
           >
             <st-icon-button
               slot="suffix"
               style="font-size: 13px"
-              title="显示/隐藏 API Key"
+              attr:title="t('toggleKeyVisibility')"
               on:click="togglePassword"
             >
               <n-icon
@@ -419,7 +420,7 @@
           <span slot="prefix">
             <n-icon icon="mdi:check-circle-outline"></n-icon>
           </span>
-          验证
+          <locale-text><span lang="cn">验证</span><span lang="en">Validate</span></locale-text>
         </st-button>
         <st-button style="font-size: 13px" attr:disabled="!apiKey || submitting"
           on:click="handleSave"
@@ -427,21 +428,21 @@
           <span slot="prefix">
             <n-icon icon="mdi:content-save-outline"></n-icon>
           </span>
-          保存
+          <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
         </st-button>
       </div>
     </section>
 
     <section class="list-card">
       <div class="section-header">
-        <h2 class="section-title">已保存的 Key</h2>
+        <h2 class="section-title"><locale-text><span lang="cn">已保存的 Key</span><span lang="en">Saved Keys</span></locale-text></h2>
         <span class="count-badge">{{apiKeys.length}}</span>
       </div>
 
       <o-if :value="apiKeys.length === 0">
         <div class="empty-state">
           <n-icon icon="mdi:key-outline"></n-icon>
-          <p>暂无保存的 API Key</p>
+          <p><locale-text><span lang="cn">暂无保存的 API Key</span><span lang="en">No saved API Keys yet</span></locale-text></p>
         </div>
       </o-if>
 
@@ -480,7 +481,7 @@
                   color="error"
                   style="font-size: 13px"
                   on:click="$host.handleDelete($data.id)"
-                  title="删除"
+                  attr:title="$host.t('delete')"
                 ><n-icon icon="mdi:delete-outline"></n-icon></st-icon-button>
               </div>
 
@@ -490,15 +491,15 @@
                     <n-icon icon="mdi:brain"></n-icon>
                   </span>
                   <div class="detail-row">
-                    <span class="detail-label">可用模型</span>
+                    <span class="detail-label"><locale-text><span lang="cn">可用模型</span><span lang="en">Available Models</span></locale-text></span>
                     <span class="detail-value-wrap">
                       <o-if :value="$host.loadingIds[$data.id]">
-                        <span class="loading-text">加载中...</span>
+                        <span class="loading-text"><locale-text><span lang="cn">加载中...</span><span lang="en">Loading...</span></locale-text></span>
                       </o-if>
                       <o-if :value="!$host.loadingIds[$data.id]">
                         <span class="detail-value">
                           {{ $host.detailMap[$data.id] ?
-                          $host.detailMap[$data.id].models : '点击展开后加载' }}
+                          $host.detailMap[$data.id].models : $host.t('expandToLoad') }}
                         </span>
                       </o-if>
                     </span>
@@ -509,15 +510,15 @@
                     <n-icon icon="mdi:wallet-outline"></n-icon>
                   </span>
                   <div class="detail-row">
-                    <span class="detail-label">余额信息</span>
+                    <span class="detail-label"><locale-text><span lang="cn">余额信息</span><span lang="en">Balance</span></locale-text></span>
                     <span class="detail-value-wrap">
                       <o-if :value="$host.loadingIds[$data.id]">
-                        <span class="loading-text">加载中...</span>
+                        <span class="loading-text"><locale-text><span lang="cn">加载中...</span><span lang="en">Loading...</span></locale-text></span>
                       </o-if>
                       <o-if :value="!$host.loadingIds[$data.id]">
                         <span class="detail-value">
                           {{ $host.detailMap[$data.id] ?
-                          $host.detailMap[$data.id].balance : '点击展开后加载'
+                          $host.detailMap[$data.id].balance : $host.t('expandToLoad')
                           }}
                         </span>
                       </o-if>
@@ -537,42 +538,40 @@
     sync:open="privacyDialogOpen"
     auto-close
   >
-    <h2 slot="headline">密钥安全说明</h2>
+    <h2 slot="headline"><locale-text><span lang="cn">密钥安全说明</span><span lang="en">Key Security Notes</span></locale-text></h2>
     <div class="privacy-detail-content">
-      <p>我们非常重视您的密钥安全，以下是本应用的隐私保障：</p>
+      <p><locale-text><span lang="cn">我们非常重视您的密钥安全，以下是本应用的隐私保障：</span><span lang="en">We take your key security seriously. Here is this app's privacy guarantee:</span></locale-text></p>
       <div class="privacy-item">
         <n-icon icon="mdi:harddisk-outline"></n-icon>
         <div>
-          <strong>本地存储，不上传</strong>
+          <strong><locale-text><span lang="cn">本地存储，不上传</span><span lang="en">Local storage, no upload</span></locale-text></strong>
           <p>
-            API Key 保存在浏览器的 IndexedDB
-            中（本地存储），仅存在于此设备。本应用为纯静态应用，没有任何后端服务器可以接收您的数据。
+            <locale-text><span lang="cn">API Key 保存在浏览器的 IndexedDB 中（本地存储），仅存在于此设备。本应用为纯静态应用，没有任何后端服务器可以接收您的数据。</span><span lang="en">API Keys are stored in the browser's IndexedDB (local storage) and exist only on this device. This app is purely static and has no backend server that could receive your data.</span></locale-text>
           </p>
         </div>
       </div>
       <div class="privacy-item">
         <n-icon icon="mdi:lock-outline"></n-icon>
         <div>
-          <strong>直连官方 API</strong>
+          <strong><locale-text><span lang="cn">直连官方 API</span><span lang="en">Direct official API access</span></locale-text></strong>
           <p>
-            使用密钥时（如验证、查询余额/模型），浏览器直接向 DeepSeek / Kimi
-            官方接口发请求，不经过任何第三方中转。
+            <locale-text><span lang="cn">使用密钥时（如验证、查询余额/模型），浏览器直接向 DeepSeek / Kimi 官方接口发请求，不经过任何第三方中转。</span><span lang="en">When a key is used (e.g. validation, balance/model queries), the browser sends requests directly to the official DeepSeek / Kimi endpoints, with no third-party relay in between.</span></locale-text>
           </p>
         </div>
       </div>
       <div class="privacy-item">
         <n-icon icon="mdi:trash-can-outline"></n-icon>
         <div>
-          <strong>随时可删除</strong>
-          <p>清除浏览器数据或删除本应用，密钥即被彻底移除，不留痕迹。</p>
+          <strong><locale-text><span lang="cn">随时可删除</span><span lang="en">Deletable at any time</span></locale-text></strong>
+          <p><locale-text><span lang="cn">清除浏览器数据或删除本应用，密钥即被彻底移除，不留痕迹。</span><span lang="en">Clearing browser data or removing this app deletes your keys completely, leaving no trace.</span></locale-text></p>
         </div>
       </div>
       <div class="privacy-item">
         <n-icon icon="mdi:source-repository"></n-icon>
         <div>
-          <strong>开源可审计，支持本地部署</strong>
+          <strong><locale-text><span lang="cn">开源可审计，支持本地部署</span><span lang="en">Open source, auditable, self-hostable</span></locale-text></strong>
           <p>
-            不信任当前容器？本项目完全开源，可在
+            <locale-text><span lang="cn">不信任当前容器？本项目完全开源，可在</span><span lang="en">Don't trust the current host? This project is fully open source; you can download the source from</span></locale-text>
             <a
               class="privacy-detail-link"
               href="https://github.com/kirakiray/Mazmot/tree/main"
@@ -580,13 +579,13 @@
               rel="noopener noreferrer"
               >GitHub</a
             >
-            下载源码，本地部署到 localhost 自用，彻底杜绝任何顾虑。
+            <locale-text><span lang="cn">下载源码，本地部署到 localhost 自用，彻底杜绝任何顾虑。</span><span lang="en">and self-host it on localhost to eliminate any concerns.</span></locale-text>
           </p>
         </div>
       </div>
     </div>
     <div slot="actions">
-      <st-button on:click="privacyDialogOpen = false">我知道了</st-button>
+      <st-button on:click="privacyDialogOpen = false"><locale-text><span lang="cn">我知道了</span><span lang="en">Got it</span></locale-text></st-button>
     </div>
   </st-dialog>
 
@@ -606,6 +605,23 @@
       const { default: confirm } = await load(
         "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
       );
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
+
+      const L10N = {
+        inputPlaceholder: { cn: "请输入 API Key", en: "Enter API Key" },
+        toggleKeyVisibility: {
+          cn: "显示/隐藏 API Key",
+          en: "Show/hide API Key",
+        },
+        delete: { cn: "删除", en: "Delete" },
+        expandToLoad: { cn: "点击展开后加载", en: "Load by expanding" },
+      };
+      const t = (key) => {
+        const i = L10N[key];
+        return i ? getLocaleText(i) : key;
+      };
 
       return {
         data: {
@@ -620,6 +636,10 @@
         },
 
         proto: {
+          t(key) {
+            return t(key);
+          },
+
           providerLabel(provider) {
             return provider === "kimi" ? "Kimi" : "DeepSeek";
           },
@@ -641,7 +661,7 @@
           async handleValidate() {
             const key = this.apiKey.trim();
             if (!key) {
-              toast({ message: "请输入 API Key", color: "error" });
+              toast({ message: getLocaleText({ cn: "请输入 API Key", en: "Please enter an API Key" }), color: "error" });
               return;
             }
 
@@ -650,7 +670,7 @@
               const { valid, message } = await testApiKey(key, this.provider);
               toast({ message, color: valid ? "success" : "error" });
             } catch (error) {
-              toast({ message: `验证失败：${error.message}`, color: "error" });
+              toast({ message: getLocaleText({ cn: "验证失败：{msg}", en: "Validation failed: {msg}" }, { msg: error.message }), color: "error" });
             } finally {
               this.submitting = false;
             }
@@ -659,7 +679,7 @@
           async handleSave() {
             const key = this.apiKey.trim();
             if (!key) {
-              toast({ message: "请输入 API Key", color: "error" });
+              toast({ message: getLocaleText({ cn: "请输入 API Key", en: "Please enter an API Key" }), color: "error" });
               return;
             }
 
@@ -673,9 +693,9 @@
 
               saveKey(key, this.provider);
               this.apiKey = "";
-              toast({ message: "API Key 保存成功", color: "success" });
+              toast({ message: getLocaleText({ cn: "API Key 保存成功", en: "API Key saved" }), color: "success" });
             } catch (error) {
-              toast({ message: `保存失败：${error.message}`, color: "error" });
+              toast({ message: getLocaleText({ cn: "保存失败：{msg}", en: "Save failed: {msg}" }, { msg: error.message }), color: "error" });
             } finally {
               this.submitting = false;
             }
@@ -700,25 +720,25 @@
                   const names = models.map((m) => m.id || m.name);
                   this.detailMap[id].models = names.length
                     ? names.join("，")
-                    : "暂无数据";
+                    : getLocaleText({ cn: "暂无数据", en: "No data" });
                 })
                 .catch((err) => {
-                  this.detailMap[id].models = `加载失败：${err.message}`;
+                  this.detailMap[id].models = getLocaleText({ cn: "加载失败：{msg}", en: "Load failed: {msg}" }, { msg: err.message });
                 }),
               assistant
                 .getRemaining()
                 .then((remaining) => {
                   const lines = remaining.balances
-                    .map((b) => `${b.amount} ${b.currency ?? "未知货币"}`)
+                    .map((b) => `${b.amount} ${b.currency ?? getLocaleText({ cn: "未知货币", en: "unknown currency" })}`)
                     .join("，");
                   this.detailMap[id].balance = lines
                     ? lines
                     : remaining.raw
                       ? JSON.stringify(remaining.raw)
-                      : "暂无数据";
+                      : getLocaleText({ cn: "暂无数据", en: "No data" });
                 })
                 .catch((err) => {
-                  this.detailMap[id].balance = `加载失败：${err.message}`;
+                  this.detailMap[id].balance = getLocaleText({ cn: "加载失败：{msg}", en: "Load failed: {msg}" }, { msg: err.message });
                 }),
             ]);
 
@@ -732,18 +752,19 @@
           async handleDelete(id) {
             const key = this.apiKeys.find((k) => k.id === id);
             const ok = await confirm({
-              title: "删除确认",
-              message: `确定要删除 ${
-                key ? key.maskedKey : "这条"
-              } API Key 吗？此操作无法撤销。`,
-              yes: "删除",
-              cancel: "取消",
+              title: getLocaleText({ cn: "删除确认", en: "Confirm Deletion" }),
+              message: getLocaleText(
+                { cn: "确定要删除 {key} API Key 吗？此操作无法撤销。", en: "Are you sure you want to delete the {key} API Key? This cannot be undone." },
+                { key: key ? key.maskedKey : getLocaleText({ cn: "这条", en: "this" }) },
+              ),
+              yes: getLocaleText({ cn: "删除", en: "Delete" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
             });
             if (ok) {
               removeKey(id);
               delete this.detailMap[id];
               sessionStorage.removeItem(`ai-manager:${id}:detail`);
-              toast({ message: "已删除", color: "success" });
+              toast({ message: getLocaleText({ cn: "已删除", en: "Deleted" }), color: "success" });
             }
           },
         },

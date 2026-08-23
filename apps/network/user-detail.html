@@ -309,12 +309,13 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <div class="container">
     <div class="header">
       <st-icon-button
-        style="font-size: 13px" icon size="s" on:click="goBack" title="返回"><n-icon icon="mdi:arrow-left"></n-icon></st-icon-button>
-      <h1>用户详情</h1>
+        style="font-size: 13px" icon size="s" on:click="goBack" attr:title="t('back')"><n-icon icon="mdi:arrow-left"></n-icon></st-icon-button>
+      <h1><locale-text><span lang="cn">用户详情</span><span lang="en">User Details</span></locale-text></h1>
     </div>
 
     <o-if :value="error">
@@ -333,26 +334,29 @@
             <o-if :value="online">
               <span class="badge on">
                 <n-icon icon="mdi:check-circle-outline"></n-icon>
-                在线
+                <locale-text><span lang="cn">在线</span><span lang="en">Online</span></locale-text>
               </span>
             </o-if>
             <o-if :value="!online">
-              <span class="badge">离线</span>
+              <span class="badge"><locale-text><span lang="cn">离线</span><span lang="en">Offline</span></locale-text></span>
             </o-if>
           </div>
         </div>
       </div>
 
       <div class="row">
-        <div class="label">用户 ID</div>
+        <div class="label"><locale-text><span lang="cn">用户 ID</span><span lang="en">User ID</span></locale-text></div>
         <div class="value">{{userId}}</div>
       </div>
       <div class="row">
-        <div class="label">在线状态</div>
-        <div class="value">{{online ? "在线" : "离线"}}</div>
+        <div class="label"><locale-text><span lang="cn">在线状态</span><span lang="en">Status</span></locale-text></div>
+        <div class="value">
+          <o-if :value="online"><locale-text><span lang="cn">在线</span><span lang="en">Online</span></locale-text></o-if>
+          <o-if :value="!online"><locale-text><span lang="cn">离线</span><span lang="en">Offline</span></locale-text></o-if>
+        </div>
       </div>
       <div class="row">
-        <div class="label">最近 RTT</div>
+        <div class="label"><locale-text><span lang="cn">最近 RTT</span><span lang="en">Latest RTT</span></locale-text></div>
         <div class="value">
           <o-if :value="rtt !== null">
             {{rtt}} ms
@@ -364,7 +368,7 @@
         </div>
       </div>
       <div class="row">
-        <div class="label">在线 Session</div>
+        <div class="label"><locale-text><span lang="cn">在线 Session</span><span lang="en">Online Sessions</span></locale-text></div>
         <div class="value">
           <o-if :value="sessionIds.length === 0">-</o-if>
           <o-if :value="sessionIds.length > 0">
@@ -384,7 +388,7 @@
           attr:disabled="busy"
         >
           <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
-          刷新会话
+          <locale-text><span lang="cn">刷新会话</span><span lang="en">Refresh Sessions</span></locale-text>
         </st-button>
         <st-button
           variant="outlined"
@@ -403,19 +407,19 @@
           attr:disabled="busy"
         >
           <n-icon icon="mdi:link-off" slot="prefix"></n-icon>
-          断开连接
+          <locale-text><span lang="cn">断开连接</span><span lang="en">Disconnect</span></locale-text>
         </st-button>
       </div>
 
       <div class="traffic-section">
-        <h3>流量统计</h3>
+        <h3><locale-text><span lang="cn">流量统计</span><span lang="en">Traffic Stats</span></locale-text></h3>
         <div class="metrics">
           <div class="metric">
-            <div class="k">RTC 发送</div>
+            <div class="k"><locale-text><span lang="cn">RTC 发送</span><span lang="en">RTC Sent</span></locale-text></div>
             <div class="v">{{rtcSentText}}</div>
           </div>
           <div class="metric">
-            <div class="k">RTC 接收</div>
+            <div class="k"><locale-text><span lang="cn">RTC 接收</span><span lang="en">RTC Received</span></locale-text></div>
             <div class="v">{{rtcReceivedText}}</div>
           </div>
         </div>
@@ -442,8 +446,17 @@
 
   <script>
     import { getUser } from "/nos/user/main.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
     const NAMESPACE = "default";
+
+    const L10N = {
+      back: { cn: "返回", en: "Back" },
+    };
+    const t = (key) => {
+      const i = L10N[key];
+      return i ? getLocaleText(i) : key;
+    };
 
     function shortId(userId) {
       if (!userId) return "";
@@ -478,13 +491,16 @@
         },
         async ready() {
           if (!this.userId) {
-            this.error = "缺少 userId 参数";
+            this.error = getLocaleText({ cn: "缺少 userId 参数", en: "Missing userId parameter" });
             return;
           }
           try {
             this._user = await getUser(NAMESPACE);
           } catch (err) {
-            this.error = "初始化用户失败：" + (err.message || err);
+            this.error = getLocaleText(
+              { cn: "初始化用户失败：{msg}", en: "Failed to initialize user: {msg}" },
+              { msg: err.message || err },
+            );
             return;
           }
           this._locateRemote();
@@ -501,6 +517,9 @@
           }
         },
         proto: {
+          t(key) {
+            return t(key);
+          },
           _locateRemote() {
             const remotes = Array.isArray(this._user.remoteUsers)
               ? this._user.remoteUsers
@@ -573,7 +592,10 @@
               }
             } catch (err) {
               console.error("[user-detail] refreshSessions 失败：", err);
-              this.error = "刷新会话失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "刷新会话失败：{msg}", en: "Failed to refresh sessions: {msg}" },
+                { msg: err.message || err },
+              );
             } finally {
               this.busy = false;
             }
@@ -591,7 +613,10 @@
               }
             } catch (err) {
               console.error("[user-detail] ping 失败：", err);
-              this.error = "Ping 失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "Ping 失败：{msg}", en: "Ping failed: {msg}" },
+                { msg: err.message || err },
+              );
             } finally {
               this.busy = false;
             }
@@ -606,7 +631,10 @@
               this._remoteUser = null;
             } catch (err) {
               console.error("[user-detail] disconnect 失败：", err);
-              this.error = "断开失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "断开失败：{msg}", en: "Disconnect failed: {msg}" },
+                { msg: err.message || err },
+              );
             } finally {
               this.busy = false;
             }

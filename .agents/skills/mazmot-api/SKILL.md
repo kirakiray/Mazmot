@@ -54,9 +54,10 @@ Mazmot 里的每一个应用都遵循统一的目录结构：
 | 字段 | 说明 |
 | ---- | ---- |
 | `name` | 应用唯一标识，需匹配 `/^[A-Za-z0-9_-]+$/` |
-| `displayName` | 展示名 |
+| `displayName` | 展示名（默认基准值；官方应用必须为英文） |
 | `version` | 语义化版本号 |
-| `description` | 应用描述 |
+| `description` | 应用描述（默认基准值；官方应用必须为英文） |
+| `i18n` | 可选，多语言覆盖：`{ "cn": { "displayName": "...", "description": "..." } }`；`loadApps` 按 `getLang()` 解析，回退链：`i18n[当前语言]` → 基准值 |
 | `icon` | 图标，可用 emoji 字符串或图标 URL |
 | `entry` | 入口 HTML 相对路径，固定 `./index.html` |
 | `appConfig` | ofa.js app 配置相对路径，固定 `./app-config.js` |
@@ -161,7 +162,7 @@ splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远
 
 ## 5. 应用模板（创建新应用）
 
-Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。
+Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。`__template.json` 的 `name` / `desc` **基准值必须为英文**，可选 `i18n` 字段按语言码覆盖（结构同 `__app.json`：`"i18n": { "cn": { "name": "...", "desc": "..." } }`），`loadTemplates` 按 `getLang()` 解析，回退链：`i18n[当前语言]` → 基准英文。
 
 ```js
 import {
@@ -194,6 +195,20 @@ await writeTemplateFiles({
 ## 6. 官方应用（应用市场）
 
 官方应用位于 `official-apps/<id>/`，结构同模板，清单文件名为 `__app.json`。
+
+`__app.json` 的 `name` / `desc` **基准值必须为英文**；可选 `i18n` 字段按语言码覆盖多语言名称与描述：
+
+```json
+{
+  "name": "Web Bookmarks",
+  "desc": "English base description...",
+  "i18n": {
+    "cn": { "name": "网页收藏夹", "desc": "中文描述..." }
+  }
+}
+```
+
+展示时由 `loadOfficialAppMeta` / `installOfficialApp` 按当前语言（`getLang()`）解析，回退链：`i18n[当前语言]` → 基准英文。
 
 ```js
 import {

@@ -269,6 +269,45 @@
       z-index: 3;
     }
 
+    /* 设置弹窗：左侧导航 + 右侧内容。
+       高度直接定在自身（80vh），不依赖 st-dialog 内部结构；
+       视口过矮时由组件 .body 的 overflow 兜底裁剪 */
+    .settings-body {
+      display: flex;
+      height: 80vh;
+      text-align: start;
+    }
+    .settings-nav {
+      width: 160px;
+      flex-shrink: 0;
+      padding-right: 8px;
+      border-right: 1px solid var(--md-sys-color-surface-variant);
+      overflow-y: auto;
+    }
+    .settings-nav st-list-item {
+      border-radius: 12px;
+    }
+    .settings-nav st-list-item[active] {
+      background-color: var(--md-sys-color-secondary-container);
+    }
+    .settings-content {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      padding: 8px 4px 8px 20px;
+      overflow-y: auto;
+    }
+    .settings-field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 8px;
+    }
+    .dlg-settings::part(panel) {
+      width: 100%;
+      max-width: 800px; /* 与主内容容器 .container 一致 */
+    }
+
     /* 对话框面板宽度（st-dialog 面板在 shadow 内，用 ::part 定制） */
     .dlg-wide::part(panel) {
       width: min(800px, 100%);
@@ -283,8 +322,10 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/switch/switch.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/mz/comps/ercode/ercode.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <st-dialog
     class="dlg-wide"
@@ -293,7 +334,9 @@
     on:close-dialog="handleDialogClose"
     on:open-market="handleOpenMarket"
   >
-    <h2 slot="headline">添加应用</h2>
+    <h2 slot="headline">
+      <locale-text><span lang="cn">添加应用</span><span lang="en">Add App</span></locale-text>
+    </h2>
     <o-page src="./home/add-app.html" style="width: 100%"></o-page>
   </st-dialog>
 
@@ -303,7 +346,9 @@
     auto-close
     on:close-dialog="handleMarketClose"
   >
-    <h2 slot="headline">应用市场</h2>
+    <h2 slot="headline">
+      <locale-text><span lang="cn">应用市场</span><span lang="en">App Market</span></locale-text>
+    </h2>
     <o-page
       src="./home/market.html"
       style="width: 100%; min-height: 80vh"
@@ -315,7 +360,9 @@
     sync:open="shareDialogOpen"
     auto-close
   >
-    <h2 slot="headline">分享二维码</h2>
+    <h2 slot="headline">
+      <locale-text><span lang="cn">分享二维码</span><span lang="en">Share QR Code</span></locale-text>
+    </h2>
     <div style="padding: 4px 0">
       <div class="share-qr">
         <o-if :value="shareUrl">
@@ -324,22 +371,72 @@
         <span class="share-qr-url">{{shareUrl}}</span>
       </div>
       <div class="share-hint">
-        对方扫码即可自动安装并进入应用。请保持本页面开启，关闭后对方将无法拉取。
+        <locale-text>
+          <span lang="cn">对方扫码即可自动安装并进入应用。请保持本页面开启，关闭后对方将无法拉取。</span>
+          <span lang="en">The other party can scan the code to install and open the app automatically. Keep this page open; once closed, they can no longer fetch the data.</span>
+        </locale-text>
       </div>
     </div>
     <div slot="actions">
       <st-button on:click="copyShareLink">
         <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
-        复制链接
+        <locale-text><span lang="cn">复制链接</span><span lang="en">Copy Link</span></locale-text>
       </st-button>
-      <st-button variant="text" on:click="closeShareDialog">关闭</st-button>
+      <st-button variant="text" on:click="closeShareDialog">
+        <locale-text><span lang="cn">关闭</span><span lang="en">Close</span></locale-text>
+      </st-button>
+    </div>
+  </st-dialog>
+
+  <st-dialog
+    class="dlg-settings"
+    sync:open="settingsOpen"
+    auto-close
+  >
+    <h2 slot="headline">
+      <locale-text><span lang="cn">设置</span><span lang="en">Settings</span></locale-text>
+    </h2>
+    <div class="settings-body">
+      <div class="settings-nav">
+        <st-list>
+          <st-list-item active>
+            <n-icon icon="mdi:tune" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">常规</span><span lang="en">General</span></locale-text>
+          </st-list-item>
+        </st-list>
+      </div>
+      <div class="settings-content">
+        <div class="settings-field-label">
+          <locale-text><span lang="cn">语言</span><span lang="en">Language</span></locale-text>
+        </div>
+        <st-select
+          attr:default-value="lang"
+          style="width: 200px"
+          on:change="handleLangChange"
+        >
+          <option value="cn">中文</option>
+          <option value="en">English</option>
+        </st-select>
+      </div>
     </div>
   </st-dialog>
 
   <div class="container">
     <div class="header">
-      <h2>应用列表</h2>
-      <st-button style="font-size: 13px" on:click="handleAdd">添加应用</st-button>
+      <h2><locale-text><span lang="cn">应用列表</span><span lang="en">My Apps</span></locale-text></h2>
+      <div style="display: flex; gap: 8px; align-items: center">
+        <st-icon-button
+          style="font-size: 13px"
+          on:click="handleSettings"
+          attr:title="t('settingsTitle')"
+        >
+          <n-icon icon="mdi:cog-outline"></n-icon>
+        </st-icon-button>
+        <st-button style="font-size: 13px" on:click="handleAdd">
+          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">添加应用</span><span lang="en">Add App</span></locale-text>
+        </st-button>
+      </div>
     </div>
 
     <div class="list-wrapper">
@@ -352,27 +449,30 @@
                 <span class="item-name">{{$data.name}}</span>
                 <span class="version-badge">v{{$data.version}}</span>
                 <o-if :value="$data.isMine">
-                  <span class="mine-badge" title="由当前账号开发发布">
+                  <span class="mine-badge" attr:title="$host.t('mineTitle')">
                     <n-icon icon="mdi:account-hard-hat"></n-icon>
-                    我开发的
+                    <locale-text><span lang="cn">我开发的</span><span lang="en">Mine</span></locale-text>
                   </span>
                 </o-if>
                 <o-if :value="$data.source === 'official'">
-                  <span class="official-badge" title="来自应用市场">
+                  <span class="official-badge" attr:title="$host.t('officialTitle')">
                     <n-icon icon="mdi:store-outline"></n-icon>
-                    官方应用
+                    <locale-text><span lang="cn">官方应用</span><span lang="en">Official</span></locale-text>
                   </span>
                 </o-if>
                 <o-if :value="$data.offline">
-                  <span class="offline-badge" title="该官方应用已从市场下线，无法更新">
+                  <span class="offline-badge" attr:title="$host.t('offlineTitle')">
                     <n-icon icon="mdi:cloud-off-outline"></n-icon>
-                    已下线
+                    <locale-text><span lang="cn">已下线</span><span lang="en">Offline</span></locale-text>
                   </span>
                 </o-if>
                 <o-if :value="$data.hasUpdate">
-                  <span class="update-badge" title="应用市场有新版本可更新">
+                  <span class="update-badge" attr:title="$host.t('updateBadgeTitle')">
                     <n-icon icon="mdi:arrow-up-circle-outline"></n-icon>
-                    可更新 v{{$data.latestVersion}}
+                    <locale-text attr:data-v="$data.latestVersion">
+                      <span lang="cn">可更新 v{v}</span>
+                      <span lang="en">Update to v{v}</span>
+                    </locale-text>
                   </span>
                 </o-if>
               </div>
@@ -380,9 +480,9 @@
 
               <div slot="suffix" class="item-suffix">
                 <o-if :value="$data.opened">
-                  <span class="open-badge" title="点击可切换到已打开的窗口">
+                  <span class="open-badge" attr:title="$host.t('openedTitle')">
                     <n-icon icon="mdi:circle-medium"></n-icon>
-                    已打开
+                    <locale-text><span lang="cn">已打开</span><span lang="en">Open</span></locale-text>
                   </span>
                 </o-if>
 
@@ -390,7 +490,7 @@
                   class="icon-btn tab-btn"
                   style="font-size: 13px"
                   on:click="$host.handleOpenTab($event, $data)"
-                  title="在新标签页中打开"
+                  attr:title="$host.t('openTabTitle')"
                 >
                   <n-icon icon="mdi:tab-plus"></n-icon>
                 </st-icon-button>
@@ -399,7 +499,7 @@
                   class="icon-btn window-btn"
                   style="font-size: 13px"
                   on:click="$host.handleOpenWindow($event, $data)"
-                  title="在小窗口中打开（类原生应用）"
+                  attr:title="$host.t('openWindowTitle')"
                 >
                   <n-icon icon="mdi:open-in-new"></n-icon>
                 </st-icon-button>
@@ -409,33 +509,33 @@
                 <st-list-item>
                   <div class="sub-info">
                     <div class="sub-info-row">
-                      <span class="sub-info-label">应用来源：</span>
+                      <span class="sub-info-label"><locale-text><span lang="cn">应用来源：</span><span lang="en">Source:</span></locale-text></span>
                       <span
                         class="source-badge"
                         attr:data-source="$data.source"
-                        title="应用来源"
+                        attr:title="$host.t('sourceTitle')"
                       >
                         <o-if :value="$data.source === 'local'">
                           <n-icon icon="mdi:folder-outline"></n-icon>
-                          本地目录
+                          <locale-text><span lang="cn">本地目录</span><span lang="en">Local Folder</span></locale-text>
                         </o-if>
                         <o-if :value="$data.source === 'virtual'">
                           <n-icon icon="mdi:database-outline"></n-icon>
-                          虚拟目录
+                          <locale-text><span lang="cn">虚拟目录</span><span lang="en">Virtual Dir</span></locale-text>
                         </o-if>
                         <o-if :value="$data.source === 'official'">
                           <n-icon icon="mdi:store-outline"></n-icon>
-                          应用市场
+                          <locale-text><span lang="cn">应用市场</span><span lang="en">App Market</span></locale-text>
                         </o-if>
                       </span>
                     </div>
                     <div class="sub-info-row">
-                      <span class="sub-info-label">目录名称：</span>
+                      <span class="sub-info-label"><locale-text><span lang="cn">目录名称：</span><span lang="en">Directory:</span></locale-text></span>
                       <span class="sub-info-value">{{$data.dirName}}</span>
                     </div>
                     <o-if :value="$data.appId">
                       <div class="sub-info-row">
-                        <span class="sub-info-label">应用 ID：</span>
+                        <span class="sub-info-label"><locale-text><span lang="cn">应用 ID：</span><span lang="en">App ID:</span></locale-text></span>
                         <span
                           class="sub-info-value app-id-value"
                           attr:title="$data.appId"
@@ -446,14 +546,14 @@
                           class="icon-btn"
                           style="font-size: 13px"
                           on:click="$host.copyAppId($event, $data)"
-                          title="复制应用 ID"
+                          attr:title="$host.t('copyAppIdTitle')"
                         >
                           <n-icon icon="mdi:content-copy"></n-icon>
                         </st-icon-button>
                       </div>
                     </o-if>
                     <div class="sub-info-row" style="margin: 0 0 4px">
-                      <span class="sub-info-label">分享：</span>
+                      <span class="sub-info-label"><locale-text><span lang="cn">分享：</span><span lang="en">Share:</span></locale-text></span>
                       <div class="auto-share-row" style="flex: 1; min-width: 0">
                         <div class="auto-share-header">
                           <st-switch
@@ -472,7 +572,8 @@
                               style="font-size: 12px"
                               on:click="$host.requestPermissionAndRetry($event, $data)"
                             >
-                              点击重新获取权限
+                              <n-icon icon="mdi:shield-refresh" slot="prefix"></n-icon>
+                              <locale-text><span lang="cn">点击重新获取权限</span><span lang="en">Retry Permission</span></locale-text>
                             </st-button>
                           </o-if>
                         </div>
@@ -480,7 +581,7 @@
                     </div>
                     <o-if :value="$data.autoShare">
                       <div class="sub-info-row">
-                        <span class="sub-info-label">分享链接：</span>
+                        <span class="sub-info-label"><locale-text><span lang="cn">分享链接：</span><span lang="en">Share Link:</span></locale-text></span>
                         <span
                           class="sub-info-value app-id-value"
                           attr:title="$data.autoShareUrl"
@@ -490,7 +591,7 @@
                           </o-if>
                           <o-if :value="!$data.autoShareUrl">
                             <span style="opacity: 0.6">
-                              {{$data.autoShareStatus || '等待发布...'}}
+                              {{$data.autoShareStatus || $host.t('waitingPublish')}}
                             </span>
                           </o-if>
                         </span>
@@ -499,7 +600,7 @@
                           style="font-size: 13px"
                           attr:disabled="!$data.autoShareUrl"
                           on:click="$host.copyAutoShareUrl($event, $data)"
-                          title="复制分享链接"
+                          attr:title="$host.t('copyShareUrlTitle')"
                         >
                           <n-icon icon="mdi:content-copy"></n-icon>
                         </st-icon-button>
@@ -508,18 +609,21 @@
                           style="font-size: 13px"
                           attr:disabled="!$data.autoShareUrl"
                           on:click="$host.showShareQrCode($event, $data)"
-                          title="查看二维码"
+                          attr:title="$host.t('viewQrTitle')"
                         >
                           <n-icon icon="mdi:qrcode"></n-icon>
                         </st-icon-button>
                       </div>
                     </o-if>
                     <div class="sub-info-row">
-                      <span class="sub-info-label">操作：</span>
+                      <span class="sub-info-label"><locale-text><span lang="cn">操作：</span><span lang="en">Actions:</span></locale-text></span>
                       <div class="action-row">
                         <o-if :value="$data.offline">
                           <span class="update-status">
-                            该官方应用已从市场下线，无法更新
+                            <locale-text>
+                              <span lang="cn">该官方应用已从市场下线，无法更新</span>
+                              <span lang="en">This official app has been removed from the market and cannot be updated</span>
+                            </locale-text>
                           </span>
                         </o-if>
                         <o-if :value="$data.hasUpdate">
@@ -532,7 +636,10 @@
                               icon="mdi:download-outline"
                               slot="prefix"
                             ></n-icon>
-                            更新到 v{{$data.latestVersion}}
+                            <locale-text attr:data-v="$data.latestVersion">
+                              <span lang="cn">更新到 v{v}</span>
+                              <span lang="en">Update to v{v}</span>
+                            </locale-text>
                           </st-button>
                         </o-if>
                         <o-if :value="$data.updateStatus">
@@ -551,7 +658,7 @@
                             icon="mdi:delete-outline"
                             slot="prefix"
                           ></n-icon>
-                          删除应用
+                          <locale-text><span lang="cn">删除应用</span><span lang="en">Delete App</span></locale-text>
                         </st-button>
                       </div>
                     </div>
@@ -563,7 +670,12 @@
         </st-list>
       </o-if>
       <o-if :value="appList.length === 0">
-        <div class="empty">还没有应用，点击右上角「添加应用」开始创建吧。</div>
+        <div class="empty">
+          <locale-text>
+            <span lang="cn">还没有应用，点击右上角「添加应用」开始创建吧。</span>
+            <span lang="en">No apps yet. Click "Add App" in the top right to create one.</span>
+          </locale-text>
+        </div>
       </o-if>
     </div>
   </div>
@@ -597,6 +709,33 @@
       compareVersions,
       installOfficialApp,
     } from "./home/official-app-writer.js";
+    import {
+      getLocaleText,
+      getLang,
+      setLang,
+    } from "/nos/locale-text/get-locale-text.js";
+
+    // 属性类文案（title 等）翻译表；模板正文文案用 <locale-text> 组件
+    const L10N = {
+      mineTitle: { cn: "由当前账号开发发布", en: "Developed by the current account" },
+      officialTitle: { cn: "来自应用市场", en: "From the App Market" },
+      offlineTitle: { cn: "该官方应用已从市场下线，无法更新", en: "This official app has been removed from the market and cannot be updated" },
+      updateBadgeTitle: { cn: "应用市场有新版本可更新", en: "A newer version is available in the market" },
+      openedTitle: { cn: "点击可切换到已打开的窗口", en: "Click to switch to the opened window" },
+      openTabTitle: { cn: "在新标签页中打开", en: "Open in a new tab" },
+      openWindowTitle: { cn: "在小窗口中打开（类原生应用）", en: "Open in a small window (native-like)" },
+      sourceTitle: { cn: "应用来源", en: "App source" },
+      copyAppIdTitle: { cn: "复制应用 ID", en: "Copy app ID" },
+      copyShareUrlTitle: { cn: "复制分享链接", en: "Copy share link" },
+      viewQrTitle: { cn: "查看二维码", en: "View QR code" },
+      waitingPublish: { cn: "等待发布...", en: "Waiting to publish..." },
+      settingsTitle: { cn: "设置", en: "Settings" },
+    };
+
+    const t = (key) => {
+      const item = L10N[key];
+      return item ? getLocaleText(item) : key;
+    };
 
     const storage = getStorage("mazmot");
 
@@ -664,11 +803,21 @@
             console.warn(`读取 ${app.name} 的配置失败：`, err);
           }
 
+          // app.json 的 displayName/description 支持多语言：
+          // 基准值为默认展示名，i18n[当前语言] 可覆盖（回退链：i18n → 基准）
+          const i18nEntry =
+            (manifest && manifest.i18n && manifest.i18n[getLang()]) || {};
           return {
             icon: (manifest && manifest.icon) || "📦",
             name:
-              (manifest && (manifest.displayName || manifest.name)) || app.name,
-            desc: (manifest && manifest.description) || app.desc || "",
+              i18nEntry.displayName ||
+              (manifest && (manifest.displayName || manifest.name)) ||
+              app.name,
+            desc:
+              i18nEntry.description ||
+              (manifest && manifest.description) ||
+              app.desc ||
+              "",
             dirName:
               app.dirName ||
               (app.source === "virtual"
@@ -697,7 +846,9 @@
             autoShare: !!app.autoShare,
             autoShareUrl: "",
             autoShareState: app.autoShare ? "pending" : "idle",
-            autoShareStatus: app.autoShare ? "等待发布..." : "已关闭",
+            autoShareStatus: app.autoShare
+              ? t("waitingPublish")
+              : getLocaleText({ cn: "已关闭", en: "Off" }),
             autoSharePermissionError: false,
           };
         }),
@@ -706,17 +857,24 @@
     }
 
     export default async () => {
-      const initialApps = await loadApps();
-
       return {
         data: {
           dialogOpen: false,
           marketDialogOpen: false,
-          appList: initialApps,
+          appList: [],
           shareDialogOpen: false,
           shareUrl: "",
+          settingsOpen: false,
+          lang: getLang(),
         },
-        attached() {
+        async attached() {
+          // 不能把含 _handle 的应用列表放进 data 默认值：ofa.js 注册时会
+          // 对 data 做深拷贝（deepCopyData），DirHandle 类实例会被拆成丢失
+          // 原型的普通对象；注册后再赋值走 stanz set 陷阱，_ 前缀 key 原样
+          // 存入，句柄不会被破坏。因此这里先加载列表。
+          const apps = await loadApps();
+          apps.forEach((app) => this.appList.push(app));
+
           // 启动广播监听 + 定时探测
           this._stopWatcher = startAppStatusWatcher({
             onAlive: (name) => {
@@ -750,6 +908,25 @@
             this.dialogOpen = true;
           },
 
+          // 打开设置弹窗
+          handleSettings() {
+            this.settingsOpen = true;
+          },
+
+          // 设置里的语言下拉切换；setLang 会让 <locale-text> 立即刷新，
+          // 重载页面让 attr:title 与运行时生成的状态文案同步更新
+          handleLangChange(event) {
+            const next = event.target.value;
+            if (!next || next === getLang()) return;
+            setLang(next);
+            localStorage.setItem("lang", next);
+            location.reload();
+          },
+
+          t(key) {
+            return t(key);
+          },
+
           _markOpened(app, win) {
             markOpened(app._recordName, win);
             const target = this.appList.find(
@@ -770,7 +947,13 @@
           // 新标签页打开
           async handleOpen(app) {
             if (!app || !app._handle) {
-              toast({ message: "无法打开：缺少应用句柄", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "无法打开：缺少应用句柄",
+                  en: "Cannot open: app handle missing",
+                }),
+                color: "error",
+              });
               return;
             }
             if (focusIfOpened(app._recordName)) return;
@@ -780,7 +963,13 @@
               url = await getRunUrl(app);
             } catch (err) {
               toast({
-                message: "无法生成运行地址：" + (err.message || err),
+                message: getLocaleText(
+                  {
+                    cn: "无法生成运行地址：{msg}",
+                    en: "Failed to build run URL: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
               return;
@@ -797,7 +986,13 @@
               if (event.preventDefault) event.preventDefault();
             }
             if (!app || !app._handle) {
-              toast({ message: "无法打开：缺少应用句柄", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "无法打开：缺少应用句柄",
+                  en: "Cannot open: app handle missing",
+                }),
+                color: "error",
+              });
               return;
             }
             if (focusIfOpened(app._recordName)) return;
@@ -807,7 +1002,13 @@
               url = await getRunUrl(app);
             } catch (err) {
               toast({
-                message: "无法生成运行地址：" + (err.message || err),
+                message: getLocaleText(
+                  {
+                    cn: "无法生成运行地址：{msg}",
+                    en: "Failed to build run URL: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
               return;
@@ -846,7 +1047,10 @@
             );
             if (!win) {
               toast({
-                message: "窗口被浏览器拦截，请允许弹出窗口",
+                message: getLocaleText({
+                  cn: "窗口被浏览器拦截，请允许弹出窗口",
+                  en: "The window was blocked by the browser. Please allow pop-ups.",
+                }),
                 color: "error",
               });
               return;
@@ -911,43 +1115,69 @@
               if (event.preventDefault) event.preventDefault();
             }
             if (!app || !app.officialId || !app._handle) {
-              toast({ message: "无法更新：缺少应用信息", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "无法更新：缺少应用信息",
+                  en: "Cannot update: app info missing",
+                }),
+                color: "error",
+              });
               return;
             }
             if (app.updating) return;
 
             const ok = await confirm({
-              title: "更新应用",
-              message: `将「${app.name}」从 v${app.version} 更新到 v${app.latestVersion}。应用内保存的数据不受影响，但自定义修改过的源文件会被覆盖。`,
-              yes: "更新",
-              cancel: "取消",
+              title: getLocaleText({ cn: "更新应用", en: "Update App" }),
+              message: getLocaleText(
+                {
+                  cn: "将「{name}」从 v{from} 更新到 v{to}。应用内保存的数据不受影响，但自定义修改过的源文件会被覆盖。",
+                  en: "Update \"{name}\" from v{from} to v{to}. Data saved inside the app is unaffected, but locally modified source files will be overwritten.",
+                },
+                { name: app.name, from: app.version, to: app.latestVersion },
+              ),
+              yes: getLocaleText({ cn: "更新", en: "Update" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
             });
             if (!ok) return;
 
             app.updating = true;
-            app.updateStatus = "准备更新...";
+            app.updateStatus = getLocaleText({
+              cn: "准备更新...",
+              en: "Preparing update...",
+            });
             try {
               await installOfficialApp({
                 dirHandle: app._handle,
                 appId: app.officialId,
                 onProgress: ({ path, status }) => {
-                  app.updateStatus =
+                  app.updateStatus = getLocaleText(
                     status === "writing"
-                      ? `正在写入 ${path} ...`
-                      : `已写入 ${path}`;
+                      ? { cn: "正在写入 {path} ...", en: "Writing {path} ..." }
+                      : { cn: "已写入 {path}", en: "Written {path}" },
+                    { path },
+                  );
                 },
               });
               app.updateStatus = "";
               toast({
-                message: `${app.name} 已更新到 v${app.latestVersion}`,
+                message: getLocaleText(
+                  {
+                    cn: "{name} 已更新到 v{v}",
+                    en: "{name} updated to v{v}",
+                  },
+                  { name: app.name, v: app.latestVersion },
+                ),
                 color: "success",
               });
               await this.refreshApps();
             } catch (err) {
               console.error("更新失败：", err);
-              app.updateStatus = "更新失败：" + (err.message || err);
+              app.updateStatus = getLocaleText(
+                { cn: "更新失败：{msg}", en: "Update failed: {msg}" },
+                { msg: err.message || err },
+              );
               toast({
-                message: "更新失败：" + (err.message || err),
+                message: app.updateStatus,
                 color: "error",
               });
             } finally {
@@ -972,7 +1202,13 @@
               if (event.preventDefault) event.preventDefault();
             }
             if (!app || !app.autoShareUrl) {
-              toast({ message: "分享链接尚未生成", color: "tertiary" });
+              toast({
+                message: getLocaleText({
+                  cn: "分享链接尚未生成",
+                  en: "Share link not ready yet",
+                }),
+                color: "tertiary",
+              });
               return;
             }
             this.shareUrl = app.autoShareUrl;
@@ -1006,7 +1242,10 @@
               }
               target.autoShareUrl = "";
               target.autoShareState = "idle";
-              target.autoShareStatus = "已关闭";
+              target.autoShareStatus = getLocaleText({
+                cn: "已关闭",
+                en: "Off",
+              });
               return;
             }
 
@@ -1023,7 +1262,10 @@
             // 官方应用分支
             if (target.source === "official" && target.officialId) {
               target.autoShareState = "ready";
-              target.autoShareStatus = "官方应用，对方可直接连接";
+              target.autoShareStatus = getLocaleText({
+                cn: "官方应用，对方可直接连接",
+                en: "Official app, others can connect directly",
+              });
               target.autoShareUrl = buildOfficialRunUrl(
                 location.origin,
                 target.officialId,
@@ -1034,11 +1276,17 @@
             // P2P 分支
             if (!target._handle) {
               target.autoShareState = "error";
-              target.autoShareStatus = "缺少目录句柄，无法发布";
+              target.autoShareStatus = getLocaleText({
+                cn: "缺少目录句柄，无法发布",
+                en: "Directory handle missing, cannot publish",
+              });
               return;
             }
             target.autoShareState = "publishing";
-            target.autoShareStatus = "发布中...";
+            target.autoShareStatus = getLocaleText({
+              cn: "发布中...",
+              en: "Publishing...",
+            });
             try {
               // 老数据补 appId
               let appId = target.appId;
@@ -1055,7 +1303,10 @@
               });
               target.autoShareUrl = shareUrl;
               target.autoShareState = "ready";
-              target.autoShareStatus = "已发布，对方可直接连接";
+              target.autoShareStatus = getLocaleText({
+                cn: "已发布，对方可直接连接",
+                en: "Published, others can connect directly",
+              });
               // 持久化 payloadHash 和 fileHash 到记录，供秒跳和撤销分享时使用
               if (payloadHash) {
                 target.payloadHash = payloadHash;
@@ -1068,8 +1319,10 @@
             } catch (err) {
               console.error("分享失败：", err);
               target.autoShareState = "error";
-              target.autoShareStatus =
-                "发布失败：" + (err.message || String(err));
+              target.autoShareStatus = getLocaleText(
+                { cn: "发布失败：{msg}", en: "Publish failed: {msg}" },
+                { msg: err.message || String(err) },
+              );
               target.autoSharePermissionError = /not allowed by the user agent or the platform/i.test(
                 err.message || "",
               );
@@ -1087,7 +1340,13 @@
               // 取出原生 FileSystemDirectoryHandle（DirHandle 包装在 _handle 属性上）
               const rawHandle = target._handle._handle || target._handle;
               if (!rawHandle || !rawHandle.requestPermission) {
-                toast({ message: "当前浏览器不支持重新获取权限", color: "error" });
+                toast({
+                  message: getLocaleText({
+                    cn: "当前浏览器不支持重新获取权限",
+                    en: "This browser does not support re-requesting permission",
+                  }),
+                  color: "error",
+                });
                 return;
               }
               // 先查询权限状态，不 granted 则请求重新授权
@@ -1099,12 +1358,24 @@
                 target.autoSharePermissionError = false;
                 await this.autoShareApp(target);
               } else {
-                toast({ message: "权限未授予，请重试", color: "tertiary" });
+                toast({
+                  message: getLocaleText({
+                    cn: "权限未授予，请重试",
+                    en: "Permission not granted, please retry",
+                  }),
+                  color: "tertiary",
+                });
               }
             } catch (err) {
               console.error("重新获取权限失败：", err);
               toast({
-                message: "重新获取权限失败：" + (err.message || err),
+                message: getLocaleText(
+                  {
+                    cn: "重新获取权限失败：{msg}",
+                    en: "Failed to re-request permission: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
             }
@@ -1127,10 +1398,19 @@
             if (!app || !app.appId) return;
             try {
               await navigator.clipboard.writeText(app.appId);
-              toast({ message: "应用 ID 已复制", color: "success" });
+              toast({
+                message: getLocaleText({
+                  cn: "应用 ID 已复制",
+                  en: "App ID copied",
+                }),
+                color: "success",
+              });
             } catch (err) {
               toast({
-                message: "复制失败，请手动复制",
+                message: getLocaleText({
+                  cn: "复制失败，请手动复制",
+                  en: "Copy failed, please copy manually",
+                }),
                 color: "error",
               });
             }
@@ -1142,15 +1422,30 @@
               if (event.preventDefault) event.preventDefault();
             }
             if (!app || !app.autoShareUrl) {
-              toast({ message: "分享链接尚未生成", color: "tertiary" });
+              toast({
+                message: getLocaleText({
+                  cn: "分享链接尚未生成",
+                  en: "Share link not ready yet",
+                }),
+                color: "tertiary",
+              });
               return;
             }
             try {
               await navigator.clipboard.writeText(app.autoShareUrl);
-              toast({ message: "分享链接已复制", color: "success" });
+              toast({
+                message: getLocaleText({
+                  cn: "分享链接已复制",
+                  en: "Share link copied",
+                }),
+                color: "success",
+              });
             } catch (err) {
               toast({
-                message: "复制失败，请手动复制",
+                message: getLocaleText({
+                  cn: "复制失败，请手动复制",
+                  en: "Copy failed, please copy manually",
+                }),
                 color: "error",
               });
             }
@@ -1160,10 +1455,16 @@
             if (!this.shareUrl) return;
             try {
               await navigator.clipboard.writeText(this.shareUrl);
-              toast({ message: "链接已复制", color: "success" });
+              toast({
+                message: getLocaleText({ cn: "链接已复制", en: "Link copied" }),
+                color: "success",
+              });
             } catch (err) {
               toast({
-                message: "复制失败，请手动复制",
+                message: getLocaleText({
+                  cn: "复制失败，请手动复制",
+                  en: "Copy failed, please copy manually",
+                }),
                 color: "error",
               });
             }
@@ -1180,10 +1481,16 @@
             }
 
             const ok = await confirm({
-              title: "删除应用",
-              message: `确定要从列表中删除应用「${app.name}」吗？该操作会从列表中移除，不会删除本地目录中的文件。`,
-              yes: "删除",
-              cancel: "取消",
+              title: getLocaleText({ cn: "删除应用", en: "Delete App" }),
+              message: getLocaleText(
+                {
+                  cn: "确定要从列表中删除应用「{name}」吗？该操作会从列表中移除，不会删除本地目录中的文件。",
+                  en: "Remove \"{name}\" from the list? Files in the local directory will not be deleted.",
+                },
+                { name: app.name },
+              ),
+              yes: getLocaleText({ cn: "删除", en: "Delete" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
             });
             if (!ok) return;
 
@@ -1219,11 +1526,17 @@
               await syncOfficialAppState();
 
               await this.refreshApps();
-              toast({ message: "已删除", color: "success" });
+              toast({
+                message: getLocaleText({ cn: "已删除", en: "Deleted" }),
+                color: "success",
+              });
             } catch (err) {
               console.error(err);
               toast({
-                message: "删除失败：" + (err.message || err),
+                message: getLocaleText(
+                  { cn: "删除失败：{msg}", en: "Delete failed: {msg}" },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
             }
