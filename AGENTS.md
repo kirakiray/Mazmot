@@ -108,6 +108,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **新应用**：放在 [apps/](apps/) 下，目录名即 URL 路径（`apps/<name>/` = `/apps/<name>/`）；同时更新 [CONTEXT.md](CONTEXT.md) 目录树。
 - **新系统级组件**：放在 [comps/](comps/) 下，独立子目录 + `<tag>.html` + `README.md`（推荐带 `demo.html`）；**必须同步更新 [comps/CONTEXT.md](comps/CONTEXT.md)** 的目录树与组件说明，若被主系统使用也需更新根 [CONTEXT.md](CONTEXT.md)。
 - **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__template.json`（模板元数据 name/desc + 文件清单）+ 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id。
+- **模板路径约束（重要）**：[apps/main/home/templates/](apps/main/home/templates/) 下是创建应用的模板，每个模板最终会以**独立应用项目**的形式落地（模板目录即应用根目录）。因此模板内部的资源引用（HTML / CSS / JS 等）使用 `../` 相对路径时，**不得超出模板自身目录**；模板内部的 CONTEXT.md / AGENTS.md 同样受此约束，禁止出现指向模板目录之外的相对路径。需要使用 Mazmot / NoneOS Core 的能力（`/nos/*`、`/lib/*`、`/comps/*` 等仓库级资源）时，一律以 `/xxx` 根路径（站内绝对路径）引用，底层 Service Worker 会保证这些路径在应用运行时可用。
 - **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
 - **跨应用公共工具库**：`lib/`（参考 [lib/app-runner.js](lib/app-runner.js)、[lib/share-mgr.js](lib/share-mgr.js)），被多个应用（含模板）共享的纯逻辑模块；引用一律用绝对路径 `/lib/xxx.js`。
