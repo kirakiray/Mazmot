@@ -71,18 +71,17 @@ Mazmot/
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│   └── ai/                   # AI Provider 抽象层（DeepSeek/Kimi，被官方应用当宿主 API 引用，URL = /mz/ai/*）
-│       ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│       ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
-│       ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
-│       ├── test/             # supplier / chain 层 sibyl-test 测试
-│       └── README.md         # 完整 API 文档
-│
-├── comps/                    # 系统级公共组件（ercode / rdn-network / rnd-box），详见 comps/CONTEXT.md
-│   ├── ercode/               # <m-ercode> 二维码组件（被主应用分享弹窗使用）
-│   ├── rdn-network/          # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
-│   ├── rnd-box/              # <m-rnd-box> 可拖拽缩放浮动盒子容器
-│   └── CONTEXT.md            # 组件上下文说明
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi，被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
+│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
+│   │   ├── test/             # supplier / chain 层 sibyl-test 测试
+│   │   └── README.md         # 完整 API 文档
+│   └── comps/                # 系统级公共组件（URL = /mz/comps/*），详见 mz/comps/CONTEXT.md
+│       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
+│       ├── o-md/             # <o-md> Markdown 渲染组件
+│       ├── rdn-network/      # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
+│       └── rnd-box/          # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
@@ -403,9 +402,9 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 主 SW | [sw.js](sw.js) |
 | 宿主离线缓存文件清单 / 版本 | [host-cache.json](host-cache.json)（改动缓存文件后需同步提升 `version`） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
-| 二维码组件（分享弹窗用） | [comps/ercode/ercode.html](comps/ercode/ercode.html) |
-| 浮窗式网络面板（主应用挂载） | [comps/rdn-network/rdn-network.html](comps/rdn-network/rdn-network.html) |
-| 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
+| 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |
+| 浮窗式网络面板（主应用挂载） | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html) |
+| 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |

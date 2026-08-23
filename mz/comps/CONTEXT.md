@@ -5,11 +5,15 @@
 ## 目录结构
 
 ```
-comps/
+mz/comps/
 ├── ercode/               # 二维码展示组件
 │   ├── ercode.html
 │   ├── demo.html
 │   └── ercode.sb.html
+├── o-md/                 # Markdown 渲染组件（marked + highlight.js）
+│   ├── o-md.html
+│   ├── demo.html
+│   └── README.md
 ├── rdn-network/          # 浮窗式网络状态面板
 │   └── rdn-network.html
 └── rnd-box/              # 可拖拽/缩放的浮动盒子容器
@@ -17,6 +21,8 @@ comps/
     ├── demo.html
     └── README.md
 ```
+
+> 组件 URL 前缀为 `/mz/comps/<name>/<name>.html`，与 `/nos/`、`/mz/` 同属宿主提供的站内绝对路径。
 
 ## 组件说明
 
@@ -33,7 +39,7 @@ comps/
 - **使用示例**：
 
 ```html
-<l-m src="/comps/ercode/ercode.html"></l-m>
+<l-m src="/mz/comps/ercode/ercode.html"></l-m>
 <m-ercode content="https://github.com/ofajs/ofa.js"></m-ercode>
 ```
 
@@ -68,9 +74,9 @@ comps/
 在需要使用的页面或组件中通过 ofa.js 的 `l-m` 引入：
 
 ```html
-<l-m src="/comps/ercode/ercode.html"></l-m>
-<l-m src="/comps/rnd-box/rnd-box.html"></l-m>
-<l-m src="/comps/rdn-network/rdn-network.html"></l-m>
+<l-m src="/mz/comps/ercode/ercode.html"></l-m>
+<l-m src="/mz/comps/rnd-box/rnd-box.html"></l-m>
+<l-m src="/mz/comps/rdn-network/rdn-network.html"></l-m>
 ```
 
 ## 开发规范
