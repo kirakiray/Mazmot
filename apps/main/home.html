@@ -429,6 +429,7 @@
           <n-icon icon="mdi:cog-outline"></n-icon>
         </st-icon-button>
         <st-button style="font-size: 13px" on:click="handleAdd">
+          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
           <locale-text><span lang="cn">添加应用</span><span lang="en">Add App</span></locale-text>
         </st-button>
       </div>
@@ -567,6 +568,7 @@
                               style="font-size: 12px"
                               on:click="$host.requestPermissionAndRetry($event, $data)"
                             >
+                              <n-icon icon="mdi:shield-refresh" slot="prefix"></n-icon>
                               <locale-text><span lang="cn">点击重新获取权限</span><span lang="en">Retry Permission</span></locale-text>
                             </st-button>
                           </o-if>
@@ -841,19 +843,24 @@
     }
 
     export default async () => {
-      const initialApps = await loadApps();
-
       return {
         data: {
           dialogOpen: false,
           marketDialogOpen: false,
-          appList: initialApps,
+          appList: [],
           shareDialogOpen: false,
           shareUrl: "",
           settingsOpen: false,
           lang: getLang(),
         },
-        attached() {
+        async attached() {
+          // 不能把含 _handle 的应用列表放进 data 默认值：ofa.js 注册时会
+          // 对 data 做深拷贝（deepCopyData），DirHandle 类实例会被拆成丢失
+          // 原型的普通对象；注册后再赋值走 stanz set 陷阱，_ 前缀 key 原样
+          // 存入，句柄不会被破坏。因此这里先加载列表。
+          const apps = await loadApps();
+          apps.forEach((app) => this.appList.push(app));
+
           // 启动广播监听 + 定时探测
           this._stopWatcher = startAppStatusWatcher({
             onAlive: (name) => {
