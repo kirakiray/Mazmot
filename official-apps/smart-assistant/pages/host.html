@@ -1495,11 +1495,16 @@
           },
 
           parseSelfIdentity() {
+            // 本地安装模式：/$namespace/$dir/client/index.html
             const m = location.pathname.match(
               /^\/\$(.+?)\/(.+?)\/client\/index\.html$/,
             );
-            if (!m) return null;
-            return { namespace: m[1], dirName: m[2] };
+            if (m) return { namespace: m[1], dirName: m[2] };
+            // 在线调试模式：/official-apps/<id>/...，同样是官方应用身份，
+            // 可直接走官方 HTTP 渠道生成分享链接
+            const o = location.pathname.match(/^\/official-apps\/([^/]+)\//);
+            if (o) return { officialId: o[1], dirName: o[1] };
+            return null;
           },
 
           // ===== 访客消息处理 =====
