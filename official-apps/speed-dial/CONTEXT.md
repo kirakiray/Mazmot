@@ -8,7 +8,7 @@ Speed Dial 风格的网页收藏夹应用：分组筛选、拖拽排序、AI 导
 
 ```
 speed-dial/
-├── index.html          # 入口 HTML：加载 ofa.js + router + pui-global.css，挂载 o-app
+├── index.html          # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app
 ├── app-config.js       # 应用配置：home 页面路径 + 页面切换动画参数
 ├── app.json            # 应用 manifest（name/version/entry/appConfig 等）
 ├── __app.json          # 应用市场分发元数据（name/icon/desc + files 文件清单）
@@ -55,7 +55,7 @@ speed-dial/
 
 | 文件 | 职责 |
 |------|------|
-| `index.html` | 入口：jsdelivr 加载 ofa.js `@latest#debug` + router，引 pui-global.css，`<o-app src="./app-config.js">` |
+| `index.html` | 入口：jsdelivr 加载 ofa.js `@latest#debug` + router，引 senti-ui `st-boot.js` 主题引导，`<o-app src="./app-config.js">` |
 | `app-config.js` | 导出 `home`（页面路径）与 `pageAnime`（切换动画：opacity + 左右 30px 平移） |
 | `pages/home.html` | 主页面：状态、计算属性、增删、拖拽、持久化；内嵌 `<o-page id="dial-form">`、`<o-page id="ai-import">` 与 `<o-page id="ai-group">`，分别监听 `dial-save` / `ai-import-save` / `ai-group-apply` 事件落库 |
 | `pages/dial-form.html` | 添加/编辑弹窗页面模块：自带 `p-dialog` + 表单状态，暴露 `openForm()` 供宿主打开，保存时校验空 URL 并 `emit("dial-save")` 冒泡上抛表单值 |

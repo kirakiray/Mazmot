@@ -8,7 +8,7 @@
 [![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
 
-**Mazmot** 是一个完全运行在浏览器里的应用启动器。用户可以在其中管理、运行、分享多个独立的 Web 应用，所有应用直接在主域运行，不需要额外的容器服务或打包步骤。底层基于 [NoneOS Core](https://github.com/kirakiray/noneos-core) 提供的微前端容器化能力，上层用 [ofa.js](https://github.com/ofajs/ofa.js) 框架与 [Punch-UI](https://github.com/ofajs/Punch-UI) 组件库构建用户界面。
+**Mazmot** 是一个完全运行在浏览器里的应用启动器。用户可以在其中管理、运行、分享多个独立的 Web 应用，所有应用直接在主域运行，不需要额外的容器服务或打包步骤。底层基于 [NoneOS Core](https://github.com/kirakiray/noneos-core) 提供的微前端容器化能力，上层用 [ofa.js](https://github.com/ofajs/ofa.js) 框架与 [Senti-UI](https://github.com/ofajs/senti-ui) 组件库构建用户界面。
 
 > **本质上**，Mazmot 是 NoneOS Core 微前端容器化技术的一个**用户态实现**：它把 NoneOS Core 的虚拟文件系统、去中心化用户身份、P2P 发布能力组装成一个面向终端用户的「应用市场 + 启动器 + 分享链路」，让普通用户也能像使用操作系统一样管理 Web 应用。
 
@@ -37,7 +37,7 @@
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
 │  ┌────────────────────────┴─────────────────────────────────┐   │
-│  │              ofa.js Framework + Punch-UI v2                │   │
+│  │              ofa.js Framework + Senti-UI                   │   │
 │  │       (Web Components / 数据绑定 / 路由 / 组件库)           │   │
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
@@ -190,7 +190,7 @@ https://your-host/apps/run-app/?u={publisherUserId}&h={payloadHash}
 
 - **ofajs-docs** — 页面/组件模块开发
 - **noneos-core-docs** — `/nos/storage`（IndexedDB 存储）、文件系统、用户管理、服务通信
-- **punch-ui** — 组件库与视觉规范
+- **senti-ui** — 组件库与视觉规范（Material Design 3）
 - **sibyl-test** — 测试框架
 
 ---
