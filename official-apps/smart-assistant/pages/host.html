@@ -74,8 +74,23 @@
     .field:last-child {
       margin-bottom: 0;
     }
-    .field p-input {
+    .field st-input,
+    .field st-textarea,
+    .field st-select {
       width: 100%;
+    }
+    .field-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    st-dialog.req-dialog::part(panel) {
+      width: min(600px, 92vw);
+    }
+    st-dialog.overview-dialog::part(panel) {
+      width: min(680px, 92vw);
     }
     .field-doc label {
       font-size: 13px;
@@ -396,7 +411,7 @@
       font-size: 15px;
     }
 
-    /* ===== AI 需求整理弹窗内部样式（容器由 p-dialog 提供）===== */
+    /* ===== AI 需求整理弹窗内部样式（容器由 st-dialog 提供）===== */
     .modal-label {
       font-size: 13px;
       font-weight: 500;
@@ -501,18 +516,16 @@
       }
     }
 
-    [slot="title"] n-icon {
+    [slot="headline"] n-icon {
       display: inline-block;
     }
   </style>
 
-  <l-m src="https://punch-ui-v2.pages.dev/packages/input/input.html"></l-m>
-  <l-m
-    src="https://punch-ui-v2.pages.dev/packages/textarea/textarea.html"
-  ></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/button/button.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/select/select.html"></l-m>
-  <l-m src="https://punch-ui-v2.pages.dev/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/mz/comps/o-md/o-md.html"></l-m>
 
@@ -537,32 +550,32 @@
         </h2>
 
         <div class="field">
-          <p-input sync:value="assistantName" placeholder="如：小智客服">
-            <span slot="label">助手名称</span>
-          </p-input>
+          <label class="field-label">助手名称</label>
+          <st-input sync:value="assistantName" placeholder="如：小智客服">
+          </st-input>
         </div>
 
         <div class="field">
-          <p-textarea
+          <label class="field-label">欢迎语</label>
+          <st-textarea
             sync:value="welcomeMsg"
             rows="2"
             placeholder="访客打开后看到的开场白"
           >
-            <span slot="label">欢迎语</span>
-          </p-textarea>
+          </st-textarea>
         </div>
 
         <div class="field">
-          <p-select sync:value="aiModel" placeholder="选择 AI 模型">
-            <span slot="label">AI 模型</span>
-            <p-option value="auto">自动（使用默认模型）</p-option>
+          <label class="field-label">AI 模型</label>
+          <st-select sync:value="aiModel" placeholder="选择 AI 模型">
+            <option value="auto">自动（使用默认模型）</option>
             <o-fill :value="modelOptions">
-              <p-option attr:value="$data.value" attr:disabled="$data.disabled"
+              <option attr:value="$data.value" attr:disabled="$data.disabled"
                 >{{$data.label}}{{$data.disabled ? '（未配置 Key）' :
-                ''}}</p-option
+                ''}}</option
               >
             </o-fill>
-          </p-select>
+          </st-select>
           <p class="field-hint">
             "自动"将根据已配置的密钥随机选用；指定模型需先在 AI
             密钥管理器中配置对应平台的 Key
@@ -587,7 +600,7 @@
         </div>
 
         <div class="save-row">
-          <p-button
+          <st-button
             variant="outlined"
             attr:disabled="saving"
             on:click="saveConfig"
@@ -596,7 +609,7 @@
               <n-icon icon="mdi:content-save-outline"></n-icon>
             </span>
             保存配置
-          </p-button>
+          </st-button>
         </div>
       </section>
 
@@ -615,7 +628,7 @@
             attr:placeholder="generating ? '正在生成链接...' : '点击下方按钮生成链接'"
             on:click="selectLinkInput"
           />
-          <p-button
+          <st-button
             color="primary"
             attr:disabled="generating"
             on:click="handleGenLink"
@@ -626,8 +639,8 @@
               ></n-icon>
             </span>
             {{generating ? '生成中' : (shareUrl ? '重新生成' : '生成链接')}}
-          </p-button>
-          <p-button
+          </st-button>
+          <st-button
             variant="outlined"
             attr:disabled="!shareUrl"
             on:click="copyLink"
@@ -638,7 +651,7 @@
               ></n-icon>
             </span>
             {{copied ? '已复制' : '复制'}}
-          </p-button>
+          </st-button>
         </div>
         <div class="link-status">{{genStatus}}</div>
         <o-if :value="shareUrl">
@@ -681,10 +694,9 @@
           访客对话
         </h2>
         <div class="main-head-actions">
-          <p-button
-            size="s"
+          <st-button
+            style="font-size: 13px"
             color="primary"
-            variant="tonal"
             attr:disabled="customers.length === 0"
             on:click="openOverview"
           >
@@ -692,7 +704,7 @@
               <n-icon icon="mdi:note-text-outline"></n-icon>
             </span>
             AI 总览
-          </p-button>
+          </st-button>
           <span class="count-badge">{{customers.length}}</span>
         </div>
       </div>
@@ -769,14 +781,14 @@
     </main>
   </div>
 
-  <!-- ===== AI 需求整理弹窗（p-dialog）===== -->
-  <p-dialog
+  <!-- ===== AI 需求整理弹窗（st-dialog）===== -->
+  <st-dialog
+    class="req-dialog"
     sync:open="reqHelperOpen"
-    auto-to-mobile-width="540px"
-    style="--dialog-width: min(600px, 92vw)"
-    on:click-mask="closeReqHelper"
+    auto-close
+    on:close="closeReqHelper"
   >
-    <span slot="title">
+    <span slot="headline">
       <n-icon
         icon="mdi:auto-fix"
         style="vertical-align: -2px; margin-right: 4px"
@@ -792,13 +804,13 @@
     ></textarea>
 
     <div class="modal-actions">
-      <p-button
+      <st-button
         variant="outlined"
         attr:disabled="reqGenerating"
         on:click="closeReqHelper"
-        >取消</p-button
+        >取消</st-button
       >
-      <p-button
+      <st-button
         color="primary"
         attr:disabled="reqGenerating || !reqInput.trim()"
         on:click="generateReqDoc"
@@ -809,7 +821,7 @@
           ></n-icon>
         </span>
         {{reqGenerating ? '整理中' : '让 AI 整理'}}
-      </p-button>
+      </st-button>
     </div>
 
     <o-if :value="reqError">
@@ -827,27 +839,27 @@
       </div>
     </o-if>
 
-    <div slot="bottom">
+    <div slot="actions">
       <o-if :value="reqOutput && !reqGenerating">
-        <p-button variant="text" on:click="closeReqHelper">关闭</p-button>
-        <p-button color="primary" on:click="applyReqDoc">
+        <st-button variant="text" on:click="closeReqHelper">关闭</st-button>
+        <st-button color="primary" on:click="applyReqDoc">
           <span slot="prefix">
             <n-icon icon="mdi:check"></n-icon>
           </span>
           应用到功能需求文档
-        </p-button>
+        </st-button>
       </o-if>
     </div>
-  </p-dialog>
+  </st-dialog>
 
-  <!-- ===== 访客总览弹窗（p-dialog）===== -->
-  <p-dialog
+  <!-- ===== 访客总览弹窗（st-dialog）===== -->
+  <st-dialog
+    class="overview-dialog"
     sync:open="overviewOpen"
-    auto-to-mobile-width="540px"
-    style="--dialog-width: min(680px, 92vw)"
-    on:click-mask="closeOverview"
+    auto-close
+    on:close="closeOverview"
   >
-    <span slot="title">
+    <span slot="headline">
       <n-icon
         icon="mdi:note-text-outline"
         style="vertical-align: -2px; margin-right: 4px"
@@ -874,26 +886,26 @@
       </div>
     </o-if>
 
-    <div slot="bottom">
+    <div slot="actions">
       <o-if :value="overviewOutput && !overviewGenerating">
-        <p-button variant="text" on:click="generateOverview">
+        <st-button variant="text" on:click="generateOverview">
           <span slot="prefix">
             <n-icon icon="mdi:refresh"></n-icon>
           </span>
           重新生成
-        </p-button>
-        <p-button variant="text" on:click="copyOverview">
+        </st-button>
+        <st-button variant="text" on:click="copyOverview">
           <span slot="prefix">
             <n-icon
               attr:icon="overviewCopied ? 'mdi:check' : 'mdi:content-copy'"
             ></n-icon>
           </span>
           {{overviewCopied ? '已复制' : '复制报告'}}
-        </p-button>
+        </st-button>
       </o-if>
-      <p-button variant="text" on:click="closeOverview">关闭</p-button>
+      <st-button variant="text" on:click="closeOverview">关闭</st-button>
     </div>
-  </p-dialog>
+  </st-dialog>
 
   <script>
     export default async ({ load }) => {
