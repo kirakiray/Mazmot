@@ -799,11 +799,21 @@
             console.warn(`读取 ${app.name} 的配置失败：`, err);
           }
 
+          // app.json 的 displayName/description 支持多语言：
+          // 基准值为默认展示名，i18n[当前语言] 可覆盖（回退链：i18n → 基准）
+          const i18nEntry =
+            (manifest && manifest.i18n && manifest.i18n[getLang()]) || {};
           return {
             icon: (manifest && manifest.icon) || "📦",
             name:
-              (manifest && (manifest.displayName || manifest.name)) || app.name,
-            desc: (manifest && manifest.description) || app.desc || "",
+              i18nEntry.displayName ||
+              (manifest && (manifest.displayName || manifest.name)) ||
+              app.name,
+            desc:
+              i18nEntry.description ||
+              (manifest && manifest.description) ||
+              app.desc ||
+              "",
             dirName:
               app.dirName ||
               (app.source === "virtual"

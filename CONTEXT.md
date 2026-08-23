@@ -247,7 +247,7 @@ clearOpened → 关闭窗口
 - **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
 - **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
-- **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
+- **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`（官方应用的 `displayName`/`description` 基准值须为英文，可用 `i18n` 字段按语言覆盖，如 `"i18n": { "cn": { "displayName": "...", "description": "..." } }`）；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示（有 `i18n[当前语言]` 覆盖时优先）。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
 

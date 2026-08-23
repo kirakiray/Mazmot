@@ -54,9 +54,10 @@ Mazmot 里的每一个应用都遵循统一的目录结构：
 | 字段 | 说明 |
 | ---- | ---- |
 | `name` | 应用唯一标识，需匹配 `/^[A-Za-z0-9_-]+$/` |
-| `displayName` | 展示名 |
+| `displayName` | 展示名（默认基准值；官方应用必须为英文） |
 | `version` | 语义化版本号 |
-| `description` | 应用描述 |
+| `description` | 应用描述（默认基准值；官方应用必须为英文） |
+| `i18n` | 可选，多语言覆盖：`{ "cn": { "displayName": "...", "description": "..." } }`；`loadApps` 按 `getLang()` 解析，回退链：`i18n[当前语言]` → 基准值 |
 | `icon` | 图标，可用 emoji 字符串或图标 URL |
 | `entry` | 入口 HTML 相对路径，固定 `./index.html` |
 | `appConfig` | ofa.js app 配置相对路径，固定 `./app-config.js` |
