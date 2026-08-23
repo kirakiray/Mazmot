@@ -1,10 +1,10 @@
 # Chain（Agent 封装）
 
-`ai/chain/` 在 supplier 层之上封装「模型 ↔ 工具」自动循环的 Agent：模型发起 tool call → 执行工具 → 结果回给模型，直到产出最终回答。本层是**纯函数库**（不依赖 `/nos/*`），assistant 实例由调用方通过 `/ai/main.js` 的 `getAssistant()` 传入；调用方式与 `assistant.chat` 同构。完整字段说明见 [API 参考](#api-参考)。
+`mz/ai/chain/` 在 supplier 层之上封装「模型 ↔ 工具」自动循环的 Agent：模型发起 tool call → 执行工具 → 结果回给模型，直到产出最终回答。本层是**纯函数库**（不依赖 `/nos/*`），assistant 实例由调用方通过 `/mz/ai/main.js` 的 `getAssistant()` 传入；调用方式与 `assistant.chat` 同构。完整字段说明见 [API 参考](#api-参考)。
 
 ```javascript
-import { getAssistant } from "/ai/main.js";
-import { createAgent, tool, MemorySaver } from "/ai/chain/main.js";
+import { getAssistant } from "/mz/ai/main.js";
+import { createAgent, tool, MemorySaver } from "/mz/ai/chain/main.js";
 ```
 
 ## 快速开始
@@ -133,7 +133,7 @@ console.log(second.content);
 
 ## API 参考
 
-全部导出自 `/ai/chain/main.js`（内部按模块 re-export）。本层不依赖 `/nos/*`，可独立测试。
+全部导出自 `/mz/ai/chain/main.js`（内部按模块 re-export）。本层不依赖 `/nos/*`，可独立测试。
 
 ### tool(fn, config)（tools.js）
 
@@ -251,4 +251,4 @@ const agent = createAgent({ assistant: getAssistant(), checkpointer: persistSave
 
 ## 测试
 
-测试文件为 `ai/test/ai-chain-sb.html`（`-sb.html` 后缀，不进 CI；Agent 行为用真实 `deepseek-v4-flash`，需在 `ai/test-api-keys.json` 填 key）。运行方式见 [../README.md 测试章节](../README.md#测试)。
+测试文件为 `ai/test/ai-chain-sb.html`（`-sb.html` 后缀，不进 CI；Agent 行为用真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）。运行方式见 [../README.md 测试章节](../README.md#测试)。

@@ -1,11 +1,11 @@
-# AI Assistant 模块（`/ai/`）
+# AI Assistant 模块（`/mz/ai/`）
 
-Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/ai/` 目录，统一封装 DeepSeek 和 Kimi 两家提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
+Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/mz/ai/` 目录，统一封装 DeepSeek 和 Kimi 两家提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
 
 > **应用侧快速上手**：如果你的应用只需要调用 AI 对话能力，**基本不用关心 key 管理 API**（`saveKey` / `removeKey` / `getApiKeys` / `onApiKeysChange` / `testApiKey`）——那些是 AI Key 管理器应用自己用的。应用侧只需用 `getAssistant()` 拿到 Assistant 实例，然后调 `chat()` / `getModels()` / `getRemaining()` 即可：
 
 ```js
-import { getAssistant } from "/ai/main.js";
+import { getAssistant } from "/mz/ai/main.js";
 
 // 拿到 Assistant 实例（host 端已配置好 key）
 const assistant = getAssistant();
@@ -16,11 +16,11 @@ const { content } = await assistant.chat({
 
 下面先讲应用侧常用的 Assistant API，再附上完整的 key 管理 API（给 AI Key 管理器或代理服务用）。
 
-> 需要在对话中让模型自动调用工具（Agent 循环）、会话记忆等，请查 [ai-chain.md](./ai-chain.md)（`/ai/chain/`）。
+> 需要在对话中让模型自动调用工具（Agent 循环）、会话记忆等，请查 [ai-chain.md](./ai-chain.md)（`/mz/ai/chain/`）。
 
 ## 应用侧常用 API
 
-由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
+由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
 
 ### assistant.providerName
 
@@ -92,7 +92,7 @@ import {
   getAssistant,
   // 仅当应用自己管理 key 时才需要下面这些
   saveKey, removeKey, getApiKeys, onApiKeysChange, testApiKey,
-} from "/ai/main.js";
+} from "/mz/ai/main.js";
 ```
 
 ## 支持的提供商与模型
@@ -269,11 +269,11 @@ try {
 
 ## 测试
 
-使用 sibyl-test，supplier 层测试位于 `/ai/test/ai-supplier-sb.html`：
+使用 sibyl-test，supplier 层测试位于 `mz/ai/test/ai-supplier-sb.html`：
 
 ```bash
 # 填入真实 key（已 gitignore）
-# /ai/test-api-keys.json: { "deepseek": "sk-...", "kimi": "sk-..." }
+# mz/ai/test-api-keys.json: { "deepseek": "sk-...", "kimi": "sk-..." }
 
 npx sb-test -f ai/test/ai-supplier-sb.html --browsers chrome
 ```

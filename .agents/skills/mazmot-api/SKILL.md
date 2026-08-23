@@ -93,10 +93,10 @@ apps.push({ name: "my-app", source: "local", /* ... */ });
 await storage.setItem("apps", apps);
 ```
 
-## 3. 应用运行 —— `/lib/app-runner.js`
+## 3. 应用运行 —— `/mz/app-runner.js`
 
 ```js
-import { getRunUrl, readAppFiles } from "/lib/app-runner.js";
+import { getRunUrl, readAppFiles } from "/mz/app-runner.js";
 
 // 生成运行 URL：
 //   virtual/official → /$mazmot-apps/{name}/client/index.html
@@ -112,7 +112,7 @@ const files = await readAppFiles(app._handle);
 
 `readAppFiles` 是分享打包的前置步骤：它把应用目录平铺成 `{ path, content }` 数组。**只支持 UTF-8 文本文件**——二进制资源（图片 / 字体 / 音视频）无法进入分享 payload。
 
-## 4. 应用分享（P2P）—— `/lib/share-mgr.js`
+## 4. 应用分享（P2P）—— `/mz/share-mgr.js`
 
 基于 noneos-core `DataPublisher` 封装的"一键分享"层。
 
@@ -122,7 +122,7 @@ import {
   buildRunUrl, parseShareUrl, splitShareQuery,
   isPublicKeyOfUser,
   publishApp, unpublishApp,
-} from "/lib/share-mgr.js";
+} from "/mz/share-mgr.js";
 
 // 一步发布：读文件 → 打包 → publish 内容 → publish 分享清单 → 拼短链接
 const { shareUrl, appId, payloadHash, fileHash } =

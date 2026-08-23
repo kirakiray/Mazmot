@@ -108,19 +108,19 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **新应用**：放在 [apps/](apps/) 下，目录名即 URL 路径（`apps/<name>/` = `/apps/<name>/`）；同时更新 [CONTEXT.md](CONTEXT.md) 目录树。
 - **新系统级组件**：放在 [comps/](comps/) 下，独立子目录 + `<tag>.html` + `README.md`（推荐带 `demo.html`）；**必须同步更新 [comps/CONTEXT.md](comps/CONTEXT.md)** 的目录树与组件说明，若被主系统使用也需更新根 [CONTEXT.md](CONTEXT.md)。
 - **新应用模板**：在 [apps/main/home/templates/](apps/main/home/templates/) 下建 `<id>/` 子目录，含 `__template.json`（模板元数据 name/desc + 文件清单）+ 源文件；**必须在 [templates/manifest.json](apps/main/home/templates/manifest.json) 里登记** id。
-- **模板路径约束（重要）**：[apps/main/home/templates/](apps/main/home/templates/) 下是创建应用的模板，每个模板最终会以**独立应用项目**的形式落地（模板目录即应用根目录）。因此模板内部的资源引用（HTML / CSS / JS 等）使用 `../` 相对路径时，**不得超出模板自身目录**；模板内部的 CONTEXT.md / AGENTS.md 同样受此约束，禁止出现指向模板目录之外的相对路径。需要使用 Mazmot / NoneOS Core 的能力（`/nos/*`、`/lib/*`、`/comps/*` 等仓库级资源）时，一律以 `/xxx` 根路径（站内绝对路径）引用，底层 Service Worker 会保证这些路径在应用运行时可用。
+- **模板路径约束（重要）**：[apps/main/home/templates/](apps/main/home/templates/) 下是创建应用的模板，每个模板最终会以**独立应用项目**的形式落地（模板目录即应用根目录）。因此模板内部的资源引用（HTML / CSS / JS 等）使用 `../` 相对路径时，**不得超出模板自身目录**；模板内部的 CONTEXT.md / AGENTS.md 同样受此约束，禁止出现指向模板目录之外的相对路径。需要使用 Mazmot / NoneOS Core 的能力（`/nos/*`、`/mz/*`、`/comps/*` 等仓库级资源）时，一律以 `/xxx` 根路径（站内绝对路径）引用，底层 Service Worker 会保证这些路径在应用运行时可用。
 - **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
-- **跨应用公共工具库**：`lib/`（参考 [lib/app-runner.js](lib/app-runner.js)、[lib/share-mgr.js](lib/share-mgr.js)），被多个应用（含模板）共享的纯逻辑模块；引用一律用绝对路径 `/lib/xxx.js`。
+- **Mazmot 平台 API（`mz/`）**：与 NoneOS Core 的 `/nos/*` 对称的宿主命名空间（参考 [mz/app-runner.js](mz/app-runner.js)、[mz/share-mgr.js](mz/share-mgr.js)、[mz/ai/](mz/ai/)），被多个应用（含模板）共享；引用一律用绝对路径 `/mz/xxx.js`。
 - **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/official-app-state.js](apps/main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
-- **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）、[ai/](ai/)（独立子项目）。修改这些目录前请先与开发者确认，AI 默认应忽略。
+- **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
 
 ## 测试规范
 
 - **客户端测试框架**：项目使用 `sibyl-test` 作为客户端测试框架，测试用例以 `.sb.html` 文件形式编写。
 - **测试义务**：开发完功能或组件后，应在其所在目录补充编写对应的 `.sb.html` 测试文件。
-- **测试位置**：测试文件应跟随被测组件或页面模块存放，推荐在 `lib/`（或被测模块同级）下建 `test/` 子目录，文件名与被测模块同名（如 `run-app-utils.sb.html` 测试 `run-app-utils.js`）。
+- **测试位置**：测试文件应跟随被测组件或页面模块存放，推荐在被测模块同级建 `test/` 子目录，文件名与被测模块同名（如 `run-app-utils.sb.html` 测试 `run-app-utils.js`）。
 - **执行前确认**：写完测试文件后，不要急于自动执行测试，应先询问开发者是否让 AI 执行自动化测试并根据反馈自动修复模块。
 - **快速反馈**：开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速测试，根据结果动态修复代码。
 - **完整测试**：执行 `npm test`（即 `sb-test`）启动默认多浏览器测试流程。
@@ -133,13 +133,13 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 应用分享基于 NoneOS Core `DataPublisher`（点对点，无后端）。修改分享相关代码必须遵守：
 
-- **只支持 UTF-8 文本文件**：[share-mgr.js](lib/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
+- **只支持 UTF-8 文本文件**：[share-mgr.js](mz/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
 - **发布者必须在线**：接收端通过 `?u=<userId>&h=<payloadHash>` 短链接从发布者 IndexedDB 拉取 chunk。发布者标签页（`apps/main/`）一旦关闭，未拉完的 chunk 无法继续。设计分享相关 UI（如关闭提醒、断网重试）时以此为前提。
 - **URL 字段固定**：分享链接有两种格式，互斥使用：
   - P2P 分享：`?u=<userId>&h=<payloadHash>`（用户自建应用，发布者必须在线）
   - 官方应用：`?app=<officialId>`（同源 HTTP 拉取 `/official-apps/<id>/`，不依赖发布者在线）
   
-  其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](lib/share-mgr.js) 的 `buildRunUrl` / `buildOfficialRunUrl` / `parseShareUrl` 前请先评估向后兼容。
+  其他历史格式（`?p=`、`?data=` 等）已废弃。修改 [share-mgr.js](mz/share-mgr.js) 的 `buildRunUrl` / `buildOfficialRunUrl` / `parseShareUrl` 前请先评估向后兼容。
 - **签名链不可省**：接收端验证顺序为 `connectUser` → `requestManifest`（内部 `verifyData`）→ `requestChunk`（内部 SHA-256）→ 显式 `isPublicKeyOfUser`。任何一步失败即进错误页，**不要**用 try/catch 吞错。
 
 
