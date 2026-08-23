@@ -420,4 +420,4 @@ others/ai-manager-demo/      # 演示应用（引用 ../../mz/ai/main.js）
 
 - [ofa.js](https://github.com/ofajs/ofa.js) - 前端框架
 - [NoneOS Core storage](https://github.com/kirakiray/noneos-core) (`/nos/storage/main.js`) - 本地异步键值存储
-- [Punch-UI](https://punch-ui-v2.pages.dev/) - UI 组件库
+- [Senti-UI](https://github.com/ofajs/senti-ui) - UI 组件库

@@ -8,7 +8,7 @@
 [![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
 
-**Mazmot** is a browser-based application launcher. Users can manage, run, and share multiple independent web apps — all running directly on the main domain, with no extra container service or packaging step. It is built on top of the micro-frontend containerization provided by [NoneOS Core](https://github.com/kirakiray/noneos-core), with the user-facing layer constructed using the [ofa.js](https://github.com/ofajs/ofa.js) framework and the [Punch-UI](https://github.com/ofajs/Punch-UI) component library.
+**Mazmot** is a browser-based application launcher. Users can manage, run, and share multiple independent web apps — all running directly on the main domain, with no extra container service or packaging step. It is built on top of the micro-frontend containerization provided by [NoneOS Core](https://github.com/kirakiray/noneos-core), with the user-facing layer constructed using the [ofa.js](https://github.com/ofajs/ofa.js) framework and the [Senti-UI](https://github.com/ofajs/senti-ui) component library.
 
 > **In essence**, Mazmot is a **userland implementation** of NoneOS Core's micro-frontend containerization technology. It assembles NoneOS Core's virtual filesystem, decentralized user identity, and P2P publishing capabilities into an end-user-facing "app market + launcher + sharing pipeline", enabling ordinary users to manage web apps as if they were using an operating system.
 
@@ -38,7 +38,7 @@
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
 │  ┌────────────────────────┴─────────────────────────────────┐   │
-│  │              ofa.js Framework + Punch-UI v2                │   │
+│  │              ofa.js Framework + Senti-UI                   │   │
 │  │       (Web Components / data binding / routing / UI kit)    │   │
 │  └────────────────────────┬─────────────────────────────────┘   │
 │                           │                                     │
@@ -194,7 +194,7 @@ Read the corresponding Skill docs before development (see [AGENTS.md](AGENTS.md)
 
 - **ofajs-docs** — page/component module development
 - **noneos-core-docs** — `/nos/storage` (IndexedDB), filesystem, user management, service communication
-- **punch-ui** — component library and visual conventions
+- **senti-ui** — component library and visual conventions (Material Design 3)
 - **sibyl-test** — testing framework
 
 ---
