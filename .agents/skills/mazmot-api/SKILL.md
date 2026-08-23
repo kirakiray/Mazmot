@@ -195,6 +195,20 @@ await writeTemplateFiles({
 
 官方应用位于 `official-apps/<id>/`，结构同模板，清单文件名为 `__app.json`。
 
+`__app.json` 的 `name` / `desc` **基准值必须为英文**；可选 `i18n` 字段按语言码覆盖多语言名称与描述：
+
+```json
+{
+  "name": "Web Bookmarks",
+  "desc": "English base description...",
+  "i18n": {
+    "cn": { "name": "网页收藏夹", "desc": "中文描述..." }
+  }
+}
+```
+
+展示时由 `loadOfficialAppMeta` / `installOfficialApp` 按当前语言（`getLang()`）解析，回退链：`i18n[当前语言]` → 基准英文。
+
 ```js
 import {
   loadOfficialApps, loadOfficialAppMeta, compareVersions, installOfficialApp,
