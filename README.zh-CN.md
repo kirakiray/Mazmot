@@ -182,7 +182,7 @@ https://your-host/apps/run-app/?u={publisherUserId}&h={payloadHash}
 - [AGENTS.md](AGENTS.md) — AI 代理开发规范（技术栈、依赖 URL 规范、目录规则、测试规范、P2P 分享约束）
 - [CONTEXT.md](CONTEXT.md) — 项目架构上下文（目录树、数据模型、应用生命周期、分享流程）
 - [comps/CONTEXT.md](comps/CONTEXT.md) — 系统级公共组件说明
-- [ai/README.md](ai/README.md) — AI Provider 抽象层完整 API 文档
+- [mz/ai/README.md](mz/ai/README.md) — AI Provider 抽象层完整 API 文档
 
 ### 相关 Skill 知识库
 

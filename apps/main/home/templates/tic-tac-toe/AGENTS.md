@@ -23,7 +23,7 @@
 
 同一份仓库资源，**加载位置不同，前缀不同**：
 
-- **能独立运行的 HTML 文件**（如 [index.html](index.html)、以及任何脱离 Mazmot / NoneOS Core 环境也能被浏览器直接打开的入口 HTML）：必须使用完整 URL `https://cdn.jsdelivr.net/gh/ofajs/...`。因为此时 NoneOS Core Service Worker 未必已注册，`/gh/`、`/npm/` 本地前缀不可用。
+- **所有文件（含入口 HTML）**：一律使用 `/gh/`（或 `/npm/`）本地前缀（如 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。模板应用运行于 Mazmot 运行时内，NoneOS Core Service Worker 必定就绪，本地前缀离线可用、跨域安全。
 - **页面模块 / 组件模块 / 普通模块**（`<template page>` / `<template component>` / 普通 `.js` 模块）：必须使用 `/gh/` 或 `/npm/` 前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。
 - `#debug` 后缀不要去掉，保留调试信息。
 

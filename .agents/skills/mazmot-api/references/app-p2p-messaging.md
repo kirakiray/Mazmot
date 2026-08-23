@@ -1,16 +1,16 @@
 # 应用间 P2P 通信（分享链接 + 双向消息）
 
-> 本文档讲清楚一个通用模式：**两个 Mazmot 应用如何通过一条分享链接建立点对点通道，并进行双向消息通信**。底层能力来自 noneos-core（`user` / `DataPublisher`）与 Mazmot 的 `lib/share-mgr.js`，请配合对应技能阅读。
+> 本文档讲清楚一个通用模式：**两个 Mazmot 应用如何通过一条分享链接建立点对点通道，并进行双向消息通信**。底层能力来自 noneos-core（`user` / `DataPublisher`）与 Mazmot 的 `mz/share-mgr.js`，请配合对应技能阅读。
 
 ## 读本文前需知（前置概念）
 
 文档里的代码片段都遵循以下约定，先理解这几条再往下看：
 
 - **"两个应用实例" = 同一份应用代码、两个用户各跑一个**。不是两套代码：host 用户在自己的 Mazmot 里直接打开应用，customer 用户通过 host 发来的分享链接安装（或免安装跳转）后打开**同一份**应用的另一个实例。两端代码完全一样，靠 URL 判定谁是 host、谁是 customer。
-- **代码运行在哪**：所有用 `this.xxx` / `load(...)` 的片段，都是 ofa.js **页面模块**（`<template page>` 内的 `export default async ({ load }) => ({ data, proto, ready, detached })`）。`this` 指向页面组件实例；`load` 是页面模块构造函数注入的动态加载函数（可加载 `/nos/*`、`/lib/*`、远程 URL 等模块）。方法挂在 `proto` 上，响应式数据放在 `data`，非响应式对象用 `_` 前缀直接挂到 `this`。
+- **代码运行在哪**：所有用 `this.xxx` / `load(...)` 的片段，都是 ofa.js **页面模块**（`<template page>` 内的 `export default async ({ load }) => ({ data, proto, ready, detached })`）。`this` 指向页面组件实例；`load` 是页面模块构造函数注入的动态加载函数（可加载 `/nos/*`、`/mz/*`、远程 URL 等模块）。方法挂在 `proto` 上，响应式数据放在 `data`，非响应式对象用 `_` 前缀直接挂到 `this`。
 - **分享链接 / 接收端安装 / `appParams`**：host 调 `publishApp(app, { appParams: { host: myUserId } })` 把自己的 userId 注入链接 query；customer 打开链接后，Mazmot 的 `/apps/run-app/` 接收端会自动完成下载/安装，最终 `location.replace("/$<namespace>/<dirName>/client/index.html?host=<hostUserId>")` 启动应用——所以应用层**不需要自己处理下载**，只需读 URL 上的 `host` 参数即可。完整接收端流程见 [SKILL.md §4](../SKILL.md) 与第 §二 节。
-- **`publishApp` / `getUser` 等是异步函数**，返回 Promise；加载方式为 `const { publishApp } = await load("/lib/share-mgr.js")`、`const { getUser } = await load("/nos/user/main.js")`。
-- **命名空间（NAMESPACE）**：Mazmot 默认 `"default"`，与 `lib/share-mgr.js` 一致。双方必须用同一个 NAMESPACE 才能在 P2P 网络互相发现。
+- **`publishApp` / `getUser` 等是异步函数**，返回 Promise；加载方式为 `const { publishApp } = await load("/mz/share-mgr.js")`、`const { getUser } = await load("/nos/user/main.js")`。
+- **命名空间（NAMESPACE）**：Mazmot 默认 `"default"`，与 `mz/share-mgr.js` 一致。双方必须用同一个 NAMESPACE 才能在 P2P 网络互相发现。
 - **非响应式对象用 `_` 前缀**：NoneOS Core 返回的 `user` / `remoteUser` 等是复杂对象，挂到 ofa.js 组件 `this` 上时变量名**必须**以 `_` 开头（如 `this._user`），否则会被 ofa.js 响应式系统转换导致异常。
 
 ## 适用场景
@@ -262,11 +262,11 @@ async generateLink() {
   const self = this.parseSelfIdentity();
   if (!self) throw new Error("无法识别当前应用的目录路径");
 
-  // 2. 并行加载依赖（页面模块内用 /nos/ /lib/ 本地前缀）
+  // 2. 并行加载依赖（页面模块内用 /nos/ /mz/ 本地前缀）
   const [fsMod, storageMod, shareMgr] = await Promise.all([
     load("/nos/fs/main.js"),
     load("/nos/storage/main.js"),
-    load("/lib/share-mgr.js"),
+    load("/mz/share-mgr.js"),
   ]);
   const { init } = fsMod;
   const storage = storageMod.getStorage("mazmot");
@@ -526,10 +526,10 @@ detached() {
 
 ## 关键约定与边界
 
-- **命名空间必须一致**：双方都用 `getUser(NAMESPACE)` 且 `NAMESPACE` 相同（项目默认 `"default"`，与 `lib/share-mgr.js` 一致），否则在 P2P 网络里无法互相发现。
+- **命名空间必须一致**：双方都用 `getUser(NAMESPACE)` 且 `NAMESPACE` 相同（项目默认 `"default"`，与 `mz/share-mgr.js` 一致），否则在 P2P 网络里无法互相发现。
 - **服务 ID 必须一致**：双方 `registerService(SERVICE_ID, ...)` 用同一个 `SERVICE_ID`。
 - **发布者必须在线**：接收端从发布者 IndexedDB 拉 chunk；host 标签页关闭后，未拉完的 chunk 无法继续，且已建立的 P2P 连接也会断。涉及关闭/切后台/断网的 UI 都要以此为前提。
 - **只支持 UTF-8 文本**：消息载荷是 JSON，不要塞二进制。应用文件分享同样只支持文本（见 [SKILL.md §4](../SKILL.md)）。
 - **无权威方 / 无防作弊**：双方都能本地改状态，依赖「收到消息才改」的约定维持一致性。Demo 性质，不要套用到需要强一致/防作弊的生产场景。
-- **URL 前缀**：页面模块内 `/nos/*`、`/lib/*` 用本地前缀（由 NoneOS Core Service Worker 拦截，离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL（见上文代码示例）。
+- **URL 前缀**：页面模块内 `/nos/*`、`/mz/*` 用本地前缀（由 NoneOS Core Service Worker 拦截，离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL（见上文代码示例）。
 - **非响应式对象用 `_` 前缀**：`this._user` / `this._remoteUser` / `this._svc` 等挂到 ofa.js 组件实例时必须以 `_` 开头。

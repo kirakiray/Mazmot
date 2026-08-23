@@ -95,7 +95,7 @@ function isIgnored(path, patterns) {
 
 const ignorePatterns = loadGitignore(rootDir);
 
-// 3. Recursively read ai/ and lib/ directories and collect file paths
+// 3. Recursively read mz/ai/ directory and collect file paths
 function walkDir(dir, baseDir = '') {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files = [];
@@ -113,8 +113,7 @@ function walkDir(dir, baseDir = '') {
   return files;
 }
 
-const aiFiles = walkDir(join(rootDir, 'ai'), 'ai');
-const libFiles = walkDir(join(rootDir, 'lib'), 'lib');
+const aiFiles = walkDir(join(rootDir, 'mz/ai'), 'mz/ai');
 
 // 3. Read current host-cache.json and update
 const hostCachePath = join(rootDir, 'host-cache.json');
@@ -122,15 +121,13 @@ const hostCache = JSON.parse(readFileSync(hostCachePath, 'utf-8'));
 
 hostCache.name = pkg.name;
 hostCache.version = pkg.version;
-hostCache.files = ['index.html', ...aiFiles, ...libFiles];
+hostCache.files = ['index.html', ...aiFiles];
 
 // 4. Write back
 writeFileSync(hostCachePath, JSON.stringify(hostCache, null, 2) + '\n', 'utf-8');
 
-const totalFiles = aiFiles.length + libFiles.length;
 console.log('host-cache.json updated successfully');
 console.log(`  name: ${pkg.name}`);
 console.log(`  version: ${pkg.version}`);
 console.log(`  ai files: ${aiFiles.length}`);
-console.log(`  lib files: ${libFiles.length}`);
-console.log(`  total files: ${totalFiles}`);
+console.log(`  total files: ${aiFiles.length + 1}`);

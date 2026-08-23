@@ -49,7 +49,7 @@
 
 ### share-mgr（仓库根 `lib/share-mgr.js`）
 
-通过 `const { publishApp, generateAppId } = await load("/lib/share-mgr.js")` 获取：
+通过 `const { publishApp, generateAppId } = await load("/mz/share-mgr.js")` 获取：
 
 - `generateAppId(dirName)`：根据目录名生成稳定的应用 ID。
 - `publishApp(app, options)`：发布应用到 P2P 网络。

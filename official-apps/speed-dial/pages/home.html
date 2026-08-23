@@ -340,6 +340,10 @@
           <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
           <span>AI 导入</span>
         </st-menu-item>
+        <st-menu-item slot="menu" on:click="exportHtml">
+          <n-icon icon="mdi:code-json" slot="prefix"></n-icon>
+          <span>导出网页</span>
+        </st-menu-item>
       </st-split-button>
     </div>
 
@@ -540,6 +544,91 @@
 
           openImport() {
             this.getAiImport()?.openImport();
+          },
+
+          exportHtml() {
+            if (!this.dials.length) {
+              toast({
+                message: "还没有收藏的网址，先添加或导入一些吧",
+                color: "error",
+              });
+              return;
+            }
+            const dials = this.plainDials();
+            const escapeHtml = (str) =>
+              String(str).replace(/[&<>"']/g, (ch) =>
+                ch === "&"
+                  ? "&amp;"
+                  : ch === "<"
+                    ? "&lt;"
+                    : ch === ">"
+                      ? "&gt;"
+                      : ch === '"'
+                        ? "&quot;"
+                        : "&#39;",
+              );
+            const escapeAttr = (str) => escapeHtml(str).replace(/`/g, "&#96;");
+            const json = JSON.stringify(dials, null, 2)
+              .replace(/</g, "\\u003c")
+              .replace(/-->/g, "--\\u003e");
+            const groups = new Map();
+            for (const dial of dials) {
+              const name = dial.group || "未分组";
+              if (!groups.has(name)) groups.set(name, []);
+              groups.get(name).push(dial);
+            }
+            const sections = [...groups.entries()]
+              .map(
+                ([name, list]) => `
+        <section>
+          <h2>${escapeHtml(name)} <small>(${list.length})</small></h2>
+          <ul>
+            ${list
+              .map(
+                (dial) =>
+                  `<li><a href="${escapeAttr(dial.url)}" target="_blank" rel="noopener">${escapeHtml(dial.title || dial.url)}</a></li>`,
+              )
+              .join("\n            ")}
+          </ul>
+        </section>`,
+              )
+              .join("\n");
+            const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网页收藏夹导出（${dials.length} 条）</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #333; }
+  h1 small { font-weight: normal; color: #888; }
+  h2 { border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  ul { list-style: none; padding-left: 0; }
+  li { margin: 6px 0; }
+  a { color: #1a73e8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  pre { background: #f5f5f5; padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>网页收藏夹导出 <small>（${dials.length} 条，导出时间 ${new Date().toLocaleString()}）</small></h1>
+${sections}
+<h2>原始数据</h2>
+<pre id="dials-data">${json}</pre>
+<script>
+  // 原始数组数据，可供导入或二次处理
+  window.dials = JSON.parse(document.getElementById("dials-data").textContent);
+<\/script>
+</body>
+</html>`;
+            const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `speed-dial-${new Date().toISOString().slice(0, 10)}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ message: `已导出 ${dials.length} 个网址` });
           },
 
           getAiImport() {

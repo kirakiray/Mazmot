@@ -186,7 +186,7 @@ Anyone opening the link can install and run the app in one click. **The publishe
 - [AGENTS.md](AGENTS.md) — AI agent dev conventions (tech stack, dependency URL rules, directory rules, testing, P2P sharing constraints)
 - [CONTEXT.md](CONTEXT.md) — Project architecture context (directory tree, data models, app lifecycle, sharing flow)
 - [comps/CONTEXT.md](comps/CONTEXT.md) — System-level shared component docs
-- [ai/README.md](ai/README.md) — AI Provider abstraction layer full API docs
+- [mz/ai/README.md](mz/ai/README.md) — AI Provider abstraction layer full API docs
 
 ### Related Skill Knowledge Bases
 

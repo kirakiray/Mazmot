@@ -20,7 +20,7 @@
 ```
 
 ```javascript
-import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from "/ai/main.js";
+import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from "/mz/ai/main.js";
 ```
 
 ## API
@@ -325,11 +325,11 @@ try {
 
 ## Chain（Agent 封装）
 
-`ai/chain/` 在 supplier 层之上封装「模型 ↔ 工具」自动循环的 Agent：模型发起 tool call → 执行工具 → 结果回给模型，直到产出最终回答。本层是**纯函数库**（不依赖 `/nos/*`），assistant 实例由调用方传入；调用方式与 `assistant.chat` 同构。
+`mz/ai/chain/` 在 supplier 层之上封装「模型 ↔ 工具」自动循环的 Agent：模型发起 tool call → 执行工具 → 结果回给模型，直到产出最终回答。本层是**纯函数库**（不依赖 `/nos/*`），assistant 实例由调用方传入；调用方式与 `assistant.chat` 同构。
 
 ```javascript
-import { getAssistant } from "/ai/main.js";
-import { createAgent, tool, MemorySaver } from "/ai/chain/main.js";
+import { getAssistant } from "/mz/ai/main.js";
+import { createAgent, tool, MemorySaver } from "/mz/ai/chain/main.js";
 ```
 
 快速上手（基础对话 / Agent + 工具 / 流式 onStream / 会话记忆）与完整 API 参考（`tool` / `createAgent` / `chat` 参数、onStream 事件表、`MemorySaver` 与持久化 checkpointer）见 [chain/README.md](./chain/README.md)。
@@ -340,7 +340,7 @@ import { createAgent, tool, MemorySaver } from "/ai/chain/main.js";
 
 ### 准备工作
 
-1. 在 [ai/test-api-keys.json](./test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
+1. 在 [test-api-keys.json](./test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
 
    ```json
    {
@@ -369,7 +369,7 @@ npm run test-ai -- --browsers chrome  # 仅 Chrome
 - DeepSeek / Kimi 的普通对话、思考模式、流式输出、模型列表、余额查询
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
 - Assistant 基类的错误处理与流式 tool_calls 累积
-- Chain 层（`ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `ai/test-api-keys.json` 填 key）
+- Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）
 
 ## Demo
 
@@ -393,7 +393,7 @@ npx serve .
 ## 项目结构
 
 ```
-ai/
+mz/ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
 ├── test-api-keys.json       # 测试用 API Key（已 gitignore）
 ├── README.md
@@ -408,7 +408,7 @@ ai/
     ├── memory.js            # MemorySaver（threadId 会话记忆）
     └── agent.js             # createAgent()（模型↔工具循环 + onStream 事件）
 
-others/ai-manager-demo/      # 演示应用（引用 ../../ai/main.js）
+others/ai-manager-demo/      # 演示应用（引用 ../../mz/ai/main.js）
 ├── index.html               # 入口页面
 ├── app-config.js            # 应用配置
 ├── api-keys.html            # API Key 管理页面

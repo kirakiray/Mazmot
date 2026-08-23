@@ -25,10 +25,10 @@ speed-dial/
 ## 技术栈
 
 - **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
-- **senti-ui** 组件：`st-input` / `st-button` / `st-icon-button` / `st-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」为下拉子项） / `st-checkbox` / `st-dialog` / `st-menu`（`st-menu` + `st-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `/gh/ofajs/senti-ui@latest/packages/...` 加载）+ `toast.js` / `confirm.js` 的 `toast` / `confirm`（default 导出）；AI 导入的多行输入用原生 textarea（st-textarea 自动增高不符合固定高度需求）
+- **senti-ui** 组件：`st-input` / `st-button` / `st-icon-button` / `st-split-button`（工具栏 AI 按钮：「AI 分组」为主操作、「AI 导入」「导出网页」为下拉子项） / `st-checkbox` / `st-dialog` / `st-menu`（`st-menu` + `st-menu-item`，home 的搜索引擎切换菜单）（l-m 从 `/gh/ofajs/senti-ui@latest/packages/...` 加载）+ `toast.js` / `confirm.js` 的 `toast` / `confirm`（default 导出）；AI 导入的多行输入用原生 textarea（st-textarea 自动增高不符合固定高度需求）
 - **`n-icon`**（`/nos/n-icon/n-icon.html`）提供图标，底层 iconify；表单内的图标选择用 iconify 官方搜索 API `https://api.iconify.design/search?query=...&limit=32`（选中项存 iconify 图标名，运行时由 n-icon 联网渲染）
 - **NoneOS storage**（`/nos/storage/main.js`）持久化，独立空间 `getStorage("speed-dial")`
-- **AI 对话**（`/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
+- **AI 对话**（`/mz/ai/main.js` 的 `getAssistant()`）：AI 导入功能用其从任意文本中提取网址；未配置 Key 时报错提示去「AI 密钥管理器」应用添加
 
 ## 数据模型
 
@@ -110,14 +110,22 @@ speed-dial/
 - `save()`：URL 为空 → senti-ui `toast` 报错不关闭；否则 `emit("dial-save", { data: { id, url, title, group, color, icon }, bubbles: true, composed: true })` 冒泡上抛原始表单值（`color` 在 `noBg === "on"` 时上抛空串，`form.color` 始终保留色板选择以便切回），并关闭弹窗
 - 分工约定：**弹窗只管表单完整性（非空校验），home 负责业务归一化与落库**；取消/遮罩关闭仅本页置 `dialogOpen = false`，不通知宿主
 
+## 导出网页
+
+工具栏 `st-split-button` 下拉子项「导出网页」（home 的 `exportHtml()`）：
+
+- 空列表时 toast 报错；否则取 `plainDials()` 生成**独立 HTML 文件**并经 Blob + `<a download>` 触发下载（文件名 `speed-dial-<日期>.html`）
+- 导出页内容：按分组分节的链接列表（组名 / 标题 / URL，`target="_blank"`）+ 页底 `<pre id="dials-data">` 内嵌完整 dials 数组 JSON（`<` / `-->` 已转义防 `</script>` 提前闭合，另有 `<script>` 把 JSON 解析到 `window.dials` 供二次处理）+ 导出时间
+- 纯本地生成，不依赖 AI / 网络
+
 ## ai-import.html AI 导入弹窗页面要点
 
 以 `<o-page id="ai-import">` 常驻内嵌于 home，工具栏「AI 导入」按钮触发，两阶段流程（`phase` 状态：`input` / `review`，`o-if` 切换）：
 
 - 状态（`data`）：`dialogOpen`、`phase`、`inputText`（textarea 文本）、`fileName`（已选文件名展示）、`dragOver`（拖拽悬停高亮）、`candidates`（`[{ url, title, checked }]`）、`analyzing`
-- `openImport()`：宿主调用的入口，重置全部状态并打开弹窗
+ - `openImport()`：宿主调用的入口，重置全部状态并打开弹窗
 - 输入阶段：**原生 `<textarea>` 固定高度 240px 内部滚动**（不用 p-textarea，它会随内容自动增高撑爆弹窗），`sync:value` 绑定 `inputText`；整个输入区是拖放目标（`onDragOver` preventDefault + `dragOver` 高亮，`onDrop` 取 `dataTransfer.files[0]`）；另有隐藏原生 `<input type="file">`（`pickFile()` 触发点击）；`readFile(file)` 为选择/拖拽共用的读取逻辑（`file.text()` 读内容写入 `inputText`，读完清空 `input.value` 以便重选同一文件；超 50000 字符截断并在文件名后标注）
-- `analyze()`：非空校验 → 惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })` 用固定 prompt 要求模型只输出 JSON 数组 → `parseSites()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 url 能解析出带点域名、按 url 去重、title 兜底域名）→ 空结果 toast 报错停留，否则进 `review` 阶段
+- `analyze()`：非空校验 → 惰性 `load("/mz/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })` 用固定 prompt 要求模型只输出 JSON 数组 → `parseSites()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 url 能解析出带点域名、按 url 去重、title 兜底域名）→ 空结果 toast 报错停留，否则进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message；await 返回后若弹窗已被关闭则丢弃结果
 - 勾选阶段：`o-fill` + `p-checkbox`（`sync:checked="$data.checked"`）逐条勾选，支持 `toggleAll()` 全选/全不选（`selectedCount` / `allChecked` getter 统计）
 - `confirmImport()`：未勾选 toast 报错；否则 `emit("ai-import-save", { data: { items: [{ url, title }] }, bubbles: true, composed: true })` 上抛所选并关闭弹窗；`backToInput()` 返回输入阶段（保留已输入文本，可重新识别；不用 `back` 命名，与 ofa.js proto 内置方法重名会注册报错）
@@ -125,11 +133,11 @@ speed-dial/
 
 ## ai-group.html AI 自动分组弹窗页面要点
 
-以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏 `p-split-button` 主操作「AI 分组」触发（「AI 导入」为同按钮下拉子项），两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
+以 `<o-page id="ai-group">` 常驻内嵌于 home，工具栏 `st-split-button` 主操作「AI 分组」触发（「AI 导入」「导出网页」为同按钮下拉子项），两阶段流程（`phase` 状态：`analyzing` / `review`，`o-if` 切换）：
 
 - 状态（`data`）：`dialogOpen`、`phase`、`dialCount`（实际送分析的条数）、`totalCount`（宿主传入总条数）、`previewGroups`（`[{ name, items: [{ id, title, host }], checked }]`）
 - `openGroup(dials)`：宿主调用的入口，接收 `plainDials()` 纯对象数组，截断到前 `MAX_CLASSIFY`（200）条后重置状态、打开弹窗并自动开始分析（无输入阶段）
-- `analyze(list, suggestion)`：惰性 `load("/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })`，prompt 要求模型输出 `[{"id","group"}]` JSON 数组（中文组名 2~6 字、共 2~8 组、id 原样返回）；带 `suggestion` 时在规则前插入「用户对分组的额外要求（优先级最高）」块 → `parseGroups()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 id 在送入列表内、组名截 20 字、按 id 去重）→ 聚合成预览分组：**AI 未覆盖的网址保持原 `dial.group`（空则「未分组」）**，进 `review` 阶段
+- `analyze(list, suggestion)`：惰性 `load("/mz/ai/main.js")` 取 `getAssistant()` → `chat({ thinking: false })`，prompt 要求模型输出 `[{"id","group"}]` JSON 数组（中文组名 2~6 字、共 2~8 组、id 原样返回）；带 `suggestion` 时在规则前插入「用户对分组的额外要求（优先级最高）」块 → `parseGroups()` 容错解析（剥代码块标记、取首个 JSON 数组、校验 id 在送入列表内、组名截 20 字、按 id 去重）→ 聚合成预览分组：**AI 未覆盖的网址保持原 `dial.group`（空则「未分组」）**，进 `review` 阶段
 - 异常处理：`no api key available` → 提示去「AI 密钥管理器」配置；其它错误 toast 原始 message 并关闭弹窗；await 返回后弹窗已被关闭则丢弃结果
 - 预览阶段：外层 `o-fill`（`fill-key="name"`）渲染分组块，内层嵌套 `o-fill`（`:value="$data.items" fill-key="id"`）渲染组内条目（标题 + 域名）；每组一个 `p-checkbox`（`sync:checked="$data.checked"`）控制是否应用，未勾选组降透明度；分组列表固定 `max-height: 380px` 内部滚动；列表下方是建议输入行——**原生 `<textarea>` 固定高度 64px 内部滚动**（同 AI 导入不用 p-textarea 的原因，多行建议不撑高弹窗）+「重新分组」按钮
 - `reGroup()`：建议为空 toast 报错；否则回到 `analyzing` 阶段（loading 文案切换为「按你的建议重新分组」）并带 `suggestion` 复用 `dialList` 重新分析，新结果覆盖预览；建议文本保留可继续修改重分
@@ -145,7 +153,7 @@ speed-dial/
 ## 运行方式
 
 - 在 Mazmot 系统内经应用市场安装后运行（`?app=speed-dial` 官方应用分享格式）
-- 依赖宿主环境：NoneOS Core Service Worker 提供 `/nos/*` 与 `/gh/` 前缀，Mazmot 宿主提供 `/ai/main.js`；页面模块内用 `load(...)` 按需加载，禁止顶层 `import "/nos/*"`
+- 依赖宿主环境：NoneOS Core Service Worker 提供 `/nos/*` 与 `/gh/` 前缀，Mazmot 宿主提供 `/mz/ai/main.js`；页面模块内用 `load(...)` 按需加载，禁止顶层 `import "/nos/*"`
 - AI 导入需在宿主已配置 AI Key（「AI 密钥管理器」应用）；未配置时功能给出明确提示，其余功能不受影响
 
 ## 测试

@@ -67,29 +67,29 @@ Mazmot/
 │       ├── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │       └── traffic.html      # 流量监控：汇总卡片 + 服务器/用户的实时带宽与连接统计
 │
-├── lib/                      # 跨应用公共工具库（被 main / run-app / 模板共享，URL = /lib/*.js）
+├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│   └── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│
-├── comps/                    # 系统级公共组件（ercode / rdn-network / rnd-box），详见 comps/CONTEXT.md
-│   ├── ercode/               # <m-ercode> 二维码组件（被主应用分享弹窗使用）
-│   ├── rdn-network/          # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
-│   ├── rnd-box/              # <m-rnd-box> 可拖拽缩放浮动盒子容器
-│   └── CONTEXT.md            # 组件上下文说明
+│   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi，被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
+│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
+│   │   ├── test/             # supplier / chain 层 sibyl-test 测试
+│   │   └── README.md         # 完整 API 文档
+│   └── comps/                # 系统级公共组件（URL = /mz/comps/*），详见 mz/comps/CONTEXT.md
+│       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
+│       ├── o-md/             # <o-md> Markdown 渲染组件
+│       ├── rdn-network/      # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
+│       └── rnd-box/          # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
-│   ├── ai-manager/           # AI API Key 管理器（基于 ai/main.js）
+│   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │
-├── ai/                       # 独立子项目：AI Provider 抽象层（DeepSeek/Kimi），不被主系统直接引用
-│   ├── main.js               # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   ├── supplier/             # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
-│   ├── demo/                 # 独立 ofa.js demo 应用（api-keys / chat / layout）
-│   └── README.md             # 完整 API 文档
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
 │
@@ -237,13 +237,13 @@ clearOpened → 关闭窗口
 
 ### 应用数据模型约束（强约定）
 
-以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](lib/app-runner.js) / [share-mgr.js](lib/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
-- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](lib/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
+- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
-- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](lib/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
@@ -296,8 +296,8 @@ npm run static
 **主应用工具库测试**（[apps/main/lib/test/](apps/main/lib/test/)）
 
 - `http://localhost:30031/apps/main/lib/test/_install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（其他测试依赖 Core 已就绪）
-- `http://localhost:30031/lib/test/app-runner.sb.html` — 测试 [app-runner.js](lib/app-runner.js) 的 URL 生成与文件读取
-- `http://localhost:30031/lib/test/share-mgr.sb.html` — 测试 [share-mgr.js](lib/share-mgr.js) 的 Base64URL、分享链接与打包结构
+- `http://localhost:30031/mz/test/app-runner.sb.html` — 测试 [app-runner.js](mz/app-runner.js) 的 URL 生成与文件读取
+- `http://localhost:30031/mz/test/share-mgr.sb.html` — 测试 [share-mgr.js](mz/share-mgr.js) 的 Base64URL、分享链接与打包结构
 
 **run-app 工具库测试**（[apps/run-app/lib/test/](apps/run-app/lib/test/)）
 
@@ -324,7 +324,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 
 ### 分享（发布端）
 
-1. 分享入口只剩一个：在应用列表折叠子项开启「自动分享」开关 → `handleAutoShareToggle` → `autoShareApp` → [share-mgr.js](lib/share-mgr.js) 的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。操作行不再有独立的「分享应用」按钮。
+1. 分享入口只剩一个：在应用列表折叠子项开启「自动分享」开关 → `handleAutoShareToggle` → `autoShareApp` → [share-mgr.js](mz/share-mgr.js) 的 `publishApp(app, { appId, onProgress })`，返回 `{ shareUrl, appId, payloadHash }`。操作行不再有独立的「分享应用」按钮。
 2. `publishApp` 内部：`readAppFiles(handle)` 读 `client/` 下所有文件 → `ensurePublisher()` 拿到 `LocalUser("mazmot")` + `DataPublisher` 单例 → `buildPackageFile(files, meta)` 打成 UTF-8 JSON `File` → `publisher.publish(file)` 得到应用包 `manifest.fileHash` → 拼装扁平 `payloadData`（展示元数据 + `publisherUserId` + 应用包 `fileHash`）→ `buildSharePayloadFile(payloadData)` → `publisher.publish(payloadFile)` 得到 `payloadManifest.fileHash`（core manifest 已带 ECDSA 签名）→ `buildRunUrl(origin, userId, payloadHash)` → `{origin}/apps/run-app/?u={userId}&h={payloadHash}`。
 3. 「分享链接」行：开关开启后额外显示（`<o-if :value="$data.autoShare">`），行内含只读链接文本 + 复制按钮（`copyAutoShareUrl`） + 二维码按钮（`showShareQrCode`，弹出仅显示 `<m-ercode>` 二维码 + 链接文本 + 「复制链接」的 `shareDialogOpen` 弹窗）。链接未就绪时两个按钮均 `disabled`。
 4. `home.html` 的 `attached()` 与 `refreshApps()` 都会调 `_runAutoShareAll()`，对所有 `autoShare=true` 的应用重新执行一次 `publishApp`，保证进入 home 页时对端可直接连接、无需再点击分享。
@@ -389,10 +389,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | ---- | -------- |
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
 | 修改添加应用流程 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
-| 应用运行 URL 生成 / 文件读取 | [lib/app-runner.js](lib/app-runner.js) |
+| 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
-| 分享工具（发布/验签） | [lib/share-mgr.js](lib/share-mgr.js) |
+| 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
@@ -402,10 +402,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 主 SW | [sw.js](sw.js) |
 | 宿主离线缓存文件清单 / 版本 | [host-cache.json](host-cache.json)（改动缓存文件后需同步提升 `version`） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
-| 二维码组件（分享弹窗用） | [comps/ercode/ercode.html](comps/ercode/ercode.html) |
-| 浮窗式网络面板（主应用挂载） | [comps/rdn-network/rdn-network.html](comps/rdn-network/rdn-network.html) |
-| 系统级公共组件说明 | [comps/CONTEXT.md](comps/CONTEXT.md) |
-| AI Provider 抽象层（独立子项目） | [ai/](ai/)（[README.md](ai/README.md) 有完整 API 文档） |
+| 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |
+| 浮窗式网络面板（主应用挂载） | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html) |
+| 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
+| AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |
