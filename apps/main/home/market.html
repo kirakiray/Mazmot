@@ -183,13 +183,14 @@
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <div class="market-body">
     <!-- 加载中 -->
     <o-if :value="loading">
       <div class="market-loading">
         <n-icon icon="mdi:loading"></n-icon>
-        <span>加载应用列表中...</span>
+        <span><locale-text><span lang="cn">加载应用列表中...</span><span lang="en">Loading apps...</span></locale-text></span>
       </div>
     </o-if>
 
@@ -203,7 +204,7 @@
               <div class="row-info">
                 <div class="row-name">{{$data.name}}</div>
                 <div class="row-tag">
-                  官方应用
+                  <locale-text><span lang="cn">官方应用</span><span lang="en">Official App</span></locale-text>
                   <o-if :value="$data.version">
                     <span class="version-badge">v{{$data.version}}</span>
                   </o-if>
@@ -215,7 +216,7 @@
                     style="font-size: 13px"
                     on:click="$host.openInstalledApp($event, $data)"
                   >
-                    打开应用
+                    <locale-text><span lang="cn">打开应用</span><span lang="en">Open</span></locale-text>
                   </st-button>
                 </o-if>
                 <o-if :value="!$host.isInstalled($data.id)">
@@ -224,8 +225,8 @@
                     on:click="$host.quickInstall($event, $data)"
                     attr:disabled="$data.installing"
                   >
-                    <o-if :value="!$data.installing">获取</o-if>
-                    <o-if :value="$data.installing">安装中...</o-if>
+                    <o-if :value="!$data.installing"><locale-text><span lang="cn">获取</span><span lang="en">Get</span></locale-text></o-if>
+                    <o-if :value="$data.installing"><locale-text><span lang="cn">安装中...</span><span lang="en">Installing...</span></locale-text></o-if>
                   </st-button>
                 </o-if>
               </div>
@@ -234,7 +235,7 @@
         </div>
       </o-if>
       <o-if :value="apps.length === 0">
-        <div class="empty-state">暂无官方应用</div>
+        <div class="empty-state"><locale-text><span lang="cn">暂无官方应用</span><span lang="en">No official apps yet</span></locale-text></div>
       </o-if>
     </o-if>
 
@@ -246,7 +247,7 @@
           <div class="detail-title-area">
             <div class="detail-name">{{selectedApp.name}}</div>
             <div class="detail-tag">
-              官方应用
+              <locale-text><span lang="cn">官方应用</span><span lang="en">Official App</span></locale-text>
               <o-if :value="selectedApp.version">
                 <span class="version-badge">v{{selectedApp.version}}</span>
               </o-if>
@@ -272,7 +273,7 @@
               color="primary"
               on:click="openInstalledDetail"
             >
-              打开应用
+              <locale-text><span lang="cn">打开应用</span><span lang="en">Open</span></locale-text>
             </st-button>
           </o-if>
           <o-if :value="!isInstalled(selectedApp.id)">
@@ -281,7 +282,7 @@
               on:click="installSelected"
               attr:disabled="installing"
             >
-              安装
+              <locale-text><span lang="cn">安装</span><span lang="en">Install</span></locale-text>
             </st-button>
           </o-if>
         </div>
@@ -297,11 +298,13 @@
     <o-if :value="view === 'detail'">
       <st-button variant="text" on:click="backToList">
         <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
-        返回
+        <locale-text><span lang="cn">返回</span><span lang="en">Back</span></locale-text>
       </st-button>
     </o-if>
     <div style="flex: 1"></div>
-    <st-button variant="text" on:click="closeDialog">关闭</st-button>
+    <st-button variant="text" on:click="closeDialog">
+      <locale-text><span lang="cn">关闭</span><span lang="en">Close</span></locale-text>
+    </st-button>
   </div>
 
   <script>
@@ -316,6 +319,7 @@
       officialAppState,
       syncOfficialAppState,
     } from "../lib/official-app-state.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
     const storage = getStorage("mazmot");
 
@@ -376,7 +380,13 @@
           async _openInstalled(appMeta) {
             const installed = this._findInstalledApp(appMeta.id);
             if (!installed) {
-              toast({ message: "未找到已安装的应用记录", color: "tertiary" });
+              toast({
+                message: getLocaleText({
+                  cn: "未找到已安装的应用记录",
+                  en: "Installed app record not found",
+                }),
+                color: "tertiary",
+              });
               return;
             }
             try {
@@ -399,7 +409,10 @@
             } catch (err) {
               console.error("打开应用失败：", err);
               toast({
-                message: "打开应用失败：" + (err.message || err),
+                message: getLocaleText(
+                  { cn: "打开应用失败：{msg}", en: "Failed to open app: {msg}" },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
             }
@@ -414,7 +427,13 @@
             } catch (err) {
               console.warn("加载官方应用列表失败：", err);
               toast({
-                message: "加载应用列表失败：" + (err.message || err),
+                message: getLocaleText(
+                  {
+                    cn: "加载应用列表失败：{msg}",
+                    en: "Failed to load app list: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
                 color: "error",
               });
             } finally {
@@ -451,14 +470,23 @@
           async installApp(appMeta) {
             if (this.installing) return;
             if (this.isInstalled(appMeta.id)) {
-              toast({ message: "该应用已安装", color: "secondary" });
+              toast({
+                message: getLocaleText({
+                  cn: "该应用已安装",
+                  en: "This app is already installed",
+                }),
+                color: "secondary",
+              });
               return;
             }
 
             this.installing = true;
             appMeta.installing = true;
             this.progress = 0;
-            this.progressText = "准备安装...";
+            this.progressText = getLocaleText({
+              cn: "准备安装...",
+              en: "Preparing to install...",
+            });
 
             const appName = appMeta.id;
 
@@ -466,7 +494,13 @@
               const existingApps = (await storage.getItem("apps")) || [];
               if (existingApps.some((a) => a.name === appName)) {
                 alert({
-                  content: `已存在同名应用「${appName}」，无法重复安装。`,
+                  content: getLocaleText(
+                    {
+                      cn: "已存在同名应用「{name}」，无法重复安装。",
+                      en: "An app named \"{name}\" already exists; cannot install again.",
+                    },
+                    { name: appName },
+                  ),
                 });
                 return;
               }
@@ -480,10 +514,12 @@
                 appId: appMeta.id,
                 onProgress: ({ path, status, progress }) => {
                   this.progress = progress;
-                  this.progressText =
+                  this.progressText = getLocaleText(
                     status === "writing"
-                      ? `正在写入 ${path} ...`
-                      : `已写入 ${path}`;
+                      ? { cn: "正在写入 {path} ...", en: "Writing {path} ..." }
+                      : { cn: "已写入 {path}", en: "Written {path}" },
+                    { path },
+                  );
                 },
               });
 
@@ -503,13 +539,25 @@
 
               // 同步共享 stanz 状态，挂载的模板会自动更新
               await syncOfficialAppState();
-              this.progressText = "安装完成";
-              toast({ message: `${appMeta.name} 安装成功`, color: "success" });
+              this.progressText = getLocaleText({
+                cn: "安装完成",
+                en: "Installation complete",
+              });
+              toast({
+                message: getLocaleText(
+                  { cn: "{name} 安装成功", en: "{name} installed" },
+                  { name: appMeta.name },
+                ),
+                color: "success",
+              });
             } catch (err) {
               console.error("安装失败：", err);
-              this.progressText = "安装失败：" + (err.message || err);
+              this.progressText = getLocaleText(
+                { cn: "安装失败：{msg}", en: "Install failed: {msg}" },
+                { msg: err.message || err },
+              );
               alert({
-                content: "安装失败：" + (err.message || err),
+                content: this.progressText,
               });
             } finally {
               this.installing = false;
