@@ -3,7 +3,7 @@
 > [English](README.md) | 中文
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.16-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)](package.json)
 [![Browser Tests](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml/badge.svg)](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml)
 [![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
@@ -72,7 +72,7 @@
 - **应用市场**：浏览官方应用并安装，支持版本检测与一键更新
 - **状态追踪**：通过 BroadcastChannel + localStorage 追踪应用窗口存活状态
 
-### P2P 分享（`apps/run-app/` + `lib/share-mgr.js`）
+### P2P 分享（`apps/run-app/` + `mz/share-mgr.js`）
 - 基于 NoneOS Core `DataPublisher` 点对点分发，**无需后端、无需 zip、无需上传**
 - 短链接仅 `u`（发布者 userId）+ `h`（payload 哈希）两个参数
 - 三层安全锚点：E2E 密钥握手 + ECDSA 签名校验 + SHA-256 chunk 防篡改
@@ -103,12 +103,18 @@ Mazmot/
 │   ├── main/                 #   主应用：应用列表 / 添加 / 市场 / 分享
 │   ├── run-app/              #   分享接收应用（?u=...&h=...）
 │   └── network/              #   网络监控应用
-├── lib/                      # 跨应用公共工具库（app-runner / share-mgr）
-├── comps/                    # 系统级公共组件（ercode / rdn-network / rnd-box）
+├── mz/                       # Mazmot 宿主命名空间（与 /nos/* 对称）
+│   ├── app-runner.js         #   应用运行器（虚拟目录生命周期）
+│   ├── share-mgr.js          #   应用 P2P 分享
+│   ├── comps/                #   系统级公共组件（ercode / o-md / rdn-network / rnd-box）
+│   └── ai/                   #   AI Provider 抽象层（独立子项目）
 ├── official-apps/            # 官方应用资源（应用市场）
+│   ├── ai-chat/              #   AI 聊天
 │   ├── ai-manager/           #   AI API Key 管理器
-│   └── smart-assistant/      #   智能联络助手
-├── ai/                       # 独立子项目：AI Provider 抽象层
+│   ├── cloud-drive/          #   云盘
+│   ├── smart-assistant/      #   智能联络助手
+│   └── speed-dial/           #   拨号盘
+├── scripts/                  # 构建/开发脚本（静态服务 / 宿主缓存 / 版本发布）
 └── .github/workflows/        # CI：多浏览器测试矩阵
 ```
 
@@ -181,7 +187,7 @@ https://your-host/apps/run-app/?u={publisherUserId}&h={payloadHash}
 
 - [AGENTS.md](AGENTS.md) — AI 代理开发规范（技术栈、依赖 URL 规范、目录规则、测试规范、P2P 分享约束）
 - [CONTEXT.md](CONTEXT.md) — 项目架构上下文（目录树、数据模型、应用生命周期、分享流程）
-- [comps/CONTEXT.md](comps/CONTEXT.md) — 系统级公共组件说明
+- [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) — 系统级公共组件说明
 - [mz/ai/README.md](mz/ai/README.md) — AI Provider 抽象层完整 API 文档
 
 ### 相关 Skill 知识库

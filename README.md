@@ -3,7 +3,7 @@
 > English | [中文](README.zh-CN.md)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.16-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)](package.json)
 [![Browser Tests](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml/badge.svg)](https://github.com/kirakiray/Mazmot/actions/workflows/test.yml)
 [![Website](https://img.shields.io/badge/website-mazmot.noneos.com-blue.svg)](https://mazmot.noneos.com)
 [![Repository](https://img.shields.io/badge/repo-github.com/kirakiray/Mazmot-blue.svg)](https://github.com/kirakiray/Mazmot)
@@ -76,7 +76,7 @@ Apps run directly on the main domain through the Service Worker's virtual URL pr
 - **App market**: browse and install official apps, with version detection and one-click updates
 - **Status tracking**: tracks app window liveness via BroadcastChannel + localStorage
 
-### P2P Sharing (`apps/run-app/` + `lib/share-mgr.js`)
+### P2P Sharing (`apps/run-app/` + `mz/share-mgr.js`)
 - Peer-to-peer distribution via NoneOS Core `DataPublisher` — **no backend, no zip, no upload**
 - Short links carry only `u` (publisher userId) + `h` (payload hash) parameters
 - Three-layer security anchors: E2E key handshake + ECDSA signature verification + SHA-256 chunk tamper protection
@@ -107,12 +107,18 @@ Mazmot/
 │   ├── main/                 #   Main app: app list / add / market / share
 │   ├── run-app/              #   Share receiver app (?u=...&h=...)
 │   └── network/              #   Network monitoring app
-├── lib/                      # Cross-app shared utils (app-runner / share-mgr)
-├── comps/                    # System-level shared components (ercode / rdn-network / rnd-box)
+├── mz/                       # Mazmot host namespace (mirrors /nos/*)
+│   ├── app-runner.js         #   App runtime (virtual directory lifecycle)
+│   ├── share-mgr.js          #   P2P app sharing
+│   ├── comps/                #   System-level shared components (ercode / o-md / rdn-network / rnd-box)
+│   └── ai/                   #   AI Provider abstraction layer (standalone subproject)
 ├── official-apps/            # Official app resources (app market)
+│   ├── ai-chat/              #   AI chat
 │   ├── ai-manager/           #   AI API Key manager
-│   └── smart-assistant/      #   Smart contact assistant
-├── ai/                       # Standalone subproject: AI Provider abstraction layer
+│   ├── cloud-drive/          #   Cloud drive
+│   ├── smart-assistant/      #   Smart contact assistant
+│   └── speed-dial/           #   Speed dial
+├── scripts/                  # Build/dev scripts (static server / host cache / bump)
 └── .github/workflows/        # CI: multi-browser test matrix
 ```
 
@@ -185,7 +191,7 @@ Anyone opening the link can install and run the app in one click. **The publishe
 
 - [AGENTS.md](AGENTS.md) — AI agent dev conventions (tech stack, dependency URL rules, directory rules, testing, P2P sharing constraints)
 - [CONTEXT.md](CONTEXT.md) — Project architecture context (directory tree, data models, app lifecycle, sharing flow)
-- [comps/CONTEXT.md](comps/CONTEXT.md) — System-level shared component docs
+- [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) — System-level shared component docs
 - [mz/ai/README.md](mz/ai/README.md) — AI Provider abstraction layer full API docs
 
 ### Related Skill Knowledge Bases
