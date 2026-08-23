@@ -277,6 +277,7 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <main class="container">
     <header class="app-header">
@@ -289,7 +290,7 @@
       <st-input
         id="search-input"
         sync:value="searchText"
-        placeholder="输入关键词，回车搜索"
+        attr:placeholder="t('searchPlaceholder')"
         on:keydown="onSearchKey($event)"
       >
         <st-menu slot="prefix" align="left">
@@ -306,7 +307,7 @@
             </st-menu-item>
           </o-fill>
         </st-menu>
-        <st-icon-button slot="suffix" style="font-size: 13px" on:click="doSearch" title="搜索" aria-label="搜索">
+        <st-icon-button slot="suffix" style="font-size: 13px" on:click="doSearch" attr:title="t('search')" attr:aria-label="t('search')">
           <n-icon icon="mdi:magnify"></n-icon>
         </st-icon-button>
       </st-input>
@@ -320,7 +321,7 @@
           on:click="activeGroup = ''"
         >
           <n-icon icon="mdi:apps"></n-icon>
-          <span>全部 {{dials.length}}</span>
+          <locale-text attr:data-count="dials.length"><span lang="cn">全部 {count}</span><span lang="en">All {count}</span></locale-text>
         </button>
         <o-fill :value="groups" fill-key="name">
           <button
@@ -335,14 +336,14 @@
       </div>
       <st-split-button variant="outlined" style="font-size: 13px" on:click="openGroup">
         <n-icon icon="mdi:folder-sync-outline" slot="prefix"></n-icon>
-        <span style="white-space: nowrap;">AI 分组</span>
+        <span style="white-space: nowrap;"><locale-text><span lang="cn">AI 分组</span><span lang="en">AI Grouping</span></locale-text></span>
         <st-menu-item slot="menu" on:click="openImport">
           <n-icon icon="mdi:sparkles" slot="prefix"></n-icon>
-          <span>AI 导入</span>
+          <span><locale-text><span lang="cn">AI 导入</span><span lang="en">AI Import</span></locale-text></span>
         </st-menu-item>
         <st-menu-item slot="menu" on:click="exportHtml">
           <n-icon icon="mdi:code-json" slot="prefix"></n-icon>
-          <span>导出网页</span>
+          <span><locale-text><span lang="cn">导出网页</span><span lang="en">Export HTML</span></locale-text></span>
         </st-menu-item>
       </st-split-button>
     </div>
@@ -365,7 +366,7 @@
           <div class="tile-actions">
             <st-icon-button
               style="font-size: 12px"
-              title="编辑"
+              attr:title="$host.t('edit')"
               on:click="$host.openEdit($event, $data)"
             >
               <n-icon icon="mdi:pencil-outline"></n-icon>
@@ -373,7 +374,7 @@
             <st-icon-button
               color="error"
               style="font-size: 12px"
-              title="删除"
+              attr:title="$host.t('remove')"
               on:click="$host.removeDial($event, $data)"
             >
               <n-icon icon="mdi:close"></n-icon>
@@ -395,7 +396,7 @@
           <div class="tile-host">{{$host.hostOf($data.url)}}</div>
         </div>
       </o-fill>
-      <button class="add-tile" on:click="openAdd" aria-label="添加网址">
+      <button class="add-tile" on:click="openAdd" attr:aria-label="t('add')">
         <n-icon icon="mdi:plus"></n-icon>
       </button>
     </div>
@@ -434,6 +435,9 @@
 
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
       );
@@ -442,6 +446,19 @@
       );
       const { PALETTE } = await load("./palette.js");
       const store = getStorage("speed-dial");
+
+      // 属性类文案（title / placeholder 等）翻译表；模板正文文案用 <locale-text> 组件
+      const L10N = {
+        searchPlaceholder: { cn: "输入关键词，回车搜索", en: "Type keywords and press Enter to search" },
+        search: { cn: "搜索", en: "Search" },
+        add: { cn: "添加网址", en: "Add site" },
+        edit: { cn: "编辑", en: "Edit" },
+        remove: { cn: "删除", en: "Delete" },
+      };
+      const t = (key) => {
+        const item = L10N[key];
+        return item ? getLocaleText(item) : key;
+      };
 
       return {
         data: {
@@ -455,6 +472,10 @@
         },
 
         proto: {
+          t(key) {
+            return t(key);
+          },
+
           get visibleDials() {
             if (!this.activeGroup) return this.dials;
             return this.dials.filter((dial) => dial.group === this.activeGroup);
@@ -549,7 +570,10 @@
           exportHtml() {
             if (!this.dials.length) {
               toast({
-                message: "还没有收藏的网址，先添加或导入一些吧",
+                message: getLocaleText({
+                  cn: "还没有收藏的网址，先添加或导入一些吧",
+                  en: "No bookmarks yet. Add or import some first",
+                }),
                 color: "error",
               });
               return;
@@ -598,7 +622,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>网页收藏夹导出（${dials.length} 条）</title>
+<title>${escapeHtml(getLocaleText({ cn: "网页收藏夹导出（{n} 条）", en: "Web Bookmarks Export ({n} items)" }, { n: dials.length }))}</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #333; }
   h1 small { font-weight: normal; color: #888; }
@@ -611,9 +635,9 @@
 </style>
 </head>
 <body>
-<h1>网页收藏夹导出 <small>（${dials.length} 条，导出时间 ${new Date().toLocaleString()}）</small></h1>
+<h1>${escapeHtml(getLocaleText({ cn: "网页收藏夹导出", en: "Web Bookmarks Export" }))} <small>（${dials.length} ${escapeHtml(getLocaleText({ cn: "条", en: "items" }))}，${escapeHtml(getLocaleText({ cn: "导出时间", en: "exported" }))} ${new Date().toLocaleString()}）</small></h1>
 ${sections}
-<h2>原始数据</h2>
+<h2>${escapeHtml(getLocaleText({ cn: "原始数据", en: "Raw Data" }))}</h2>
 <pre id="dials-data">${json}</pre>
 <script>
   // 原始数组数据，可供导入或二次处理
@@ -628,7 +652,12 @@ ${sections}
             a.download = `speed-dial-${new Date().toISOString().slice(0, 10)}.html`;
             a.click();
             URL.revokeObjectURL(url);
-            toast({ message: `已导出 ${dials.length} 个网址` });
+            toast({
+              message: getLocaleText(
+                { cn: "已导出 {n} 个网址", en: "Exported {n} sites" },
+                { n: dials.length },
+              ),
+            });
           },
 
           getAiImport() {
@@ -639,7 +668,10 @@ ${sections}
           openGroup() {
             if (!this.dials.length) {
               toast({
-                message: "还没有收藏的网址，先添加或导入一些吧",
+                message: getLocaleText({
+                  cn: "还没有收藏的网址，先添加或导入一些吧",
+                  en: "No bookmarks yet. Add or import some first",
+                }),
                 color: "error",
               });
               return;
@@ -671,8 +703,14 @@ ${sections}
             if (changed) this.activeGroup = ""; // 原筛选组可能已被改名，回到全部
             toast({
               message: changed
-                ? `已更新 ${changed} 个网址的分组`
-                : "分组没有变化",
+                ? getLocaleText(
+                    { cn: "已更新 {n} 个网址的分组", en: "Updated groups for {n} sites" },
+                    { n: changed },
+                  )
+                : getLocaleText({
+                    cn: "分组没有变化",
+                    en: "No group changes",
+                  }),
             });
           },
 
@@ -700,8 +738,14 @@ ${sections}
             await this.persist();
             toast({
               message: added
-                ? `已添加 ${added} 个网址`
-                : "没有可新增的网址（可能都已收藏）",
+                ? getLocaleText(
+                    { cn: "已添加 {n} 个网址", en: "Added {n} sites" },
+                    { n: added },
+                  )
+                : getLocaleText({
+                    cn: "没有可新增的网址（可能都已收藏）",
+                    en: "No new sites to add (possibly all bookmarked)",
+                  }),
             });
           },
 
@@ -738,10 +782,13 @@ ${sections}
           async removeDial(event, dial) {
             event.stopPropagation();
             const ok = await confirm({
-              title: "删除确认",
-              content: `确定要删除「${dial.title}」吗？`,
-              yes: "删除",
-              cancel: "取消",
+              title: getLocaleText({ cn: "删除确认", en: "Delete Confirmation" }),
+              content: getLocaleText(
+                { cn: "确定要删除「{title}」吗？", en: 'Delete "{title}"?' },
+                { title: dial.title },
+              ),
+              yes: getLocaleText({ cn: "删除", en: "Delete" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
             });
             if (!ok) return;
             const index = this.dials.findIndex((d) => d.id === dial.id);

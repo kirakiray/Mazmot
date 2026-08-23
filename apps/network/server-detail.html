@@ -197,12 +197,13 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <div class="container">
     <div class="header">
       <st-icon-button
-        style="font-size: 13px" icon size="s" on:click="goBack" title="返回"><n-icon icon="mdi:arrow-left"></n-icon></st-icon-button>
-      <h1>服务器详情</h1>
+        style="font-size: 13px" icon size="s" on:click="goBack" attr:title="t('back')"><n-icon icon="mdi:arrow-left"></n-icon></st-icon-button>
+      <h1><locale-text><span lang="cn">服务器详情</span><span lang="en">Server Details</span></locale-text></h1>
     </div>
 
     <o-if :value="error">
@@ -221,26 +222,29 @@
             <o-if :value="connected">
               <span class="badge on">
                 <n-icon icon="mdi:check-circle-outline"></n-icon>
-                已连接
+                <locale-text><span lang="cn">已连接</span><span lang="en">Connected</span></locale-text>
               </span>
             </o-if>
             <o-if :value="!connected">
-              <span class="badge off">未连接</span>
+              <span class="badge off"><locale-text><span lang="cn">未连接</span><span lang="en">Disconnected</span></locale-text></span>
             </o-if>
           </div>
         </div>
       </div>
 
       <div class="row">
-        <div class="label">连接状态</div>
-        <div class="value">{{connected ? "已连接" : "未连接"}}</div>
+        <div class="label"><locale-text><span lang="cn">连接状态</span><span lang="en">Status</span></locale-text></div>
+        <div class="value">
+          <o-if :value="connected"><locale-text><span lang="cn">已连接</span><span lang="en">Connected</span></locale-text></o-if>
+          <o-if :value="!connected"><locale-text><span lang="cn">未连接</span><span lang="en">Disconnected</span></locale-text></o-if>
+        </div>
       </div>
       <div class="row">
-        <div class="label">服务器版本</div>
+        <div class="label"><locale-text><span lang="cn">服务器版本</span><span lang="en">Server Version</span></locale-text></div>
         <div class="value">{{version || "-"}}</div>
       </div>
       <div class="row">
-        <div class="label">往返延迟 (RTT)</div>
+        <div class="label"><locale-text><span lang="cn">往返延迟 (RTT)</span><span lang="en">Round-trip Latency (RTT)</span></locale-text></div>
         <div class="value">
           <o-if :value="rtt !== null">
             <span
@@ -255,7 +259,7 @@
         </div>
       </div>
       <div class="row">
-        <div class="label">单向延迟</div>
+        <div class="label"><locale-text><span lang="cn">单向延迟</span><span lang="en">One-way Latency</span></locale-text></div>
         <div class="value">
           {{oneWayLatency !== null ? oneWayLatency + " ms" : "-"}}
         </div>
@@ -268,7 +272,7 @@
           attr:disabled="testing || !connected"
         >
           <n-icon icon="mdi:speedometer" slot="prefix"></n-icon>
-          测试延迟
+          <locale-text><span lang="cn">测试延迟</span><span lang="en">Test Latency</span></locale-text>
         </st-button>
         <o-if :value="!connected">
           <st-button
@@ -278,7 +282,7 @@
             attr:disabled="testing"
           >
             <n-icon icon="mdi:lan-connect" slot="prefix"></n-icon>
-            连接
+            <locale-text><span lang="cn">连接</span><span lang="en">Connect</span></locale-text>
           </st-button>
         </o-if>
         <o-if :value="connected">
@@ -289,7 +293,7 @@
             on:click="disconnectServer"
           >
             <n-icon icon="mdi:lan-disconnect" slot="prefix"></n-icon>
-            断开
+            <locale-text><span lang="cn">断开</span><span lang="en">Disconnect</span></locale-text>
           </st-button>
         </o-if>
       </div>
@@ -298,8 +302,17 @@
 
   <script>
     import { getUser } from "/nos/user/main.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
     const NAMESPACE = "default";
+
+    const L10N = {
+      back: { cn: "返回", en: "Back" },
+    };
+    const t = (key) => {
+      const i = L10N[key];
+      return i ? getLocaleText(i) : key;
+    };
 
     function getLatencyLevel(rtt) {
       if (rtt === null || rtt === undefined) return null;
@@ -323,13 +336,16 @@
         },
         async ready() {
           if (!this.url) {
-            this.error = "缺少 url 参数";
+            this.error = getLocaleText({ cn: "缺少 url 参数", en: "Missing url parameter" });
             return;
           }
           try {
             this._user = await getUser(NAMESPACE);
           } catch (err) {
-            this.error = "初始化用户失败：" + (err.message || err);
+            this.error = getLocaleText(
+              { cn: "初始化用户失败：{msg}", en: "Failed to initialize user: {msg}" },
+              { msg: err.message || err },
+            );
             return;
           }
           this._bindEvents();
@@ -343,6 +359,9 @@
           this._unbindEvents();
         },
         proto: {
+          t(key) {
+            return t(key);
+          },
           _bindEvents() {
             if (!this._user) return;
             const onConnected = (event) => {
@@ -403,7 +422,10 @@
               this._applyLatency(result.rtt, result.oneWayLatency);
             } catch (err) {
               console.error("[server-detail] testLatency 失败：", err);
-              this.error = "延迟测试失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "延迟测试失败：{msg}", en: "Latency test failed: {msg}" },
+                { msg: err.message || err },
+              );
             } finally {
               this.testing = false;
             }
@@ -441,7 +463,10 @@
               }
             } catch (err) {
               console.error("[server-detail] connect 失败：", err);
-              this.error = "连接失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "连接失败：{msg}", en: "Connection failed: {msg}" },
+                { msg: err.message || err },
+              );
             } finally {
               this.testing = false;
             }
@@ -457,7 +482,10 @@
               this.latencyLevel = null;
             } catch (err) {
               console.error("[server-detail] disconnect 失败：", err);
-              this.error = "断开失败：" + (err.message || err);
+              this.error = getLocaleText(
+                { cn: "断开失败：{msg}", en: "Disconnect failed: {msg}" },
+                { msg: err.message || err },
+              );
             }
           },
           goBack() {

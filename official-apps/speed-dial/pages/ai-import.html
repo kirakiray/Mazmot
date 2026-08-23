@@ -153,9 +153,10 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <st-dialog class="dlg-page" sync:open="dialogOpen" auto-close>
-    <h2 slot="headline">AI 导入网址</h2>
+    <h2 slot="headline"><locale-text><span lang="cn">AI 导入网址</span><span lang="en">AI Import Sites</span></locale-text></h2>
 
     <div class="dialog-body">
       <o-if :value="phase === 'input'">
@@ -166,33 +167,33 @@
           on:dragleave="dragOver = false"
           on:drop="onDrop($event)"
         >
-          <span class="input-label">文本内容</span>
+          <span class="input-label"><locale-text><span lang="cn">文本内容</span><span lang="en">Text Content</span></locale-text></span>
           <textarea
             class="plain-input"
             sync:value="inputText"
-            placeholder="粘贴任意文本：笔记、聊天记录、网页内容、书签导出文件……AI 会自动找出其中值得收藏的网址"
+            attr:placeholder="t('inputPh')"
           ></textarea>
           <div class="file-row">
             <st-button variant="outlined" style="font-size: 13px" on:click="pickFile">
               <n-icon icon="mdi:file-upload-outline" slot="prefix"></n-icon>
-              <span>选择文件</span>
+              <span><locale-text><span lang="cn">选择文件</span><span lang="en">Choose File</span></locale-text></span>
             </st-button>
             <span class="file-name" attr:title="fileName">{{fileName}}</span>
           </div>
           <p class="tip">
-            支持粘贴文本、拖拽文件到此处，或选择任意文本类文件（.txt / .md /
-            .html / .json 等）；文件内容仅在本地读取后交由 AI 识别。
+            <locale-text><span lang="cn">支持粘贴文本、拖拽文件到此处，或选择任意文本类文件（.txt / .md / .html / .json 等）；文件内容仅在本地读取后交由 AI 识别。</span><span lang="en">Paste text, drag a file here, or choose any text file (.txt / .md / .html / .json, etc.). Files are read locally and sent to AI for recognition.</span></locale-text>
           </p>
         </div>
       </o-if>
 
       <o-if :value="phase === 'review'">
         <div class="result-head">
-          <span class="result-count"
-            >识别到 {{candidates.length}} 个 · 已选 {{selectedCount}} 个</span
-          >
+          <span class="result-count">
+            <locale-text attr:data-total="candidates.length" attr:data-selected="selectedCount"><span lang="cn">识别到 {total} 个 · 已选 {selected} 个</span><span lang="en">{total} found · {selected} selected</span></locale-text>
+          </span>
           <st-button variant="text" style="font-size: 12px" on:click="toggleAll">
-            {{allChecked ? '全不选' : '全选'}}
+            <x-if :value="allChecked"><locale-text><span lang="cn">全不选</span><span lang="en">Deselect All</span></locale-text></x-if>
+            <x-if :value="!allChecked"><locale-text><span lang="cn">全选</span><span lang="en">Select All</span></locale-text></x-if>
           </st-button>
         </div>
         <div class="result-list">
@@ -211,16 +212,17 @@
 
     <div slot="actions">
       <o-if :value="phase === 'input'">
-        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
+        <st-button variant="text" on:click="dialogOpen = false"><locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text></st-button>
         <st-button style="font-size: 13px" attr:disabled="analyzing"
           on:click="analyze"
         >
-          {{analyzing ? 'AI 识别中…' : 'AI 识别'}}
+          <x-if :value="analyzing"><locale-text><span lang="cn">AI 识别中…</span><span lang="en">Analyzing…</span></locale-text></x-if>
+          <x-if :value="!analyzing"><locale-text><span lang="cn">AI 识别</span><span lang="en">AI Detect</span></locale-text></x-if>
         </st-button>
       </o-if>
       <o-if :value="phase === 'review'">
-        <st-button variant="text" on:click="back">返回</st-button>
-        <st-button on:click="confirmImport">添加所选</st-button>
+        <st-button variant="text" on:click="back"><locale-text><span lang="cn">返回</span><span lang="en">Back</span></locale-text></st-button>
+        <st-button on:click="confirmImport"><locale-text><span lang="cn">添加所选</span><span lang="en">Add Selected</span></locale-text></st-button>
       </o-if>
     </div>
   </st-dialog>
@@ -302,6 +304,21 @@
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
       );
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
+
+      // 属性类文案（placeholder 等）翻译表；模板正文文案用 <locale-text> 组件
+      const L10N = {
+        inputPh: {
+          cn: "粘贴任意文本：笔记、聊天记录、网页内容、书签导出文件……AI 会自动找出其中值得收藏的网址",
+          en: "Paste any text: notes, chats, page content, bookmark exports… AI will find the sites worth bookmarking",
+        },
+      };
+      const t = (key) => {
+        const item = L10N[key];
+        return item ? getLocaleText(item) : key;
+      };
 
       let getAssistant = null;
       const ensureAssistant = async () => {
@@ -323,6 +340,10 @@
         },
 
         proto: {
+          t(key) {
+            return t(key);
+          },
+
           // st-checkbox 勾选后回写数据
           onUrlCheck(event, item) {
             item.checked = event.target.hasAttribute("checked");
@@ -380,18 +401,40 @@
               this.inputText = truncated
                 ? text.slice(0, MAX_CONTENT_CHARS)
                 : text;
-              this.fileName = `${file.name} · ${(text.length / 1000).toFixed(1)}k 字符${
-                truncated ? "（已截断）" : ""
-              }`;
+              this.fileName = getLocaleText(
+                {
+                  cn: "{name} · {size}k 字符{trunc}",
+                  en: "{name} · {size}k chars{trunc}",
+                },
+                {
+                  name: file.name,
+                  size: (text.length / 1000).toFixed(1),
+                  trunc: truncated
+                    ? getLocaleText({ cn: "（已截断）", en: " (truncated)" })
+                    : "",
+                },
+              );
             } catch {
-              toast({ message: "文件读取失败，请选择文本类文件", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "文件读取失败，请选择文本类文件",
+                  en: "Failed to read file. Please choose a text file",
+                }),
+                color: "error",
+              });
             }
           },
 
           async analyze() {
             const content = this.inputText.trim();
             if (!content) {
-              toast({ message: "请先输入文本或选择文件", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "请先输入文本或选择文件",
+                  en: "Please enter text or choose a file first",
+                }),
+                color: "error",
+              });
               return;
             }
 
@@ -413,7 +456,13 @@
               if (!this.dialogOpen) return; // 用户已关闭弹窗，丢弃结果
               const items = parseSites(reply);
               if (!items.length) {
-                toast({ message: "未识别到可收藏的网址", color: "error" });
+                toast({
+                  message: getLocaleText({
+                    cn: "未识别到可收藏的网址",
+                    en: "No bookmarkable sites recognized",
+                  }),
+                  color: "error",
+                });
                 return;
               }
               this.candidates = items;
@@ -421,12 +470,18 @@
             } catch (err) {
               if (err?.message === "no api key available") {
                 toast({
-                  message: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                  message: getLocaleText({
+                    cn: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                    en: "No AI key configured. Add one in the \"AI Key Manager\" app first",
+                  }),
                   color: "error",
                 });
               } else {
                 toast({
-                  message: `识别失败：${err?.message || err}`,
+                  message: getLocaleText(
+                    { cn: "识别失败：{msg}", en: "Detection failed: {msg}" },
+                    { msg: err?.message || err },
+                  ),
                   color: "error",
                 });
               }
@@ -448,7 +503,13 @@
           confirmImport() {
             const selected = this.candidates.filter((item) => item.checked);
             if (!selected.length) {
-              toast({ message: "请至少选择一个网址", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "请至少选择一个网址",
+                  en: "Please select at least one site",
+                }),
+                color: "error",
+              });
               return;
             }
             this.emit("ai-import-save", {

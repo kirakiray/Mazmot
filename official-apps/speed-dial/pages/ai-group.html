@@ -168,26 +168,32 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <st-dialog class="dlg-page" sync:open="dialogOpen" auto-close>
-    <h2 slot="headline">AI 自动分组</h2>
+    <h2 slot="headline"><locale-text><span lang="cn">AI 自动分组</span><span lang="en">AI Auto Grouping</span></locale-text></h2>
 
     <div class="dialog-body">
       <o-if :value="phase === 'analyzing'">
         <div class="analyzing">
           <n-icon icon="mdi:loading" class="spin"></n-icon>
-          <span>{{suggestion ? 'AI 正在按你的建议重新分组…' : 'AI 正在为 ' + dialCount + ' 个网址划分分组…'}}</span>
+          <x-if :value="suggestion"><locale-text><span lang="cn">AI 正在按你的建议重新分组…</span><span lang="en">AI is regrouping with your suggestion…</span></locale-text></x-if>
+          <x-if :value="!suggestion">
+            <locale-text attr:data-count="dialCount"><span lang="cn">AI 正在为 {count} 个网址划分分组…</span><span lang="en">AI is grouping {count} sites…</span></locale-text>
+          </x-if>
         </div>
       </o-if>
 
       <o-if :value="phase === 'review'">
         <div class="result-head">
-          <span class="result-count"
-            >分为 {{previewGroups.length}} 组 · 已选
-            {{selectedGroupCount}} 组</span
-          >
+          <span class="result-count">
+            <locale-text attr:data-groups="previewGroups.length" attr:data-selected="selectedGroupCount"><span lang="cn">分为 {groups} 组 · 已选 {selected} 组</span><span lang="en">{groups} groups · {selected} selected</span></locale-text>
+          </span>
           <span class="result-tip">
-            {{totalCount > dialCount ? '仅分析前 ' + dialCount + ' 条（共 ' + totalCount + ' 条）' : '未勾选的分组保持原样'}}
+            <x-if :value="totalCount > dialCount">
+              <locale-text attr:data-count="dialCount" attr:data-total="totalCount"><span lang="cn">仅分析前 {count} 条（共 {total} 条）</span><span lang="en">Only the first {count} of {total} analyzed</span></locale-text>
+            </x-if>
+            <x-if :value="totalCount <= dialCount"><locale-text><span lang="cn">未勾选的分组保持原样</span><span lang="en">Unchecked groups stay unchanged</span></locale-text></x-if>
           </span>
         </div>
         <div class="group-list">
@@ -196,7 +202,9 @@
               <div class="group-head">
                 <st-checkbox attr:checked="$data.checked" on:change="$host.onGroupCheck($event, $data)"></st-checkbox>
                 <span class="group-name">{{$data.name}}</span>
-                <span class="group-count">{{$data.items.length}} 个</span>
+                <span class="group-count">
+                  <locale-text attr:data-count="$data.items.length"><span lang="cn">{count} 个</span><span lang="en">{count}</span></locale-text>
+                </span>
               </div>
               <div class="group-items">
                 <o-fill :value="$data.items" fill-key="id">
@@ -213,11 +221,11 @@
           <textarea
             class="suggest-input"
             sync:value="suggestion"
-            placeholder="填写分组建议，如：分成工作、娱乐、学习三类"
+            attr:placeholder="t('suggestPh')"
           ></textarea>
           <st-button variant="outlined" style="font-size: 13px" on:click="reGroup">
             <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
-            <span>重新分组</span>
+            <span><locale-text><span lang="cn">重新分组</span><span lang="en">Regroup</span></locale-text></span>
           </st-button>
         </div>
       </o-if>
@@ -225,11 +233,11 @@
 
     <div slot="actions">
       <o-if :value="phase === 'analyzing'">
-        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
+        <st-button variant="text" on:click="dialogOpen = false"><locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text></st-button>
       </o-if>
       <o-if :value="phase === 'review'">
-        <st-button variant="text" on:click="dialogOpen = false">取消</st-button>
-        <st-button on:click="applyGroups">应用分组</st-button>
+        <st-button variant="text" on:click="dialogOpen = false"><locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text></st-button>
+        <st-button on:click="applyGroups"><locale-text><span lang="cn">应用分组</span><span lang="en">Apply</span></locale-text></st-button>
       </o-if>
     </div>
   </st-dialog>
@@ -312,6 +320,21 @@
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
       );
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
+
+      // 属性类文案（placeholder 等）翻译表；模板正文文案用 <locale-text> 组件
+      const L10N = {
+        suggestPh: {
+          cn: "填写分组建议，如：分成工作、娱乐、学习三类",
+          en: "Describe your grouping preference, e.g. work, fun, study",
+        },
+      };
+      const t = (key) => {
+        const item = L10N[key];
+        return item ? getLocaleText(item) : key;
+      };
 
       let getAssistant = null;
       const ensureAssistant = async () => {
@@ -333,6 +356,10 @@
         },
 
         proto: {
+          t(key) {
+            return t(key);
+          },
+
           // st-checkbox 勾选后回写数据
           onGroupCheck(event, item) {
             item.checked = event.target.hasAttribute("checked");
@@ -394,12 +421,18 @@
             } catch (err) {
               if (err?.message === "no api key available") {
                 toast({
-                  message: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                  message: getLocaleText({
+                    cn: "未配置 AI Key，请先在「AI 密钥管理器」应用中添加",
+                    en: "No AI key configured. Add one in the \"AI Key Manager\" app first",
+                  }),
                   color: "error",
                 });
               } else {
                 toast({
-                  message: `分组失败：${err?.message || err}`,
+                  message: getLocaleText(
+                    { cn: "分组失败：{msg}", en: "Grouping failed: {msg}" },
+                    { msg: err?.message || err },
+                  ),
                   color: "error",
                 });
               }
@@ -411,7 +444,13 @@
           reGroup() {
             const suggestion = this.suggestion.trim();
             if (!suggestion) {
-              toast({ message: "请先填写分组建议", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "请先填写分组建议",
+                  en: "Please describe your grouping preference first",
+                }),
+                color: "error",
+              });
               return;
             }
             this.phase = "analyzing";
@@ -428,7 +467,13 @@
               }
             }
             if (!items.length) {
-              toast({ message: "请至少勾选一个分组", color: "error" });
+              toast({
+                message: getLocaleText({
+                  cn: "请至少勾选一个分组",
+                  en: "Please select at least one group",
+                }),
+                color: "error",
+              });
               return;
             }
             this.emit("ai-group-apply", {
