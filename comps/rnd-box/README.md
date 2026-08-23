@@ -12,7 +12,7 @@
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.min.mjs"
+  src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
   type="module"
 ></script>
 <link

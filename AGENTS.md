@@ -13,21 +13,22 @@
 
 ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片化。
 
-- **ofa.js**：入口 HTML 与页面/组件模块的前缀不同，见下方「按加载位置区分前缀」。
+- **ofa.js**：除 Core 引导入口（根 `index.html` 与 `apps/run-app/` 下所有文件）外一律使用 `/gh/` 本地前缀，见下方「按加载位置区分前缀」。
   - 必须带 `#debug`，开发期保留调试信息
-  - 顶层入口 HTML（如 `index.html` / `apps/*/index.html`）可酌情锁定具体版本（如 `@4.7.1`）；组件 / 页面模块 / 测试页一律用 `@latest`
+  - 根 `index.html` 与 `apps/run-app/` 走 jsdelivr 完整 URL，根入口可锁定具体版本（如 `@4.7.1`）；其余入口 / 组件 / 页面模块 / 测试页一律用 `/gh/...@latest`
 - **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
 - **Punch-UI（已废弃，逐步退出）**：**新代码一律禁止引入**。仅维护存量 punch-ui 代码时允许继续使用既有 URL（`https://punch-ui-v2.pages.dev/packages/<component>/<component>.html`，CSS 用 `.../css/pui-global.css`，工具函数用 `.../util.js`），并应趁机迁移到 senti-ui，禁止引入其他来源的 punch-ui 资源
-- **Senti-UI**：统一走 `/gh/ofajs/senti-ui@latest/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用；**始终用 `@latest`，不锁定版本**）；**例外**：顶层入口 HTML（如 `apps/main/index.html` 的主题引导 `.../packages/boot/st-boot.js`）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/...`），与 ofa.js 入口规则同理（入口加载时 SW 可能尚未注册）。**同理，会在 Core 就绪前渲染首屏的页面模块也走完整 URL**（如 `apps/run-app/run-app.html`——它是自装 Core 的首访入口，进度页 UI 必须在 SW 注册前可用，`/gh/` 此时不可用）。禁止混用无版本裸路径或其他来源的 senti-ui 资源
+- **Senti-UI**：统一走 `/gh/ofajs/senti-ui@latest/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用；**始终用 `@latest`，不锁定版本**）；**例外**：根 `index.html` 与 `apps/run-app/` 下所有文件（含 `apps/run-app/index.html` 的主题引导 `.../packages/boot/st-boot.js`、`run-app.html` 的组件引用）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/...`，加载时 SW 可能尚未注册），其余所有文件（含其他入口 HTML 与页面模块）一律 `/gh/`。禁止混用无版本裸路径或其他来源的 senti-ui 资源
 
 ### 按加载位置区分前缀（重要）
 
-同一份 ofa.js 仓库资源，**加载位置不同，前缀不同**：
+同一份 ofa.js 仓库资源，**仅根 `index.html` 与 `apps/run-app/` 下所有文件可用 jsdelivr 完整 URL，其余一律 `/gh/` 本地前缀**：
 
-- **顶层入口 HTML**（`index.html` / `apps/*/index.html`）：必须使用 `https://cdn.jsdelivr.net/gh/ofajs/...`
-  - 入口 HTML 加载时 NoneOS Core Service Worker 可能尚未注册，`/gh/`、`/npm/` 本地前缀不可用，因此走 jsdelivr 完整 URL。
+- **Core 引导入口（仅此两处）**：根目录 [index.html](index.html) 与 [apps/run-app/](apps/run-app/) 下所有文件（含 [run-app.html](apps/run-app/run-app.html)），使用 `https://cdn.jsdelivr.net/gh/ofajs/...` 完整 URL。
+  - run-app 是自装 Core 的首访入口，其页面（进度 / 确认安装 UI）可能在 NoneOS Core SW 注册前渲染，`/gh/`、`/npm/` 本地前缀不可用，因此整个目录统一走 jsdelivr 完整 URL（根入口可锁定具体版本，如 `@4.7.1`）。
   - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug`
-- **页面模块 / 组件模块 / 普通模块 / 测试页**：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
+- **其余所有文件**（`apps/main/index.html`、`apps/network/index.html`、`official-apps/*/index.html`、模板应用等其他入口 HTML，以及全部页面模块 / 组件模块 / 普通模块 / 测试页）：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
+  - 这些入口均先经根引导入口装好 Core 再进入，SW 必定就绪，`/gh/` 可用；入口 HTML 自身的 Core 就绪校验（`await import("/nos/xxx/main.js")`）同样依赖 SW，二者一致。
   - 例：`/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`、`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`
 
 > ofa.js 仓库资源（`ofa.mjs` / router 等）版本必须统一（入口锁版本、模块用 `@latest`），禁止使用 `cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs`（无版本）等历史写法；也禁止在页面/组件模块里写死 jsdelivr 完整 URL。
@@ -124,6 +125,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **完整测试**：执行 `npm test`（即 `sb-test`）启动默认多浏览器测试流程。
 - **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 会在 `push` / `pull_request` 到 main/master 时，通过 `ofajs/sibyl-test@v1` action 跑 **Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）** 三浏览器矩阵。修改测试或被测代码前请意识到：在一种浏览器下通过不等于全绿。
 - **查阅 Skill**：在编写、修改或调试 `.sb.html` 测试前，必须先查阅 `sibyl-test` Skill 文档。
+- **测试基建 URL 例外**：`.sb.html` 中加载 sibyl-test 运行时（`sb-test.mjs`）等**测试基建**允许使用 jsdelivr 完整 URL——测试由 sb-test 本地服务器承载，环境内没有 NoneOS Core SW，`/gh/` 不可用；被测的业务模块引用仍遵守 `/gh/` 规则。
 
 
 ## P2P 分享关键约束
