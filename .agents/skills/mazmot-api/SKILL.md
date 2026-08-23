@@ -162,7 +162,7 @@ splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远
 
 ## 5. 应用模板（创建新应用）
 
-Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。
+Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。`__template.json` 的 `name` / `desc` **基准值必须为英文**，可选 `i18n` 字段按语言码覆盖（结构同 `__app.json`：`"i18n": { "cn": { "name": "...", "desc": "..." } }`），`loadTemplates` 按 `getLang()` 解析，回退链：`i18n[当前语言]` → 基准英文。
 
 ```js
 import {
