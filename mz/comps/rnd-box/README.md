@@ -15,7 +15,7 @@
   src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
   type="module"
 ></script>
-<script src="/gh/ofafs/senti-ui@latest/packages/boot/st-boot.js"></script>
+<script src="/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
 
 <l-m src="./rnd-box.html"></l-m>
 ```
