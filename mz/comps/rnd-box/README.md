@@ -15,10 +15,7 @@
   src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
   type="module"
 ></script>
-<link
-  rel="stylesheet"
-  href="https://punch-ui-v2.pages.dev/packages/css/pui-global.css"
-/>
+<script src="/gh/ofafs/senti-ui@latest/packages/boot/st-boot.js"></script>
 
 <l-m src="./rnd-box.html"></l-m>
 ```
