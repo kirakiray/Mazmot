@@ -84,7 +84,7 @@ speed-dial/
 - `setEngine(id)`：id 在 `ENGINES` 内才生效，更新 `engineId` 并 `await store.setItem("searchEngine", id)` 持久化
 - `normalizeUrl(input)`：trim，已有协议（`scheme://`）原样返回，否则补 `https://`；空串原样返回
 - `hostOf(url)`：解析 hostname 并去掉 `www.`，解析失败返回原串
-- `openDial(dial)`：`window.open(url, "_blank", "noopener")`；拖拽中（`draggingId` 非空）不触发
+- `openDial(dial)`：当前标签跳转 `location.href = url`；拖拽中（`draggingId` 非空）不触发
 - 卡片图标渲染：`dial.icon` 非空时 `n-icon :icon` 渲染图标，否则 `initial(dial)` 首字母（两个 `x-if` 非显式切换）；`dial.color` 为空串时 `.tile-logo.no-bg` 无底色（透明背景 + 淡描边，内容用 on-surface-variant 色）
 - `openAdd()` / `openEdit(event, dial)`：`stopPropagation` 后调用 `getDialForm()?.openForm(...)` 打开弹窗页面（新增传 `count`/默认分组，编辑传 `id`/原值（含 `icon`）；`"未分组"` 反向转空串）
 - `onDialSave(event)`：处理弹窗上抛的 `dial-save` 事件（`event.data` = `{ id, url, title, group, color, icon }`），负责 `normalizeUrl` 归一化、标题/分组兜底、`icon` 空值归一为空串、编辑原地改字段或新增 push（生成 id/createdAt），最后 `persist()`

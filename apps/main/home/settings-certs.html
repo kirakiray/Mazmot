@@ -1,0 +1,203 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .settings-field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 8px;
+    }
+    .cert-list {
+      max-width: 560px;
+    }
+    .cert-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cert-role {
+      font-weight: 500;
+    }
+    .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      vertical-align: middle;
+    }
+    .cert-badge[data-kind="profile"] {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .cert-badge[data-kind="expired"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .cert-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cert-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cert-info-label {
+      opacity: 0.7;
+      min-width: 72px;
+    }
+    .cert-info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="settings-field-label">
+    <locale-text>
+      <span lang="cn">当前用户持有的全部凭证（含个人资料与证书）</span>
+      <span lang="en">All credentials held by the current user (profile &amp; certificates)</span>
+    </locale-text>
+  </div>
+  <st-list class="cert-list">
+    <o-fill :value="certList" fill-key="id">
+      <st-list-item>
+        <div class="cert-title">
+          <span class="cert-role">{{$data.role}}</span>
+          <o-if :value="$data.isProfile">
+            <span class="cert-badge" data-kind="profile">
+              <n-icon icon="mdi:account-circle-outline"></n-icon>
+              <locale-text><span lang="cn">个人资料</span><span lang="en">Profile</span></locale-text>
+            </span>
+          </o-if>
+          <o-if :value="$data.expired">
+            <span class="cert-badge" data-kind="expired">
+              <n-icon icon="mdi:clock-alert-outline"></n-icon>
+              <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
+            </span>
+          </o-if>
+        </div>
+        <div secondary>
+          <div class="cert-info">
+            <div class="cert-info-row">
+              <span class="cert-info-label"><locale-text><span lang="cn">签发者：</span><span lang="en">Issuer:</span></locale-text></span>
+              <span class="cert-info-value">{{$data.issuer}}</span>
+            </div>
+            <div class="cert-info-row">
+              <span class="cert-info-label"><locale-text><span lang="cn">主体：</span><span lang="en">Subject:</span></locale-text></span>
+              <span class="cert-info-value">{{$data.subject}}</span>
+            </div>
+            <div class="cert-info-row">
+              <span class="cert-info-label"><locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text></span>
+              <span class="cert-info-value">{{$data.signTimeText}}</span>
+            </div>
+            <o-if :value="$data.expireText">
+              <div class="cert-info-row">
+                <span class="cert-info-label"><locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text></span>
+                <span class="cert-info-value">{{$data.expireText}}</span>
+              </div>
+            </o-if>
+            <div class="cert-info-row">
+              <span class="cert-info-label"><locale-text><span lang="cn">凭证 ID：</span><span lang="en">Credential ID:</span></locale-text></span>
+              <span class="cert-info-value">{{$data.id}}</span>
+            </div>
+          </div>
+        </div>
+      </st-list-item>
+    </o-fill>
+  </st-list>
+  <o-if :value="certList.length === 0">
+    <div class="empty">
+      <locale-text><span lang="cn">暂无凭证</span><span lang="en">No credentials</span></locale-text>
+    </div>
+  </o-if>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export default async () => {
+      return {
+        data: {
+          certList: [],
+        },
+        async attached() {
+          await this.loadCerts();
+        },
+        proto: {
+          // 遍历 default 用户凭证库的全部记录（含已过期，逐条标记过期态）
+          async loadCerts() {
+            try {
+              const user = await ensureUser();
+              const now = Date.now();
+              const list = [];
+              for await (const cert of user.cred.values(
+                {},
+                { includeExpired: true },
+              )) {
+                list.push({
+                  id: cert.id || "",
+                  role: cert.role || "",
+                  issuer: cert.issuer || "",
+                  subject: cert.subject || "",
+                  signTimeText: formatTime(cert.signTime),
+                  expireText: cert.expire ? formatTime(cert.expire) : "",
+                  expired: !!cert.expire && cert.expire < now,
+                  isProfile: cert.role === "profile",
+                });
+              }
+              this.certList = list;
+            } catch (err) {
+              console.error("读取凭证失败：", err);
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "读取凭证失败：{msg}",
+                    en: "Failed to load credentials: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>
