@@ -37,6 +37,8 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
+│   │   │   ├── settings-user.html   # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
+│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（遍历 default 用户 cred 凭证库，展示个人资料与全部证书）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
 │   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/）
@@ -392,6 +394,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | ---- | -------- |
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
 | 修改添加应用流程 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
+| 设置弹窗用户信息（default 用户查看 / 改用户名） | [apps/main/home/settings-user.html](apps/main/home/settings-user.html) |
+| 设置弹窗凭证管理（default 用户全部凭证） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
 | 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |

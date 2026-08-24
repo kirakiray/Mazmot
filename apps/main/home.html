@@ -290,6 +290,9 @@
     .settings-nav st-list-item[active] {
       background-color: var(--md-sys-color-secondary-container);
     }
+    .settings-nav st-list-item {
+      cursor: pointer;
+    }
     .settings-content {
       flex: 1;
       min-width: 0;
@@ -399,24 +402,39 @@
     <div class="settings-body">
       <div class="settings-nav">
         <st-list>
-          <st-list-item active>
-            <n-icon icon="mdi:tune" slot="prefix"></n-icon>
-            <locale-text><span lang="cn">常规</span><span lang="en">General</span></locale-text>
-          </st-list-item>
+          <o-fill :value="settingsTabs" fill-key="id">
+            <st-list-item
+              attr:active="$host.settingsTab === $data.id"
+              on:click="$host.switchSettingsTab($data.id)"
+            >
+              <n-icon attr:icon="$data.icon" slot="prefix"></n-icon>
+              {{$host.t($data.titleKey)}}
+            </st-list-item>
+          </o-fill>
         </st-list>
       </div>
       <div class="settings-content">
-        <div class="settings-field-label">
-          <locale-text><span lang="cn">语言</span><span lang="en">Language</span></locale-text>
-        </div>
-        <st-select
-          attr:default-value="lang"
-          style="width: 200px"
-          on:change="handleLangChange"
-        >
-          <option value="cn">中文</option>
-          <option value="en">English</option>
-        </st-select>
+        <o-if :value="settingsTab === 'general'">
+          <div class="settings-field-label">
+            <locale-text><span lang="cn">语言</span><span lang="en">Language</span></locale-text>
+          </div>
+          <st-select
+            attr:default-value="lang"
+            style="width: 200px"
+            on:change="handleLangChange"
+          >
+            <option value="cn">简体中文</option>
+            <option value="tw">繁体中文</option>
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+          </st-select>
+        </o-if>
+        <o-if :value="settingsTab === 'user'">
+          <o-page src="./home/settings-user.html" style="width: 100%"></o-page>
+        </o-if>
+        <o-if :value="settingsTab === 'certs'">
+          <o-page src="./home/settings-certs.html" style="width: 100%"></o-page>
+        </o-if>
       </div>
     </div>
   </st-dialog>
@@ -713,28 +731,38 @@
       getLocaleText,
       getLang,
       setLang,
+      ensureLocaleTextJson,
     } from "/nos/locale-text/get-locale-text.js";
 
-    // 属性类文案（title 等）翻译表；模板正文文案用 <locale-text> 组件
+    // 先构建 locale-text.json 反向索引再求值 L10N：
+    // getLocaleText 只有在索引就绪后才查中央翻译表（ja 等扩展语种）
+    await ensureLocaleTextJson();
+
+    // 属性类文案（title 等）翻译表；模板正文文案用 <locale-text> 组件。
+    // 每个值必须是字面量 getLocaleText 调用，nos-tool/locale-text-tool
+    // 才能扫描收录进 locale-text.json，获得中央翻译表的扩展语种回退
     const L10N = {
-      mineTitle: { cn: "由当前账号开发发布", en: "Developed by the current account" },
-      officialTitle: { cn: "来自应用市场", en: "From the App Market" },
-      offlineTitle: { cn: "该官方应用已从市场下线，无法更新", en: "This official app has been removed from the market and cannot be updated" },
-      updateBadgeTitle: { cn: "应用市场有新版本可更新", en: "A newer version is available in the market" },
-      openedTitle: { cn: "点击可切换到已打开的窗口", en: "Click to switch to the opened window" },
-      openTabTitle: { cn: "在新标签页中打开", en: "Open in a new tab" },
-      openWindowTitle: { cn: "在小窗口中打开（类原生应用）", en: "Open in a small window (native-like)" },
-      sourceTitle: { cn: "应用来源", en: "App source" },
-      copyAppIdTitle: { cn: "复制应用 ID", en: "Copy app ID" },
-      copyShareUrlTitle: { cn: "复制分享链接", en: "Copy share link" },
-      viewQrTitle: { cn: "查看二维码", en: "View QR code" },
-      waitingPublish: { cn: "等待发布...", en: "Waiting to publish..." },
-      settingsTitle: { cn: "设置", en: "Settings" },
+      mineTitle: getLocaleText({ cn: "由当前账号开发发布", en: "Developed by the current account" }),
+      officialTitle: getLocaleText({ cn: "来自应用市场", en: "From the App Market" }),
+      offlineTitle: getLocaleText({ cn: "该官方应用已从市场下线，无法更新", en: "This official app has been removed from the market and cannot be updated" }),
+      updateBadgeTitle: getLocaleText({ cn: "应用市场有新版本可更新", en: "A newer version is available in the market" }),
+      openedTitle: getLocaleText({ cn: "点击可切换到已打开的窗口", en: "Click to switch to the opened window" }),
+      openTabTitle: getLocaleText({ cn: "在新标签页中打开", en: "Open in a new tab" }),
+      openWindowTitle: getLocaleText({ cn: "在小窗口中打开（类原生应用）", en: "Open in a small window (native-like)" }),
+      sourceTitle: getLocaleText({ cn: "应用来源", en: "App source" }),
+      copyAppIdTitle: getLocaleText({ cn: "复制应用 ID", en: "Copy app ID" }),
+      copyShareUrlTitle: getLocaleText({ cn: "复制分享链接", en: "Copy share link" }),
+      viewQrTitle: getLocaleText({ cn: "查看二维码", en: "View QR code" }),
+      waitingPublish: getLocaleText({ cn: "等待发布...", en: "Waiting to publish..." }),
+      settingsTitle: getLocaleText({ cn: "设置", en: "Settings" }),
+      navGeneral: getLocaleText({ cn: "常规", en: "General" }),
+      navUser: getLocaleText({ cn: "用户信息", en: "User Info" }),
+      navCerts: getLocaleText({ cn: "凭证管理", en: "Credentials" }),
     };
 
     const t = (key) => {
       const item = L10N[key];
-      return item ? getLocaleText(item) : key;
+      return item === undefined ? key : item;
     };
 
     const storage = getStorage("mazmot");
@@ -865,6 +893,12 @@
           shareDialogOpen: false,
           shareUrl: "",
           settingsOpen: false,
+          settingsTab: "general",
+          settingsTabs: [
+            { id: "general", icon: "mdi:tune", titleKey: "navGeneral" },
+            { id: "user", icon: "mdi:account-circle-outline", titleKey: "navUser" },
+            { id: "certs", icon: "mdi:shield-key-outline", titleKey: "navCerts" },
+          ],
           lang: getLang(),
         },
         async attached() {
@@ -911,6 +945,11 @@
           // 打开设置弹窗
           handleSettings() {
             this.settingsOpen = true;
+          },
+
+          // 设置弹窗左侧导航切换
+          switchSettingsTab(tab) {
+            this.settingsTab = tab;
           },
 
           // 设置里的语言下拉切换；setLang 会让 <locale-text> 立即刷新，
