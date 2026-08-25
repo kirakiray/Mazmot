@@ -865,8 +865,11 @@
             offline: false,
             updating: false,
             updateStatus: "",
-            // 自己开发的应用：appId 后缀为当前用户的 userId
+            // 自己开发的应用：appId 后缀为当前用户的 userId；
+            // 官方应用（含存量数据里误带 appId 的）一律不算自建
             isMine:
+              app.source !== "official" &&
+              !app.officialId &&
               !!currentUserId &&
               !!app.appId &&
               app.appId.endsWith("-" + currentUserId),
