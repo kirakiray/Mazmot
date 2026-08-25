@@ -317,7 +317,6 @@
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
     import alert from "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js";
     import { loadOfficialApps, installOfficialApp } from "./official-app-writer.js";
-    import { generateAppId } from "/mz/share-mgr.js";
     import { getRunUrl } from "/mz/app-runner.js";
     import {
       officialAppState,
@@ -527,7 +526,8 @@
                 },
               });
 
-              const appId = await generateAppId(appName);
+              // 官方应用不带 appId：appId 语义为“当前用户开发的应用”，
+              // 由 officialId 标识来源，避免应用列表误判为“我开发的”
               existingApps.push({
                 name: appName,
                 desc: appMeta.desc,
@@ -535,7 +535,6 @@
                 dirName: `${namespace}/${appName}`,
                 source: "official",
                 namespace: namespace,
-                appId,
                 officialId: appMeta.id,
                 createdAt: Date.now(),
               });

@@ -1,0 +1,265 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .page-title st-icon-button {
+      margin-left: auto;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .user-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .user-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .username {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .me-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 60px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
+  <l-m src="/ncomp/user-status/user-status.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:account-group-outline"></n-icon>
+      <locale-text><span lang="cn">已知用户</span><span lang="en">Known Users</span></locale-text>
+      <st-icon-button on:click="loadUsers()" attr:title="refreshTitle">
+        <n-icon icon="mdi:refresh"></n-icon>
+      </st-icon-button>
+    </div>
+
+    <div class="cards">
+      <o-fill :value="userList" fill-key="userId">
+        <st-card class="user-card">
+          <div class="user-head">
+            <n-user-status attr:user-id="$data.userId" style="width:10px; height:10px; flex-shrink:0;"></n-user-status>
+            <span class="username">{{$data.username}}</span>
+            <o-if :value="$data.isMe">
+              <span class="me-badge">
+                <locale-text><span lang="cn">我</span><span lang="en">Me</span></locale-text>
+              </span>
+            </o-if>
+          </div>
+          <div class="info-row" attr:title="$data.userId">
+            <span class="info-label">ID</span>
+            <span class="info-value">{{$data.shortId}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <n-icon icon="mdi:clock-check-outline"></n-icon>
+              <locale-text><span lang="cn">资料签名</span><span lang="en">Signed</span></locale-text>
+            </span>
+            <span class="info-value">{{$data.signTimeText}}</span>
+          </div>
+          <div class="card-actions">
+            <st-icon-button on:click="$host.copyUserId($data.userId)" attr:title="$host.copyTitle">
+              <n-icon icon="mdi:content-copy"></n-icon>
+            </st-icon-button>
+            <o-if :value="!$data.isMe">
+              <st-icon-button on:click="$host.goIssue($data.userId)" attr:title="$host.issueTitle">
+                <n-icon icon="mdi:certificate-outline"></n-icon>
+              </st-icon-button>
+            </o-if>
+            <st-icon-button color="error" on:click="$host.removeUser($data.userId)" attr:title="$host.removeTitle">
+              <n-icon icon="mdi:delete-outline"></n-icon>
+            </st-icon-button>
+          </div>
+        </st-card>
+      </o-fill>
+    </div>
+    <o-if :value="userList.length === 0">
+      <div class="empty">
+        <locale-text>
+          <span lang="cn">暂无已知用户（查询过的用户资料会缓存在这里）</span>
+          <span lang="en">No known users yet (looked-up profiles are cached here)</span>
+        </locale-text>
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export const parent = "./home.html";
+
+    export default async () => {
+      return {
+        data: {
+          userList: [],
+          refreshTitle: getLocaleText({ cn: "刷新", en: "Refresh" }),
+          copyTitle: getLocaleText({ cn: "复制 ID", en: "Copy ID" }),
+          issueTitle: getLocaleText({
+            cn: "查询并签发证书",
+            en: "Look up & issue certificate",
+          }),
+          removeTitle: getLocaleText({
+            cn: "删除缓存的资料",
+            en: "Delete cached profile",
+          }),
+        },
+        async attached() {
+          await this.loadUsers();
+        },
+        proto: {
+          // 读取本地凭证库中缓存的全部用户资料（role="profile" 记录，含自己）
+          async loadUsers() {
+            try {
+              const user = await ensureUser();
+              const profiles = await user.cred.query(
+                { role: "profile" },
+                { includeExpired: true },
+              );
+              this.userList = profiles.map((p) => ({
+                userId: p.subject || "",
+                username: p.username || p.subject || "",
+                shortId: (p.subject || "").slice(0, 20) + "…",
+                signTimeText: formatTime(p.signTime),
+                isMe: p.subject === user.userId,
+              }));
+            } catch (err) {
+              console.error("读取已知用户失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取已知用户失败：{msg}", en: "Failed to load known users: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          async copyUserId(userId) {
+            try {
+              await navigator.clipboard.writeText(userId);
+              toast({ message: getLocaleText({ cn: "已复制", en: "Copied" }) });
+            } catch (err) {
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
+          // 跳到「查询用户」页并自动查询该用户
+          goIssue(userId) {
+            this.app.__pendingQueryUser = userId;
+            this.app.goto("./pages/query-user.html");
+          },
+          async removeUser(userId) {
+            try {
+              const user = await ensureUser();
+              await user.cred.deleteProfile(userId);
+              await this.loadUsers();
+              toast({
+                message: getLocaleText({
+                  cn: "已删除缓存的资料",
+                  en: "Cached profile deleted",
+                }),
+              });
+            } catch (err) {
+              console.error("删除资料失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "删除失败：{msg}", en: "Delete failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

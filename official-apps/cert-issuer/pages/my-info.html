@@ -1,0 +1,209 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .id-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .id-row .info-value {
+      flex: 1;
+    }
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:account-circle-outline"></n-icon>
+      <locale-text><span lang="cn">我的信息</span><span lang="en">My Info</span></locale-text>
+    </div>
+
+    <st-card style="display:flex; flex-direction:column; gap:12px;">
+      <div class="form-row">
+        <div class="field-label">
+          <n-icon icon="mdi:rename-outline"></n-icon>
+          <locale-text><span lang="cn">用户名（对方查询你时显示的名字）</span><span lang="en">Username (shown when others look you up)</span></locale-text>
+        </div>
+        <st-input sync:value="usernameInput" attr:placeholder="usernamePlaceholder"></st-input>
+      </div>
+      <div class="actions">
+        <st-button color="primary" on:click="saveUsername()" attr:disabled="saving">
+          <n-icon icon="mdi:content-save-outline" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+        </st-button>
+      </div>
+    </st-card>
+
+    <st-card style="display:flex; flex-direction:column; gap:8px;">
+      <div class="field-label">
+        <n-icon icon="mdi:identifier"></n-icon>
+        <locale-text><span lang="cn">我的用户 ID（发给对方即可被查询 / 签发证书）</span><span lang="en">My user ID (give this to others for lookup / cert issuing)</span></locale-text>
+      </div>
+      <div class="id-row">
+        <span class="info-value">{{userId}}</span>
+        <st-icon-button on:click="copyUserId()" attr:title="copyTitle">
+          <n-icon icon="mdi:content-copy"></n-icon>
+        </st-icon-button>
+      </div>
+    </st-card>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    export const parent = "./home.html";
+
+    export default async ({ load }) => {
+      return {
+        data: {
+          usernameInput: "",
+          usernamePlaceholder: getLocaleText({
+            cn: "输入新用户名",
+            en: "Enter a new username",
+          }),
+          copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
+          userId: "",
+          saving: false,
+        },
+        async attached() {
+          await this.loadMyInfo();
+        },
+        proto: {
+          async loadMyInfo() {
+            try {
+              const user = await ensureUser();
+              const info = await user.getInfo();
+              this.userId = user.userId;
+              this.usernameInput = info.username || "";
+            } catch (err) {
+              console.error("读取用户信息失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取用户信息失败：{msg}", en: "Failed to load user info: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          async saveUsername() {
+            const name = this.usernameInput.trim();
+            if (!name) {
+              toast({
+                message: getLocaleText({
+                  cn: "用户名不能为空",
+                  en: "Username cannot be empty",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.saving = true;
+            try {
+              const user = await ensureUser();
+              // updateInfo 合并更新并自动签名，还会自动把新资料推给已连接的对端
+              await user.updateInfo({ username: name });
+              toast({
+                message: getLocaleText({
+                  cn: "已保存（core 不再主动推送，对方重新查询/刷新即可拉到新资料）",
+                  en: "Saved (peers get the new profile by re-fetching)",
+                }),
+              });
+            } catch (err) {
+              console.error("保存用户名失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "保存失败：{msg}", en: "Save failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.saving = false;
+            }
+          },
+          async copyUserId() {
+            try {
+              await navigator.clipboard.writeText(this.userId);
+              toast({
+                message: getLocaleText({ cn: "已复制", en: "Copied" }),
+              });
+            } catch (err) {
+              console.error("复制失败：", err);
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

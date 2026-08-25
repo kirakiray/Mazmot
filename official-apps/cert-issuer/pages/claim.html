@@ -1,0 +1,241 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:certificate-outline"></n-icon>
+      <locale-text><span lang="cn">领取证书</span><span lang="en">Claim Certificate</span></locale-text>
+    </div>
+
+    <div class="hint">
+      <locale-text>
+        <span lang="cn">对方签发证书后不会主动推送，需由你按精确信息在线拉取。输入签发者的用户 ID 和证书角色即可领取（需对方在线）。</span>
+        <span lang="en">Issued certificates are not pushed; you fetch them online by exact key. Enter the issuer's user ID and the cert role (issuer must be online).</span>
+      </locale-text>
+    </div>
+
+    <st-card style="display:flex; flex-direction:column; gap:12px;">
+      <div class="form-row">
+        <div class="field-label">
+          <n-icon icon="mdi:account-key-outline"></n-icon>
+          <locale-text><span lang="cn">签发者用户 ID</span><span lang="en">Issuer user ID</span></locale-text>
+        </div>
+        <st-input sync:value="issuerInput" attr:placeholder="issuerPlaceholder"></st-input>
+      </div>
+      <div class="form-row">
+        <div class="field-label">
+          <n-icon icon="mdi:tag-outline"></n-icon>
+          <locale-text><span lang="cn">角色（role）</span><span lang="en">Role</span></locale-text>
+        </div>
+        <st-input sync:value="roleInput" attr:placeholder="rolePlaceholder"></st-input>
+      </div>
+      <div class="actions">
+        <st-button color="primary" on:click="claimCert()" attr:disabled="claiming">
+          <n-icon icon="mdi:download-outline" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">领取</span><span lang="en">Claim</span></locale-text>
+        </st-button>
+      </div>
+    </st-card>
+
+    <o-if :value="hasResult">
+      <st-card style="display:flex; flex-direction:column; gap:8px;">
+        <div class="field-label">
+          <n-icon icon="mdi:check-circle-outline"></n-icon>
+          <locale-text><span lang="cn">已领取并导入本地凭证库</span><span lang="en">Claimed and imported into local credential store</span></locale-text>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><locale-text><span lang="cn">角色</span><span lang="en">Role</span></locale-text></span>
+          <span class="info-value">{{result.role}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><locale-text><span lang="cn">签发者</span><span lang="en">Issuer</span></locale-text></span>
+          <span class="info-value">{{result.issuer}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><locale-text><span lang="cn">签发时间</span><span lang="en">Issued at</span></locale-text></span>
+          <span class="info-value">{{result.signTimeText}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><locale-text><span lang="cn">过期时间</span><span lang="en">Expires</span></locale-text></span>
+          <span class="info-value">{{result.expireText}}</span>
+        </div>
+      </st-card>
+    </o-if>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export const parent = "./home.html";
+
+    export default async () => {
+      return {
+        data: {
+          issuerInput: "",
+          issuerPlaceholder: getLocaleText({
+            cn: "输入签发者的用户 ID",
+            en: "Enter the issuer's user ID",
+          }),
+          roleInput: "",
+          rolePlaceholder: getLocaleText({
+            cn: "对方签发时填写的角色，如 editor",
+            en: "The role used when issuing, e.g. editor",
+          }),
+          claiming: false,
+          hasResult: false,
+          result: {
+            role: "",
+            issuer: "",
+            signTimeText: "",
+            expireText: "",
+          },
+        },
+        proto: {
+          // 按精确 key（role + issuer + subject=我）向签发者在线拉取证书，
+          // core 会自动验签并按 signTime 收敛入库（幂等，重复领取安全）
+          async claimCert() {
+            const issuerId = this.issuerInput.trim();
+            const role = this.roleInput.trim();
+            if (!issuerId || !role) {
+              toast({
+                message: getLocaleText({
+                  cn: "请填写签发者用户 ID 和角色",
+                  en: "Please enter the issuer user ID and role",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.claiming = true;
+            this.hasResult = false;
+            try {
+              const user = await ensureUser();
+              const cert = await user.cred.getRecord(issuerId, {
+                role,
+                issuer: issuerId,
+                subject: user.userId,
+              });
+              if (!cert) {
+                toast({
+                  message: getLocaleText(
+                    {
+                      cn: "未找到匹配的证书（角色/签发者可能不符，或对方离线）",
+                      en: "No matching certificate (wrong role/issuer, or issuer is offline)",
+                    },
+                  ),
+                  color: "error",
+                });
+                return;
+              }
+              this.result = {
+                role: cert.role || role,
+                issuer: cert.issuer || issuerId,
+                signTimeText: formatTime(cert.signTime),
+                expireText: cert.expire
+                  ? formatTime(cert.expire)
+                  : getLocaleText({ cn: "永不过期", en: "Never" }),
+              };
+              this.hasResult = true;
+              toast({
+                message: getLocaleText({ cn: "领取成功", en: "Claimed" }),
+              });
+            } catch (err) {
+              console.error("领取证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "领取失败：{msg}", en: "Claim failed: {msg}" },
+                  { msg: err.code || err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.claiming = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

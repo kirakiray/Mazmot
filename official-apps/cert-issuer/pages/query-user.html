@@ -1,0 +1,732 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .query-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .query-row st-input {
+      flex: 1;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .profile-card {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .profile-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .profile-username {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+    .verify-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .verify-badge[data-valid="false"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .issue-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .custom-expire-input {
+      font: inherit;
+      padding: 8px 12px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--md-sys-color-on-surface);
+    }
+    .issue-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .issued-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .cert-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cert-role {
+      font-weight: 500;
+    }
+    .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cert-badge[data-kind="expired"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .cert-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty {
+      padding: 16px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:card-account-details-outline"></n-icon>
+      <locale-text><span lang="cn">查询用户</span><span lang="en">User Lookup</span></locale-text>
+    </div>
+
+    <!-- 用户 ID 查询 -->
+    <div class="query-row">
+      <st-input
+        sync:value="userIdInput"
+        attr:placeholder="userIdPlaceholder"
+      ></st-input>
+      <st-button color="primary" on:click="queryUser()" attr:loading="querying">
+        <n-icon icon="mdi:card-search-outline" slot="prefix"></n-icon>
+        <locale-text><span lang="cn">查询</span><span lang="en">Look up</span></locale-text>
+      </st-button>
+      <st-icon-button
+        on:click="refreshProfile()"
+        attr:disabled="refreshing || !hasProfile"
+        attr:title="refreshTitle"
+      >
+        <n-icon icon="mdi:refresh"></n-icon>
+      </st-icon-button>
+    </div>
+
+    <!-- 用户卡片 -->
+    <o-if :value="hasProfile">
+      <st-card class="profile-card">
+        <div class="profile-head">
+          <span class="profile-username">{{profile.username}}</span>
+          <span class="verify-badge" attr:data-valid="profileValid ? 'true' : 'false'">
+            <n-icon icon="mdi:shield-check-outline"></n-icon>
+            <o-if :value="profileValid">
+              <locale-text><span lang="cn">签名已验证</span><span lang="en">Signature verified</span></locale-text>
+            </o-if>
+            <o-if :value="!profileValid">
+              <locale-text><span lang="cn">签名验证失败</span><span lang="en">Invalid signature</span></locale-text>
+            </o-if>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">
+            <n-icon icon="mdi:identifier"></n-icon>
+            <locale-text><span lang="cn">用户 ID</span><span lang="en">User ID</span></locale-text>
+          </span>
+          <span class="info-value">{{profile.userId}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">
+            <n-icon icon="mdi:key-variant"></n-icon>
+            <locale-text><span lang="cn">公钥</span><span lang="en">Public key</span></locale-text>
+          </span>
+          <span class="info-value">{{profile.publicKey}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">
+            <n-icon icon="mdi:clock-check-outline"></n-icon>
+            <locale-text><span lang="cn">签名时间</span><span lang="en">Signed at</span></locale-text>
+          </span>
+          <span class="info-value">{{profile.signTimeText}}</span>
+        </div>
+      </st-card>
+
+      <!-- 签发面板 -->
+      <st-card class="issue-form">
+        <div class="field-label">
+          <n-icon icon="mdi:pen"></n-icon>
+          <locale-text>
+            <span lang="cn">为该用户签发证书（用你的私钥签名）</span>
+            <span lang="en">Issue a certificate to this user (signed with your private key)</span>
+          </locale-text>
+        </div>
+        <div class="form-row">
+          <div class="field-label">
+            <n-icon icon="mdi:tag-outline"></n-icon>
+            <locale-text><span lang="cn">角色（role）</span><span lang="en">Role</span></locale-text>
+          </div>
+          <st-input sync:value="roleInput" attr:placeholder="rolePlaceholder"></st-input>
+        </div>
+        <div class="form-row">
+          <div class="field-label">
+            <n-icon icon="mdi:calendar-clock-outline"></n-icon>
+            <locale-text><span lang="cn">有效期</span><span lang="en">Validity</span></locale-text>
+          </div>
+          <st-select sync:value="expireChoice">
+            <option value="7d"><locale-text><span lang="cn">7 天</span><span lang="en">7 days</span></locale-text></option>
+            <option value="30d"><locale-text><span lang="cn">30 天</span><span lang="en">30 days</span></locale-text></option>
+            <option value="90d"><locale-text><span lang="cn">90 天</span><span lang="en">90 days</span></locale-text></option>
+            <option value="365d"><locale-text><span lang="cn">365 天</span><span lang="en">365 days</span></locale-text></option>
+            <option value="never"><locale-text><span lang="cn">永不过期</span><span lang="en">Never expires</span></locale-text></option>
+            <option value="custom"><locale-text><span lang="cn">自定义…</span><span lang="en">Custom…</span></locale-text></option>
+          </st-select>
+          <o-if :value="expireChoice === 'custom'">
+            <input
+              class="custom-expire-input"
+              type="datetime-local"
+              sync:value="customExpire"
+            />
+          </o-if>
+        </div>
+        <div class="form-row">
+          <div class="field-label">
+            <n-icon icon="mdi:code-json"></n-icon>
+            <locale-text>
+              <span lang="cn">自定义字段（可选，随证书一并签名）</span>
+              <span lang="en">Custom fields (optional, signed with the cert)</span>
+            </locale-text>
+          </div>
+          <o-fill :value="extraFields">
+            <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+              <st-input sync:value="$data.key" attr:placeholder="$host.extraKeyPlaceholder" style="flex:1;"></st-input>
+              <st-input sync:value="$data.value" attr:placeholder="$host.extraValuePlaceholder" style="flex:1;"></st-input>
+              <st-icon-button color="error" on:click="$host.removeExtraField($index)">
+                <n-icon icon="mdi:close"></n-icon>
+              </st-icon-button>
+            </div>
+          </o-fill>
+          <st-button variant="outlined" on:click="addExtraField()">
+            <n-icon icon="mdi:plus" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">添加字段</span><span lang="en">Add field</span></locale-text>
+          </st-button>
+        </div>
+        <div class="issue-actions">
+          <st-button color="primary" on:click="issueCert()" attr:disabled="issuing">
+            <n-icon icon="mdi:certificate-outline" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">签发证书</span><span lang="en">Issue</span></locale-text>
+          </st-button>
+        </div>
+      </st-card>
+
+      <!-- 我签发给该用户的证书 -->
+      <st-card class="issued-list">
+        <div class="field-label">
+          <n-icon icon="mdi:format-list-checks"></n-icon>
+          <locale-text>
+            <span lang="cn">我签发给该用户的证书（含历史记录）</span>
+            <span lang="en">Certificates I issued to this user (incl. history)</span>
+          </locale-text>
+        </div>
+        <st-list>
+          <o-fill :value="issuedList" fill-key="id">
+            <st-list-item collapsible>
+              <div class="cert-title">
+                <span class="cert-role">{{$data.role}}</span>
+                <o-if :value="$data.revoked">
+                  <span class="cert-badge" data-kind="expired">
+                    <n-icon icon="mdi:cancel"></n-icon>
+                    <locale-text><span lang="cn">已吊销</span><span lang="en">Revoked</span></locale-text>
+                  </span>
+                </o-if>
+                <o-if :value="$data.expired && !$data.revoked">
+                  <span class="cert-badge" data-kind="expired">
+                    <n-icon icon="mdi:clock-alert-outline"></n-icon>
+                    <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
+                  </span>
+                </o-if>
+              </div>
+              <div secondary>{{$data.expireText}}</div>
+              <st-list slot="sublist">
+                <st-list-item>
+                  <div class="cert-info">
+                    <div class="info-row">
+                      <span class="info-label">
+                        <locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text>
+                      </span>
+                      <span class="info-value">{{$data.signTimeText}}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">
+                        <locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text>
+                      </span>
+                      <span class="info-value">{{$data.expireText}}</span>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; padding-top:4px;">
+                      <o-if :value="!$data.revoked">
+                        <st-icon-button color="error" on:click="$host.revokeCert($data.id)" attr:title="$host.revokeTitle">
+                          <n-icon icon="mdi:delete-outline"></n-icon>
+                        </st-icon-button>
+                      </o-if>
+                    </div>
+                  </div>
+                </st-list-item>
+              </st-list>
+            </st-list-item>
+          </o-fill>
+        </st-list>
+        <o-if :value="issuedList.length === 0">
+          <div class="empty">
+            <locale-text><span lang="cn">尚未签发</span><span lang="en">Nothing issued yet</span></locale-text>
+          </div>
+        </o-if>
+      </st-card>
+    </o-if>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    const EXPIRE_DAYS = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 };
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export const parent = "./home.html";
+
+    export default async ({ load }) => {
+      return {
+        data: {
+          userIdInput: "",
+          userIdPlaceholder: getLocaleText({
+            cn: "输入对方用户 ID",
+            en: "Enter target user ID",
+          }),
+          rolePlaceholder: getLocaleText({
+            cn: "如 editor / admin",
+            en: "e.g. editor / admin",
+          }),
+          extraKeyPlaceholder: getLocaleText({
+            cn: "字段名，如 permission",
+            en: "Field name, e.g. permission",
+          }),
+          extraValuePlaceholder: getLocaleText({
+            cn: "字段值",
+            en: "Field value",
+          }),
+          revokeTitle: getLocaleText({ cn: "吊销", en: "Revoke" }),
+          refreshTitle: getLocaleText({
+            cn: "在线刷新资料",
+            en: "Refresh profile online",
+          }),
+          querying: false,
+          refreshing: false,
+          issuing: false,
+          hasProfile: false,
+          profileValid: false,
+          profile: {
+            username: "",
+            userId: "",
+            publicKey: "",
+            signTimeText: "",
+          },
+          roleInput: "",
+          expireChoice: "30d",
+          customExpire: "",
+          extraFields: [],
+          issuedList: [],
+        },
+        async attached() {
+          // 「已知用户」卡片跳转过来时携带待查询用户
+          const pending = this.app.__pendingQueryUser;
+          if (pending) {
+            this.app.__pendingQueryUser = null;
+            this.userIdInput = pending;
+            await this.queryUser();
+          }
+        },
+        proto: {
+          addExtraField() {
+            this.extraFields.push({ key: "", value: "" });
+          },
+          removeExtraField(index) {
+            this.extraFields.splice(index, 1);
+          },
+          // 查询对方用户卡片：拉取 profile 并验证签名
+          async queryUser() {
+            const targetId = this.userIdInput.trim();
+            if (!targetId) {
+              toast({
+                message: getLocaleText({
+                  cn: "请输入用户 ID",
+                  en: "Please enter a user ID",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.querying = true;
+            this.hasProfile = false;
+            try {
+              const user = await ensureUser();
+              // getProfile 优先读本地缓存的资料，本地没有才发起网络请求
+              const profile = await user.cred.getProfile(targetId);
+              await this.applyProfile(user, profile, targetId);
+            } catch (err) {
+              console.error("查询用户失败：", err);
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "查询失败：{msg}（对方可能离线）",
+                    en: "Lookup failed: {msg} (user may be offline)",
+                  },
+                  { msg: err.code || err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.querying = false;
+            }
+          },
+          // 强制在线拉取最新资料（requestProfile 总是走网络，按 signTime 收敛）
+          async refreshProfile() {
+            const targetId = this.profile.userId;
+            if (!targetId) return;
+            this.refreshing = true;
+            try {
+              const user = await ensureUser();
+              const profile = await user.cred.requestProfile(targetId);
+              await this.applyProfile(user, profile, targetId);
+              toast({
+                message: getLocaleText({
+                  cn: "已在线刷新资料",
+                  en: "Profile refreshed online",
+                }),
+              });
+            } catch (err) {
+              console.error("刷新资料失败：", err);
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "刷新失败：{msg}（对方可能离线）",
+                    en: "Refresh failed: {msg} (user may be offline)",
+                  },
+                  { msg: err.code || err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.refreshing = false;
+            }
+          },
+          // 渲染 profile 卡片：验签（内嵌公钥，user.verify 只认自己的公钥，不能验别人的卡片）
+          // + subject/issuer 与目标 userId 一致性校验 + 填充展示字段 + 刷新已签发列表
+          async applyProfile(user, profile, targetId) {
+            const { verifyData } = await load("/nos/crypto/crypto-verify.js");
+            const valid =
+              !!profile &&
+              profile.subject === targetId &&
+              profile.issuer === targetId &&
+              (await verifyData(profile));
+            this.profile = {
+              username: profile.username || targetId.slice(0, 16) + "…",
+              userId: targetId,
+              publicKey: profile.publicKey || "",
+              signTimeText: formatTime(profile.signTime),
+            };
+            this.profileValid = valid;
+            this.hasProfile = true;
+            await this.loadIssued(user, targetId);
+            if (!valid) {
+              toast({
+                message: getLocaleText({
+                  cn: "资料签名验证失败，请勿信任该卡片",
+                  en: "Profile signature verification failed; do not trust this card",
+                }),
+                color: "error",
+              });
+            }
+          },
+          // 签发证书（core 已移除 shareCert 推送，改为对方按 key 主动拉取）
+          async issueCert() {
+            const targetId = this.profile.userId;
+            const role = this.roleInput.trim();
+            if (!role) {
+              toast({
+                message: getLocaleText({
+                  cn: "请填写角色（role）",
+                  en: "Please enter a role",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            let expire;
+            if (this.expireChoice === "never") {
+              expire = null;
+            } else if (this.expireChoice === "custom") {
+              const ts = Date.parse(this.customExpire);
+              if (!ts || Number.isNaN(ts) || ts <= Date.now()) {
+                toast({
+                  message: getLocaleText({
+                    cn: "请选择晚于当前时间的到期时间",
+                    en: "Expiry must be set to a future time",
+                  }),
+                  color: "error",
+                });
+                return;
+              }
+              expire = ts;
+            } else {
+              expire =
+                Date.now() + EXPIRE_DAYS[this.expireChoice] * 24 * 3600 * 1000;
+            }
+            // 组装自定义字段（cred.issue 支持任意扩展字段，全部随证书签名）
+            const RESERVED = ["id", "role", "issuer", "subject", "signTime", "expire", "signature", "publicKey"];
+            const extras = {};
+            for (const f of this.extraFields) {
+              const key = (f.key || "").trim();
+              if (!key) continue;
+              if (RESERVED.includes(key)) {
+                toast({
+                  message: getLocaleText(
+                    { cn: "字段名 {key} 是保留字，请换一个", en: "Field name {key} is reserved; pick another" },
+                    { key },
+                  ),
+                  color: "error",
+                });
+                return;
+              }
+              extras[key] = f.value ?? "";
+            }
+            this.issuing = true;
+            try {
+              const user = await ensureUser();
+              const cert = await user.cred.issue({
+                subject: targetId,
+                role,
+                expire,
+                ...extras,
+              });
+              // 记入本地签发历史（独立于凭证库，吊销后仍保留记录）
+              await this.appendHistory({
+                id: cert.id,
+                role,
+                subject: targetId,
+                signTime: cert.signTime,
+                expire: cert.expire || null,
+              });
+              // 证书签发后保存在我的本地凭证库，由对方在「领取证书」页
+              // 按精确 key（role + issuer + subject）在线拉取
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "已签发（角色：{role}）。请让对方在「领取证书」页输入你的用户 ID 和角色 {role} 领取",
+                    en: "Issued (role: {role}). Ask the user to claim it on the \"Claim\" page with your user ID and role {role}",
+                  },
+                  { role },
+                ),
+              });
+              await this.loadIssued(user, targetId);
+            } catch (err) {
+              console.error("签发证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "签发失败：{msg}", en: "Issue failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.issuing = false;
+            }
+          },
+          // 签发历史存储（getStorage("cert-issuer") 的 issue-history 键）
+          async getStore() {
+            if (!this._certStore) {
+              const { getStorage } = await load("/nos/storage/main.js");
+              this._certStore = getStorage("cert-issuer");
+            }
+            return this._certStore;
+          },
+          async appendHistory(entry) {
+            try {
+              const store = await this.getStore();
+              const list = (await store.getItem("issue-history")) || [];
+              list.push(entry);
+              await store.setItem("issue-history", list);
+            } catch (err) {
+              console.warn("写入签发历史失败：", err);
+            }
+          },
+          // 刷新签发给该用户的证书列表：凭证库现行记录 + 本地签发历史合并，
+          // 历史里有但凭证库已没有的视为已吊销
+          async loadIssued(user, targetId) {
+            const now = Date.now();
+            const certs = await user.cred.query(
+              { subject: targetId },
+              { includeExpired: true },
+            );
+            const liveIds = new Set();
+            const live = certs
+              .filter(
+                (c) =>
+                  c.role !== "profile" && c.issuer === user.userId,
+              )
+              .map((c) => {
+                liveIds.add(c.id);
+                return {
+                  id: c.id || "",
+                  role: c.role || "",
+                  signTime: c.signTime,
+                  expire: c.expire || null,
+                  signTimeText: formatTime(c.signTime),
+                  expireText: c.expire
+                    ? formatTime(c.expire)
+                    : getLocaleText({ cn: "永不过期", en: "Never" }),
+                  expired: !!c.expire && c.expire < now,
+                  revoked: false,
+                };
+              });
+            let history = [];
+            try {
+              const store = await this.getStore();
+              history = ((await store.getItem("issue-history")) || []).filter(
+                (h) => h.subject === targetId && !liveIds.has(h.id),
+              );
+            } catch (err) {
+              console.warn("读取签发历史失败：", err);
+            }
+            const revoked = history.map((h) => ({
+              id: h.id || "",
+              role: h.role || "",
+              signTimeText: formatTime(h.signTime),
+              expireText: h.expire
+                ? formatTime(h.expire)
+                : getLocaleText({ cn: "永不过期", en: "Never" }),
+              expired: !!h.expire && h.expire < now,
+              revoked: true,
+            }));
+            this.issuedList = [...live, ...revoked];
+          },
+          // 吊销（从本地凭证库删除，证书不再被本地认可）
+          async revokeCert(id) {
+            try {
+              const user = await ensureUser();
+              await user.cred.delete(id);
+              await this.loadIssued(user, this.profile.userId);
+              toast({
+                message: getLocaleText({
+                  cn: "已吊销该证书",
+                  en: "Certificate revoked",
+                }),
+              });
+            } catch (err) {
+              console.error("吊销证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "吊销失败：{msg}", en: "Revoke failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -90,6 +90,8 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
+│   ├── cert-issuer/          # 证书签发器（home.html 左侧导航 layout：query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段）；claim.html 按精确 key 在线领取他人签发的证书（core 已移除 shareCert 推送，改为拉取模式）；my-certs.html 查看/删除本地持有的全部证书；known-users.html 已知用户卡片（缓存的 profile + n-user-name/n-user-status）；my-info.html 查看/修改自己的用户名与 userId，基于 user.cred 证书 API）
+
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │
@@ -229,7 +231,7 @@ clearOpened → 关闭窗口
   hasUpdate: boolean,         // latestVersion > version 时为 true，列表显示「可更新」徽标与更新按钮
   updating: boolean,          // 正在执行更新（期间禁用更新/删除按钮）
   updateStatus: "",           // 更新进度或错误文案，空字符串表示无需展示
-  isMine: boolean,           // appId 后缀 === 当前用户 userId，标识「自己开发的应用」
+  isMine: boolean,           // 非 official 应用且 appId 后缀 === 当前用户 userId，标识「自己开发的应用」
   opened: boolean,           // 窗口是否存活（BroadcastChannel + window 引用判定）
   autoShareValue: "on" | "off",   // 供 sync:value 双向绑定用
   autoShareUrl: "",          // 已发布的短链接；空字符串表示尚未就绪
@@ -246,9 +248,9 @@ clearOpened → 关闭窗口
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
-- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。
+- **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。**仅自建应用可拥有 `appId`**：官方应用（`source === "official"`，含 `?app=` 链接与市场安装）不写 `appId`，以 `officialId` 标识来源，`isMine` 判定会显式排除 official 应用。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
-- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
+- **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（自建应用；官方应用以 `officialId` 替代 `appId`，经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`（官方应用的 `displayName`/`description` 基准值须为英文，可用 `i18n` 字段按语言覆盖，如 `"i18n": { "cn": { "displayName": "...", "description": "..." } }`）；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示（有 `i18n[当前语言]` 覆盖时优先）。
 
 ### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
@@ -414,5 +416,6 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| 证书签发官方应用（查询用户卡片 + 签发/领取/查看证书 + 我的信息） | [official-apps/cert-issuer/pages/](official-apps/cert-issuer/pages/)（[home.html](official-apps/cert-issuer/pages/home.html) layout / [query-user.html](official-apps/cert-issuer/pages/query-user.html) / [claim.html](official-apps/cert-issuer/pages/claim.html) / [my-certs.html](official-apps/cert-issuer/pages/my-certs.html) / [my-info.html](official-apps/cert-issuer/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |
