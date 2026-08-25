@@ -90,7 +90,7 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
-│   ├── cert-issuer/          # 证书签发器（home.html 左侧导航 layout：query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段）；claim.html 按精确 key 在线领取他人签发的证书（core 已移除 shareCert 推送，改为拉取模式）；my-certs.html 查看/删除本地持有的全部证书；my-info.html 查看/修改自己的用户名与 userId，基于 user.cred 证书 API）
+│   ├── cert-issuer/          # 证书签发器（home.html 左侧导航 layout：query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段）；claim.html 按精确 key 在线领取他人签发的证书（core 已移除 shareCert 推送，改为拉取模式）；my-certs.html 查看/删除本地持有的全部证书；known-users.html 已知用户卡片（缓存的 profile + n-user-name/n-user-status）；my-info.html 查看/修改自己的用户名与 userId，基于 user.cred 证书 API）
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）

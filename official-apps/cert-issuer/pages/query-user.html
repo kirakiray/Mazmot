@@ -33,6 +33,13 @@
       font-weight: 500;
       color: var(--md-sys-color-on-surface-variant);
       margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
     }
     .profile-card {
       display: flex;
@@ -75,6 +82,13 @@
     .info-label {
       opacity: 0.7;
       min-width: 72px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
       flex-shrink: 0;
     }
     .info-value {
@@ -173,6 +187,7 @@
         attr:placeholder="userIdPlaceholder"
       ></st-input>
       <st-button color="primary" on:click="queryUser()" attr:loading="querying">
+        <n-icon icon="mdi:card-search-outline" slot="prefix"></n-icon>
         <locale-text><span lang="cn">查询</span><span lang="en">Look up</span></locale-text>
       </st-button>
       <st-icon-button
@@ -201,18 +216,21 @@
         </div>
         <div class="info-row">
           <span class="info-label">
+            <n-icon icon="mdi:identifier"></n-icon>
             <locale-text><span lang="cn">用户 ID</span><span lang="en">User ID</span></locale-text>
           </span>
           <span class="info-value">{{profile.userId}}</span>
         </div>
         <div class="info-row">
           <span class="info-label">
+            <n-icon icon="mdi:key-variant"></n-icon>
             <locale-text><span lang="cn">公钥</span><span lang="en">Public key</span></locale-text>
           </span>
           <span class="info-value">{{profile.publicKey}}</span>
         </div>
         <div class="info-row">
           <span class="info-label">
+            <n-icon icon="mdi:clock-check-outline"></n-icon>
             <locale-text><span lang="cn">签名时间</span><span lang="en">Signed at</span></locale-text>
           </span>
           <span class="info-value">{{profile.signTimeText}}</span>
@@ -222,6 +240,7 @@
       <!-- 签发面板 -->
       <st-card class="issue-form">
         <div class="field-label">
+          <n-icon icon="mdi:pen"></n-icon>
           <locale-text>
             <span lang="cn">为该用户签发证书（用你的私钥签名）</span>
             <span lang="en">Issue a certificate to this user (signed with your private key)</span>
@@ -229,12 +248,14 @@
         </div>
         <div class="form-row">
           <div class="field-label">
+            <n-icon icon="mdi:tag-outline"></n-icon>
             <locale-text><span lang="cn">角色（role）</span><span lang="en">Role</span></locale-text>
           </div>
           <st-input sync:value="roleInput" attr:placeholder="rolePlaceholder"></st-input>
         </div>
         <div class="form-row">
           <div class="field-label">
+            <n-icon icon="mdi:calendar-clock-outline"></n-icon>
             <locale-text><span lang="cn">有效期</span><span lang="en">Validity</span></locale-text>
           </div>
           <st-select sync:value="expireChoice">
@@ -255,6 +276,7 @@
         </div>
         <div class="form-row">
           <div class="field-label">
+            <n-icon icon="mdi:code-json"></n-icon>
             <locale-text>
               <span lang="cn">自定义字段（可选，随证书一并签名）</span>
               <span lang="en">Custom fields (optional, signed with the cert)</span>
@@ -276,6 +298,7 @@
         </div>
         <div class="issue-actions">
           <st-button color="primary" on:click="issueCert()" attr:disabled="issuing">
+            <n-icon icon="mdi:certificate-outline" slot="prefix"></n-icon>
             <locale-text><span lang="cn">签发证书</span><span lang="en">Issue</span></locale-text>
           </st-button>
         </div>
@@ -284,9 +307,10 @@
       <!-- 我签发给该用户的证书 -->
       <st-card class="issued-list">
         <div class="field-label">
+          <n-icon icon="mdi:format-list-checks"></n-icon>
           <locale-text>
-            <span lang="cn">我签发给该用户的证书</span>
-            <span lang="en">Certificates I issued to this user</span>
+            <span lang="cn">我签发给该用户的证书（含历史记录）</span>
+            <span lang="en">Certificates I issued to this user (incl. history)</span>
           </locale-text>
         </div>
         <st-list>
@@ -294,7 +318,13 @@
             <st-list-item collapsible>
               <div class="cert-title">
                 <span class="cert-role">{{$data.role}}</span>
-                <o-if :value="$data.expired">
+                <o-if :value="$data.revoked">
+                  <span class="cert-badge" data-kind="expired">
+                    <n-icon icon="mdi:cancel"></n-icon>
+                    <locale-text><span lang="cn">已吊销</span><span lang="en">Revoked</span></locale-text>
+                  </span>
+                </o-if>
+                <o-if :value="$data.expired && !$data.revoked">
                   <span class="cert-badge" data-kind="expired">
                     <n-icon icon="mdi:clock-alert-outline"></n-icon>
                     <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
@@ -318,9 +348,11 @@
                       <span class="info-value">{{$data.expireText}}</span>
                     </div>
                     <div style="display:flex; justify-content:flex-end; padding-top:4px;">
-                      <st-icon-button color="error" on:click="$host.revokeCert($data.id)" attr:title="$host.revokeTitle">
-                        <n-icon icon="mdi:delete-outline"></n-icon>
-                      </st-icon-button>
+                      <o-if :value="!$data.revoked">
+                        <st-icon-button color="error" on:click="$host.revokeCert($data.id)" attr:title="$host.revokeTitle">
+                          <n-icon icon="mdi:delete-outline"></n-icon>
+                        </st-icon-button>
+                      </o-if>
                     </div>
                   </div>
                 </st-list-item>
@@ -396,6 +428,15 @@
           customExpire: "",
           extraFields: [],
           issuedList: [],
+        },
+        async attached() {
+          // 「已知用户」卡片跳转过来时携带待查询用户
+          const pending = this.app.__pendingQueryUser;
+          if (pending) {
+            this.app.__pendingQueryUser = null;
+            this.userIdInput = pending;
+            await this.queryUser();
+          }
         },
         proto: {
           addExtraField() {
@@ -560,6 +601,14 @@
                 expire,
                 ...extras,
               });
+              // 记入本地签发历史（独立于凭证库，吊销后仍保留记录）
+              await this.appendHistory({
+                id: cert.id,
+                role,
+                subject: targetId,
+                signTime: cert.signTime,
+                expire: cert.expire || null,
+              });
               // 证书签发后保存在我的本地凭证库，由对方在「领取证书」页
               // 按精确 key（role + issuer + subject）在线拉取
               toast({
@@ -585,27 +634,73 @@
               this.issuing = false;
             }
           },
-          // 刷新签发给该用户的证书列表（含已过期标记）
+          // 签发历史存储（getStorage("cert-issuer") 的 issue-history 键）
+          async getStore() {
+            if (!this._certStore) {
+              const { getStorage } = await load("/nos/storage/main.js");
+              this._certStore = getStorage("cert-issuer");
+            }
+            return this._certStore;
+          },
+          async appendHistory(entry) {
+            try {
+              const store = await this.getStore();
+              const list = (await store.getItem("issue-history")) || [];
+              list.push(entry);
+              await store.setItem("issue-history", list);
+            } catch (err) {
+              console.warn("写入签发历史失败：", err);
+            }
+          },
+          // 刷新签发给该用户的证书列表：凭证库现行记录 + 本地签发历史合并，
+          // 历史里有但凭证库已没有的视为已吊销
           async loadIssued(user, targetId) {
             const now = Date.now();
             const certs = await user.cred.query(
               { subject: targetId },
               { includeExpired: true },
             );
-            this.issuedList = certs
+            const liveIds = new Set();
+            const live = certs
               .filter(
                 (c) =>
                   c.role !== "profile" && c.issuer === user.userId,
               )
-              .map((c) => ({
-                id: c.id || "",
-                role: c.role || "",
-                signTimeText: formatTime(c.signTime),
-                expireText: c.expire
-                  ? formatTime(c.expire)
-                  : getLocaleText({ cn: "永不过期", en: "Never" }),
-                expired: !!c.expire && c.expire < now,
-              }));
+              .map((c) => {
+                liveIds.add(c.id);
+                return {
+                  id: c.id || "",
+                  role: c.role || "",
+                  signTime: c.signTime,
+                  expire: c.expire || null,
+                  signTimeText: formatTime(c.signTime),
+                  expireText: c.expire
+                    ? formatTime(c.expire)
+                    : getLocaleText({ cn: "永不过期", en: "Never" }),
+                  expired: !!c.expire && c.expire < now,
+                  revoked: false,
+                };
+              });
+            let history = [];
+            try {
+              const store = await this.getStore();
+              history = ((await store.getItem("issue-history")) || []).filter(
+                (h) => h.subject === targetId && !liveIds.has(h.id),
+              );
+            } catch (err) {
+              console.warn("读取签发历史失败：", err);
+            }
+            const revoked = history.map((h) => ({
+              id: h.id || "",
+              role: h.role || "",
+              signTimeText: formatTime(h.signTime),
+              expireText: h.expire
+                ? formatTime(h.expire)
+                : getLocaleText({ cn: "永不过期", en: "Never" }),
+              expired: !!h.expire && h.expire < now,
+              revoked: true,
+            }));
+            this.issuedList = [...live, ...revoked];
           },
           // 吊销（从本地凭证库删除，证书不再被本地认可）
           async revokeCert(id) {
