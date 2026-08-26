@@ -121,6 +121,12 @@
                 <locale-text><span lang="cn">我</span><span lang="en">Me</span></locale-text>
               </span>
             </o-if>
+            <o-if :value="$data.isOrg">
+              <span class="me-badge" style="background-color: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);">
+                <n-icon icon="mdi:domain"></n-icon>
+                <locale-text><span lang="cn">组织</span><span lang="en">Org</span></locale-text>
+              </span>
+            </o-if>
           </div>
           <div class="info-row" attr:title="$data.userId">
             <span class="info-label">ID</span>
@@ -163,6 +169,7 @@
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
     import { ensureUser } from "/mz/share-mgr.js";
     import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import { isOrgProfile } from "/mz/org/main.js";
 
     const formatTime = (ts) => {
       if (!ts) return "";
@@ -208,6 +215,7 @@
                 shortId: (p.subject || "").slice(0, 20) + "…",
                 signTimeText: formatTime(p.signTime),
                 isMe: p.subject === user.userId,
+                isOrg: isOrgProfile(p),
               }));
             } catch (err) {
               console.error("读取已知用户失败：", err);

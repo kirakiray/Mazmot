@@ -71,8 +71,8 @@
   <div class="layout">
     <div class="sidebar">
       <div class="sidebar-title">
-        <n-icon icon="mdi:certificate-outline"></n-icon>
-        <locale-text><span lang="cn">证书签发器</span><span lang="en">Certificate Issuer</span></locale-text>
+        <n-icon icon="mdi:shield-lock-outline"></n-icon>
+        <locale-text><span lang="cn">凭证管理器</span><span lang="en">Credential Manager</span></locale-text>
       </div>
       <st-list>
         <st-list-item
@@ -101,11 +101,11 @@
         </st-list-item>
         <st-list-item
           button
-          attr:active="activeClaim"
-          on:click="navClaim()"
+          attr:active="activeOrgs"
+          on:click="navOrgs()"
         >
-          <n-icon icon="mdi:certificate-outline" slot="prefix"></n-icon>
-          <locale-text><span lang="cn">领取证书</span><span lang="en">Claim Certificate</span></locale-text>
+          <n-icon icon="mdi:domain" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">组织管理</span><span lang="en">Organizations</span></locale-text>
         </st-list-item>
         <st-list-item
           button
@@ -113,7 +113,7 @@
           on:click="navCerts()"
         >
           <n-icon icon="mdi:shield-account-outline" slot="prefix"></n-icon>
-          <locale-text><span lang="cn">我的证书</span><span lang="en">My Certificates</span></locale-text>
+          <locale-text><span lang="cn">本地证书</span><span lang="en">Local Certificates</span></locale-text>
         </st-list-item>
       </st-list>
     </div>
@@ -128,9 +128,9 @@
         data: {
           activeQuery: true,
           activeMe: false,
-          activeClaim: false,
           activeCerts: false,
           activeKnown: false,
+          activeOrgs: false,
         },
         routerChange() {
           this.refreshActive();
@@ -144,9 +144,13 @@
             const path = new URL(current.src).pathname;
             this.activeQuery = path.endsWith("query-user.html");
             this.activeMe = path.endsWith("my-info.html");
-            this.activeClaim = path.endsWith("claim.html");
-            this.activeCerts = path.endsWith("my-certs.html");
+            // cert-detail 是本地证书的子页，进入详情时保持该项高亮
+            this.activeCerts =
+              path.endsWith("my-certs.html") || path.endsWith("cert-detail.html");
             this.activeKnown = path.endsWith("known-users.html");
+            // org-detail 是组织管理的子页，进入详情时保持该项高亮
+            this.activeOrgs =
+              path.endsWith("orgs.html") || path.endsWith("org-detail.html");
           },
           navQuery() {
             // goto 的相对路径以 app-config 所在的应用根目录为基准
@@ -155,14 +159,14 @@
           navMe() {
             this.app.goto("./pages/my-info.html");
           },
-          navClaim() {
-            this.app.goto("./pages/claim.html");
-          },
           navCerts() {
             this.app.goto("./pages/my-certs.html");
           },
           navKnown() {
             this.app.goto("./pages/known-users.html");
+          },
+          navOrgs() {
+            this.app.goto("./pages/orgs.html");
           },
         },
       };

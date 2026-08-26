@@ -5,11 +5,14 @@ export const home = "./pages/query-user.html";
 export const pageAnime = {
   current: {
     opacity: 1,
+    transform: "translateX(0)",
   },
   next: {
     opacity: 0,
+    transform: "translateX(30px)",
   },
   previous: {
     opacity: 0,
+    transform: "translateX(-30px)",
   },
 };

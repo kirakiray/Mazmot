@@ -1,0 +1,441 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cert-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cert-role {
+      font-weight: 500;
+      font-size: 16px;
+    }
+    .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cert-badge[data-kind="expired"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .cert-badge[data-kind="mine"] {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .cert-badge[data-kind="tome"] {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .cert-badge[data-kind="missing"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .chain-section-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chain-field-name {
+      font-family: monospace;
+      font-size: 12px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .chain-node {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 4px 0;
+    }
+    .json-source-wrap {
+      position: relative;
+    }
+    .json-source {
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface);
+      background-color: var(--md-sys-color-surface-variant);
+      border-radius: 8px;
+      padding: 12px;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      user-select: text;
+    }
+    .json-copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .json-source-wrap:hover .json-copy-btn,
+    .json-copy-btn:focus-visible {
+      opacity: 1;
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:text-box-outline"></n-icon>
+      <locale-text><span lang="cn">证书详情</span><span lang="en">Certificate Detail</span></locale-text>
+    </div>
+
+    <o-if :value="!loading && !notFound">
+      <!-- 基本信息 -->
+      <st-card style="display:flex; flex-direction:column; gap:8px;">
+        <div class="cert-title">
+          <span class="cert-role">{{cert.role}}</span>
+          <o-if :value="cert.fromMe && !nsMode">
+            <span class="cert-badge" data-kind="mine">
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+              <locale-text><span lang="cn">我签发</span><span lang="en">Issued by me</span></locale-text>
+            </span>
+          </o-if>
+          <o-if :value="!cert.fromMe && !nsMode">
+            <span class="cert-badge" data-kind="tome">
+              <n-icon icon="mdi:inbox-arrow-down-outline"></n-icon>
+              <locale-text><span lang="cn">签发给我</span><span lang="en">Issued to me</span></locale-text>
+            </span>
+          </o-if>
+          <o-if :value="nsMode">
+            <span class="cert-badge" data-kind="chain">
+              <n-icon icon="mdi:domain"></n-icon>
+              <locale-text><span lang="cn">组织签发</span><span lang="en">Org-issued</span></locale-text>
+            </span>
+          </o-if>
+          <o-if :value="cert.expired">
+            <span class="cert-badge" data-kind="expired">
+              <n-icon icon="mdi:clock-alert-outline"></n-icon>
+              <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
+            </span>
+          </o-if>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><n-icon icon="mdi:fingerprint"></n-icon><locale-text><span lang="cn">ID：</span><span lang="en">ID:</span></locale-text></span>
+          <span class="info-value" attr:title="cert.fingerprint">{{cert.fingerprint}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><n-icon icon="mdi:pen"></n-icon><locale-text><span lang="cn">签发者：</span><span lang="en">Issuer:</span></locale-text></span>
+          <span class="info-value"><n-user-name attr:user-id="cert.issuer"></n-user-name></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><n-icon icon="mdi:account-arrow-right-outline"></n-icon><locale-text><span lang="cn">主体：</span><span lang="en">Subject:</span></locale-text></span>
+          <span class="info-value"><n-user-name attr:user-id="cert.subject"></n-user-name></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><n-icon icon="mdi:clock-edit-outline"></n-icon><locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text></span>
+          <span class="info-value">{{cert.signTimeText}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label"><n-icon icon="mdi:calendar-remove-outline"></n-icon><locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text></span>
+          <span class="info-value">{{cert.expireText}}</span>
+        </div>
+      </st-card>
+
+      <!-- 普通自定义字段 -->
+      <o-if :value="plainExtras.length > 0">
+        <st-card style="display:flex; flex-direction:column; gap:8px;">
+          <div class="field-label">
+            <n-icon icon="mdi:code-json"></n-icon>
+            <locale-text><span lang="cn">自定义字段</span><span lang="en">Custom fields</span></locale-text>
+          </div>
+          <o-fill :value="plainExtras">
+            <div class="info-row">
+              <span class="info-label">{{$data.key}}:</span>
+              <span class="info-value">{{$data.value}}</span>
+            </div>
+          </o-fill>
+        </st-card>
+      </o-if>
+
+      <!-- 链式字段：每个字段展开对应链上的所有证书 -->
+      <o-fill :value="chains">
+        <st-card style="display:flex; flex-direction:column; gap:4px;">
+          <div class="field-label">
+            <n-icon icon="mdi:file-tree-outline"></n-icon>
+            <span class="chain-section-title">
+              <locale-text><span lang="cn">链：</span><span lang="en">Chain:</span></locale-text>
+              <span class="chain-field-name">{{$data.field}}</span>
+            </span>
+          </div>
+          <st-list>
+            <o-fill :value="$data.nodes" fill-key="id">
+              <st-list-item>
+                <div class="chain-node" :style.paddingLeft="$data.depth * 20 + 'px'">
+                  <div class="cert-title">
+                    <span class="cert-role">{{$data.role}}</span>
+                    <o-if :value="$data.status === 'ok'">
+                      <span class="cert-badge" data-kind="mine">
+                        <n-icon icon="mdi:check-underline"></n-icon>
+                        <locale-text><span lang="cn">有效</span><span lang="en">Valid</span></locale-text>
+                      </span>
+                    </o-if>
+                    <o-if :value="$data.status === 'expired'">
+                      <span class="cert-badge" data-kind="expired">
+                        <n-icon icon="mdi:clock-alert-outline"></n-icon>
+                        <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
+                      </span>
+                    </o-if>
+                    <o-if :value="$data.status === 'missing'">
+                      <span class="cert-badge" data-kind="missing">
+                        <n-icon icon="mdi:cloud-off-outline"></n-icon>
+                        <locale-text><span lang="cn">本地缺失</span><span lang="en">Missing locally</span></locale-text>
+                      </span>
+                    </o-if>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">
+                      <locale-text><span lang="cn">签发：</span><span lang="en">Path</span></locale-text>
+                    </span>
+                    <span class="info-value">
+                      <n-user-name attr:user-id="$data.issuer"></n-user-name>
+                      →
+                      <n-user-name attr:user-id="$data.subject"></n-user-name>
+                    </span>
+                  </div>
+                  <o-if :value="$data.fingerprint">
+                    <div class="info-row">
+                      <span class="info-label">
+                        <locale-text><span lang="cn">指纹：</span><span lang="en">Fingerprint</span></locale-text>
+                      </span>
+                      <span class="info-value" attr:title="$data.fingerprint">{{$data.fingerprint}}</span>
+                    </div>
+                  </o-if>
+                </div>
+              </st-list-item>
+            </o-fill>
+          </st-list>
+        </st-card>
+      </o-fill>
+      <!-- 证书 JSON 源文本（只读） -->
+      <st-card style="display:flex; flex-direction:column; gap:8px;">
+        <div class="field-label">
+          <n-icon icon="mdi:code-json"></n-icon>
+          <locale-text><span lang="cn">源数据（JSON）</span><span lang="en">Source (JSON)</span></locale-text>
+        </div>
+        <div class="json-source-wrap">
+          <pre class="json-source">{{certJson}}</pre>
+          <st-icon-button class="json-copy-btn" on:click="copyCertJson()" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
+        </div>
+      </st-card>
+    </o-if>
+
+    <o-if :value="notFound">
+      <div class="empty">
+        <locale-text>
+          <span lang="cn">证书不存在或已删除</span>
+          <span lang="en">Certificate not found or deleted</span>
+        </locale-text>
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import {
+      normalizeChainKey,
+      collectChainFields,
+      certFingerprint,
+    } from "/mz/cert/main.js";
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export const parent = "./home.html";
+
+    export default async ({ query, load }) => {
+      return {
+        data: {
+          loading: true,
+          notFound: false,
+          nsMode: false,
+          cert: {
+            role: "",
+            fromMe: false,
+            expired: false,
+            fingerprint: "",
+            issuer: "",
+            subject: "",
+            signTimeText: "",
+            expireText: "",
+          },
+          plainExtras: [],
+          chains: [],
+          certJson: "",
+          copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
+        },
+        async attached() {
+          // ?ns=org:<name> 时用组织命名空间解析（组织签发的证书存 org 用户凭证库）
+          this._storeUser = query.ns
+            ? (await load("/nos/user/main.js")).getUser(query.ns)
+            : null;
+          this.nsMode = !!query.ns;
+          await this.loadDetail(query.id || "");
+        },
+        proto: {
+          async copyCertJson() {
+            try {
+              await navigator.clipboard.writeText(this.certJson);
+              toast({ message: getLocaleText({ cn: "已复制", en: "Copied" }) });
+            } catch (err) {
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
+          async loadDetail(certId) {
+            try {
+              const user = this._storeUser || (await ensureUser());
+              const key = normalizeChainKey(certId);
+              const matched = key
+                ? (await user.cred.query(key, { includeExpired: true }))
+                    .find((c) => c.id === certId) || null
+                : null;
+              if (!matched) {
+                this.notFound = true;
+                this.loading = false;
+                return;
+              }
+
+              const now = Date.now();
+              this.cert = {
+                role: matched.role || "",
+                fromMe: matched.issuer === user.userId,
+                expired: !!matched.expire && matched.expire < now,
+                fingerprint: await certFingerprint(matched.signature),
+                issuer: matched.issuer || "",
+                subject: matched.subject || "",
+                signTimeText: formatTime(matched.signTime),
+                expireText: matched.expire
+                  ? formatTime(matched.expire)
+                  : getLocaleText({ cn: "永不过期", en: "Never" }),
+              };
+
+              // 本地全部证书的 id 索引，供链解析；字段整理/链展开走 /mz/cert 的 collectChainFields
+              const byId = {};
+              for await (const cert of user.cred.values(
+                {},
+                { includeExpired: true },
+              )) {
+                if (cert.role !== "profile") byId[cert.id] = cert;
+              }
+
+              const { plain, chains } = await collectChainFields(
+                matched,
+                async (id) => byId[id] ?? null,
+                (cert) => certFingerprint(cert.signature),
+              );
+              this.plainExtras = plain;
+              this.chains = chains;
+              this.certJson = JSON.stringify(matched, null, 2);
+              this.loading = false;
+            } catch (err) {
+              console.error("加载证书详情失败：", err);
+              this.loading = false;
+              toast({
+                message: getLocaleText(
+                  { cn: "加载证书详情失败：{msg}", en: "Failed to load detail: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

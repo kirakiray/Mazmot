@@ -1,0 +1,346 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .page-title st-icon-button {
+      flex-shrink: 0;
+    }
+    .title-actions {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .title-actions st-button {
+      font-size: 12px;
+    }
+    .import-textarea {
+      width: 100%;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .chain-badge n-icon {
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    /* 领取证书弹窗：加宽 + 最小 80vh 高度 */
+    st-dialog::part(panel) {
+      width: min(720px, 94vw);
+      min-height: 80vh;
+      max-height: 88vh;
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="../comps/cert-item.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:shield-account-outline"></n-icon>
+      <locale-text><span lang="cn">本地证书</span><span lang="en">Local Certificates</span></locale-text>
+      <span class="title-actions">
+        <st-button variant="outlined" on:click="importDialogOpen = true">
+          <n-icon icon="mdi:import" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">导入证书</span><span lang="en">Import</span></locale-text>
+        </st-button>
+        <st-button variant="outlined" on:click="claimDialogOpen = true">
+          <n-icon icon="mdi:download-outline" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">领取证书</span><span lang="en">Claim</span></locale-text>
+        </st-button>
+      </span>
+      <st-icon-button on:click="loadCerts()" attr:title="refreshTitle">
+        <n-icon icon="mdi:refresh"></n-icon>
+      </st-icon-button>
+    </div>
+
+    <st-tab-bar>
+      <st-tab-item attr:active="tab === 'all'" on:click="setTab('all')">
+        <locale-text><span lang="cn">全部</span><span lang="en">All</span></locale-text>
+      </st-tab-item>
+      <st-tab-item attr:active="tab === 'mine'" on:click="setTab('mine')">
+        <locale-text><span lang="cn">我签发的</span><span lang="en">Issued by me</span></locale-text>
+      </st-tab-item>
+      <st-tab-item attr:active="tab === 'forMe'" on:click="setTab('forMe')">
+        <locale-text><span lang="cn">签发给我的</span><span lang="en">Issued to me</span></locale-text>
+      </st-tab-item>
+      <st-tab-item attr:active="tab === 'others'" on:click="setTab('others')">
+        <locale-text><span lang="cn">其他人的</span><span lang="en">Others</span></locale-text>
+      </st-tab-item>
+    </st-tab-bar>
+
+    <st-card>
+      <st-list>
+        <o-fill :value="shownList" fill-key="id">
+          <m-cert-item
+            :cert="$data"
+            :mine="$data.fromMe"
+            :others="$data.others"
+            on:open-detail="$host.gotoDetail($event)"
+          >
+            <st-icon-button
+              slot="actions"
+              color="error"
+              on:click="$host.deleteCert($host.shownList[$index].id)"
+              attr:title="$host.deleteTitle"
+            >
+              <n-icon icon="mdi:delete-outline"></n-icon>
+            </st-icon-button>
+          </m-cert-item>
+        </o-fill>
+      </st-list>
+      <o-if :value="shownList.length === 0">
+        <div class="empty">
+          <locale-text>
+            <span lang="cn">暂无证书（签发的或领取的都会显示在这里）</span>
+            <span lang="en">No certificates yet (issued or claimed ones will appear here)</span>
+          </locale-text>
+        </div>
+      </o-if>
+    </st-card>
+
+    <!-- 领取证书：dialog 内嵌领取页面模块（o-page 常驻，src 初始化后不可变） -->
+    <st-dialog sync:open="claimDialogOpen" auto-close>
+      <h2 slot="headline" style="display:flex; align-items:center; gap:8px;">
+        <n-icon icon="mdi:certificate-outline"></n-icon>
+        <locale-text><span lang="cn">领取证书</span><span lang="en">Claim Certificate</span></locale-text>
+      </h2>
+      <o-page src="./claim.html" style="display:block; width:100%;"></o-page>
+    </st-dialog>
+
+    <!-- 导入证书：粘贴证书 JSON 导入本地凭证库 -->
+    <st-dialog sync:open="importDialogOpen">
+      <h2 slot="headline" style="display:flex; align-items:center; gap:8px;">
+        <n-icon icon="mdi:import"></n-icon>
+        <locale-text><span lang="cn">导入证书</span><span lang="en">Import Certificate</span></locale-text>
+      </h2>
+      <st-textarea class="import-textarea" attr:placeholder="jsonPlaceholder" attr:rows="10" spellcheck="false"></st-textarea>
+      <div slot="actions" style="display:flex; justify-content:flex-end; gap:8px;">
+        <st-button variant="text" on:click="importDialogOpen = false">
+          <locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text>
+        </st-button>
+        <st-button color="primary" on:click="importCert()" attr:disabled="importing">
+          <n-icon icon="mdi:import" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">导入</span><span lang="en">Import</span></locale-text>
+        </st-button>
+      </div>
+    </st-dialog>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    export const parent = "./home.html";
+
+    export default async () => {
+      return {
+        data: {
+          certList: [],
+          tab: "all",
+          claimDialogOpen: false,
+          importDialogOpen: false,
+          importing: false,
+          jsonPlaceholder: getLocaleText({
+            cn: "粘贴证书 JSON（如从证书详情「源数据」复制的内容）",
+            en: "Paste certificate JSON (e.g. copied from detail's source view)",
+          }),
+          refreshTitle: getLocaleText({ cn: "刷新", en: "Refresh" }),
+          deleteTitle: getLocaleText({ cn: "删除", en: "Delete" }),
+        },
+        async attached() {
+          await this.loadCerts();
+        },
+        proto: {
+          // 当前 tab 过滤后的列表（tab/certList 均有初始值，getter 求值安全）
+          get shownList() {
+            if (this.tab === "mine") {
+              return this.certList.filter((c) => c.fromMe);
+            }
+            if (this.tab === "forMe") {
+              return this.certList.filter(
+                (c) => !c.fromMe && !c.others,
+              );
+            }
+            if (this.tab === "others") {
+              return this.certList.filter((c) => c.others);
+            }
+            return this.certList;
+          },
+          setTab(name) {
+            this.tab = name;
+          },
+          // 粘贴 JSON 导入证书：解析 + 基本字段校验后 cred.import 入库
+          async importCert() {
+            const ta = this.shadow.$(".import-textarea").ele;
+            const raw = ta.value.trim();
+            if (!raw) {
+              toast({
+                message: getLocaleText({
+                  cn: "请先粘贴证书 JSON",
+                  en: "Please paste the certificate JSON first",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            let cert;
+            try {
+              cert = JSON.parse(raw);
+            } catch (err) {
+              toast({
+                message: getLocaleText({
+                  cn: "JSON 解析失败，请检查格式",
+                  en: "Invalid JSON, please check the format",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            const missing = ["id", "issuer", "subject", "role", "signature"]
+              .filter((k) => !cert[k]);
+            if (missing.length) {
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "缺少证书必要字段：{keys}",
+                    en: "Missing required fields: {keys}",
+                  },
+                  { keys: missing.join(", ") },
+                ),
+                color: "error",
+              });
+              return;
+            }
+            this.importing = true;
+            try {
+              const user = await ensureUser();
+              await user.cred.import(cert);
+              this.importDialogOpen = false;
+              ta.value = "";
+              await this.loadCerts();
+              toast({
+                message: getLocaleText({ cn: "已导入", en: "Imported" }),
+              });
+            } catch (err) {
+              console.error("导入证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "导入失败：{msg}", en: "Import failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.importing = false;
+            }
+          },
+          // 遍历本地凭证库中持有的全部授权证书（排除 profile），
+          // 展示（徽标/指纹/时间/自定义字段）由 comps/cert-item.html 组件负责
+          async loadCerts() {
+            try {
+              const user = await ensureUser();
+              const list = [];
+              for await (const cert of user.cred.values(
+                {},
+                { includeExpired: true },
+              )) {
+                if (cert.role === "profile") continue;
+                // "我签发的 / 签发给我的 / 其他人的"三类：为他方托管的证书
+                // （org 替员工签发、经我转交的副本，issuer 与 subject 都不是我）
+                // 归入"其他人的"，不再丢弃
+                const others =
+                  cert.issuer !== user.userId &&
+                  cert.subject !== user.userId;
+                list.push({
+                  ...cert,
+                  fromMe: cert.issuer === user.userId,
+                  others,
+                  revoked: false,
+                });
+              }
+              this.certList = list;
+            } catch (err) {
+              console.error("读取证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取证书失败：{msg}", en: "Failed to load certificates: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          // 组件 open-detail 事件 → 进入证书详情页
+          gotoDetail(event) {
+            this.app.goto(
+              "./pages/cert-detail.html?id=" + encodeURIComponent(event.data.id),
+            );
+          },
+          async deleteCert(id) {
+            try {
+              const user = await ensureUser();
+              await user.cred.delete(id);
+              await this.loadCerts();
+              toast({
+                message: getLocaleText({ cn: "已删除", en: "Deleted" }),
+              });
+            } catch (err) {
+              console.error("删除证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "删除失败：{msg}", en: "Delete failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

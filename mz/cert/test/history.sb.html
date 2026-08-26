@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mz/cert 签发历史合并视图单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="mergeIssuedView：现行 + 历史 → 已吊销标记">
+      <template>
+        <script type="module">
+          import { mergeIssuedView } from "../main.js";
+          {
+            const now = 2000;
+            const liveCerts = [
+              {
+                id: "editor-A-B",
+                role: "editor",
+                issuer: "A",
+                subject: "B",
+                signTime: 100,
+                expire: 3000, // 未过期
+                signature: "s1",
+              },
+              {
+                id: "viewer-A-D",
+                role: "viewer",
+                issuer: "A",
+                subject: "D",
+                signTime: 100,
+                expire: 1500, // 已过期但仍在库
+                signature: "s2",
+              },
+            ];
+            const history = [
+              // 与现行同 id：不重复计为吊销
+              {
+                id: "editor-A-B",
+                role: "editor",
+                subject: "B",
+                signTime: 100,
+                expire: 3000,
+              },
+              // 已吊销（历史有、凭证库无）
+              {
+                id: "admin-A-E",
+                role: "admin",
+                subject: "E",
+                signTime: 100,
+                expire: null,
+              },
+            ];
+            const merged = mergeIssuedView(liveCerts, history, now);
+            const byId = Object.fromEntries(merged.map((m) => [m.id, m]));
+            const checks = {
+              total: merged.length === 3,
+              liveNotRevoked:
+                byId["editor-A-B"]?.revoked === false &&
+                byId["editor-A-B"]?.expired === false,
+              liveExpired:
+                byId["viewer-A-D"]?.revoked === false &&
+                byId["viewer-A-D"]?.expired === true,
+              revokedEntry:
+                byId["admin-A-E"]?.revoked === true &&
+                byId["admin-A-E"]?.expire === null &&
+                byId["admin-A-E"]?.expired === false,
+              // 原始字段透传（signature 供指纹计算）
+              signatureKept: byId["editor-A-B"]?.signature === "s1",
+              noDuplicate: !merged.some(
+                (m, i) => merged.findIndex((x) => x.id === m.id) !== i,
+              ),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { merged, checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

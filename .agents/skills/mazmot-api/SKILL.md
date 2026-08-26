@@ -14,6 +14,8 @@ description: "Mazmot 自身提供的能力速查：app.json 应用结构、应�
 - AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
 - **AI Agent / 工具循环**（`createAgent` + `tool`：模型自动调用工具、动态工具、流式事件、`MemorySaver` 会话记忆）→ 查 [references/ai-chain.md](./references/ai-chain.md)。
 - **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
+- **系统级证书能力**（`/mz/cert/main.js`：签发/领取/吊销、用户卡片查询验签、签发历史与吊销留痕、`[chain_key:...]` 链式引用语法与链遍历）→ 查 [references/cert.md](./references/cert.md)。
+- **系统级组织账户机制**（`/mz/org/main.js`：创建组织（独立 `org:<name>` 用户）、owner/staff 角色证书、员工授权与吊销、业务应用的员工权限判断）→ 查 [references/org.md](./references/org.md)。
 
 ## 1. 应用结构 —— `app.json`
 
@@ -296,6 +298,26 @@ location.replace(`/$mazmot-apps/${recordName}/client/index.html`);
 ```
 
 **不要吞错**：任何步骤抛错都应交给 `fail(title, err)` 进入错误页并 `console.error(err)`，禁止 try/catch 静默。
+
+## 8.5 系统级证书能力 —— `/mz/cert/main.js`
+
+封装 noneos-core `user.cred` + 链式引用 / 签发历史，任何应用需要证书能力时的统一入口。**完整 API 说明、链式引用语法、链视图用法与可抄代码见 [references/cert.md](./references/cert.md)**。速记：
+
+```javascript
+const {
+  issueCert,          // ({ subject, role, expire, extras }) → 签发并入库
+  claimCert,          // (holderId, role, { issuerId }) → 在线拉取（唯一送达方式）；
+                      //   holderId=保管人（个人=签发者本人；组织证书=托管的创建者），
+                      //   issuerId=实际签发者（组织证书传组织 ID）
+  revokeCert,         // (certId) → 本地删除（core 无软删除）
+  lookupProfile,      // (userId, { force }) → 用户卡片查询
+  verifyProfileCard,  // (profile, targetId) → 卡片验签（勿用 user.verify 验别人的）
+  appendIssueHistory, listIssued, mergeIssuedView,   // 签发历史 / 吊销留痕
+  buildRef, parseRef, buildChain, collectChainFields, certFingerprint,  // 链式引用纯函数
+} = await load("/mz/cert/main.js");
+```
+
+关键语义：证书送达是**拉取模式**（接收方 `claimCert`，需签发者在线）；同 key 重复签发按 signTime 覆盖；链式引用语法 `[chain_key:role-issuer-subject]`（槽位引用，抗更新）。测试见 [mz/cert/test/](mz/cert/test/)。
 
 ## 9. 测试（sibyl-test）
 

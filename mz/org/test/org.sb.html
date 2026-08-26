@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mz/org 组织名规则单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="validateOrgName：slug 规则与拒绝项">
+      <template>
+        <script type="module">
+          import { validateOrgName } from "../main.js";
+          {
+            const checks = {
+              lower: validateOrgName("acme-labs") === true,
+              digits: validateOrgName("org2026") === true,
+              single: validateOrgName("a") === true,
+              maxLength: validateOrgName("a".repeat(32)) === true,
+              rejectUpper: validateOrgName("Acme") === false,
+              rejectSpace: validateOrgName("acme labs") === false,
+              rejectChinese: validateOrgName("组织") === false,
+              rejectUnderscore: validateOrgName("acme_labs") === false,
+              rejectTooLong: validateOrgName("a".repeat(33)) === false,
+              rejectEmpty: validateOrgName("") === false,
+              rejectColon: validateOrgName("org:acme") === false,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
