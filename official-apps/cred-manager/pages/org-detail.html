@@ -1,0 +1,677 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .breadcrumb .crumb-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--md-sys-color-primary);
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 2px 4px;
+    }
+    .breadcrumb .crumb-link:hover {
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .breadcrumb .crumb-sep {
+      opacity: 0.6;
+    }
+    .breadcrumb .crumb-current {
+      padding: 2px 4px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .org-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .create-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .create-row st-input {
+      flex: 1;
+    }
+    .staff-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .staff-form .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .staff-form .row st-input {
+      flex: 1;
+    }
+    .org-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .org-name {
+      font-weight: 500;
+    }
+    .actions-end {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="../comps/cert-item.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <o-if :value="!loading && !notFound">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="breadcrumb">
+          <span class="crumb-link" on:click="gotoOrgs()">
+            <n-icon icon="mdi:domain"></n-icon>
+            <locale-text><span lang="cn">组织管理</span><span lang="en">Organizations</span></locale-text>
+          </span>
+          <span class="crumb-sep">/</span>
+          <span class="crumb-current">{{org.name}}</span>
+        </div>
+        <div class="page-title">
+          <n-icon icon="mdi:domain"></n-icon>
+          <span>{{org.name}}</span>
+          <span class="org-badge">
+            <n-icon icon="mdi:shield-lock-outline"></n-icon>
+            <locale-text><span lang="cn">离线身份 · 经你托管转发</span><span lang="en">Offline · relayed by you</span></locale-text>
+          </span>
+        </div>
+
+        <!-- 基本信息 -->
+        <st-card style="display:flex; flex-direction:column; gap:8px;">
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:identifier"></n-icon><locale-text><span lang="cn">组织 ID</span><span lang="en">Org ID</span></locale-text></span>
+            <span class="info-value" attr:title="org.userId">{{org.userId}}</span>
+            <st-icon-button on:click="copyText(org.userId)" attr:title="copyTitle">
+              <n-icon icon="mdi:content-copy"></n-icon>
+            </st-icon-button>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:calendar-plus"></n-icon><locale-text><span lang="cn">创建时间</span><span lang="en">Created</span></locale-text></span>
+            <span class="info-value">{{org.createdAtText}}</span>
+          </div>
+
+          <!-- 修改组织展示名 -->
+          <div class="field-label" style="margin-top:8px;">
+            <n-icon icon="mdi:rename-outline"></n-icon>
+            <locale-text><span lang="cn">组织展示名</span><span lang="en">Display name</span></locale-text>
+          </div>
+          <div class="create-row">
+            <st-input sync:value="displayName" attr:placeholder="orgNamePlaceholder"></st-input>
+            <st-button variant="outlined" on:click="saveOrgName()" attr:disabled="savingName">
+              <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+            </st-button>
+          </div>
+        </st-card>
+
+        <!-- 给员工签发证书 -->
+        <st-card style="display:flex; flex-direction:column; gap:8px;">
+          <div class="field-label">
+            <n-icon icon="mdi:badge-account-outline"></n-icon>
+            <locale-text><span lang="cn">签发员工证书（员工可凭此证明身份）</span><span lang="en">Issue staff certificate</span></locale-text>
+          </div>
+          <div class="staff-form">
+            <div class="row">
+              <st-button variant="outlined" on:click="pickStaff()" style="flex:1;">
+                <n-icon icon="mdi:account-search-outline" slot="prefix"></n-icon>
+                <o-if :value="!staffName">
+                  <locale-text><span lang="cn">选择员工…</span><span lang="en">Pick staff…</span></locale-text>
+                </o-if>
+                <o-if :value="!!staffName">
+                  <span>{{staffName}}</span>
+                </o-if>
+              </st-button>
+              <st-input sync:value="staffRole" attr:placeholder="staffRolePlaceholder"></st-input>
+            </div>
+            <div class="row">
+              <st-select sync:value="validity" style="flex:1;">
+                <option value="30d"><locale-text><span lang="cn">30 天</span><span lang="en">30 days</span></locale-text></option>
+                <option value="90d"><locale-text><span lang="cn">90 天</span><span lang="en">90 days</span></locale-text></option>
+                <option value="365d"><locale-text><span lang="cn">365 天</span><span lang="en">365 days</span></locale-text></option>
+                <option value="never"><locale-text><span lang="cn">永不过期</span><span lang="en">Never</span></locale-text></option>
+              </st-select>
+              <st-button color="primary" on:click="issueStaff()" attr:disabled="issuing">
+                <n-icon icon="mdi:certificate-outline" slot="prefix"></n-icon>
+                <locale-text><span lang="cn">签发</span><span lang="en">Issue</span></locale-text>
+              </st-button>
+            </div>
+          </div>
+        </st-card>
+
+        <!-- 该组织已签发的证书 -->
+        <st-card style="display:flex; flex-direction:column; gap:8px;">
+          <div class="field-label">
+            <n-icon icon="mdi:format-list-checks"></n-icon>
+            <locale-text><span lang="cn">组织已签发的证书（含已吊销）</span><span lang="en">Certificates issued by this org</span></locale-text>
+            <span style="margin-left:auto; display:inline-flex; gap:6px;">
+              <st-button variant="outlined" on:click="reissueCerts()" attr:disabled="reissuing">
+                <n-icon icon="mdi:autorenew" slot="prefix"></n-icon>
+                <locale-text><span lang="cn">重新签发</span><span lang="en">Reissue</span></locale-text>
+              </st-button>
+              <st-button variant="outlined" on:click="importCerts()" attr:disabled="importing">
+                <n-icon icon="mdi:download-outline" slot="prefix"></n-icon>
+                <locale-text><span lang="cn">导入证书</span><span lang="en">Import</span></locale-text>
+              </st-button>
+            </span>
+          </div>
+          <st-list>
+            <o-fill :value="issued" fill-key="id">
+              <m-cert-item
+                :cert="$data"
+                :org-mode="true"
+                on:open-detail="$host.gotoDetail($event)"
+              >
+                <o-if slot="actions" :value="!$data.revoked">
+                  <st-icon-button color="error" on:click="$host.revokeStaff($data.id)" attr:title="$host.revokeTitle">
+                    <n-icon icon="mdi:delete-outline"></n-icon>
+                  </st-icon-button>
+                </o-if>
+              </m-cert-item>
+            </o-fill>
+            <o-if :value="issued.length === 0">
+              <div class="empty">
+                <locale-text><span lang="cn">尚未签发</span><span lang="en">Nothing issued yet</span></locale-text>
+              </div>
+            </o-if>
+          </st-list>
+        </st-card>
+
+        <div class="actions-end">
+          <st-button color="error" variant="text" on:click="removeOrg()">
+            <n-icon icon="mdi:delete-forever" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">删除组织</span><span lang="en">Delete organization</span></locale-text>
+          </st-button>
+        </div>
+      </div>
+    </o-if>
+
+    <o-if :value="notFound">
+      <div class="empty">
+        <locale-text>
+          <span lang="cn">组织不存在或已删除</span>
+          <span lang="en">Organization not found or deleted</span>
+        </locale-text>
+      </div>
+    </o-if>
+
+    <!-- 员工选择器：从 default 用户的已知用户（缓存 profile）中点选 -->
+    <st-dialog sync:open="staffDialogOpen" auto-close>
+      <h2 slot="headline">
+        <locale-text><span lang="cn">选择员工</span><span lang="en">Pick staff</span></locale-text>
+      </h2>
+      <st-list>
+        <o-fill :value="staffList" fill-key="userId">
+          <st-list-item button on:click="$host.pickStaffOk($data)">
+            <div class="org-title">
+              <span class="org-name">{{$data.username}}</span>
+              <o-if :value="$data.isMe">
+                <span class="org-badge">
+                  <locale-text><span lang="cn">我</span><span lang="en">Me</span></locale-text>
+                </span>
+              </o-if>
+              <o-if :value="$data.isOrg">
+                <span class="org-badge" data-kind="org">
+                  <n-icon icon="mdi:domain"></n-icon>
+                  <locale-text><span lang="cn">组织</span><span lang="en">Org</span></locale-text>
+                </span>
+              </o-if>
+            </div>
+            <div secondary><span attr:title="$data.userId">{{$data.shortUserId}}</span></div>
+          </st-list-item>
+        </o-fill>
+        <o-if :value="staffList.length === 0">
+          <div class="empty">
+            <locale-text>
+              <span lang="cn">暂无已知用户（先在「查询用户」里查询对方一次）</span>
+              <span lang="en">No known users yet (look someone up first)</span>
+            </locale-text>
+          </div>
+        </o-if>
+      </st-list>
+    </st-dialog>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import {
+      listOrgs as listOrgsApi,
+      getOrg,
+      updateOrgInfo,
+      issueStaffCert,
+      listOrgIssued,
+      revokeOrgCert,
+      deleteOrg,
+      importOrgCerts,
+      reissueOrgCerts,
+    } from "/mz/org/main.js";
+
+    const EXPIRE_DAYS = { "30d": 30, "90d": 90, "365d": 365 };
+
+    const formatTime = (ts) => {
+      if (!ts) return "";
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (err) {
+        return String(ts);
+      }
+    };
+
+    export const parent = "./home.html";
+
+    export default async ({ query, load }) => {
+      const { default: confirm } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+      );
+
+      return {
+        data: {
+          loading: true,
+          notFound: false,
+          orgName: query.org || "",
+          org: { name: "", userId: "", createdAtText: "" },
+          displayName: "",
+          savingName: false,
+          staffId: "",
+          staffName: "",
+          staffRole: "",
+          validity: "365d",
+          issuing: false,
+          reissuing: false,
+          importing: false,
+          issued: [],
+          staffDialogOpen: false,
+          staffList: [],
+          orgNamePlaceholder: getLocaleText({
+            cn: "组织展示名",
+            en: "Organization display name",
+          }),
+          staffRolePlaceholder: getLocaleText({
+            cn: "角色，默认 staff",
+            en: "Role, defaults to staff",
+          }),
+          copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
+          revokeTitle: getLocaleText({ cn: "吊销", en: "Revoke" }),
+        },
+        async attached() {
+          await this.loadDetail();
+        },
+        proto: {
+          gotoOrgs() {
+            this.app.goto("./pages/orgs.html");
+          },
+          async loadDetail() {
+            try {
+              const orgs = await listOrgsApi();
+              const hit = orgs.find((o) => o.name === this.orgName);
+              if (!hit) {
+                this.notFound = true;
+                this.loading = false;
+                return;
+              }
+              this.org = {
+                name: hit.name,
+                userId: hit.userId,
+                createdAtText: formatTime(hit.createdAt),
+              };
+              await this.loadExtras();
+              this.loading = false;
+            } catch (err) {
+              console.error("读取组织详情失败：", err);
+              this.loading = false;
+              toast({
+                message: getLocaleText(
+                  { cn: "读取组织详情失败：{msg}", en: "Failed to load org: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          async loadExtras() {
+            try {
+              const orgUser = await getOrg(this.orgName);
+              const info = await orgUser.getInfo();
+              this.displayName = info.username || this.orgName;
+              this.issued = (await listOrgIssued(this.orgName)).map((r) => ({
+                ...r,
+                orgName: this.orgName,
+              }));
+            } catch (err) {
+              console.warn("读取组织详情失败：", err);
+            }
+          },
+          async saveOrgName() {
+            const value = (this.displayName || "").trim();
+            if (!value) {
+              toast({
+                message: getLocaleText({
+                  cn: "展示名不能为空",
+                  en: "Display name cannot be empty",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.savingName = true;
+            try {
+              await updateOrgInfo(this.orgName, { username: value });
+              toast({ message: getLocaleText({ cn: "已保存", en: "Saved" }) });
+            } catch (err) {
+              console.error("保存组织名失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "保存失败：{msg}", en: "Save failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.savingName = false;
+            }
+          },
+          // 打开员工选择器：列出 default 用户的已知用户（缓存 profile）
+          async pickStaff() {
+            try {
+              const { ensureUser } = await load("/mz/share-mgr.js");
+              const { isOrgProfile } = await load("/mz/org/main.js");
+              const user = await ensureUser();
+              const profiles = await user.cred.query({ role: "profile" });
+              this.staffList = profiles.map((p) => ({
+                userId: p.subject || "",
+                username: p.username || p.subject || "",
+                shortUserId: (p.subject || "").slice(0, 20) + "…",
+                isMe: p.subject === user.userId,
+                isOrg: isOrgProfile(p),
+              }));
+              this.staffDialogOpen = true;
+            } catch (err) {
+              console.error("读取已知用户失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取已知用户失败：{msg}", en: "Failed to load known users: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          pickStaffOk(staff) {
+            this.staffId = staff.userId;
+            this.staffName = staff.username;
+            this.staffDialogOpen = false;
+          },
+          async issueStaff() {
+            const subject = (this.staffId || "").trim();
+            if (!subject) {
+              toast({
+                message: getLocaleText({
+                  cn: "请填写员工用户 ID",
+                  en: "Please enter the staff user ID",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.issuing = true;
+            try {
+              const expire =
+                this.validity === "never"
+                  ? null
+                  : Date.now() + EXPIRE_DAYS[this.validity] * 24 * 3600 * 1000;
+              await issueStaffCert({
+                org: this.orgName,
+                subject,
+                role: (this.staffRole || "").trim() || undefined,
+                expire,
+              });
+              toast({
+                message: getLocaleText({
+                  cn: "已签发并托管到你的账户。请让员工在「领取证书」页输入你的用户 ID 和角色领取（组织全程离线）",
+                  en: "Issued and hosted by your account. Staff claims it with YOUR user ID and the role (org stays offline)",
+                }),
+              });
+              this.staffId = "";
+              this.staffName = "";
+              this.staffRole = "";
+              this.issued = (await listOrgIssued(this.orgName)).map((r) => ({
+                ...r,
+                orgName: this.orgName,
+              }));
+            } catch (err) {
+              console.error("签发员工证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "签发失败：{msg}", en: "Issue failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.issuing = false;
+            }
+          },
+          // 把组织现行证书按当前时间重签一遍（补全 type/org 标记）并导入本地库
+          async reissueCerts() {
+            const ok = await confirm(
+              getLocaleText(
+                {
+                  cn: "将把 {name} 的现行证书按当前时间重新签发并导入你的本地证书（旧证书保留，用于修复旧证书缺失 type/org 标记等问题）。确定？",
+                  en: "Reissue all current certificates of {name} with the current time and import them into your local certificates (old ones are kept; fixes missing type/org markers). Continue?",
+                },
+                { name: this.orgName },
+              ),
+            );
+            if (!ok) return;
+            this.reissuing = true;
+            try {
+              const certs = await reissueOrgCerts(this.orgName);
+              await this.loadExtras();
+              toast({
+                message: getLocaleText(
+                  { cn: "已重签 {n} 张证书", en: "Reissued {n} certificates" },
+                  { n: certs.length },
+                ),
+              });
+            } catch (err) {
+              console.error("重签失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "重签失败：{msg}", en: "Reissue failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.reissuing = false;
+            }
+          },
+          // 把组织已签发的证书导入本地凭证库（幂等，已存在的跳过）
+          async importCerts() {
+            this.importing = true;
+            try {
+              const n = await importOrgCerts(this.orgName);
+              toast({
+                message: getLocaleText(
+                  { cn: "新导入 {n} 张证书", en: "Imported {n} certificates" },
+                  { n },
+                ),
+              });
+            } catch (err) {
+              console.error("导入失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "导入失败：{msg}", en: "Import failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.importing = false;
+            }
+          },
+          async revokeStaff(certId) {
+            try {
+              await revokeOrgCert(this.orgName, certId);
+              await this.loadExtras();
+              toast({
+                message: getLocaleText({ cn: "已吊销", en: "Revoked" }),
+              });
+            } catch (err) {
+              console.error("吊销失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "吊销失败：{msg}", en: "Revoke failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          async removeOrg() {
+            const ok = await confirm(
+              getLocaleText(
+                {
+                  cn: "删除组织 {name} 将同时清除其身份、证书与历史，不可恢复。确定？",
+                  en: "Deleting {name} removes its identity, certificates and history permanently. Continue?",
+                },
+                { name: this.orgName },
+              ),
+            );
+            if (!ok) return;
+            try {
+              await deleteOrg(this.orgName);
+              toast({
+                message: getLocaleText({ cn: "已删除", en: "Deleted" }),
+              });
+              this.app.goto("./pages/orgs.html");
+            } catch (err) {
+              console.error("删除组织失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "删除失败：{msg}", en: "Delete failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          async copyText(text) {
+            try {
+              await navigator.clipboard.writeText(text);
+              toast({ message: getLocaleText({ cn: "已复制", en: "Copied" }) });
+            } catch (err) {
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
+          // 详情跳转：带 ?ns=org:<name> 让 cert-detail 用组织命名空间解析
+          gotoDetail(event) {
+            const { id } = event.data;
+            this.app.goto(
+              "./pages/cert-detail.html?id=" + encodeURIComponent(id) +
+              "&ns=" + encodeURIComponent(`org:${this.orgName}`),
+            );
+          },
+        },
+      };
+    };
+  </script>
+</template>

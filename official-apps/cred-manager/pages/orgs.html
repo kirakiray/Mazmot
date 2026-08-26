@@ -1,0 +1,244 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .page-title st-icon-button {
+      margin-left: auto;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .create-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .create-row st-input {
+      flex: 1;
+    }
+    .org-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .org-name {
+      font-weight: 500;
+    }
+    .org-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:domain"></n-icon>
+      <locale-text><span lang="cn">组织管理</span><span lang="en">Organizations</span></locale-text>
+      <st-icon-button on:click="loadOrgs()" attr:title="refreshTitle">
+        <n-icon icon="mdi:refresh"></n-icon>
+      </st-icon-button>
+    </div>
+
+    <!-- 创建组织 -->
+    <st-card style="display:flex; flex-direction:column; gap:8px;">
+      <div class="field-label">
+        <n-icon icon="mdi:plus-circle-outline"></n-icon>
+        <locale-text>
+          <span lang="cn">创建组织（生成独立的组织身份，你自动成为所有者 owner）</span>
+          <span lang="en">Create an organization (independent org identity; you become its owner)</span>
+        </locale-text>
+      </div>
+      <div class="create-row">
+        <st-input sync:value="newOrgName" attr:placeholder="orgNamePlaceholder"></st-input>
+        <st-button color="primary" on:click="createOrg()" attr:disabled="creating">
+          <n-icon icon="mdi:plus" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">创建</span><span lang="en">Create</span></locale-text>
+        </st-button>
+      </div>
+    </st-card>
+
+    <!-- 组织列表：点击进入组织详情页管理 -->
+    <st-card>
+      <st-list>
+        <o-fill :value="orgList" fill-key="name">
+          <st-list-item button on:click="$host.gotoOrg($data.name)">
+            <div class="org-title">
+              <span class="org-name">{{$data.displayName || $data.name}}</span>
+              <span class="org-badge">
+                <n-icon icon="mdi:domain"></n-icon>
+                <locale-text><span lang="cn">组织</span><span lang="en">Org</span></locale-text>
+              </span>
+              <o-if :value="!!$data.displayName && $data.displayName !== $data.name">
+                <span class="org-badge">{{$data.name}}</span>
+              </o-if>
+            </div>
+            <div secondary><span attr:title="$data.userId">{{$data.shortUserId}}</span></div>
+            <n-icon slot="suffix" icon="mdi:chevron-right" style="font-size:20px;"></n-icon>
+          </st-list-item>
+        </o-fill>
+      </st-list>
+      <o-if :value="!loading && orgList.length === 0">
+        <div class="empty">
+          <locale-text>
+            <span lang="cn">暂无组织（创建后你自动持有 owner 证书，可给员工签发证书）</span>
+            <span lang="en">No organizations yet (creator holds the owner cert and can issue staff certs)</span>
+          </locale-text>
+        </div>
+      </o-if>
+    </st-card>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import {
+      createOrg as createOrgApi,
+      listOrgs as listOrgsApi,
+      getOrg,
+    } from "/mz/org/main.js";
+
+    export const parent = "./home.html";
+
+    export default async ({ load }) => {
+      return {
+        data: {
+          loading: true,
+          newOrgName: "",
+          creating: false,
+          orgList: [],
+          orgNamePlaceholder: getLocaleText({
+            cn: "组织标识，如 acme-labs（小写字母/数字/中划线）",
+            en: "Org slug, e.g. acme-labs (lowercase/digits/dash)",
+          }),
+          refreshTitle: getLocaleText({ cn: "刷新", en: "Refresh" }),
+        },
+        async attached() {
+          await this.loadOrgs();
+        },
+        proto: {
+          // 组织清单（含展示名，供列表直接展示）
+          async loadOrgs() {
+            try {
+              this.loading = true;
+              const orgs = await listOrgsApi();
+              this.orgList = orgs.map((o) => ({
+                ...o,
+                shortUserId: o.userId.slice(0, 20) + "…",
+                displayName: "",
+              }));
+              for (const item of this.orgList) {
+                this.loadOrgDisplayName(item.name);
+              }
+            } catch (err) {
+              console.error("读取组织失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取组织失败：{msg}", en: "Failed to load orgs: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.loading = false;
+            }
+          },
+          async loadOrgDisplayName(name) {
+            try {
+              const orgUser = await getOrg(name);
+              const info = await orgUser.getInfo();
+              const item = this.orgList.find((o) => o.name === name);
+              if (item) item.displayName = info.username || "";
+            } catch (err) {
+              console.warn("读取组织详情失败：", err);
+            }
+          },
+          async createOrg() {
+            const name = this.newOrgName.trim();
+            if (!name) return;
+            this.creating = true;
+            try {
+              await createOrgApi({ name });
+              this.newOrgName = "";
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "组织 {name} 已创建，你已持有 owner 证书",
+                    en: "Organization {name} created; you hold its owner certificate",
+                  },
+                  { name },
+                ),
+              });
+              await this.loadOrgs();
+            } catch (err) {
+              console.error("创建组织失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "创建失败：{msg}", en: "Create failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.creating = false;
+            }
+          },
+          gotoOrg(name) {
+            this.app.goto("./pages/org-detail.html?org=" + encodeURIComponent(name));
+          },
+        },
+      };
+    };
+  </script>
+</template>

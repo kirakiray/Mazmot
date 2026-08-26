@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ref.js 凭证引用语法单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="buildRef / parseRef 往返与拒绝规则">
+      <template>
+        <script type="module">
+          import { buildRef, parseRef, REF_PATTERN } from "../ref.js";
+          {
+            const ref = buildRef("chain_key", "editor-a1-b2");
+            const parsed = parseRef(ref);
+            const checks = {
+              roundTrip:
+                !!parsed &&
+                parsed.type === "chain_key" &&
+                parsed.payload === "editor-a1-b2",
+              rejectPlain: parseRef("hello world") === null,
+              rejectLegacyPrefix: parseRef("__chain_id_x") === null,
+              rejectUnknownType: parseRef("[foo_type:x]") === null,
+              rejectUnclosed: parseRef("[chain_key:x") === null,
+              rejectLongType:
+                parseRef("[abcdefghijklmnopqrstuvwxyz:x]") === null,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { ref, REF_PATTERN: String(REF_PATTERN), checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="normalizeChainKey 按前两个 - 拆三段">
+      <template>
+        <script type="module">
+          import { normalizeChainKey } from "../ref.js";
+          {
+            const key = normalizeChainKey("editor-aaaa-bbbb-cccc");
+            const checks = {
+              role: key.role === "editor",
+              issuer: key.issuer === "aaaa",
+              // subject 内的其余 "-" 保留（userId 不含 -，此为防御性断言）
+              subject: key.subject === "bbbb-cccc",
+              invalid: normalizeChainKey("no-dash") === null,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { key, checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

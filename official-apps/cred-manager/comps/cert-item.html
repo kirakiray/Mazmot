@@ -1,0 +1,311 @@
+<template component>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .cert-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cert-role {
+      font-weight: 500;
+    }
+    .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cert-badge[data-kind="mine"] {
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .cert-badge[data-kind="tome"] {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .cert-badge[data-kind="chain"] {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .cert-badge[data-kind="expired"],
+    .cert-badge[data-kind="revoked"],
+    .cert-badge[data-kind="missing"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .cert-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 0;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .info-label {
+      opacity: 0.7;
+      min-width: 72px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .info-label n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .info-value {
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+    }
+    .chain-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      word-break: break-all;
+    }
+    .chain-badge n-icon {
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+      padding-top: 4px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <st-list-item collapsible>
+    <div class="cert-title">
+      <span class="cert-role">{{cert.role}}</span>
+      <o-if :value="mine && !cert.revoked && !orgMode">
+        <span class="cert-badge" data-kind="mine">
+          <n-icon icon="mdi:pencil-outline"></n-icon>
+          <locale-text><span lang="cn">我签发</span><span lang="en">Issued by me</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="!mine && !others && !cert.revoked && !orgMode">
+        <span class="cert-badge" data-kind="tome">
+          <n-icon icon="mdi:inbox-arrow-down-outline"></n-icon>
+          <locale-text><span lang="cn">签发给我</span><span lang="en">Issued to me</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="others && !cert.revoked && !orgMode">
+        <span class="cert-badge" data-kind="chain">
+          <n-icon icon="mdi:account-multiple-outline"></n-icon>
+          <locale-text><span lang="cn">其他人的</span><span lang="en">Others</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="orgMode">
+        <span class="cert-badge" data-kind="chain">
+          <n-icon icon="mdi:domain"></n-icon>
+          <locale-text><span lang="cn">组织签发</span><span lang="en">Org-issued</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="cert.revoked">
+        <span class="cert-badge" data-kind="revoked">
+          <n-icon icon="mdi:cancel"></n-icon>
+          <locale-text><span lang="cn">已吊销</span><span lang="en">Revoked</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="expired">
+        <span class="cert-badge" data-kind="expired">
+          <n-icon icon="mdi:clock-alert-outline"></n-icon>
+          <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
+        </span>
+      </o-if>
+      <o-if :value="hasChain">
+        <span class="cert-badge" data-kind="chain">
+          <n-icon icon="mdi:link-variant"></n-icon>
+          <locale-text><span lang="cn">链式</span><span lang="en">Chained</span></locale-text>
+        </span>
+      </o-if>
+    </div>
+    <div secondary><n-user-name attr:user-id="cert.subject"></n-user-name></div>
+    <st-list slot="sublist">
+      <st-list-item>
+        <div class="cert-info">
+          <o-if :value="fingerprint">
+            <div class="info-row">
+              <span class="info-label"><n-icon icon="mdi:fingerprint"></n-icon><locale-text><span lang="cn">ID：</span><span lang="en">ID:</span></locale-text></span>
+              <span class="info-value" attr:title="fingerprint">{{fingerprint}}</span>
+            </div>
+          </o-if>
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:pen"></n-icon><locale-text><span lang="cn">签发者：</span><span lang="en">Issuer:</span></locale-text></span>
+            <span class="info-value" attr:title="cert.issuer"><n-user-name attr:user-id="cert.issuer"></n-user-name></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:account-arrow-right-outline"></n-icon><locale-text><span lang="cn">主体：</span><span lang="en">Subject:</span></locale-text></span>
+            <span class="info-value" attr:title="cert.subject"><n-user-name attr:user-id="cert.subject"></n-user-name></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:clock-edit-outline"></n-icon><locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text></span>
+            <span class="info-value">{{signTimeText}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><n-icon icon="mdi:calendar-remove-outline"></n-icon><locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text></span>
+            <span class="info-value">{{expireText}}</span>
+          </div>
+          <o-fill :value="extras">
+            <div class="info-row">
+              <span class="info-label">{{$data.key}}:</span>
+              <span class="info-value">
+                <o-if :value="$data.refIssuer">
+                  <span class="chain-badge" attr:title="$data.value">
+                    <n-icon icon="mdi:link-variant"></n-icon>
+                    <span>{{$data.refRole}}:</span>
+                    <n-user-name attr:user-id="$data.refIssuer"></n-user-name>
+                    <span>→</span>
+                    <n-user-name attr:user-id="$data.refSubject"></n-user-name>
+                  </span>
+                </o-if>
+                <o-if :value="!$data.refIssuer && $data.refType">
+                  <span class="chain-badge" attr:title="$data.value">
+                    <n-icon icon="mdi:link-variant"></n-icon>
+                    {{$data.refType}} · {{$data.refShort}}
+                  </span>
+                </o-if>
+                <o-if :value="!$data.refType">
+                  {{$data.value}}
+                </o-if>
+              </span>
+            </div>
+          </o-fill>
+          <div class="actions">
+            <st-icon-button on:click="openDetail()" attr:title="detailTitle">
+              <n-icon icon="mdi:text-box-outline"></n-icon>
+            </st-icon-button>
+            <slot name="actions"></slot>
+          </div>
+        </div>
+      </st-list-item>
+    </st-list>
+  </st-list-item>
+
+  <script>
+    export default async ({ load }) => {
+      const { parseRef, shortenRef, normalizeChainKey, certFingerprint } =
+        await load("/mz/cert/main.js");
+      const { getLocaleText } = await load(
+        "/nos/locale-text/get-locale-text.js",
+      );
+
+      const BUILTIN_KEYS = [
+        "id", "role", "issuer", "subject", "signTime",
+        "expire", "signature", "publicKey",
+      ];
+
+      const formatTime = (ts) => {
+        if (!ts) return "";
+        try {
+          return new Date(ts).toLocaleString();
+        } catch (err) {
+          return String(ts);
+        }
+      };
+
+      return {
+        tag: "m-cert-item",
+        data: {
+          cert: {},
+          mine: false,
+          others: false,
+          orgMode: false,
+          expired: false,
+          hasChain: false,
+          fingerprint: "",
+          signTimeText: "",
+          expireText: "",
+          extras: [],
+          detailTitle: getLocaleText({
+            cn: "证书详情",
+            en: "Certificate detail",
+          }),
+        },
+        watch: {
+          cert() {
+            this.renderMeta();
+          },
+        },
+        async attached() {
+          await this.renderMeta();
+        },
+        proto: {
+          // 由整条证书记录派生展示字段（时间/指纹/自定义字段/链式标记）
+          async renderMeta() {
+            const cert = this.cert || {};
+            const extras = Object.entries(cert)
+              .filter(
+                ([k]) =>
+                  !BUILTIN_KEYS.includes(k) &&
+                  !["revoked", "expired", "fromMe", "others", "orgName"].includes(k),
+              )
+              .map(([k, v]) => {
+                const raw =
+                  typeof v === "object" ? JSON.stringify(v) : String(v);
+                const ref = parseRef(raw);
+                // chain_key 引用拆出 role/issuer/subject，徽章内用 username 组件展示双方
+                const key = ref && ref.type === "chain_key"
+                  ? normalizeChainKey(ref.payload)
+                  : null;
+                return {
+                  key: k,
+                  value: raw,
+                  refType: ref ? ref.type : "",
+                  refShort: ref ? shortenRef(ref) : "",
+                  refRole: key ? key.role : "",
+                  refIssuer: key ? key.issuer : "",
+                  refSubject: key ? key.subject : "",
+                };
+              });
+            this.expired = !!cert.expire && cert.expire < Date.now();
+            this.hasChain = extras.some((e) => !!e.refType);
+            this.signTimeText = formatTime(cert.signTime);
+            this.expireText = cert.expire
+              ? formatTime(cert.expire)
+              : getLocaleText({ cn: "永不过期", en: "Never" });
+            this.extras = extras;
+            this.fingerprint = await certFingerprint(cert.signature);
+          },
+          // 详情跳转由宿主页面处理（组件不持有路由）；带上完整 cert 便于宿主判断上下文
+          openDetail() {
+            this.emit("open-detail", {
+              data: { id: this.cert.id, cert: this.cert },
+              bubbles: true,
+            });
+          },
+        },
+      };
+    };
+  </script>
+</template>

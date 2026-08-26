@@ -4,21 +4,10 @@
       display: block;
       text-align: start;
     }
-    .page {
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 24px 16px 48px;
+    .claim-body {
       display: flex;
       flex-direction: column;
       gap: 16px;
-    }
-    .page-title {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--md-sys-color-on-surface);
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
     .hint {
       font-size: 12px;
@@ -72,12 +61,7 @@
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
-  <div class="page">
-    <div class="page-title">
-      <n-icon icon="mdi:certificate-outline"></n-icon>
-      <locale-text><span lang="cn">领取证书</span><span lang="en">Claim Certificate</span></locale-text>
-    </div>
-
+  <div class="claim-body">
     <div class="hint">
       <locale-text>
         <span lang="cn">对方签发证书后不会主动推送，需由你按精确信息在线拉取。输入签发者的用户 ID 和证书角色即可领取（需对方在线）。</span>
@@ -89,7 +73,7 @@
       <div class="form-row">
         <div class="field-label">
           <n-icon icon="mdi:account-key-outline"></n-icon>
-          <locale-text><span lang="cn">签发者用户 ID</span><span lang="en">Issuer user ID</span></locale-text>
+          <locale-text><span lang="cn">证书保管人用户 ID</span><span lang="en">Cert holder user ID</span></locale-text>
         </div>
         <st-input sync:value="issuerInput" attr:placeholder="issuerPlaceholder"></st-input>
       </div>
@@ -99,6 +83,13 @@
           <locale-text><span lang="cn">角色（role）</span><span lang="en">Role</span></locale-text>
         </div>
         <st-input sync:value="roleInput" attr:placeholder="rolePlaceholder"></st-input>
+      </div>
+      <div class="form-row">
+        <div class="field-label">
+          <n-icon icon="mdi:domain"></n-icon>
+          <locale-text><span lang="cn">实际签发者（可选，组织证书转发时填组织 ID）</span><span lang="en">Actual issuer (optional; org ID for relayed org certs)</span></locale-text>
+        </div>
+        <st-input sync:value="actualIssuerInput" attr:placeholder="actualIssuerPlaceholder"></st-input>
       </div>
       <div class="actions">
         <st-button color="primary" on:click="claimCert()" attr:disabled="claiming">
@@ -136,7 +127,7 @@
 
   <script>
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
-    import { ensureUser } from "/mz/share-mgr.js";
+    import { claimCert as claimCertApi } from "/mz/cert/main.js";
     import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
     const formatTime = (ts) => {
@@ -148,15 +139,20 @@
       }
     };
 
-    export const parent = "./home.html";
-
+    // 无 parent：本模块只经 my-certs 的 dialog 内 o-page 内嵌使用，
+    // 挂 parent 会把 home.html 的侧栏 layout 一起套进弹窗
     export default async () => {
       return {
         data: {
           issuerInput: "",
           issuerPlaceholder: getLocaleText({
-            cn: "输入签发者的用户 ID",
-            en: "Enter the issuer's user ID",
+            cn: "输入保管人的用户 ID（个人证书=签发者本人；组织证书=转发的创建者）",
+            en: "Holder's user ID (personal: the issuer; org cert: the relaying creator)",
+          }),
+          actualIssuerInput: "",
+          actualIssuerPlaceholder: getLocaleText({
+            cn: "留空 = 签发者就是保管人；组织证书填组织 ID",
+            en: "Leave empty if holder is the issuer; org ID for org certificates",
           }),
           roleInput: "",
           rolePlaceholder: getLocaleText({
@@ -191,11 +187,9 @@
             this.claiming = true;
             this.hasResult = false;
             try {
-              const user = await ensureUser();
-              const cert = await user.cred.getRecord(issuerId, {
-                role,
-                issuer: issuerId,
-                subject: user.userId,
+              const actualIssuer = this.actualIssuerInput.trim();
+              const cert = await claimCertApi(issuerId, role, {
+                issuerId: actualIssuer || undefined,
               });
               if (!cert) {
                 toast({

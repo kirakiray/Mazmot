@@ -80,6 +80,15 @@ Mazmot/
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
+│   ├── cert/                 # 系统级证书能力（封装 noneos-core user.cred，URL = /mz/cert/*）
+│   │   ├── main.js           # 入口：issueCert / claimCert / revokeCert / lookupProfile / verifyProfileCard + 签发历史（appendIssueHistory / listIssued / listIssuedBy / mergeIssuedView 纯函数，存 getStorage("mz-cert") issue-history 键，含旧 cred-manager 空间一次性迁移；core 无软删除，历史有而凭证库无 = 已吊销）+ re-export 纯函数（ensureUser / verifyData / storage 按需动态加载，顶层不 import /nos/*）
+│   │   ├── ref.js            # 凭证引用语法 [<type>:<payload>]（注册制类型表，本期 chain_key = role-issuer-subject 槽位引用，抗更新）
+│   │   ├── chain.js          # 链遍历纯函数 buildChain（环检测 + 深度上限 32，节点状态 ok/expired/missing）+ collectChainFields（单张证书字段分组：普通字段 + 每个链字段展开好的节点列表，缺失引用为单 missing 根）
+│   │   ├── fingerprint.js    # certFingerprint = sha256_hex(signature)（版本指纹，跨设备一致，区别于存储主键）
+│   │   └── test/             # ref / chain（含 collectChainFields）/ history（mergeIssuedView）的 sibyl-test 测试
+│   ├── org/                  # 系统级组织账户机制（URL = /mz/org/*）
+│   │   ├── main.js           # 组织 = 独立 NoneOS 用户（命名空间 org:<name>，**离线身份，从不连服务器**）：createOrg（org 给创建者签 role="owner" 永久证书，extras 带 type:"org"+org:<name> 标记并 cred.import 进创建者凭证库；profile 自定义字段带 type:"org" 标记，isOrgProfile 判别）/ listOrgs / getOrg / updateOrgInfo / issueStaffCert（默认 role="staff"，证书同样带 type/org 标记，签发后自动 cred.import 托管进创建者 default 凭证库，员工用 claimCert(创建者ID, role, {issuerId: 组织ID}) 领取，计入带 issuer 的签发历史）/ listOrgIssued（经 /mz/cert 的 listIssuedBy 查 org 用户凭证库）/ revokeOrgCert / deleteOrg（deleteUser 不可逆）；组织清单存 getStorage("mz-orgs")，业务应用凭「证书 issuer === org userId」做员工权限判断
+│   │   └── test/             # validateOrgName 等纯函数测试
 │   └── comps/                # 系统级公共组件（URL = /mz/comps/*），详见 mz/comps/CONTEXT.md
 │       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
 │       ├── o-md/             # <o-md> Markdown 渲染组件
@@ -90,7 +99,7 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
-│   ├── cert-issuer/          # 证书签发器（home.html 左侧导航 layout：query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段）；claim.html 按精确 key 在线领取他人签发的证书（core 已移除 shareCert 推送，改为拉取模式）；my-certs.html 查看/删除本地持有的全部证书；known-users.html 已知用户卡片（缓存的 profile + n-user-name/n-user-status）；my-info.html 查看/修改自己的用户名与 userId，基于 user.cred 证书 API）
+│   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
@@ -402,6 +411,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
+| 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹） |
+| 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
@@ -416,6 +427,6 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
-| 证书签发官方应用（查询用户卡片 + 签发/领取/查看证书 + 我的信息） | [official-apps/cert-issuer/pages/](official-apps/cert-issuer/pages/)（[home.html](official-apps/cert-issuer/pages/home.html) layout / [query-user.html](official-apps/cert-issuer/pages/query-user.html) / [claim.html](official-apps/cert-issuer/pages/claim.html) / [my-certs.html](official-apps/cert-issuer/pages/my-certs.html) / [my-info.html](official-apps/cert-issuer/pages/my-info.html)） |
+| 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |

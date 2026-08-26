@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>chain.js 链遍历单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="链遍历：深度、过期状态、缺失节点">
+      <template>
+        <script type="module">
+          import { buildChain } from "../chain.js";
+          import { buildRef } from "../ref.js";
+          {
+            const now = 1000;
+            const child = {
+              id: "editor-A-B",
+              role: "editor",
+              issuer: "A",
+              subject: "B",
+              signTime: 1,
+              expire: 500, // 已过期
+              signature: "sigB",
+              parent: buildRef("chain_key", "admin-C-A"),
+            };
+            const db = {
+              "editor-A-B": child,
+              "admin-C-A": {
+                id: "admin-C-A",
+                role: "admin",
+                issuer: "C",
+                subject: "A",
+                signTime: 1,
+                signature: "sigA",
+                note: buildRef("chain_key", "ghost-G-H"), // 本地缺失的引用
+                plain: "不是引用",
+              },
+            };
+            const nodes = await buildChain(
+              db["admin-C-A"],
+              async (id) => db[id] ?? null,
+              async (c) => "fp-" + c.signature,
+              now,
+            );
+            const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+            const checks = {
+              rootOk: byId["admin-C-A"]?.status === "ok",
+              expiredDepth1:
+                byId["editor-A-B"]?.status === "expired" &&
+                byId["editor-A-B"]?.depth === 1 &&
+                byId["editor-A-B"]?.viaField === "parent",
+              missingDepth2:
+                byId["ghost-G-H"]?.status === "missing" &&
+                byId["ghost-G-H"]?.depth === 2,
+              plainFieldIgnored: !nodes.some((n) => n.id === "不是引用"),
+              fingerprint: byId["admin-C-A"]?.fingerprint === "fp-sigA",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { nodes, checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="环检测：A→B→A 不产生循环展开">
+      <template>
+        <script type="module">
+          import { buildChain } from "../chain.js";
+          import { buildRef } from "../ref.js";
+          {
+            const certA = {
+              id: "editor-A-B",
+              role: "editor",
+              issuer: "A",
+              subject: "B",
+              signTime: 1,
+              signature: "sigA",
+              parent: buildRef("chain_key", "admin-C-A"),
+            };
+            const certB = {
+              id: "admin-C-A",
+              role: "admin",
+              issuer: "C",
+              subject: "A",
+              signTime: 1,
+              signature: "sigB",
+              root: buildRef("chain_key", "editor-A-B"), // 指回根，构成环
+            };
+            const db = { "editor-A-B": certA, "admin-C-A": certB };
+            const nodes = await buildChain(
+              certA,
+              async (id) => db[id] ?? null,
+              null,
+              1000,
+            );
+            const count = nodes.filter((n) => n.id === "editor-A-B").length;
+            const checks = {
+              finished: nodes.length === 2,
+              noLoop: count === 1,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { nodes, checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="collectChainFields：普通字段与链字段分组、缺失引用单节点">
+      <template>
+        <script type="module">
+          import { collectChainFields } from "../chain.js";
+          import { buildRef } from "../ref.js";
+          {
+            const cert = {
+              id: "editor-A-B",
+              role: "editor",
+              issuer: "A",
+              subject: "B",
+              signTime: 1,
+              signature: "sigX",
+              note: "普通字段",
+              parent: buildRef("chain_key", "admin-C-A"),   // 本地存在
+              ghost: buildRef("chain_key", "ghost-G-H"),    // 本地缺失
+            };
+            const admin = {
+              id: "admin-C-A",
+              role: "admin",
+              issuer: "C",
+              subject: "A",
+              signTime: 1,
+              signature: "sigAdmin",
+            };
+            const db = { "admin-C-A": admin };
+            const { plain, chains } = await collectChainFields(
+              cert,
+              async (id) => db[id] ?? null,
+            );
+            const byField = Object.fromEntries(
+              chains.map((c) => [c.field, c.nodes]),
+            );
+            const checks = {
+              plainOnly: plain.length === 1 && plain[0].key === "note",
+              plainValue: plain[0].value === "普通字段",
+              chainFields: chains.length === 2,
+              parentChain:
+                byField.parent?.[0]?.id === "admin-C-A" &&
+                byField.parent[0]?.status === "ok",
+              ghostMissing:
+                byField.ghost?.length === 1 &&
+                byField.ghost[0]?.status === "missing" &&
+                byField.ghost[0]?.role === "ghost",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { plain, chains, checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

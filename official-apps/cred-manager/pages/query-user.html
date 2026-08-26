@@ -123,6 +123,7 @@
       display: flex;
       flex-direction: column;
     }
+    /* 链式引用选择弹窗使用（证书条目本体由 comps/cert-item.html 渲染） */
     .cert-title {
       display: flex;
       align-items: center;
@@ -144,18 +145,6 @@
       background-color: var(--md-sys-color-surface-variant);
       color: var(--md-sys-color-on-surface-variant);
     }
-    .cert-badge[data-kind="expired"] {
-      background-color: var(--md-sys-color-error-container);
-      color: var(--md-sys-color-on-error-container);
-    }
-    .cert-info {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 4px 0;
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-    }
     .empty {
       padding: 16px 8px;
       text-align: center;
@@ -165,12 +154,15 @@
     }
   </style>
 
+  <l-m src="../comps/cert-item.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
@@ -204,6 +196,12 @@
       <st-card class="profile-card">
         <div class="profile-head">
           <span class="profile-username">{{profile.username}}</span>
+          <o-if :value="profile.isOrg">
+            <span class="cert-badge" data-kind="chain">
+              <n-icon icon="mdi:domain"></n-icon>
+              <locale-text><span lang="cn">组织账户</span><span lang="en">Organization</span></locale-text>
+            </span>
+          </o-if>
           <span class="verify-badge" attr:data-valid="profileValid ? 'true' : 'false'">
             <n-icon icon="mdi:shield-check-outline"></n-icon>
             <o-if :value="profileValid">
@@ -286,6 +284,9 @@
             <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
               <st-input sync:value="$data.key" attr:placeholder="$host.extraKeyPlaceholder" style="flex:1;"></st-input>
               <st-input sync:value="$data.value" attr:placeholder="$host.extraValuePlaceholder" style="flex:1;"></st-input>
+              <st-icon-button on:click="$host.openChainPicker($index)" attr:title="$host.chainPickTitle">
+                <n-icon icon="mdi:link-lock"></n-icon>
+              </st-icon-button>
               <st-icon-button color="error" on:click="$host.removeExtraField($index)">
                 <n-icon icon="mdi:close"></n-icon>
               </st-icon-button>
@@ -315,49 +316,17 @@
         </div>
         <st-list>
           <o-fill :value="issuedList" fill-key="id">
-            <st-list-item collapsible>
-              <div class="cert-title">
-                <span class="cert-role">{{$data.role}}</span>
-                <o-if :value="$data.revoked">
-                  <span class="cert-badge" data-kind="expired">
-                    <n-icon icon="mdi:cancel"></n-icon>
-                    <locale-text><span lang="cn">已吊销</span><span lang="en">Revoked</span></locale-text>
-                  </span>
-                </o-if>
-                <o-if :value="$data.expired && !$data.revoked">
-                  <span class="cert-badge" data-kind="expired">
-                    <n-icon icon="mdi:clock-alert-outline"></n-icon>
-                    <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
-                  </span>
-                </o-if>
-              </div>
-              <div secondary>{{$data.expireText}}</div>
-              <st-list slot="sublist">
-                <st-list-item>
-                  <div class="cert-info">
-                    <div class="info-row">
-                      <span class="info-label">
-                        <locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text>
-                      </span>
-                      <span class="info-value">{{$data.signTimeText}}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">
-                        <locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text>
-                      </span>
-                      <span class="info-value">{{$data.expireText}}</span>
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; padding-top:4px;">
-                      <o-if :value="!$data.revoked">
-                        <st-icon-button color="error" on:click="$host.revokeCert($data.id)" attr:title="$host.revokeTitle">
-                          <n-icon icon="mdi:delete-outline"></n-icon>
-                        </st-icon-button>
-                      </o-if>
-                    </div>
-                  </div>
-                </st-list-item>
-              </st-list>
-            </st-list-item>
+            <m-cert-item
+              :cert="$data"
+              :mine="true"
+              on:open-detail="$host.gotoDetail($event)"
+            >
+              <o-if slot="actions" :value="!$data.revoked">
+                <st-icon-button color="error" on:click="$host.revokeCert($data.id)" attr:title="$host.revokeTitle">
+                  <n-icon icon="mdi:delete-outline"></n-icon>
+                </st-icon-button>
+              </o-if>
+            </m-cert-item>
           </o-fill>
         </st-list>
         <o-if :value="issuedList.length === 0">
@@ -367,12 +336,55 @@
         </o-if>
       </st-card>
     </o-if>
+
+    <!-- 链式引用选择器：从本地证书中选一条，其 key 作为引用值写入字段 -->
+    <st-dialog sync:open="chainDialogOpen" auto-close>
+      <h2 slot="headline">
+        <locale-text><span lang="cn">选择要引用的本地证书</span><span lang="en">Pick a local certificate to reference</span></locale-text>
+      </h2>
+      <st-list>
+        <o-fill :value="chainList" fill-key="id">
+          <st-list-item button on:click="$host.pickChain($data)">
+            <div class="cert-title">
+              <span class="cert-role">{{$data.role}}</span>
+              <span class="cert-badge">
+                <n-icon icon="mdi:link-variant"></n-icon>
+                chain_key
+              </span>
+            </div>
+            <div secondary>
+              <n-user-name attr:user-id="$data.issuer"></n-user-name>
+              →
+              <n-user-name attr:user-id="$data.subject"></n-user-name>
+            </div>
+          </st-list-item>
+        </o-fill>
+        <o-if :value="chainList.length === 0">
+          <div class="empty">
+            <locale-text>
+              <span lang="cn">本地没有可引用的证书（先签发或领取）</span>
+              <span lang="en">No local certificates to reference (issue or claim one first)</span>
+            </locale-text>
+          </div>
+        </o-if>
+      </st-list>
+    </st-dialog>
   </div>
 
   <script>
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
     import { ensureUser } from "/mz/share-mgr.js";
     import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import {
+      buildRef,
+      lookupProfile,
+      verifyProfileCard,
+      issueCert as issueCertApi,
+      revokeCert as revokeCertApi,
+      appendIssueHistory,
+      listIssued,
+    } from "/mz/cert/main.js";
+    import { isOrgProfile } from "/mz/org/main.js";
 
     const EXPIRE_DAYS = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 };
 
@@ -407,6 +419,10 @@
             cn: "字段值",
             en: "Field value",
           }),
+          chainPickTitle: getLocaleText({
+            cn: "引用本地证书（链式证书）",
+            en: "Reference a local certificate (chain)",
+          }),
           revokeTitle: getLocaleText({ cn: "吊销", en: "Revoke" }),
           refreshTitle: getLocaleText({
             cn: "在线刷新资料",
@@ -422,11 +438,15 @@
             userId: "",
             publicKey: "",
             signTimeText: "",
+            isOrg: false,
           },
           roleInput: "",
           expireChoice: "30d",
           customExpire: "",
           extraFields: [],
+          chainDialogOpen: false,
+          chainList: [],
+          chainPickIndex: -1,
           issuedList: [],
         },
         async attached() {
@@ -445,6 +465,45 @@
           removeExtraField(index) {
             this.extraFields.splice(index, 1);
           },
+          // 打开链式引用选择器：列出本地持有的授权证书（排除 profile）
+          async openChainPicker(index) {
+            this.chainPickIndex = index;
+            try {
+              const user = await ensureUser();
+              const list = [];
+              for await (const cert of user.cred.values(
+                {},
+                { includeExpired: true },
+              )) {
+                if (cert.role === "profile") continue;
+                list.push({
+                  id: cert.id || "",
+                  role: cert.role || "",
+                  issuer: cert.issuer || "",
+                  subject: cert.subject || "",
+                });
+              }
+              this.chainList = list;
+              this.chainDialogOpen = true;
+            } catch (err) {
+              console.error("读取本地证书失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "读取本地证书失败：{msg}", en: "Failed to load local certificates: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+          // 选中后把引用写入对应字段的 value：[chain_key:<role>-<issuer>-<subject>]
+          pickChain(cert) {
+            const field = this.extraFields[this.chainPickIndex];
+            if (field) {
+              field.value = buildRef("chain_key", cert.id);
+            }
+            this.chainDialogOpen = false;
+          },
           // 查询对方用户卡片：拉取 profile 并验证签名
           async queryUser() {
             const targetId = this.userIdInput.trim();
@@ -461,10 +520,9 @@
             this.querying = true;
             this.hasProfile = false;
             try {
-              const user = await ensureUser();
               // getProfile 优先读本地缓存的资料，本地没有才发起网络请求
-              const profile = await user.cred.getProfile(targetId);
-              await this.applyProfile(user, profile, targetId);
+              const profile = await lookupProfile(targetId);
+              await this.applyProfile(profile, targetId);
             } catch (err) {
               console.error("查询用户失败：", err);
               toast({
@@ -487,9 +545,8 @@
             if (!targetId) return;
             this.refreshing = true;
             try {
-              const user = await ensureUser();
-              const profile = await user.cred.requestProfile(targetId);
-              await this.applyProfile(user, profile, targetId);
+              const profile = await lookupProfile(targetId, { force: true });
+              await this.applyProfile(profile, targetId);
               toast({
                 message: getLocaleText({
                   cn: "已在线刷新资料",
@@ -512,24 +569,19 @@
               this.refreshing = false;
             }
           },
-          // 渲染 profile 卡片：验签（内嵌公钥，user.verify 只认自己的公钥，不能验别人的卡片）
-          // + subject/issuer 与目标 userId 一致性校验 + 填充展示字段 + 刷新已签发列表
-          async applyProfile(user, profile, targetId) {
-            const { verifyData } = await load("/nos/crypto/crypto-verify.js");
-            const valid =
-              !!profile &&
-              profile.subject === targetId &&
-              profile.issuer === targetId &&
-              (await verifyData(profile));
+          // 渲染 profile 卡片：验签（verifyProfileCard）+ 填充展示字段 + 刷新已签发列表
+          async applyProfile(profile, targetId) {
+            const valid = await verifyProfileCard(profile, targetId);
             this.profile = {
               username: profile.username || targetId.slice(0, 16) + "…",
               userId: targetId,
               publicKey: profile.publicKey || "",
               signTimeText: formatTime(profile.signTime),
+              isOrg: isOrgProfile(profile),
             };
             this.profileValid = valid;
             this.hasProfile = true;
-            await this.loadIssued(user, targetId);
+            await this.loadIssued(targetId);
             if (!valid) {
               toast({
                 message: getLocaleText({
@@ -594,15 +646,14 @@
             }
             this.issuing = true;
             try {
-              const user = await ensureUser();
-              const cert = await user.cred.issue({
+              const cert = await issueCertApi({
                 subject: targetId,
                 role,
                 expire,
-                ...extras,
+                extras,
               });
-              // 记入本地签发历史（独立于凭证库，吊销后仍保留记录）
-              await this.appendHistory({
+              // 记入签发历史（/mz/cert 系统级，吊销后仍保留记录）
+              await appendIssueHistory({
                 id: cert.id,
                 role,
                 subject: targetId,
@@ -620,7 +671,7 @@
                   { role },
                 ),
               });
-              await this.loadIssued(user, targetId);
+              await this.loadIssued(targetId);
             } catch (err) {
               console.error("签发证书失败：", err);
               toast({
@@ -634,80 +685,22 @@
               this.issuing = false;
             }
           },
-          // 签发历史存储（getStorage("cert-issuer") 的 issue-history 键）
-          async getStore() {
-            if (!this._certStore) {
-              const { getStorage } = await load("/nos/storage/main.js");
-              this._certStore = getStorage("cert-issuer");
-            }
-            return this._certStore;
+          // 刷新签发给该用户的证书列表：现行 + 已吊销（/mz/cert 的 listIssued，
+          // 条目含原始字段 + revoked/expired 标志，展示由 comps/cert-item.html 负责）
+          async loadIssued(targetId) {
+            this.issuedList = await listIssued(targetId);
           },
-          async appendHistory(entry) {
-            try {
-              const store = await this.getStore();
-              const list = (await store.getItem("issue-history")) || [];
-              list.push(entry);
-              await store.setItem("issue-history", list);
-            } catch (err) {
-              console.warn("写入签发历史失败：", err);
-            }
-          },
-          // 刷新签发给该用户的证书列表：凭证库现行记录 + 本地签发历史合并，
-          // 历史里有但凭证库已没有的视为已吊销
-          async loadIssued(user, targetId) {
-            const now = Date.now();
-            const certs = await user.cred.query(
-              { subject: targetId },
-              { includeExpired: true },
+          // 组件 open-detail 事件 → 进入证书详情页
+          gotoDetail(event) {
+            this.app.goto(
+              "./pages/cert-detail.html?id=" + encodeURIComponent(event.data.id),
             );
-            const liveIds = new Set();
-            const live = certs
-              .filter(
-                (c) =>
-                  c.role !== "profile" && c.issuer === user.userId,
-              )
-              .map((c) => {
-                liveIds.add(c.id);
-                return {
-                  id: c.id || "",
-                  role: c.role || "",
-                  signTime: c.signTime,
-                  expire: c.expire || null,
-                  signTimeText: formatTime(c.signTime),
-                  expireText: c.expire
-                    ? formatTime(c.expire)
-                    : getLocaleText({ cn: "永不过期", en: "Never" }),
-                  expired: !!c.expire && c.expire < now,
-                  revoked: false,
-                };
-              });
-            let history = [];
-            try {
-              const store = await this.getStore();
-              history = ((await store.getItem("issue-history")) || []).filter(
-                (h) => h.subject === targetId && !liveIds.has(h.id),
-              );
-            } catch (err) {
-              console.warn("读取签发历史失败：", err);
-            }
-            const revoked = history.map((h) => ({
-              id: h.id || "",
-              role: h.role || "",
-              signTimeText: formatTime(h.signTime),
-              expireText: h.expire
-                ? formatTime(h.expire)
-                : getLocaleText({ cn: "永不过期", en: "Never" }),
-              expired: !!h.expire && h.expire < now,
-              revoked: true,
-            }));
-            this.issuedList = [...live, ...revoked];
           },
           // 吊销（从本地凭证库删除，证书不再被本地认可）
           async revokeCert(id) {
             try {
-              const user = await ensureUser();
-              await user.cred.delete(id);
-              await this.loadIssued(user, this.profile.userId);
+              await revokeCertApi(id);
+              await this.loadIssued(this.profile.userId);
               toast({
                 message: getLocaleText({
                   cn: "已吊销该证书",
