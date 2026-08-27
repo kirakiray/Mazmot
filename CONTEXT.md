@@ -85,6 +85,7 @@ Mazmot/
 │   │   ├── ref.js            # 凭证引用语法 [<type>:<payload>]（注册制类型表，本期 chain_key = role-issuer-subject 槽位引用，抗更新）
 │   │   ├── chain.js          # 链遍历纯函数 buildChain（环检测 + 深度上限 32，节点状态 ok/expired/missing）+ collectChainFields（单张证书字段分组：普通字段 + 每个链字段展开好的节点列表，缺失引用为单 missing 根）
 │   │   ├── fingerprint.js    # certFingerprint = sha256_hex(signature)（版本指纹，跨设备一致，区别于存储主键）
+│   │   ├── pairing.js        # 配对码客户端封装（对接 cred-hub /pairing：requestPairingCode 提交签名 profile 卡片换短码（服务端自适应 6/8 位）并返回服务器时间 expiresAt；resolvePairingCard 凭码取回完整卡片——**未验签原始数据，调用方必须照常 verifyProfileCard**；PAIRING_CODE_PATTERN 判定 6-10 位短码输入；服务端地址默认 http://localhost:8787，可经 getStorage("mz-cert") 的 pairing-server 键覆盖）
 │   │   └── test/             # ref / chain（含 collectChainFields）/ history（mergeIssuedView）的 sibyl-test 测试
 │   ├── org/                  # 系统级组织账户机制（URL = /mz/org/*）
 │   │   ├── main.js           # 组织 = 独立 NoneOS 用户（命名空间 org:<name>，**离线身份，从不连服务器**）：createOrg（org 给创建者签 role="owner" 永久证书，extras 带 type:"org"+org:<name> 标记并 cred.import 进创建者凭证库；profile 自定义字段带 type:"org" 标记，isOrgProfile 判别）/ listOrgs / getOrg / updateOrgInfo / issueStaffCert（默认 role="staff"，证书同样带 type/org 标记，签发后自动 cred.import 托管进创建者 default 凭证库，员工用 claimCert(创建者ID, role, {issuerId: 组织ID}) 领取，计入带 issuer 的签发历史）/ listOrgIssued（经 /mz/cert 的 listIssuedBy 查 org 用户凭证库）/ revokeOrgCert / deleteOrg（deleteUser 不可逆）；组织清单存 getStorage("mz-orgs")，业务应用凭「证书 issuer === org userId」做员工权限判断
@@ -99,13 +100,18 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
-│   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
+│   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
+│
+├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
+│   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
+│   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
+│   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
 │
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │
@@ -411,7 +417,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
-| 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹） |
+| 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |
 | 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |

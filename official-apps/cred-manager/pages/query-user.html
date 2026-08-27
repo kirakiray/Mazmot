@@ -95,6 +95,7 @@
       font-family: monospace;
       color: var(--md-sys-color-on-surface);
       word-break: break-all;
+      flex: 1;
     }
     .issue-form {
       display: flex;
@@ -155,6 +156,7 @@
   </style>
 
   <l-m src="../comps/cert-item.html"></l-m>
+  <l-m src="../comps/cred-server-select.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
@@ -182,20 +184,23 @@
         <n-icon icon="mdi:card-search-outline" slot="prefix"></n-icon>
         <locale-text><span lang="cn">查询</span><span lang="en">Look up</span></locale-text>
       </st-button>
-      <st-icon-button
-        on:click="refreshProfile()"
-        attr:disabled="refreshing || !hasProfile"
-        attr:title="refreshTitle"
-      >
-        <n-icon icon="mdi:refresh"></n-icon>
-      </st-icon-button>
     </div>
+
+    <!-- 凭证中心选择（comps 公用组件）：双方必须一致 -->
+    <m-cred-server-select sync:value="pairingServer"></m-cred-server-select>
 
     <!-- 用户卡片 -->
     <o-if :value="hasProfile">
       <st-card class="profile-card">
         <div class="profile-head">
           <span class="profile-username">{{profile.username}}</span>
+          <st-icon-button
+            on:click="refreshProfile()"
+            attr:disabled="refreshing"
+            attr:title="refreshTitle"
+          >
+            <n-icon icon="mdi:refresh"></n-icon>
+          </st-icon-button>
           <o-if :value="profile.isOrg">
             <span class="cert-badge" data-kind="chain">
               <n-icon icon="mdi:domain"></n-icon>
@@ -218,6 +223,9 @@
             <locale-text><span lang="cn">用户 ID</span><span lang="en">User ID</span></locale-text>
           </span>
           <span class="info-value">{{profile.userId}}</span>
+          <st-icon-button on:click="copyValue(profile.userId)" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
         </div>
         <div class="info-row">
           <span class="info-label">
@@ -225,6 +233,9 @@
             <locale-text><span lang="cn">公钥</span><span lang="en">Public key</span></locale-text>
           </span>
           <span class="info-value">{{profile.publicKey}}</span>
+          <st-icon-button on:click="copyValue(profile.publicKey)" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
         </div>
         <div class="info-row">
           <span class="info-label">
@@ -400,12 +411,16 @@
     export const parent = "./home.html";
 
     export default async ({ load }) => {
+      // 配对码解析（短码换用户卡片，拿到后照常本地验签）；页面模块内经 load 按需取
+      const { PAIRING_CODE_PATTERN, resolvePairingCard } = await load(
+        "/mz/cert/pairing.js",
+      );
       return {
         data: {
           userIdInput: "",
           userIdPlaceholder: getLocaleText({
-            cn: "输入对方用户 ID",
-            en: "Enter target user ID",
+            cn: "输入对方用户 ID 或配对码",
+            en: "Enter target user ID or pairing code",
           }),
           rolePlaceholder: getLocaleText({
             cn: "如 editor / admin",
@@ -424,6 +439,7 @@
             en: "Reference a local certificate (chain)",
           }),
           revokeTitle: getLocaleText({ cn: "吊销", en: "Revoke" }),
+          copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
           refreshTitle: getLocaleText({
             cn: "在线刷新资料",
             en: "Refresh profile online",
@@ -448,6 +464,7 @@
           chainList: [],
           chainPickIndex: -1,
           issuedList: [],
+          pairingServer: "",
         },
         async attached() {
           // 「已知用户」卡片跳转过来时携带待查询用户
@@ -457,6 +474,16 @@
             this.userIdInput = pending;
             await this.queryUser();
           }
+        },
+        watch: {
+          // 选中值由 m-cred-server-select 组件维护（含持久化）
+          pairingServer() {
+            // 切换凭证中心后，旧配对码解析结果可能失效；若输入是配对码则清空
+            if (PAIRING_CODE_PATTERN.test(this.userIdInput)) {
+              this.userIdInput = "";
+            }
+            this.hasProfile = false;
+          },
         },
         proto: {
           addExtraField() {
@@ -504,10 +531,25 @@
             }
             this.chainDialogOpen = false;
           },
+          // 复制卡片字段（用户 ID / 公钥）
+          async copyValue(value) {
+            try {
+              await navigator.clipboard.writeText(value);
+              toast({
+                message: getLocaleText({ cn: "已复制", en: "Copied" }),
+              });
+            } catch (err) {
+              console.error("复制失败：", err);
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
           // 查询对方用户卡片：拉取 profile 并验证签名
           async queryUser() {
-            const targetId = this.userIdInput.trim();
-            if (!targetId) {
+            const targetInput = this.userIdInput.trim();
+            if (!targetInput) {
               toast({
                 message: getLocaleText({
                   cn: "请输入用户 ID",
@@ -520,8 +562,18 @@
             this.querying = true;
             this.hasProfile = false;
             try {
-              // getProfile 优先读本地缓存的资料，本地没有才发起网络请求
-              const profile = await lookupProfile(targetId);
+              // 配对码输入：先凭码解析完整卡片（服务器只做中转，仍走本地验签），
+              // 解析失败直接提示，不回退按 userId 查询（短格式不可能是合法 ID）
+              let profile;
+              let targetId = targetInput;
+              if (PAIRING_CODE_PATTERN.test(targetInput)) {
+                profile = await resolvePairingCard(targetInput);
+                targetId = profile.subject || "";
+                if (!targetId) throw new Error("配对码返回的卡片缺少 subject");
+              } else {
+                // getProfile 优先读本地缓存的资料，本地没有才发起网络请求
+                profile = await lookupProfile(targetId);
+              }
               await this.applyProfile(profile, targetId);
             } catch (err) {
               console.error("查询用户失败：", err);

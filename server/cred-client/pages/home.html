@@ -1,0 +1,495 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 16px 64px;
+      text-align: start;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-surface);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    st-card {
+      display: block;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+    .conn-state {
+      font-size: 12px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .conn-state[data-state="ok"] {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .conn-state[data-state="err"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .card-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .conn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex: 1;
+      min-width: 180px;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin: 0;
+    }
+    .error {
+      font-size: 13px;
+      color: var(--md-sys-color-on-error-container);
+      background-color: var(--md-sys-color-error-container);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin: 0;
+      word-break: break-all;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    .tabs st-button {
+      flex: 0 0 auto;
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .card-head h2 {
+      font-size: 15px;
+      margin: 0;
+      color: var(--md-sys-color-on-surface);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .stat {
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .stat .num {
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .stat .label {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .account-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .account-row .acct-url {
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      word-break: break-all;
+      flex: 1;
+    }
+    .account-row .acct-url.current {
+      color: var(--md-sys-color-primary);
+      font-weight: 600;
+    }
+    .account-empty {
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 12px;
+      margin: 0;
+    }
+    .cred-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .cred-line {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .cred-role {
+      font-weight: 600;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .mono {
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .dim {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty {
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+      padding: 12px 0;
+      margin: 0;
+    }
+  </style>
+
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"></l-m>
+
+  <header>
+    <h1>🔐 cred-hub 管理器</h1>
+    <span class="conn-state" attr:data-state="connState">{{connStateText}}</span>
+  </header>
+
+  <!-- 连接设置 -->
+  <st-card>
+    <div class="card-inner">
+      <div class="conn-row">
+        <label class="field">
+          服务器地址
+          <st-input sync:value="urlInput" attr:placeholder="urlPlaceholder"></st-input>
+        </label>
+        <label class="field">
+          管理令牌
+          <st-input sync:value="tokenInput" attr:placeholder="tokenPlaceholder"></st-input>
+        </label>
+        <st-button color="primary" on:click="connect()" attr:loading="connecting">连接</st-button>
+      </div>
+      <o-if :value="connError">
+        <p class="error">{{connError}}</p>
+      </o-if>
+      <p class="hint">
+        令牌即服务器的 CRED_HUB_ADMIN_TOKEN（Rust 版写进 cred-hub.toml 的 [vars]，CF 版用 wrangler vars / secret）。浏览器直连需服务器开启跨域。连接成功的服务器会记入下方「登录过的服务器」。
+      </p>
+    </div>
+  </st-card>
+
+  <!-- 登录过的服务器 -->
+  <st-card>
+    <div class="card-head">
+      <h2>登录过的服务器</h2>
+      <st-button variant="text" on:click="forgetAll()" attr:disabled="accounts.length === 0">全部忘记</st-button>
+    </div>
+    <o-fill :value="accounts" fill-key="url">
+      <div class="account-row">
+        <st-button variant="text" on:click="$host.useAccount($data)" attr:disabled="$data.url === $host.urlInput">
+          使用
+        </st-button>
+        <span class="acct-url" class:current="$data.url === $host.urlInput">{{$data.url}}</span>
+        <st-button variant="text" color="error" on:click="$host.forgetAccount($data.url)">忘记</st-button>
+      </div>
+    </o-fill>
+    <o-if :value="accounts.length === 0">
+      <p class="account-empty">暂无记录，连接成功后自动保存</p>
+    </o-if>
+  </st-card>
+
+  <!-- 数据标签页 -->
+  <o-if :value="connected">
+    <div class="tabs">
+      <st-button class:active="tab === 'stats'" variant="text" on:click="switchTab('stats')">概览</st-button>
+      <st-button class:active="tab === 'hot'" variant="text" on:click="switchTab('hot')">热点凭证</st-button>
+      <st-button class:active="tab === 'expiring'" variant="text" on:click="switchTab('expiring')">即将到期</st-button>
+    </div>
+
+    <o-if :value="tab === 'stats'">
+      <st-card>
+        <div class="card-head">
+          <h2>概览</h2>
+          <st-button variant="text" on:click="refreshTab()" attr:disabled="tabLoading">刷新</st-button>
+        </div>
+        <div class="stats-grid">
+          <o-fill :value="statsCards" fill-key="label">
+            <div class="stat">
+              <div class="num">{{$data.num}}</div>
+              <div class="label">{{$data.label}}</div>
+            </div>
+          </o-fill>
+        </div>
+        <p class="hint">active = 最近一半保留期内被访问过的凭证；cooling = 存活但访问变冷（再冷下去就会被保留期淘汰）。</p>
+      </st-card>
+    </o-if>
+
+    <o-if :value="tab === 'hot'">
+      <st-card>
+        <div class="card-head">
+          <h2>热点凭证</h2>
+          <st-button variant="text" on:click="refreshTab()" attr:disabled="tabLoading">刷新</st-button>
+        </div>
+        <div class="conn-row" style="margin-bottom: 8px;">
+          <label class="field">
+            条数（1–200）
+            <st-input sync:value="hotLimit"></st-input>
+          </label>
+        </div>
+        <o-fill :value="hotItems" fill-key="id">
+          <div class="cred-item">
+            <div class="cred-line">
+              <span class="cred-role">{{$data.role}}</span>
+              <span class="mono">{{$data.issuer}} → {{$data.subject}}</span>
+            </div>
+            <div class="cred-line dim">
+              <span>到期：{{$data.expire == null ? '—' : $host.fmtTime($data.expire)}}</span>
+              <span>最后访问：{{$host.fmtTime($data.lastAccessMs)}}</span>
+            </div>
+            <div class="cred-line"><span class="mono">{{$data.id}}</span></div>
+          </div>
+        </o-fill>
+        <o-if :value="hotItems.length === 0">
+          <p class="empty">暂无数据</p>
+        </o-if>
+      </st-card>
+    </o-if>
+
+    <o-if :value="tab === 'expiring'">
+      <st-card>
+        <div class="card-head">
+          <h2>即将到期</h2>
+          <st-button variant="text" on:click="refreshTab()" attr:disabled="tabLoading">刷新</st-button>
+        </div>
+        <div class="conn-row" style="margin-bottom: 8px;">
+          <label class="field">
+            未来天数（1–3650）
+            <st-input sync:value="expiringDays"></st-input>
+          </label>
+        </div>
+        <o-fill :value="expiringItems" fill-key="id">
+          <div class="cred-item">
+            <div class="cred-line">
+              <span class="cred-role">{{$data.role}}</span>
+              <span class="mono">{{$data.issuer}} → {{$data.subject}}</span>
+            </div>
+            <div class="cred-line dim">
+              <span>到期：{{$host.fmtTime($data.expire)}}</span>
+              <span>最后访问：{{$host.fmtTime($data.lastAccessMs)}}</span>
+            </div>
+            <div class="cred-line"><span class="mono">{{$data.id}}</span></div>
+          </div>
+        </o-fill>
+        <o-if :value="expiringItems.length === 0">
+          <p class="empty">暂无数据</p>
+        </o-if>
+      </st-card>
+    </o-if>
+  </o-if>
+
+  <script>
+    import toast from "https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+
+    const ACCOUNTS_KEY = "cred-client-accounts";
+    // 本工具在 NoneOS Core 体系外独立运行（无 SW 提供 /gh/、/nos/*），
+    // senti-ui 一律走完整 jsdelivr URL；持久化用 localStorage（仅本浏览器）
+
+    export default async () => {
+      return {
+        data: {
+          urlInput: "",
+          tokenInput: "",
+          urlPlaceholder: "https://cred-hub.example.com",
+          tokenPlaceholder: "CRED_HUB_ADMIN_TOKEN",
+          connecting: false,
+          connected: false,
+          connState: "off", // off | ok | err
+          connStateText: "未连接",
+          connError: "",
+          accounts: [], // 登录过的服务器 [{ url, token }]，最近使用的排最前
+          tab: "stats",
+          tabLoading: false,
+          statsCards: [],
+          hotItems: [],
+          expiringItems: [],
+          hotLimit: "50",
+          expiringDays: "30",
+        },
+        watch: {
+          connState(val) {
+            this.connStateText = { ok: "已连接", err: "连接失败", off: "未连接" }[val] || "";
+          },
+          tab() {
+            this.refreshTab();
+          },
+        },
+        async attached() {
+          this.loadAccounts();
+          // 最近一次连接的服务器自动回填并重连
+          if (this.accounts.length) {
+            this.urlInput = this.accounts[0].url;
+            this.tokenInput = this.accounts[0].token || "";
+            this.connect();
+          }
+        },
+        proto: {
+          // ———— 登录过的服务器（localStorage 持久化）————
+          loadAccounts() {
+            try {
+              this.accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "[]");
+            } catch {
+              this.accounts = [];
+            }
+          },
+          saveAccount(url, token) {
+            // 按 url 去重并置顶，最多保留 10 条
+            this.accounts = [
+              { url, token },
+              ...this.accounts.filter((a) => a.url !== url),
+            ].slice(0, 10);
+            try {
+              localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(this.accounts));
+            } catch {}
+          },
+          useAccount(account) {
+            this.urlInput = account.url;
+            this.tokenInput = account.token || "";
+            this.connect();
+          },
+          forgetAccount(url) {
+            this.accounts = this.accounts.filter((a) => a.url !== url);
+            try {
+              localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(this.accounts));
+            } catch {}
+          },
+          forgetAll() {
+            this.accounts = [];
+            try {
+              localStorage.removeItem(ACCOUNTS_KEY);
+            } catch {}
+          },
+
+          // ———— 连接与请求 ————
+          currentConn() {
+            return { url: this.urlInput.trim().replace(/\/+$/, ""), token: this.tokenInput.trim() };
+          },
+          async connect() {
+            const conn = this.currentConn();
+            if (!/^https?:\/\/.+/i.test(conn.url)) {
+              this.connState = "err";
+              this.connError = "请输入以 http(s):// 开头的服务器地址";
+              return;
+            }
+            this.connError = "";
+            this.connecting = true;
+            try {
+              await this.api(conn, "/admin/stats"); // stats 兼作连通性 / 令牌 / 管理 API 开关探测
+              this.connected = true;
+              this.connState = "ok";
+              this.saveAccount(conn.url, conn.token);
+              this.refreshTab();
+            } catch (err) {
+              this.connected = false;
+              this.connState = "err";
+              this.connError = err.message || String(err);
+            } finally {
+              this.connecting = false;
+            }
+          },
+          async api(conn, path) {
+            let res;
+            try {
+              res = await fetch(conn.url + path, {
+                headers: conn.token ? { authorization: `Bearer ${conn.token}` } : {},
+              });
+            } catch (err) {
+              throw new Error(`网络请求失败（服务器不可达，或未开启 CORS）：${err.message}`);
+            }
+            if (res.status === 401) throw new Error("管理令牌无效（401）");
+            if (res.status === 404) {
+              throw new Error("管理 API 不可用（404）：服务器可能未配置 CRED_HUB_ADMIN_TOKEN");
+            }
+            let data;
+            try {
+              data = await res.json();
+            } catch {
+              throw new Error(`响应不是 JSON（HTTP ${res.status}）`);
+            }
+            if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            return data;
+          },
+
+          // ———— 数据标签页 ————
+          switchTab(tab) {
+            this.tab = tab;
+          },
+          async refreshTab() {
+            if (!this.connected) return;
+            this.tabLoading = true;
+            try {
+              if (this.tab === "stats") await this.loadStats();
+              if (this.tab === "hot") await this.loadHot();
+              if (this.tab === "expiring") await this.loadExpiring();
+            } catch (err) {
+              toast({ message: err.message || String(err), color: "error" });
+            } finally {
+              this.tabLoading = false;
+            }
+          },
+          async loadStats() {
+            const data = await this.api(this.currentConn(), "/admin/stats");
+            this.statsCards = [
+              { label: "凭证总数", num: data.creds.total },
+              { label: "active（活跃）", num: data.creds.active },
+              { label: "cooling（变冷）", num: data.creds.cooling },
+              { label: "有效配对码", num: data.pairing.activeCodes },
+              { label: "保留期（天）", num: (data.retentionMs / 86400000).toFixed(1) },
+            ];
+          },
+          async loadHot() {
+            let limit = parseInt(this.hotLimit, 10) || 50;
+            limit = Math.min(Math.max(limit, 1), 200);
+            const data = await this.api(this.currentConn(), `/admin/hot?limit=${limit}`);
+            this.hotItems = data.items;
+          },
+          async loadExpiring() {
+            let days = parseInt(this.expiringDays, 10) || 30;
+            days = Math.min(Math.max(days, 1), 3650);
+            const data = await this.api(this.currentConn(), `/admin/expiring?withinDays=${days}`);
+            this.expiringItems = data.items;
+          },
+
+          // ———— 展示工具（o-fill 内经 $host 调用；文本插值自动转义，无注入风险）————
+          fmtTime(ts) {
+            return ts ? new Date(ts).toLocaleString() : "—";
+          },
+        },
+      };
+    };
+  </script>
+</template>

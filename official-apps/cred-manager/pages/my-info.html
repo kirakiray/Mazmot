@@ -67,12 +67,26 @@
       display: flex;
       justify-content: flex-end;
     }
+    .pair-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pair-code {
+      font-size: 20px;
+      letter-spacing: 2px;
+    }
+    .pair-countdown {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="../comps/cred-server-select.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
@@ -110,6 +124,58 @@
         </st-icon-button>
       </div>
     </st-card>
+
+    <!-- 公钥：凭据验签 / 交叉验证时需要给对方核对 -->
+    <st-card style="display:flex; flex-direction:column; gap:8px;">
+      <div class="field-label">
+        <n-icon icon="mdi:key-variant"></n-icon>
+        <locale-text><span lang="cn">我的公钥（验签 / 核对身份时使用）</span><span lang="en">My public key (for signature verification)</span></locale-text>
+      </div>
+      <o-if :value="publicKey">
+        <div class="id-row">
+          <span class="info-value">{{publicKey}}</span>
+          <st-icon-button on:click="copyPublicKey()" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
+        </div>
+      </o-if>
+      <o-if :value="!publicKey">
+        <span class="info-value">
+          <locale-text><span lang="cn">还没有资料卡片，请先在上方保存一次用户名生成资料</span><span lang="en">No profile yet; save a username above to create one first</span></locale-text>
+        </span>
+      </o-if>
+    </st-card>
+
+    <!-- 配对码：不用手输长 ID，对方凭短码在「查询用户」页解析 -->
+    <st-card style="display:flex; flex-direction:column; gap:8px;">
+      <div class="field-label">
+        <n-icon icon="mdi:swap-horizontal-circle-outline"></n-icon>
+        <locale-text><span lang="cn">配对码（发给对方，在「查询用户」页输入即可找到你）</span><span lang="en">Pairing code (share it so others can find you on User Lookup)</span></locale-text>
+      </div>
+      <o-if :value="!pairingCode">
+        <div>
+          <st-button color="primary" on:click="fetchPairingCode()" attr:disabled="pairingLoading" attr:loading="pairingLoading">
+            <n-icon icon="mdi:key-outline" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">获取配对码</span><span lang="en">Get pairing code</span></locale-text>
+          </st-button>
+        </div>
+      </o-if>
+      <o-if :value="pairingCode">
+        <div class="pair-row">
+          <span class="info-value pair-code">{{pairingCode}}</span>
+          <st-icon-button on:click="copyPairingCode()" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
+          <st-button variant="outlined" on:click="fetchPairingCode()" attr:disabled="pairingLoading" attr:loading="pairingLoading">
+            <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">刷新</span><span lang="en">Refresh</span></locale-text>
+          </st-button>
+        </div>
+        <div class="pair-countdown">{{pairingCountdown}}</div>
+      </o-if>
+      <!-- 凭证中心选择（comps 公用组件）：取码前选好，双方必须一致 -->
+      <m-cred-server-select sync:value="pairingServer"></m-cred-server-select>
+    </st-card>
   </div>
 
   <script>
@@ -120,6 +186,8 @@
     export const parent = "./home.html";
 
     export default async ({ load }) => {
+      // 配对码客户端封装（纯前端模块）；页面模块内经 load 按需取
+      const { requestPairingCode } = await load("/mz/cert/pairing.js");
       return {
         data: {
           usernameInput: "",
@@ -129,18 +197,116 @@
           }),
           copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
           userId: "",
+          publicKey: "",
           saving: false,
+          pairingCode: "",
+          pairingCountdown: "",
+          pairingLoading: false,
+          pairingServer: "",
         },
         async attached() {
           await this.loadMyInfo();
         },
+        watch: {
+          // 选中值由 m-cred-server-select 组件维护（含持久化）
+          pairingServer() {
+            // 切换凭证中心后，旧配对码失效，清除倒计时与当前码
+            this.pairingCode = "";
+            this.stopPairingCountdown();
+          },
+        },
+        detached() {
+          this.stopPairingCountdown();
+        },
         proto: {
+          // 取配对码：用最新资料卡片提交（服务器同窗口幂等返回同码）
+          async fetchPairingCode() {
+            this.pairingLoading = true;
+            try {
+              const user = await ensureUser();
+              const card = await user.cred.getProfile(user.userId);
+              if (!card) {
+                toast({
+                  message: getLocaleText({
+                    cn: "还没有用户资料，请先在上方保存一次用户名生成资料",
+                    en: "No profile yet; save a username above to create one first",
+                  }),
+                  color: "error",
+                });
+                return;
+              }
+              const { code, expiresAt } = await requestPairingCode(card);
+              this.pairingCode = code;
+              this.startPairingCountdown(expiresAt);
+              toast({
+                message: getLocaleText({
+                  cn: "已生成配对码（约 5 分钟一轮换），发给对方即可被查询",
+                  en: "Pairing code generated (rotates ~5 min); share it to be found",
+                }),
+              });
+            } catch (err) {
+              console.error("获取配对码失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "获取配对码失败：{msg}", en: "Failed to get pairing code: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.pairingLoading = false;
+            }
+          },
+          startPairingCountdown(expiresAt) {
+            this.stopPairingCountdown();
+            const tick = () => {
+              const remainSec = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+              const m = Math.floor(remainSec / 60);
+              const s = String(remainSec % 60).padStart(2, "0");
+              this.pairingCountdown =
+                remainSec > 0
+                  ? getLocaleText({
+                      cn: `${m}:${s} 后失效（到期后点「刷新」换新码）`,
+                      en: `expires in ${m}:${s} (tap Refresh afterwards)`,
+                    })
+                  : getLocaleText({
+                      cn: "已过期，请点击「刷新」获取新配对码",
+                      en: "Expired — tap Refresh for a new code",
+                    });
+              if (remainSec <= 0) this.stopPairingCountdown();
+            };
+            tick();
+            this.__pairTimer = setInterval(tick, 1000);
+          },
+          stopPairingCountdown() {
+            if (this.__pairTimer) {
+              clearInterval(this.__pairTimer);
+              this.__pairTimer = null;
+            }
+          },
+          async copyPairingCode() {
+            try {
+              await navigator.clipboard.writeText(this.pairingCode);
+              toast({
+                message: getLocaleText({ cn: "已复制", en: "Copied" }),
+              });
+            } catch (err) {
+              console.error("复制失败：", err);
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
           async loadMyInfo() {
             try {
               const user = await ensureUser();
               const info = await user.getInfo();
               this.userId = user.userId;
               this.usernameInput = info.username || "";
+              // 公钥来自自己的资料卡片；没有资料时提示先保存用户名
+              const card = await user.cred.getProfile(user.userId);
+              if (card) this.publicKey = card.publicKey || "";
             } catch (err) {
               console.error("读取用户信息失败：", err);
               toast({
@@ -169,6 +335,9 @@
               const user = await ensureUser();
               // updateInfo 合并更新并自动签名，还会自动把新资料推给已连接的对端
               await user.updateInfo({ username: name });
+              // 首次保存会生成资料卡片，顺带刷新公钥展示
+              const card = await user.cred.getProfile(user.userId);
+              if (card) this.publicKey = card.publicKey || "";
               toast({
                 message: getLocaleText({
                   cn: "已保存（core 不再主动推送，对方重新查询/刷新即可拉到新资料）",
@@ -186,6 +355,20 @@
               });
             } finally {
               this.saving = false;
+            }
+          },
+          async copyPublicKey() {
+            try {
+              await navigator.clipboard.writeText(this.publicKey);
+              toast({
+                message: getLocaleText({ cn: "已复制", en: "Copied" }),
+              });
+            } catch (err) {
+              console.error("复制失败：", err);
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
             }
           },
           async copyUserId() {
