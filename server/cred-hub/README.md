@@ -11,14 +11,29 @@ cargo run --release
 # 监听 http://0.0.0.0:8787
 ```
 
-环境变量：
+### 配置（TOML 文件 / 环境变量）
 
-- `CRED_HUB_CORS`：设为 `1` 时启用宽松跨域（`CorsLayer::permissive`，允许任意 Origin 直连）。**默认关闭**——浏览器直连场景（本地裸跑）用根目录 `npm run cred-hub`（已带此参数）；反代部署时保持关闭、CORS 统一交给 nginx 配置，避免 `Access-Control-Allow-Origin` 头重复被浏览器拒绝
-- `CRED_HUB_ADMIN_TOKEN`：管理 API 令牌（双方共享秘密，建议 `openssl rand -base64 32` 生成）。**未配置 = `/admin/*` 一律 404**；请求带 `Authorization: Bearer <token>`，比对为常数时间实现。泄露即换，重启生效
-- `CRED_HUB_PORT`：监听端口，默认 `8787`
-- `CRED_HUB_DATA`：存储文件路径，默认 `data/cred-store.redb`（redb 单文件 KV 数据库）
-- `CRED_HUB_RETENTION_MS`：冷数据保留时长（毫秒），默认 7 天；详见下方「数据保留」
-- `CRED_HUB_MAX_CRED_BYTES`：单条 cred 请求体大小上限（字节），默认 `2048`。超限返回 `413`，且在验签前拦截（防灌库 / 恶意大 payload）
+启动时可选加载 TOML 配置文件：路径经环境变量 `CRED_HUB_CONFIG` 指定，默认读当前目录的 `cred-hub.toml`，文件不存在则全部用默认值（解析出错会直接启动失败，不静默）。**优先级：环境变量 > 配置文件 > 内置默认值**。示例见 [cred-hub.toml.example](cred-hub.toml.example)：
+
+```toml
+port = 8787
+data = "data/cred-store.redb"
+retention_ms = 604800000
+max_cred_bytes = 2048
+cors = false
+# admin_token = "..."
+```
+
+各配置项（括号内为对应环境变量，TOML 键名为小写）：
+
+- `CRED_HUB_CORS`（`cors`，布尔）：设为 `1`/`true` 时启用宽松跨域（`CorsLayer::permissive`，允许任意 Origin 直连）。**默认关闭**——浏览器直连场景（本地裸跑）用根目录 `npm run cred-hub`（已带此参数）；反代部署时保持关闭、CORS 统一交给 nginx 配置，避免 `Access-Control-Allow-Origin` 头重复被浏览器拒绝
+- `CRED_HUB_ADMIN_TOKEN`（`admin_token`）：管理 API 令牌（双方共享秘密，建议 `openssl rand -base64 32` 生成）。**未配置 = `/admin/*` 一律 404**；请求带 `Authorization: Bearer <token>`，比对为常数时间实现。泄露即换，重启生效
+- `CRED_HUB_PORT`（`port`）：监听端口，默认 `8787`
+- `CRED_HUB_DATA`（`data`）：存储文件路径，默认 `data/cred-store.redb`（redb 单文件 KV 数据库）
+- `CRED_HUB_RETENTION_MS`（`retention_ms`）：冷数据保留时长（毫秒），默认 7 天；详见下方「数据保留」
+- `CRED_HUB_MAX_CRED_BYTES`（`max_cred_bytes`）：单条 cred 请求体大小上限（字节），默认 `2048`。超限返回 `413`，且在验签前拦截（防灌库 / 恶意大 payload）
+
+> ⚠️ `cred-hub.toml` 里若配置了 `admin_token` 即属敏感文件，已加入 `.gitignore`，请勿提交进 Git。
 
 ## 数据保留（冷淘汰）
 

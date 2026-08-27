@@ -110,7 +110,8 @@ Mazmot/
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
-│   └── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
+│   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
+│   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
 │
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │

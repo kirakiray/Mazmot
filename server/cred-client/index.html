@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cred-hub 管理器</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <h1>🔐 cred-hub 管理器</h1>
+    <span id="conn-state" class="conn-state" data-state="off">未连接</span>
+  </header>
+
+  <!-- 连接设置 -->
+  <section class="card" id="conn-card">
+    <h2>连接</h2>
+    <div class="conn-row">
+      <label>服务器地址
+        <input id="server-url" type="url" placeholder="http://localhost:8787" />
+      </label>
+      <label>管理令牌
+        <input id="admin-token" type="password" placeholder="CRED_HUB_ADMIN_TOKEN" />
+      </label>
+      <button id="btn-connect">连接</button>
+    </div>
+    <p class="hint">
+      令牌即服务器环境变量 <code>CRED_HUB_ADMIN_TOKEN</code>；服务器未配置令牌时管理 API 整体 404。
+      浏览器直连需服务器开启跨域（Rust 版 <code>CRED_HUB_CORS=1</code> / CF 版 <code>CRED_HUB_CORS="1"</code> 或域名白名单），反代部署则交给网关。
+      连接信息只保存在本浏览器（localStorage），不会发往第三方。
+    </p>
+    <p id="conn-error" class="error" hidden></p>
+  </section>
+
+  <!-- 数据标签页 -->
+  <nav class="tabs" id="tabs" hidden>
+    <button class="tab active" data-tab="stats">概览</button>
+    <button class="tab" data-tab="hot">热点凭证</button>
+    <button class="tab" data-tab="expiring">即将到期</button>
+  </nav>
+
+  <section class="card tab-panel" id="panel-stats" hidden>
+    <h2>概览</h2>
+    <button class="refresh" data-refresh="stats">刷新</button>
+    <div id="stats-grid" class="stats-grid"></div>
+    <p class="hint">
+      active = 最近一半保留期内被访问过的凭证；cooling = 存活但访问变冷（超过保留期一半未被访问即会被淘汰）。
+    </p>
+  </section>
+
+  <section class="card tab-panel" id="panel-hot" hidden>
+    <h2>热点凭证 <small>按最后访问倒序</small></h2>
+    <div class="conn-row">
+      <label>条数
+        <input id="hot-limit" type="number" min="1" max="200" value="50" />
+      </label>
+      <button class="refresh" data-refresh="hot">刷新</button>
+    </div>
+    <div id="hot-table"></div>
+  </section>
+
+  <section class="card tab-panel" id="panel-expiring" hidden>
+    <h2>即将到期 <small>按到期时间升序</small></h2>
+    <div class="conn-row">
+      <label>未来天数
+        <input id="expiring-days" type="number" min="1" max="3650" value="30" />
+      </label>
+      <button class="refresh" data-refresh="expiring">刷新</button>
+    </div>
+    <div id="expiring-table"></div>
+  </section>
+
+  <script src="./app.js"></script>
+</body>
+</html>
