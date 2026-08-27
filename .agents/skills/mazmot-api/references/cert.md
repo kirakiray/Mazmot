@@ -115,6 +115,27 @@ const items = await listIssued(subjectId);   // 只看签给某个用户的
 
 `mergeIssuedView(liveCerts, history, now?)` 是合并逻辑的纯函数导出（`liveCerts` 传 cred.query 结果，`history` 传历史条目数组），供测试或自定义数据源复用。
 
+### 2.6 配对码（短码换用户卡片）—— `/mz/cert/pairing.js`
+
+对接 cred-hub 的 `/pairing/register` / `/pairing/resolve`，解决首次交换需手输超长 userId 的问题。**服务器只做中转：resolvePairingCard 返回的是未验签原始数据，调用方必须照常 `verifyProfileCard(profile, profile.subject)`。**
+
+```javascript
+import { requestPairingCode, resolvePairingCard, PAIRING_CODE_PATTERN }
+  from "/mz/cert/pairing.js";   // 纯客户端封装，页面模块可顶层静态导入
+
+// 取码方：提交本地最新签名 profile 卡片 → { code: "6或8位小写数字", expiresAt }（服务端按活跃量自适应码长；倒计时用 expiresAt，别猜窗口）
+const card = await user.cred.getProfile(user.userId);   // 无卡片先引导用户生成资料
+const { code, expiresAt } = await requestPairingCode(card);
+// 同一用户 5 分钟窗口内重复提交幂等（同码覆盖）；服务端地址默认 http://localhost:8787，
+// 可经 getStorage("mz-cert") 的 "pairing-server" 键覆盖
+
+// 查询方：凭码解析完整卡片
+const profile = await resolvePairingCard(code);
+await verifyProfileCard(profile, profile.subject);
+```
+
+输入框兼容判定：`PAIRING_CODE_PATTERN`（6-10 位小写字母数字；userId 是更长的十六进制串不会误命中）。参考实现：cred-manager 的 my-info.html（取码 + 倒计时）/ query-user.html（短码分支）。
+
 ## 3. 链式引用语法 —— `[<type>:<payload>]`
 
 证书自定义字段的值可以放一个**引用字符串**实现"链式证书"（授权来源指向另一张证书）：

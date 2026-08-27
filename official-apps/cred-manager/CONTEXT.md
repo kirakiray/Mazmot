@@ -21,8 +21,8 @@
 │   └── cert-item.html   # m-cert-item 证书条目组件（可折叠列表项，多页面复用）
 └── pages/
     ├── home.html        # 布局页：左侧栏导航 + slot 内容区（所有子页的 parent）
-    ├── query-user.html  # 查询用户 + 签发证书（默认首页）
-    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID
+    ├── query-user.html  # 查询用户 + 签发证书（默认首页）；顶部可选择配对服务器以解析配对码
+    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可选择配对服务器
     ├── known-users.html # 已知用户：本地缓存的 profile 卡片列表
     ├── claim.html       # 领取证书（仅作为 my-certs 弹窗内嵌 o-page 使用，无 parent）
     ├── my-certs.html    # 本地证书列表（tab 过滤 + 领取/导入弹窗）
@@ -121,7 +121,7 @@
 
 ### 查询用户（query-user.html，默认首页）
 
-输入 userId → `lookupProfile`（缓存优先）→ `verifyProfileCard` 验签渲染卡片（失败红色徽标 + toast 警告）→ 展示「我签发给该用户的证书」列表。
+顶部选择「配对服务器」（`mz-cert` 存储空间的 `pairing-server` 键，默认 `https://asia-1.cred-hub.noneos.com`，可选本地 `http://localhost:8787`）。输入 userId 或配对码 → 配对码经 `resolvePairingCard` 解析 → `verifyProfileCard` 验签渲染卡片（失败红色徽标 + toast 警告）→ 展示「我签发给该用户的证书」列表。
 
 ### 签发个人证书（query-user.html）
 

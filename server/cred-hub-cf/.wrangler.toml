@@ -1,0 +1,17 @@
+name = "cred-hub-cf"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+# 部署前：wrangler d1 create cred-hub，把返回的 database_id 填到下面
+[[d1_databases]]
+binding = "DB"
+database_name = "cred-hub"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[vars]
+# 跨域放行（等价 Rust 版的 CRED_HUB_CORS=1）：本地裸跑给浏览器直连时设 "1"；
+# 反代部署时留空，CORS 统一交给网关，避免 ACAO 头重复被浏览器拒绝
+# CRED_HUB_CORS = "1"
+# 管理 API 令牌（仅限本地测试用；线上请用 `wrangler secret put CRED_HUB_ADMIN_TOKEN`，
+# 未配置 = 管理 API 整体 404）
+CRED_HUB_ADMIN_TOKEN = "local-test-admin-token"

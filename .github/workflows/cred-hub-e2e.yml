@@ -1,0 +1,51 @@
+name: cred-hub E2E Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "server/cred-hub/**"
+      - ".github/workflows/cred-hub-e2e.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "server/cred-hub/**"
+      - ".github/workflows/cred-hub-e2e.yml"
+
+jobs:
+  e2e-chrome:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/cred-hub/e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # 服务器由 playwright.config.js 的 webServer（cargo run）自动拉起，
+      # 这里先编译好避免测试超时
+      - name: Build cred-hub
+        run: cargo build
+        working-directory: server/cred-hub
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies & Chromium
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        # 先主套件，结束后再启动短保留期实例跑冷数据淘汰用例
+        run: npx playwright test && npx playwright test -c retention.playwright.config.js
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cred-hub-e2e-results
+          path: server/cred-hub/e2e/test-results/
+          retention-days: 7
