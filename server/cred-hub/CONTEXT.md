@@ -94,7 +94,7 @@ Bearer Token 鉴权的只读统计：`CRED_HUB_ADMIN_TOKEN` 未配置 = `/admin/
 
 ### 启动
 
-读配置（可选 TOML 文件：路径经 `CRED_HUB_CONFIG` 指定、默认 `./cred-hub.toml`、不存在则忽略，示例见 cred-hub.toml.example；**优先级：环境变量 > TOML 文件 > 内置默认值**。项：`port`/`data`/`retention_ms` 默认 7 天/`max_cred_bytes` 默认 2048/`cors` 布尔/`admin_token`）→ 打开 redb 库并把全部记录加载进内存读缓存与到期索引 → 启动后台清扫任务 → 绑定 `0.0.0.0:<port>` 提供服务。注意 redb 以文件魔数识别库格式，旧的 JSON 存储文件会被拒绝打开，切换前需迁移或删除。
+读配置（可选 TOML 文件：路径经 `CRED_HUB_CONFIG` 指定、默认 `./cred-hub.toml`、不存在则忽略，示例见 cred-hub.toml.example；`[vars]` 段与 CF 版 wrangler.toml 同构（CRED_HUB_* 同名键字符串值）；**优先级：环境变量 > [vars] > 内置默认值**。项：CRED_HUB_PORT / CRED_HUB_DATA / CRED_HUB_RETENTION_MS 默认 7 天 / CRED_HUB_MAX_CRED_BYTES 默认 2048 / CRED_HUB_CORS="1" / CRED_HUB_ADMIN_TOKEN）→ 打开 redb 库并把全部记录加载进内存读缓存与到期索引 → 启动后台清扫任务 → 绑定 `0.0.0.0:<port>` 提供服务。注意 redb 以文件魔数识别库格式，旧的 JSON 存储文件会被拒绝打开，切换前需迁移或删除。
 
 ## e2e 测试
 

@@ -219,27 +219,25 @@ async fn sweep_due(state: &AppState) {
     }
 }
 
-/// TOML 配置文件结构（路径经 CRED_HUB_CONFIG 指定，默认 ./cred-hub.toml；文件不存在则忽略）。
-/// 解析优先级：环境变量 > 配置文件 > 内置默认值
+/// TOML 配置文件结构，与 CF 版 wrangler.toml 的 [vars] 段保持一致：
+/// 全部使用 CRED_HUB_* 同名键（字符串值），两版本配置写法互通。
 #[derive(serde::Deserialize, Default)]
-#[serde(default)]
 struct FileConfig {
-    port: Option<u16>,
-    data: Option<String>,
-    retention_ms: Option<i64>,
-    max_cred_bytes: Option<usize>,
-    cors: Option<bool>,
-    admin_token: Option<String>,
+    #[serde(default)]
+    vars: std::collections::HashMap<String, String>,
 }
 
-/// 环境变量优先的字符串解析：env 存在则用 env，否则用文件值
-fn resolve_str(env_key: &str, file_value: Option<String>) -> Option<String> {
-    std::env::var(env_key).ok().or(file_value).filter(|v| !v.is_empty())
+/// 环境变量优先取值：env 存在则用 env，否则用配置文件 [vars] 中的同名键
+fn resolve_str(env_key: &str, vars: &std::collections::HashMap<String, String>) -> Option<String> {
+    std::env::var(env_key)
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| vars.get(env_key).cloned().filter(|v| !v.is_empty()))
 }
 
 #[tokio::main]
 async fn main() {
-    // ———— 配置加载：TOML 文件（可选）+ 环境变量覆盖 ————
+    // ———— 配置加载：TOML 文件（可选，[vars] 段与 CF 版 wrangler.toml 同构）+ 环境变量覆盖 ————
     let config_path = std::env::var("CRED_HUB_CONFIG").unwrap_or_else(|_| "cred-hub.toml".into());
     let file_cfg = match std::fs::read_to_string(&config_path) {
         Ok(raw) => toml::from_str::<FileConfig>(&raw)
@@ -248,29 +246,26 @@ async fn main() {
         Err(err) => panic!("读取配置文件 {config_path} 失败: {err}"),
     };
 
-    let port: u16 = resolve_str("CRED_HUB_PORT", file_cfg.port.map(|v| v.to_string()))
+    // 解析优先级：环境变量 > 配置文件 > 内置默认值
+    let port: u16 = resolve_str("CRED_HUB_PORT", &file_cfg.vars)
         .and_then(|p| p.parse().ok())
         .unwrap_or(8787);
-    let data_path = PathBuf::from(
-        resolve_str("CRED_HUB_DATA", file_cfg.data).unwrap_or_else(|| "data/cred-store.redb".into()),
-    );
-    let retention_ms: i64 = resolve_str("CRED_HUB_RETENTION_MS", file_cfg.retention_ms.map(|v| v.to_string()))
+    let data_path =
+        PathBuf::from(resolve_str("CRED_HUB_DATA", &file_cfg.vars).unwrap_or_else(|| "data/cred-store.redb".into()));
+    let retention_ms: i64 = resolve_str("CRED_HUB_RETENTION_MS", &file_cfg.vars)
         .and_then(|v| v.parse().ok())
         .unwrap_or(7 * 24 * 3600 * 1000);
     // 单条 cred 大小上限（防灌库/恶意大 payload）；在验签前拦截
-    let max_cred_bytes: usize =
-        resolve_str("CRED_HUB_MAX_CRED_BYTES", file_cfg.max_cred_bytes.map(|v| v.to_string()))
-            .and_then(|v| v.parse().ok())
-            .filter(|&v| v > 0)
-            .unwrap_or(2048);
-    // 跨域放行默认关闭；环境变量按 "1"/true 开启，TOML 文件用布尔值 cors = true
-    let enable_cors = match resolve_str("CRED_HUB_CORS", file_cfg.cors.map(|v| v.to_string())) {
-        Some(v) => v == "1" || v.eq_ignore_ascii_case("true"),
-        None => false,
-    };
+    let max_cred_bytes: usize = resolve_str("CRED_HUB_MAX_CRED_BYTES", &file_cfg.vars)
+        .and_then(|v| v.parse().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(2048);
+    // 跨域放行默认关闭；按 "1"/true 开启（与 CF 版 CRED_HUB_CORS 取值语义一致）
+    let enable_cors = resolve_str("CRED_HUB_CORS", &file_cfg.vars)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     // 管理 API 令牌：未配置则 /admin/* 一律 404
-    let admin_token =
-        resolve_str("CRED_HUB_ADMIN_TOKEN", file_cfg.admin_token).filter(|t| !t.is_empty());
+    let admin_token = resolve_str("CRED_HUB_ADMIN_TOKEN", &file_cfg.vars);
 
     let (db, cache, index) = open_store(&data_path).expect("打开存储失败");
     let pair_state = pairing::PairState::load(&db).expect("初始化配对码模块失败");
