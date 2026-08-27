@@ -12,7 +12,7 @@
 
 ```
 server/cred-hub-cf/
-├── .wrangler.toml   # wrangler.toml 模板（database_id 为占位符）；首次使用需复制为 wrangler.toml 并填充真实值
+├── wrangler.toml.example   # wrangler.toml 模板（database_id 为占位符）；首次使用需复制为 wrangler.toml 并填充真实值
 ├── schema.sql       # 四张表：creds / pairing_cards / resolve_fails / meta
 ├── src/worker.js    # 全部逻辑单文件：校验验签 + /creds + 配对码
 ├── smoke.mjs        # 冒烟用例（复用 ../cred-hub/e2e/helpers.mjs 签名工具）

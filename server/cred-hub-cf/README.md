@@ -14,7 +14,7 @@ npm run dev             # 本地 wrangler dev，端口 8788
 
 ```bash
 # 1. 复制模板配置为正式配置
-#    cp .wrangler.toml wrangler.toml
+#    cp wrangler.toml.example wrangler.toml
 #
 # 2. 在 Cloudflare Dashboard 创建 D1 数据库 cred-hub，
 #    把返回的 database_id 填入 wrangler.toml 的 [[d1_databases]] 段
@@ -23,7 +23,7 @@ npm run dev             # 本地 wrangler dev，端口 8788
 # 4. npm run deploy
 ```
 
-> 仓库里默认提供的是 `.wrangler.toml` 模板（避免把真实 database_id 等敏感信息提交进 Git）。首次使用前必须把它复制/重命名为 `wrangler.toml`，并填充 `database_id` 等实际值。
+> 仓库里默认提供的是 [wrangler.toml.example](wrangler.toml.example) 模板（避免把真实 database_id 等敏感信息提交进 Git）。首次使用前必须把它复制/重命名为 `wrangler.toml`，并填充 `database_id` 等实际值。
 
 环境变量 / [vars](wrangler.toml)：
 
