@@ -10,8 +10,9 @@
 
 // 服务端地址（凭证中心）：cred-manager 的 m-cred-server-select 组件维护——
 // 选中值存 getStorage("mz-cert") 的 "pairing-server" 键，
-// 用户手动添加的自定义服务器存 "cred-servers" 键（URL 字符串数组）
-const DEFAULT_PAIRING_SERVER = "http://localhost:8787";
+// 用户手动添加的自定义服务器存 "cred-servers" 键（URL 字符串数组）。
+// 默认值与组件内置线上服务器一致；只兜底「存储里还没有任何值」的场景
+const DEFAULT_PAIRING_SERVER = "https://asia-1.cred-hub.noneos.com";
 
 // 判定输入是否为配对码（userId 是更长的十六进制串，不会命中）
 export const PAIRING_CODE_PATTERN = /^[0-9a-z]{6,10}$/;
