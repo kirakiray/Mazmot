@@ -18,11 +18,12 @@
 ├── index.html           # 入口 HTML：ofa.js + router + st-boot 主题引导 + o-router/o-app
 ├── app-config.js        # home 路由指向 pages/query-user.html；侧栏常驻的轻量切页动画配置
 ├── comps/
-│   └── cert-item.html   # m-cert-item 证书条目组件（可折叠列表项，多页面复用）
+│   ├── cert-item.html          # m-cert-item 证书条目组件（可折叠列表项，多页面复用）
+│   └── cred-server-select.html # m-cred-server-select 凭证中心选择组件（query-user / my-info 复用）
 └── pages/
     ├── home.html        # 布局页：左侧栏导航 + slot 内容区（所有子页的 parent）
-    ├── query-user.html  # 查询用户 + 签发证书（默认首页）；顶部可选择配对服务器以解析配对码
-    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可选择配对服务器
+    ├── query-user.html  # 查询用户 + 签发证书（默认首页）；顶部凭证中心选择组件解析配对码
+    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可用凭证中心选择组件
     ├── known-users.html # 已知用户：本地缓存的 profile 卡片列表
     ├── claim.html       # 领取证书（仅作为 my-certs 弹窗内嵌 o-page 使用，无 parent）
     ├── my-certs.html    # 本地证书列表（tab 过滤 + 领取/导入弹窗）
@@ -121,7 +122,7 @@
 
 ### 查询用户（query-user.html，默认首页）
 
-顶部选择「配对服务器」（`mz-cert` 存储空间的 `pairing-server` 键，默认 `https://asia-1.cred-hub.noneos.com`，可选本地 `http://localhost:8787`）。输入 userId 或配对码 → 配对码经 `resolvePairingCard` 解析 → `verifyProfileCard` 验签渲染卡片（失败红色徽标 + toast 警告）→ 展示「我签发给该用户的证书」列表。
+顶部经 `m-cred-server-select` 组件选择「凭证中心」（详见组件章节）。输入 userId 或配对码 → 配对码经 `resolvePairingCard` 解析 → `verifyProfileCard` 验签渲染卡片（失败红色徽标 + toast 警告）→ 展示「我签发给该用户的证书」列表。
 
 ### 签发个人证书（query-user.html）
 
@@ -150,3 +151,19 @@
 - 事件：`open-detail`（bubbles，携带 `{ id, cert }`），**跳转由宿主页面处理**（组件不持有路由）；宿主经 `on:open-detail="$host.gotoDetail($event)"` 接管。
 - 操作按钮（删除 / 吊销）由宿主经 `<slot name="actions">` 注入。
 - 内部用 `load()` 按需加载 `/mz/cert/main.js` 与 locale-text；`watch: cert` + `attached` 时重算派生展示字段。
+
+## 组件：comps/cred-server-select.html（`m-cred-server-select`）
+
+- 「凭证中心」（即 cred-hub 服务端，配对码的注册/解析服务器）选择下拉，query-user 与 my-info 两页复用；外部用法 `<m-cred-server-select sync:value="pairingServer"></m-cred-server-select>`。
+- 选项 = 内置项（线上 `https://asia-1.cred-hub.noneos.com`；本地开发环境额外显示 `http://localhost:8787 (local)`）+ 用户自定义项 + 「添加凭证中心…」占位项。
+- **添加流程**：选中占位项 → senti-ui `prompt` 弹窗输入 URL → 校验 `http(s)://` 前缀、去尾斜杠、去重后存入 `getStorage("mz-cert")` 的 `cred-servers` 键（URL 字符串数组）→ 自动选中新项；取消 / 校验失败回退原选中项（占位值不会同步给宿主）。
+- 选中值持久化在 `mz-cert` 空间的 `pairing-server` 键（历史键名沿用），`attached` 时恢复；切换时宿主页面各自的 `watch: pairingServer` 负责失效旧配对码等联动。
+- 内部 `value`（对外）与 `selectValue`（st-select 绑定）双数据 + 双向 watch 同步，防「添加…」占位值外泄。
+
+## 存储键（getStorage("mz-cert")）
+
+| 键 | 内容 |
+| --- | --- |
+| `pairing-server` | 当前选中的凭证中心地址（字符串，m-cred-server-select 维护） |
+| `cred-servers` | 用户手动添加的自定义凭证中心地址列表（字符串数组，m-cred-server-select 维护） |
+| `issue-history` | 签发历史（/mz/cert 的 appendIssueHistory 写入） |

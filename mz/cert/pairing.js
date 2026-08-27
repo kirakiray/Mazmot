@@ -8,7 +8,9 @@
 // 用法（页面模块内）：
 //   const { requestPairingCode, resolvePairingCard } = await load("/mz/cert/pairing.js");
 
-// 服务端地址：可在 getStorage("mz-cert") 的 "pairing-server" 键里覆盖
+// 服务端地址（凭证中心）：cred-manager 的 m-cred-server-select 组件维护——
+// 选中值存 getStorage("mz-cert") 的 "pairing-server" 键，
+// 用户手动添加的自定义服务器存 "cred-servers" 键（URL 字符串数组）
 const DEFAULT_PAIRING_SERVER = "http://localhost:8787";
 
 // 判定输入是否为配对码（userId 是更长的十六进制串，不会命中）

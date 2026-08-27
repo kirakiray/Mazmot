@@ -48,6 +48,11 @@ const alice = await generateUser("alice");
     (await post("/creds", await resign({ ...older, signTime: Date.now() - 10000 }, alice)))
       .status === 409,
   );
+
+  // 超过 2048 字节上限 → 413；用篡改数据验证大小检查先于验签（否则会 422）
+  const big = await issueCert(alice, { role: "big", pad: "x".repeat(3000) });
+  big.subject = "evil";
+  check("超大小上限 413 且先于验签", (await post("/creds", big)).status === 413);
 }
 
 // —— 配对码（core getProfile 形态：无 id、无 expire 的签名载荷视图）——
@@ -130,6 +135,16 @@ const alice = await generateUser("alice");
     expiring.ok &&
       sortedDesc([...expiring.items].reverse(), "expire") &&
       expiring.items.every((it) => it.expire != null && it.expire > Date.now()),
+  );
+}
+
+// —— CORS（本地 wrangler.toml 配 CRED_HUB_CORS="1" 通配模式）——
+{
+  const res = await fetch(`${BASE}/health`, { headers: { origin: "https://example.com" } });
+  check(
+    "CORS 通配模式回显 allow-origin:*",
+    res.headers.get("access-control-allow-origin") === "*",
+    `got ${res.headers.get("access-control-allow-origin")}`,
   );
 }
 

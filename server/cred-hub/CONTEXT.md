@@ -5,7 +5,7 @@
 ## 项目概览
 
 - **定位**：专门存储 NoneOS 凭证（cred / 证书）数据的独立 HTTP 服务器。Rust + axum 实现，不依赖前端静态部署，也不参与 NoneOS Core Service Worker 体系。
-- **状态**：暂无认证，任何人可访问；鉴权机制为后续规划项，实现时需同步更新本文件与 README。
+- **状态**：暂无认证，任何人可访问；防滥用手段为保留期冷淘汰 + 单条大小上限（`CRED_HUB_MAX_CRED_BYTES`，默认 2048 字节，超限 413 且在验签前拦截）；鉴权机制为后续规划项，实现时需同步更新本文件与 README。
 - **签名兼容性（核心约束）**：所有验签逻辑必须与 NoneOS Core 保持一致——改动 `src/validate.rs` 的序列化或验签方式前，先核对 `noneos-core` 的 `BaseUser._sign` / cert 统一导入路径。
 
 ## 目录结构
@@ -22,7 +22,7 @@ server/cred-hub/
 │   └── validate.rs          # cred 数据校验：结构校验 / 有效期校验 / ECDSA P-256 规范化排序验签
 └── e2e/
     ├── package.json         # e2e 独立 npm 环境（@playwright/test）；npm test = 主套件 → retention 套件顺序执行
-    ├── playwright.config.js          # 主套件（18 用例）；webServer 自动 cargo run（端口 8790，独立数据文件）
+    ├── playwright.config.js          # 主套件（19 用例）；webServer 自动 cargo run（端口 8790，独立数据文件）
     ├── retention.playwright.config.js # 冷数据淘汰专项（3 用例）；短保留期实例（端口 8791，CRED_HUB_RETENTION_MS=2000）
     ├── helpers.mjs          # 公共签名工具（NoneOS 方案：WebCrypto P-256 + 规范化序列化）
     ├── cred-hub.e2e.test.js        # 接口用例
@@ -35,7 +35,7 @@ server/cred-hub/
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
-| POST | `/creds` | 上传 cred 数据：结构 → 有效期 → 验签三层校验后入库。成功 `201 {"ok":true,"id":<key>}`；非法 `422 {"ok":false,"error":...}`；同 key 且 signTime 不更新 `409` |
+| POST | `/creds` | 上传 cred 数据：超大小上限 `413`（校验前拦截）→ 结构 → 有效期 → 验签三层校验后入库。成功 `201 {"ok":true,"id":<key>}`；非法 `422 {"ok":false,"error":...}`；同 key 且 signTime 不更新 `409` |
 | GET | `/creds/{key}` | 按 key（记录的 `id`）返回完整 cred JSON；未找到 `404`。`?touch=0` 只读不续命 |
 | POST | `/pairing/register` | 提交签名用户卡片换取配对码，见「配对码」章节 |
 | GET | `/pairing/resolve?code=` | 凭码取回完整用户卡片，见「配对码」章节 |
@@ -90,11 +90,11 @@ Bearer Token 鉴权的只读统计：`CRED_HUB_ADMIN_TOKEN` 未配置 = `/admin/
 
 ### 上传（POST /creds）
 
-解析 JSON → `validate::validate_cred`（结构 / 有效期 / 排序序列化验签）→ 与既有同 key 记录比较 `signTime`（更旧/相同则 409）→ 写入内存并落盘 → 返回 201。任一步失败立即返回对应错误码，不做部分写入。
+读取原始请求体 → 大小上限检查（超限 `413`，不做任何校验/运算）→ 解析 JSON → `validate::validate_cred`（结构 / 有效期 / 排序序列化验签）→ 与既有同 key 记录比较 `signTime`（更旧/相同则 409）→ 写入内存并落盘 → 返回 201。任一步失败立即返回对应错误码，不做部分写入。
 
 ### 启动
 
-读环境变量（`CRED_HUB_PORT` 默认 8787、`CRED_HUB_DATA` 默认 `data/cred-store.redb`、`CRED_HUB_RETENTION_MS` 默认 7 天）→ 打开 redb 库并把全部记录加载进内存读缓存与到期索引 → 启动后台清扫任务 → 绑定 `0.0.0.0:<port>` 提供服务。注意 redb 以文件魔数识别库格式，旧的 JSON 存储文件会被拒绝打开，切换前需迁移或删除。
+读环境变量（`CRED_HUB_PORT` 默认 8787、`CRED_HUB_DATA` 默认 `data/cred-store.redb`、`CRED_HUB_RETENTION_MS` 默认 7 天、`CRED_HUB_MAX_CRED_BYTES` 默认 2048）→ 打开 redb 库并把全部记录加载进内存读缓存与到期索引 → 启动后台清扫任务 → 绑定 `0.0.0.0:<port>` 提供服务。注意 redb 以文件魔数识别库格式，旧的 JSON 存储文件会被拒绝打开，切换前需迁移或删除。
 
 ## e2e 测试
 

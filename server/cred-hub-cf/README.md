@@ -27,15 +27,19 @@ npm run dev             # 本地 wrangler dev，端口 8788
 
 环境变量 / [vars](wrangler.toml)：
 
-- `CRED_HUB_CORS`：设 `"1"` 启用宽松跨域。本地裸跑给浏览器直连时开启；走网关反代时留空，CORS 统一交给网关配置
+- `CRED_HUB_CORS`：跨域控制，三种取值——
+  - `"1"`：放行任意 Origin（`access-control-allow-origin: *`）
+  - 逗号分隔的 Origin 白名单，如 `"https://app.example.com,https://mz.example.org"`：请求 Origin 命中时回显该 Origin（带 `Vary: Origin`），未命中不带 CORS 头，由浏览器拦截
+  - 留空：不处理 CORS，走网关反代时由网关统一配置，避免 ACAO 头重复被浏览器拒绝
 - `CRED_HUB_RETENTION_MS`：cred 冷数据保留毫秒数，默认 7 天
+- `CRED_HUB_MAX_CRED_BYTES`：单条 cred 请求体大小上限（字节），默认 `2048`。超限返回 `413`，且在验签前拦截（防灌库 / 恶意大 payload）
 - `CRED_HUB_ADMIN_TOKEN`：管理 API 令牌（建议 `openssl rand -base64 32` 生成；线上 `wrangler secret put CRED_HUB_ADMIN_TOKEN`，勿写进 wrangler.toml）。未配置 = `/admin/*` 一律 404
 
 ## 接口
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
-| POST | `/creds` | 上传 cred：结构 → 有效期 → 验签三层校验后入库。`201 {"ok":true,"id":<key>}` / 非法 `422` / 同 key signTime 不更新 `409` |
+| POST | `/creds` | 上传 cred：结构 → 有效期 → 验签三层校验后入库。请求体超 `CRED_HUB_MAX_CRED_BYTES` 上限 `413`（校验前拦截） / 非法 `422` / 同 key signTime 不更新 `409`；成功 `201 {"ok":true,"id":<key>}` |
 | GET | `/creds/{key}` | 按 key 返回完整 cred JSON；未找到 `404`；`?touch=0` 只读不续命 |
 | POST | `/pairing/register` | 签名 profile 卡片换配对码 `{ok,code,expiresAt}`，语义同 Rust 版（不要求 `id`、豁免 expire；自适应 6/8 位） |
 | GET | `/pairing/resolve?code=` | 凭码取回完整卡片；**未命中才计限流**（每 IP 每分钟 30 次，超限 `429`），成功解析不占额度；无黑名单，分钟窗口滚动自动恢复 |
@@ -59,7 +63,7 @@ npm run dev             # 本地 wrangler dev，端口 8788
 npm test          # 本目录；或根目录 npm run cred-hub-cf-test
 ```
 
-覆盖 15 项：`/creds` 入库读回 / 篡改验签拦截 / signTime 收敛（409），配对码取码幂等 / 凭码解析 / 无效码 404 / 非 profile 拒绝 / 篡改拦截，管理 API 鉴权（无/错 token 401）/ stats 总览 / hot 倒序 / expiring 升序。签名工具直接复用 Rust 版 e2e 的 `helpers.mjs`（同一套 NoneOS 方案），保证两版本验签兼容。若 8788 端口已有 dev 实例则自动复用、结束时不会杀掉它。
+覆盖 17 项：`/creds` 入库读回 / 篡改验签拦截 / signTime 收敛（409）/ 超大小上限 413，配对码取码幂等 / 凭码解析 / 无效码 404 / 非 profile 拒绝 / 篡改拦截，管理 API 鉴权（无/错 token 401）/ stats 总览 / hot 倒序 / expiring 升序。签名工具直接复用 Rust 版 e2e 的 `helpers.mjs`（同一套 NoneOS 方案），保证两版本验签兼容。若 8788 端口已有 dev 实例则自动复用、结束时不会杀掉它。
 
 ## 调试工具备忘
 

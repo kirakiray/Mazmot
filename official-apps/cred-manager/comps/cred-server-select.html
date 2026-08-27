@@ -1,0 +1,180 @@
+<template component>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .field-label n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.4;
+      margin-top: 6px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="form-row">
+    <div class="field-label">
+      <n-icon icon="mdi:server-network"></n-icon>
+      <locale-text><span lang="cn">凭证中心</span><span lang="en">Credential hub</span></locale-text>
+    </div>
+    <st-select sync:value="selectValue">
+      <o-fill :value="options" fill-key="value">
+        <option attr:value="$data.value">{{$data.label}}</option>
+      </o-fill>
+    </st-select>
+    <div class="hint">{{hint}}</div>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import prompt from "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+
+    // 「添加凭证中心…」占位选项值（不会与合法 URL 冲突）
+    const ADD_VALUE = "__add__";
+
+    // 内置选项：本地开发环境才显示 localhost 选项；线上环境只保留正式服务器
+    const baseOptions = () => {
+      const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+      const online = {
+        label: "asia-1.cred-hub.noneos.com",
+        value: "https://asia-1.cred-hub.noneos.com",
+      };
+      const local = {
+        label: "localhost:8787 (local)",
+        value: "http://localhost:8787",
+      };
+      return isLocal ? [local, online] : [online];
+    };
+
+    export default async ({ load }) => {
+      const { getStorage } = await load("/nos/storage/main.js");
+
+      const store = () => getStorage("mz-cert");
+
+      // 规范化用户输入的服务器地址：去尾斜杠，仅接受 http(s)
+      const normalizeUrl = (raw) => {
+        const url = (raw || "").trim().replace(/\/+$/, "");
+        if (!/^https?:\/\/.+/i.test(url)) return null;
+        return url;
+      };
+
+      return {
+        tag: "m-cred-server-select",
+        data: {
+          // 当前选中的服务器地址（外部经 sync:value 双向绑定读写）
+          value: "",
+          // st-select 的内部绑定值；可能与 value 短暂不一致（如选中「添加…」占位项时）
+          selectValue: "",
+          options: baseOptions(),
+          hint: getLocaleText({
+            cn: "双方必须选择同一台凭证中心，否则配对码无法解析。",
+            en: "Both sides must choose the same credential server, or the code cannot be resolved.",
+          }),
+        },
+        async attached() {
+          await this.loadCustomServers();
+          try {
+            this.value = (await store().getItem("pairing-server")) || this.options[0].value;
+          } catch {
+            this.value = this.options[0].value;
+          }
+          this.selectValue = this.value;
+        },
+        watch: {
+          // 外部赋值（如父页面）→ 同步到内部下拉
+          value(val) {
+            if (val && val !== this.selectValue) {
+              this.selectValue = val;
+            }
+          },
+          selectValue(val) {
+            if (val === ADD_VALUE) {
+              this.addServer();
+              return;
+            }
+            if (val && val !== this.value) {
+              this.value = val;
+              this.saveSelection(val);
+            }
+          },
+        },
+        proto: {
+          async loadCustomServers() {
+            try {
+              const list = (await store().getItem("cred-servers")) || [];
+              this.options = [
+                ...baseOptions(),
+                ...list.map((url) => ({ label: url, value: url })),
+                { label: getLocaleText({ cn: "添加凭证中心…", en: "Add credential hub…" }), value: ADD_VALUE },
+              ];
+            } catch (err) {
+              console.error("读取自定义凭证中心失败：", err);
+            }
+          },
+          async saveSelection(url) {
+            try {
+              await store().setItem("pairing-server", url);
+            } catch (err) {
+              console.error("保存凭证中心选择失败：", err);
+            }
+          },
+          // prompt 输入新服务器地址 → 存入自定义列表并选中
+          async addServer() {
+            const raw = await prompt({
+              title: getLocaleText({ cn: "添加凭证中心", en: "Add credential hub" }),
+              message: getLocaleText({
+                cn: "输入服务器地址（https:// 开头）",
+                en: "Enter the server URL (starts with https://)",
+              }),
+              placeholder: "https://cred-hub.example.com",
+            });
+            const url = normalizeUrl(raw);
+            if (raw != null && !url) {
+              toast({
+                message: getLocaleText({
+                  cn: "地址无效，需以 http(s):// 开头",
+                  en: "Invalid URL; must start with http(s)://",
+                }),
+                color: "error",
+              });
+            }
+            if (url) {
+              try {
+                const list = (await store().getItem("cred-servers")) || [];
+                if (!list.includes(url)) {
+                  list.push(url);
+                  await store().setItem("cred-servers", list);
+                }
+              } catch (err) {
+                console.error("保存自定义凭证中心失败：", err);
+              }
+              await this.loadCustomServers();
+              this.selectValue = url; // watch 内完成 value 同步与持久化
+            } else {
+              // 取消或输入无效：回退到原选中项
+              this.selectValue = this.value;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

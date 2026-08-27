@@ -10,6 +10,7 @@
 //! 平台差异带来的实现调整（语义不变）：
 //! - Worker 内存不跨实例共享 → resolve 失败计数落 D1（resolve_fails 表）
 //! - 无后台任务 → 冷数据靠「访问续命 + 写入时按概率惰性清扫」，保留期 CRED_HUB_RETENTION_MS 默认 7 天
+//! - /creds 请求体超过 CRED_HUB_MAX_CRED_BYTES（默认 2048 字节）直接 413，不进验签
 //! - 配对码密钥持久化在 meta 表（pairing-secret），首次请求生成
 
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -20,6 +21,7 @@ const CODE_LEN_LONG = 8;
 const SHORT_LEN_ACTIVE_LIMIT = 300;       // 有效码 ≤ 此数发 6 位，否则 8 位
 const RESOLVE_FAIL_LIMIT_PER_MIN = 30;    // 未命中解析每 IP 每分钟允许次数
 const DEFAULT_RETENTION_MS = 7 * 24 * 3600 * 1000;
+const DEFAULT_MAX_CRED_BYTES = 2048;      // 单条 cred 大小上限，可经 CRED_HUB_MAX_CRED_BYTES 调整
 
 // ———— 管理 API 鉴权（Bearer Token，双方共享秘密）———
 
@@ -235,11 +237,35 @@ export async function validateProfileCard(card) {
 
 // ———— HTTP 响应助手 ————
 
+/// CRED_HUB_CORS 配置解析（每次调用时读，热重载/配置变更即时生效）：
+/// - "1" 或 "*"：放行任意 Origin（allow-origin: *）
+/// - 逗号分隔的 Origin 白名单（如 "https://a.com,https://b.com"）：
+///   请求 Origin 命中时回显该 Origin，否则不加 CORS 头（浏览器侧拒绝）
+const parseCorsOrigins = (env) => {
+  const raw = (env.CRED_HUB_CORS || "").trim();
+  if (raw === "1" || raw === "*") return "*";
+  const list = raw
+    .split(",")
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return list.length ? list : null;
+};
+
 function withCors(request, env, response) {
-  if (env.CRED_HUB_CORS === "1") {
-    response.headers.set("access-control-allow-origin", "*");
+  const allowed = parseCorsOrigins(env);
+  if (!allowed) return response;
+  const origin = request.headers.get("origin") || "";
+  const normalized = origin.replace(/\/+$/, "");
+  const match = allowed === "*" || allowed.includes(normalized);
+  if (match) {
+    // 白名单模式回显具体 Origin（不能写 *，否则带凭据的请求会被浏览器拒绝）
+    response.headers.set(
+      "access-control-allow-origin",
+      allowed === "*" ? "*" : normalized,
+    );
     response.headers.set("access-control-allow-methods", "*");
     response.headers.set("access-control-allow-headers", "*");
+    response.headers.set("vary", "Origin");
   }
   return response;
 }
@@ -253,9 +279,19 @@ const json = (request, env, status, body) =>
 // ———— handlers ————
 
 async function handleUploadCred(request, env) {
+  // 大小限制在验签前检查：超限请求不值得消耗 ECDSA 运算
+  const maxBytes =
+    parseInt(env.CRED_HUB_MAX_CRED_BYTES || "", 10) || DEFAULT_MAX_CRED_BYTES;
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).length > maxBytes) {
+    return json(request, env, 413, {
+      ok: false,
+      error: `cred 数据超过大小上限 ${maxBytes} 字节（CRED_HUB_MAX_CRED_BYTES）`,
+    });
+  }
   let cred;
   try {
-    cred = await request.json();
+    cred = JSON.parse(raw);
   } catch {
     return json(request, env, 422, { ok: false, error: "请求体不是合法 JSON" });
   }

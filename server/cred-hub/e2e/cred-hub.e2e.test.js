@@ -75,6 +75,14 @@ test.describe("cred-hub e2e", () => {
     expect(res.status()).toBe(422);
   });
 
+  test("超过大小上限（默认 2048 字节）返回 413，且先于验签", async ({ request }) => {
+    const cert = await issueCert(alice, { role: "big", pad: "x".repeat(3000) });
+    cert.subject = "evil"; // 若验签先执行会得到 422；413 证明大小检查在前
+    const res = await postCred(request, cert);
+    expect(res.status()).toBe(413);
+    expect((await res.json()).error).toContain("上限");
+  });
+
   test("expire 早于 signTime 返回 422", async ({ request }) => {
     const now = Date.now();
     const cert = await issueCert(alice, {

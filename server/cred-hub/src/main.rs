@@ -46,6 +46,8 @@ pub(crate) struct AppState {
     pair: pairing::PairState,
     /// 管理 API 令牌（CRED_HUB_ADMIN_TOKEN）；None = 管理 API 关闭（/admin/* 一律 404）
     admin_token: Option<String>,
+    /// 单条 cred 请求体大小上限（字节，CRED_HUB_MAX_CRED_BYTES，默认 2048）
+    max_cred_bytes: usize,
 }
 
 struct Cached {
@@ -235,6 +237,12 @@ async fn main() {
         .unwrap_or(false);
     // 管理 API 令牌：未配置则 /admin/* 一律 404
     let admin_token = std::env::var("CRED_HUB_ADMIN_TOKEN").ok().filter(|t| !t.is_empty());
+    // 单条 cred 大小上限（防灌库/恶意大 payload）；在验签前拦截
+    let max_cred_bytes: usize = std::env::var("CRED_HUB_MAX_CRED_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(2048);
 
     let (db, cache, index) = open_store(&data_path).expect("打开存储失败");
     let pair_state = pairing::PairState::load(&db).expect("初始化配对码模块失败");
@@ -245,6 +253,7 @@ async fn main() {
         retention_ms,
         pair: pair_state,
         admin_token,
+        max_cred_bytes,
     };
 
     // 单个后台清扫任务，周期取保留期的 1/10 且至少 1 秒
@@ -294,8 +303,24 @@ async fn main() {
 /// POST /creds —— 上传并校验 cred 数据
 async fn upload_cred(
     State(state): State<AppState>,
-    Json(cred): Json<Value>,
+    body: axum::body::Bytes,
 ) -> (StatusCode, Json<Value>) {
+    // 大小限制在验签前检查：超限请求不值得消耗 ECDSA 运算
+    if body.len() > state.max_cred_bytes {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({
+                "ok": false,
+                "error": format!("cred 数据超过大小上限 {} 字节（CRED_HUB_MAX_CRED_BYTES）", state.max_cred_bytes)
+            })),
+        );
+    }
+    let Ok(cred) = serde_json::from_slice::<Value>(&body) else {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "ok": false, "error": "请求体不是合法 JSON" })),
+        );
+    };
     if let Err(err) = validate::validate_cred(&cred) {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,

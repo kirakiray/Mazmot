@@ -80,21 +80,13 @@
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
-    .pairing-server-hint {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.4;
-    }
-    .pairing-server-row {
-      margin-top: 12px;
-    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="../comps/cred-server-select.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
@@ -181,18 +173,8 @@
         </div>
         <div class="pair-countdown">{{pairingCountdown}}</div>
       </o-if>
-      <div class="form-row pairing-server-row">
-        <div class="field-label">
-          <n-icon icon="mdi:server-network"></n-icon>
-          <locale-text><span lang="cn">配对服务器</span><span lang="en">Pairing server</span></locale-text>
-        </div>
-        <st-select sync:value="pairingServer">
-          <o-fill :value="pairingServerOptions" fill-key="value">
-            <option attr:value="$data.value">{{$data.label}}</option>
-          </o-fill>
-        </st-select>
-        <div class="pairing-server-hint">{{pairingServerHint}}</div>
-      </div>
+      <!-- 凭证中心选择（comps 公用组件）：取码前选好，双方必须一致 -->
+      <m-cred-server-select sync:value="pairingServer"></m-cred-server-select>
     </st-card>
   </div>
 
@@ -221,32 +203,14 @@
           pairingCountdown: "",
           pairingLoading: false,
           pairingServer: "",
-          // 本地开发环境才显示 localhost:8787 选项；线上环境只保留正式服务器
-          pairingServerOptions: (() => {
-            const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
-            const online = {
-              label: "asia-1.cred-hub.noneos.com",
-              value: "https://asia-1.cred-hub.noneos.com",
-            };
-            const local = {
-              label: "localhost:8787 (local)",
-              value: "http://localhost:8787",
-            };
-            return isLocal ? [local, online] : [online];
-          })(),
-          pairingServerHint: getLocaleText({
-            cn: "双方必须选择同一台配对服务器，否则配对码无法解析。",
-            en: "Both sides must choose the same pairing server, or the code cannot be resolved.",
-          }),
         },
         async attached() {
           await this.loadMyInfo();
-          await this.loadPairingServer();
         },
         watch: {
-          pairingServer(val) {
-            this.savePairingServer(val);
-            // 切换服务器后，旧配对码失效，清除倒计时与当前码
+          // 选中值由 m-cred-server-select 组件维护（含持久化）
+          pairingServer() {
+            // 切换凭证中心后，旧配对码失效，清除倒计时与当前码
             this.pairingCode = "";
             this.stopPairingCountdown();
           },
@@ -255,26 +219,6 @@
           this.stopPairingCountdown();
         },
         proto: {
-          // 读取 / 保存配对服务器地址（双方必须一致，否则配对码无法解析）
-          async loadPairingServer() {
-            try {
-              const { getStorage } = await load("/nos/storage/main.js");
-              const saved = await getStorage("mz-cert").getItem("pairing-server");
-              this.pairingServer = saved || this.pairingServerOptions[0].value;
-            } catch (err) {
-              console.error("读取配对服务器设置失败：", err);
-              this.pairingServer = this.pairingServerOptions[0].value;
-            }
-          },
-          async savePairingServer(url) {
-            if (!url) return;
-            try {
-              const { getStorage } = await load("/nos/storage/main.js");
-              await getStorage("mz-cert").setItem("pairing-server", url);
-            } catch (err) {
-              console.error("保存配对服务器设置失败：", err);
-            }
-          },
           // 取配对码：用最新资料卡片提交（服务器同窗口幂等返回同码）
           async fetchPairingCode() {
             this.pairingLoading = true;

@@ -18,6 +18,7 @@ cargo run --release
 - `CRED_HUB_PORT`：监听端口，默认 `8787`
 - `CRED_HUB_DATA`：存储文件路径，默认 `data/cred-store.redb`（redb 单文件 KV 数据库）
 - `CRED_HUB_RETENTION_MS`：冷数据保留时长（毫秒），默认 7 天；详见下方「数据保留」
+- `CRED_HUB_MAX_CRED_BYTES`：单条 cred 请求体大小上限（字节），默认 `2048`。超限返回 `413`，且在验签前拦截（防灌库 / 恶意大 payload）
 
 ## 数据保留（冷淘汰）
 
@@ -42,6 +43,7 @@ cargo run --release
    （与 BaseUser._sign / cert 统一导入路径的规范化排序验签一致）
 
 成功返回 `201 {"ok":true,"id":<key>}`；
+请求体超过 `CRED_HUB_MAX_CRED_BYTES` 上限返回 `413`（在校验前拦截）；
 结构/签名非法返回 `422 {"ok":false,"error":...}`。
 
 覆盖语义与 core 一致：同 key（id）记录已存在且 signTime 不更早时返回 `409`，更新则覆盖。
@@ -92,7 +94,7 @@ npm install
 npx playwright test        # 首次需 npx playwright install chromium
 ```
 
-覆盖场景：health 检查、合法入库与读回、404、篡改验签拦截、公钥替换重放拦截、缺字段校验、非法请求体、expire 早于 signTime / 已过期拒绝、永不过期、同 key signTime 收敛（409）与覆盖更新、自定义字段持久化；配对码（取码幂等同码、凭码解析、非 profile/非自签/篡改卡片拒绝、无效码 404）。
+覆盖场景：health 检查、合法入库与读回、404、篡改验签拦截、公钥替换重放拦截、缺字段校验、非法请求体、超大小上限 413、expire 早于 signTime / 已过期拒绝、永不过期、同 key signTime 收敛（409）与覆盖更新、自定义字段持久化；配对码（取码幂等同码、凭码解析、非 profile/非自签/篡改卡片拒绝、无效码 404）。
 
 CI：[.github/workflows/cred-hub-e2e.yml](../../.github/workflows/cred-hub-e2e.yml) 在 push / PR 到 main（涉及 `server/cred-hub/**`）时于 Ubuntu 上自动跑 Chrome 全量用例。
 

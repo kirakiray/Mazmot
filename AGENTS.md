@@ -117,7 +117,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 `server/` 下是独立 Rust 后端服务，不随前端静态部署，与 NoneOS Core / ofa.js 体系无直接关系（本节之前的组件、存储、加载时机等规则均不适用于纯服务端代码）。
 
-- **必读 Context**：查看或修改 [server/cred-hub/](server/cred-hub/) 前，**必须先阅读 [server/cred-hub/CONTEXT.md](server/cred-hub/CONTEXT.md)**——其中记录了 cred-hub 的目录结构、接口约定、与 NoneOS Core 一致的验签方案、数据模型与 e2e 测试注意事项；改动后同样按第 5 条规则同步更新该 CONTEXT.md。
+- **必读 Context**：查看或修改 [server/cred-hub/](server/cred-hub/) 或 [server/cred-hub-cf/](server/cred-hub-cf/) 前，**必须先阅读 [server/cred-hub/CONTEXT.md](server/cred-hub/CONTEXT.md)**——其中记录了 cred-hub 的目录结构、接口约定、与 NoneOS Core 一致的验签方案、数据模型与 e2e 测试注意事项；cred-hub-cf 是其 Cloudflare Workers 移植版（见 [server/cred-hub-cf/CONTEXT.md](server/cred-hub-cf/CONTEXT.md)），两份 CONTEXT.md 须同步维护；改动后同样按第 5 条规则同步更新对应 CONTEXT.md。
 
 
 ## 测试规范
