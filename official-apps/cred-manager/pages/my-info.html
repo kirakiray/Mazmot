@@ -224,8 +224,18 @@
             this.pairingLoading = true;
             try {
               const user = await ensureUser();
-              const card = await user.cred.getProfile(user.userId);
-              if (!card) {
+              // 用本地签名的 info 记录当卡片：getProfile(self) 在本地 certs 库
+              // 未命中时会走 P2P 向自己的其他在线实例拉取，旧实例存的 info 字段
+              // 不一致时会报 "Cred record key mismatch"；getInfo 零网络、无此问题
+              const card = await user.getInfo();
+              if (
+                !card ||
+                !card.publicKey ||
+                !card.signature ||
+                !card.role ||
+                !card.issuer ||
+                !card.subject
+              ) {
                 toast({
                   message: getLocaleText({
                     cn: "还没有用户资料，请先在上方保存一次用户名生成资料",

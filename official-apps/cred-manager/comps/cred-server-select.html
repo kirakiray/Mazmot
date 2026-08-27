@@ -96,12 +96,11 @@
         },
         async attached() {
           await this.loadCustomServers();
-          try {
-            this.value = (await store().getItem("pairing-server")) || this.options[0].value;
-          } catch {
-            this.value = this.options[0].value;
-          }
-          this.selectValue = this.value;
+          // 走 selectValue 赋值（而非直接 value）：让 watch 完成 value 同步 + 持久化，
+          // 否则默认选中项只停在组件内存，pairing.js 读存储为空会回退到它自己的默认值
+          this.selectValue =
+            (await store().getItem("pairing-server").catch(() => null)) ||
+            this.options[0].value;
         },
         watch: {
           // 外部赋值（如父页面）→ 同步到内部下拉

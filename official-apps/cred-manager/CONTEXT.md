@@ -23,7 +23,7 @@
 └── pages/
     ├── home.html        # 布局页：左侧栏导航 + slot 内容区（所有子页的 parent）
     ├── query-user.html  # 查询用户 + 签发证书（默认首页）；顶部凭证中心选择组件解析配对码
-    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可用凭证中心选择组件
+    ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可用凭证中心选择组件（取码卡片用本地 getInfo()，勿用 getProfile(self)——后者本地未命中会走 P2P 拉自己的其他实例，旧实例 info 字段不一致时报 "Cred record key mismatch"）
     ├── known-users.html # 已知用户：本地缓存的 profile 卡片列表
     ├── claim.html       # 领取证书（仅作为 my-certs 弹窗内嵌 o-page 使用，无 parent）
     ├── my-certs.html    # 本地证书列表（tab 过滤 + 领取/导入弹窗）
