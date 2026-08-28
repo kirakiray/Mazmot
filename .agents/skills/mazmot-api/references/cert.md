@@ -136,6 +136,16 @@ await verifyProfileCard(profile, profile.subject);
 
 输入框兼容判定：`PAIRING_CODE_PATTERN`（6-10 位小写字母数字；userId 是更长的十六进制串不会误命中）。参考实现：cred-manager 的 my-info.html（取码 + 倒计时）/ query-user.html（短码分支）。
 
+### 2.7 实时互授 —— `official-apps/cred-manager/lib/live-share.js`
+
+在配对码 + 拉取模式之上补一条**实时通道**：双方打开 cred-manager「互授」页后，基于 noneos-core 用户服务通信（`LocalUser.registerService` / `RemoteUser.sendToService`，服务 appId `cred-share-v1`）互见卡片、发现对方保管的与自己相关的证书。**拉取模式**：服务消息只传匹配通知与证书元数据清单，证书本体始终走 `claimCert`（core 按精确 key 拉取、自动验签入库），不经消息传签名内容。要点：
+
+- **可靠性自建**（noneos-core 只保证尽力投递）：消息信封 `{ msgId, kind: "data"|"ack", payload }`；接收方先回 ACK（`ctx.fromSessionId` 定向）再去重；发送方 3s 超时复用同一 msgId 重发（≤3 次）；同目标串行队列，ACK 不进队列；`list-response` 用 `replyTo` 关联请求。
+- **在线约束**：服务只在 cred-manager 打开期间注册（页面 `attached` 注册 / `detached` 注销），对端离线时发送方直接得到「对方不在线」，拉取也要求保管人在线（core 拉取模式固有限制）。
+- **本地存储**（`getStorage("mz-cert")`）：`incoming-matches` / `outgoing-matches`（均 7 天过期，上限 50 条）。
+
+页面用法见 `pages/live-share.html`；导出的 API：`registerShareService(user, { onMatch, listCerts })`、`notifyMatch(remoteUser, card)`、`requestCertList(remoteUser, subject)`、`isPeerReachable(user, peerId)` 及匹配列表的存储函数。
+
 ## 3. 链式引用语法 —— `[<type>:<payload>]`
 
 证书自定义字段的值可以放一个**引用字符串**实现"链式证书"（授权来源指向另一张证书）：

@@ -19,12 +19,15 @@
 ├── app-config.js        # home 路由指向 pages/query-user.html；侧栏常驻的轻量切页动画配置
 ├── comps/
 │   ├── cert-item.html          # m-cert-item 证书条目组件（可折叠列表项，多页面复用）
-│   └── cred-server-select.html # m-cred-server-select 凭证中心选择组件（query-user / my-info 复用）
+│   ├── cred-server-select.html # m-cred-server-select 凭证中心选择组件（query-user / my-info 复用）
+├── lib/
+│   └── live-share.js           # 互授协议：registerService/sendToService 封装 + msgId/ACK/重发/去重可靠层 + 本地持久化 + cred-hub 兜底上传/拉取
 └── pages/
     ├── home.html        # 布局页：左侧栏导航 + slot 内容区（所有子页的 parent）
     ├── query-user.html  # 查询用户 + 签发证书（默认首页）；顶部凭证中心选择组件解析配对码
     ├── my-info.html     # 我的信息：改用户名、复制我的用户 ID / 公钥 / 配对码；生成配对码前可用凭证中心选择组件（取码卡片用本地 getInfo()，勿用 getProfile(self)——后者本地未命中会走 P2P 拉自己的其他实例，旧实例 info 字段不一致时报 "Cred record key mismatch"）
     ├── known-users.html # 已知用户：本地缓存的 profile 卡片列表
+    ├── live-share.html  # 互授：匹配码连接 + 自动拉取与我相关的证书（service-registry 通信），见「互授流程」
     ├── claim.html       # 领取证书（仅作为 my-certs 弹窗内嵌 o-page 使用，无 parent）
     ├── my-certs.html    # 本地证书列表（tab 过滤 + 领取/导入弹窗）
     ├── cert-detail.html # 证书详情（含链式展开 + JSON 源数据）
@@ -144,6 +147,17 @@
 
 创建组织（slug 命名）→ 列表点击进详情 → 改展示名 / 从已知用户点选员工签发 staff 证书（角色默认 staff，有效期 30/90/365 天或永不）/ 查看组织已签发（含吊销）/ 重签 / 导入本地 / 吊销 / 删除组织（confirm 二次确认）。
 
+### 互授（live-share.html + lib/live-share.js）
+
+基于 noneos-core 用户服务通信（`registerService` / `sendToService`，即用户所称 service-registry，实际挂在 `/nos/user` 的 LocalUser 上）的实时互授通道。**拉取模式**：服务消息只做互见与清单发现，证书本体始终走 core 的 `getRecord(holderId, {role, issuer, subject})` 在线拉取（自动验签入库），不通过消息传签名内容。
+
+- **服务标识**：`SERVICE_APP_ID = "cred-share-v1"`；页面 `attached` 注册、`detached` 注销——**双方都必须打开本页（应用）才能实时互通**，对端离线时发送方收到「对方不在线」。
+- **页面结构**（无两侧列表、无逐条按钮，流程极简）：顶栏生成**我的匹配码**（`requestPairingCode`，与 my-info 同源幂等，倒计时到期提示刷新）→ 输入对方配对码 → 连接后对方卡片进入「已连接」区并**自动拉取**；对方匹配我时同样实时出现并自动拉取。
+- **匹配**：输入对方配对码 → `resolvePairingCard` + `verifyProfileCard` → `connectUser` + `notifyMatch`（推送本方 `user.getInfo()` 卡片）。联动只在本次会话内响应匹配动作，不恢复历史、不自动连接任何用户。
+- **自动拉取**：`requestCertList`（发 `list-request`，对方 `listCerts(subject)` 回本地保管的、subject 为我的证书**元数据**清单）→ 逐条 `claimCert(peerId, role, { issuerId })` 按 key 拉取。签发者 ≠ 对方本人 = 他人签发、对方中转（如组织证书托管），拉取时显式传实际 issuer。卡片上展示拉取结果（成功条目 + 状态文案）。
+- **可靠层**（lib 内实现，遵循 noneos-core reliable-messaging 规范）：消息信封 `{ msgId, kind: "data"|"ack", payload }`；接收方**先回 ACK（带 `ctx.fromSessionId` 定向）再去重**；发送方 3s 超时复用同一 msgId 重发（至多 3 次）；同一目标按 `userId:all` 串行队列发送，ACK 不进队列。`list-response` 用 `replyTo` 关联请求，等待表带超时。
+- **payload 类型**：`{ type: "match", card }` / `{ type: "list-request", subject }` / `{ type: "list-response", replyTo, certs }`。
+
 ## 组件：comps/cert-item.html（`m-cert-item`）
 
 - 可折叠 `st-list-item`，展示证书角色徽标（我签发 / 签发给我 / 其他人的 / 组织签发 / 已吊销 / 已过期 / 链式）、签发者与主体（`n-user-name`）、时间、指纹、自定义字段（chain_key 引用渲染为徽章）。
@@ -167,3 +181,5 @@
 | `pairing-server` | 当前选中的凭证中心地址（字符串，m-cred-server-select 维护） |
 | `cred-servers` | 用户手动添加的自定义凭证中心地址列表（字符串数组，m-cred-server-select 维护） |
 | `issue-history` | 签发历史（/mz/cert 的 appendIssueHistory 写入） |
+| `incoming-matches` | 互授：匹配了我的卡片列表（live-share 写入，7 天过期，上限 50 条） |
+| `outgoing-matches` | 互授：我匹配的卡片列表（live-share 写入，7 天过期，上限 50 条） |
