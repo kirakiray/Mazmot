@@ -43,7 +43,7 @@ Bearer Token 鉴权（`CRED_HUB_ADMIN_TOKEN`，本地 vars / 线上 `wrangler se
 
 ## CORS
 
-`CRED_HUB_CORS` 三种取值：`"1"`/`"*"` = 任意 Origin（`allow-origin: *`）；逗号分隔 Origin 白名单 = 命中才回显请求 Origin（尾部 `/` 容错，附 `Vary: Origin`），未命中不带 CORS 头；留空 = 不处理（反代统一配置）。解析在 `parseCorsOrigins`，白名单模式回显具体 Origin 而非 `*`（带凭据的浏览器请求拒绝通配）。
+`CRED_HUB_CORS` 三种取值：`"1"`/`"*"` = 任意 Origin（`allow-origin: *`）；逗号分隔 Origin 白名单 = 命中才回显请求 Origin（尾部 `/` 容错，附 `Vary: Origin`），未命中不带 CORS 头；留空 = 不处理（反代统一配置）。解析在 `parseCorsOrigins`，白名单模式回显具体 Origin 而非 `*`（带凭据的浏览器请求拒绝通配）。白名单条目支持子域通配 `https://*.noneos.com`（匹配任意子域，不含 noneos.com 本身）；普通条目按完整 Origin（含端口）精确匹配。
 
 ## 测试
 

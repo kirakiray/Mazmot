@@ -241,6 +241,7 @@ export async function validateProfileCard(card) {
 /// - "1" 或 "*"：放行任意 Origin（allow-origin: *）
 /// - 逗号分隔的 Origin 白名单（如 "https://a.com,https://b.com"）：
 ///   请求 Origin 命中时回显该 Origin，否则不加 CORS 头（浏览器侧拒绝）
+///   支持子域通配（如 "https://*.noneos.com"，匹配任意子域，不含 noneos.com 本身）
 const parseCorsOrigins = (env) => {
   const raw = (env.CRED_HUB_CORS || "").trim();
   if (raw === "1" || raw === "*") return "*";
@@ -256,7 +257,16 @@ function withCors(request, env, response) {
   if (!allowed) return response;
   const origin = request.headers.get("origin") || "";
   const normalized = origin.replace(/\/+$/, "");
-  const match = allowed === "*" || allowed.includes(normalized);
+  const match =
+    allowed === "*" ||
+    allowed.includes(normalized) ||
+    (Array.isArray(allowed) &&
+      allowed.some((entry) =>
+        entry.startsWith("https://*.")
+          ? normalized.startsWith("https://") &&
+            normalized.endsWith(entry.slice(9))
+          : false,
+      ));
   if (match) {
     // 白名单模式回显具体 Origin（不能写 *，否则带凭据的请求会被浏览器拒绝）
     response.headers.set(
