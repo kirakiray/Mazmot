@@ -117,6 +117,14 @@
     .task st-progress {
       flex: 1;
     }
+    .task .tspeed {
+      width: 72px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
     .task .tpct {
       width: 40px;
       text-align: right;
@@ -144,14 +152,14 @@
 
   <div class="page">
     <div class="toolbar">
-    <st-button on:click="pickUpload()">
-      <n-icon icon="mdi:upload"></n-icon>
-      上传
-    </st-button>
-    <st-button variant="outlined" on:click="newFolder()">
-      <n-icon icon="mdi:folder-plus-outline"></n-icon>
-      新建文件夹
-    </st-button>
+      <st-button attr:disabled="isRoot" on:click="pickUpload()">
+        <n-icon icon="mdi:upload"></n-icon>
+        上传
+      </st-button>
+      <st-button variant="outlined" attr:disabled="isRoot" on:click="newFolder()">
+        <n-icon icon="mdi:folder-plus-outline"></n-icon>
+        新建文件夹
+      </st-button>
     <div style="flex: 1"></div>
     <st-input placeholder="搜索当前目录" sync:value="keyword"></st-input>
     <st-button variant="text" on:click="reload()">
@@ -208,6 +216,7 @@
           <n-icon attr:icon="$data.icon" style="font-size: 18px"></n-icon>
           <span class="tname">{{$data.name}}</span>
           <st-progress :value="$data.pct"></st-progress>
+          <span class="tspeed">{{$data.speed}}</span>
           <span class="tpct">{{$data.pct}}%</span>
         </div>
       </o-fill>
@@ -228,7 +237,7 @@
 
     export default async ({ load, query }) => {
       const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
-      const { formatBytes, formatTime, fileIcon } = await load(
+      const { formatBytes, formatTime, fileIcon, CHUNK_SIZE } = await load(
         "/mz/cloud-drive/protocol.js"
       );
       const [
@@ -246,6 +255,7 @@
           // connState 仅驱动本页 loading 文案（顶栏状态在父 layout）
           connState: "connecting",
           loading: true,
+          isRoot: true, // 根目录（空间选择层）禁用上传 / 新建文件夹
           fileItems: [],
           keyword: "",
           tasks: [],
@@ -254,6 +264,7 @@
           this._client = getSharedClient();
           // 目录位置走 ofa.js 路由（hash query），支持浏览器后退 / 刷新恢复
           this._currentDir = query.dir ? decodeURIComponent(query.dir) : "root";
+          this.isRoot = this._currentDir === "root";
           if (!this._client.loggedIn) {
             // 刷新后凭持久化会话自动恢复登录（连接期间页面显示 loading + 红点）
             const restored = await this._client.tryRestoreSession();
@@ -283,7 +294,10 @@
               );
               this.fileItems = entries.map((e) => ({
                 ...e,
-                icon: fileIcon(e.name, e.type === "dir"),
+                // 根目录下的空间是"存储位置"而非普通文件夹，用存储盘图标
+                icon: e.virtual
+                  ? "mdi:database-outline"
+                  : fileIcon(e.name, e.type === "dir"),
                 metaText:
                   e.type === "dir"
                     ? `${formatTime(e.mtime)}`
@@ -337,10 +351,11 @@
 
           async uploadOne(file) {
             const task = this.addTask("mdi:upload", file.name);
+            const tick = this.makeSpeedTracker();
             try {
               await this._client.uploadFile(file, this._currentDir, {
                 onProgress: ({ sent, total }) =>
-                  this.updateTask(task, sent, total),
+                  this.updateTask(task, sent, total, tick(sent)),
               });
               this.tip(`「${file.name}」上传完成`);
             } catch (err) {
@@ -399,10 +414,11 @@
           async downloadEntry(entry, e) {
             if (e) e.stopPropagation();
             const task = this.addTask("mdi:download", entry.name);
+            const tick = this.makeSpeedTracker();
             try {
               const blob = await this._client.downloadFile(entry, {
                 onProgress: ({ sent, total }) =>
-                  this.updateTask(task, sent, total),
+                  this.updateTask(task, sent, total, tick(sent)),
               });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
@@ -425,17 +441,48 @@
               icon,
               name,
               pct: 0,
+              speed: "",
             };
             this.tasks = [...this.tasks, task];
-            return task;
+            return task; // 仅作句柄，更新须走 updateTask / _setTask
           },
 
-          updateTask(task, sent, total) {
-            task.pct = total ? Math.round((sent / total) * 100) : 100;
+          /**
+           * 按 id 定位任务并写入字段。
+           * 必须经 this.tasks[idx] 修改：stanz 数组项经索引访问才是响应式代理，
+           * find 返回的引用 / 外部持有的原始对象改了不触发视图更新。
+           */
+          _setTask(task, patch) {
+            const idx = this.tasks.findIndex((t) => t.id === task.id);
+            if (idx === -1) return;
+            const item = this.tasks[idx];
+            for (const k in patch) item[k] = patch[k];
+          },
+
+          /** 速度采样器：按块计数换算字节，每 0.5s 返回一次"x/s"文案 */
+          makeSpeedTracker(chunkSize = CHUNK_SIZE) {
+            let lastBytes = 0;
+            let lastTime = Date.now();
+            return (sent) => {
+              const bytes = sent * chunkSize;
+              const now = Date.now();
+              const dt = (now - lastTime) / 1000;
+              if (dt < 0.5) return null;
+              const bps = (bytes - lastBytes) / dt;
+              lastBytes = bytes;
+              lastTime = now;
+              return `${formatBytes(bps)}/s`;
+            };
+          },
+
+          updateTask(task, sent, total, speed) {
+            const patch = { pct: total ? Math.round((sent / total) * 100) : 100 };
+            if (speed) patch.speed = speed;
+            this._setTask(task, patch);
           },
 
           finishTask(task) {
-            task.pct = 100;
+            this._setTask(task, { pct: 100 });
             setTimeout(() => {
               this.tasks = this.tasks.filter((t) => t.id !== task.id);
             }, 800);
