@@ -318,7 +318,7 @@
             // 刷新后凭持久化会话自动恢复登录
             const restored = await this._client.tryRestoreSession();
             if (!restored) {
-              this.goto("./home.html");
+              this.gotoHome();
               return;
             }
           }
@@ -349,7 +349,7 @@
             } catch (err) {
               this.tip(err.message);
               if (String(err.message).includes("登录")) {
-                this.goto("./home.html");
+                this.gotoHome();
               }
             }
           },
@@ -465,7 +465,7 @@
 
           async logout() {
             await this._client.logout();
-            this.goto("./home.html");
+            this.gotoHome();
           },
 
           addTask(icon, name) {
@@ -492,6 +492,11 @@
 
           tip(text) {
             toast(text);
+          },
+
+          // 同 home.html 的 gotoFiles：绕开 goto 相对解析变更
+          gotoHome() {
+            location.hash = "#" + new URL("home.html", this.src).pathname;
           },
         },
       };

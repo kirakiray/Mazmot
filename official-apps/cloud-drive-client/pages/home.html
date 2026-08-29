@@ -257,7 +257,7 @@
             await this.refreshTransfers();
             // 有持久化登录态（含刷新后恢复）直接回文件页
             if (this._client.loggedIn || (await this._client.tryRestoreSession())) {
-              this.app.goto("./files.html");
+              this.gotoFiles();
             }
           },
 
@@ -314,7 +314,7 @@
                 username: this.username.trim(),
                 password: this.password,
               });
-              this.goto("./files.html");
+              this.gotoFiles();
             } catch (err) {
               this.errorText = `登录失败：${err.message}`;
             }
@@ -338,6 +338,12 @@
 
           tip(text) {
             toast(text);
+          },
+
+          // ofa.js@latest 的 goto("./x") 相对 app 根目录解析，
+          // 显式按本页 src 构造绝对路由，避免丢掉 /pages/ 段
+          gotoFiles() {
+            location.hash = "#" + new URL("files.html", this.src).pathname;
           },
         },
       };
