@@ -1,0 +1,172 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    /* 布局放在根级 div 上：o-page 默认样式会把 :host 覆盖为 block，flex 不可依赖 :host */
+    .layout {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      background: var(--md-sys-color-surface-container);
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .brand .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .crumbs {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      overflow-x: auto;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      scrollbar-width: none;
+    }
+    .crumb {
+      border: none;
+      background: none;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .crumb:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+    .crumb.current {
+      color: var(--md-sys-color-on-surface);
+      font-weight: 600;
+    }
+    .crumb n-icon {
+      font-size: 14px;
+      vertical-align: middle;
+    }
+    .user-tag {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .conn-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-error);
+      margin-right: 6px;
+      vertical-align: middle;
+      transition: background 0.2s ease;
+    }
+    .conn-dot.online {
+      background: #43a047;
+    }
+    .body {
+      flex: 1;
+      min-height: 0;
+    }
+  </style>
+
+  <div class="layout">
+    <div class="topbar">
+    <div class="brand">
+      <div class="logo">📁</div>
+      <span>我的云盘</span>
+    </div>
+    <div class="crumbs">
+      <button class="crumb" class:current="depth === 0" on:click="enterDir('root')">全部文件</button>
+      <o-fill :value="crumbItems" fill-key="id">
+        <span style="display: inline-flex; align-items: center">
+          <n-icon icon="mdi:chevron-right"></n-icon>
+          <button
+            class="crumb"
+            class:current="$data.current"
+            on:click="$host.enterDir($data.id)"
+          >
+            {{$data.name}}
+          </button>
+        </span>
+      </o-fill>
+    </div>
+    <span class="user-tag"
+      ><span class="conn-dot" class:online="connState === 'connected'"></span
+      >{{username || "连接中…"}}</span
+    >
+    <st-button variant="text" on:click="logout()">
+      <n-icon icon="mdi:logout"></n-icon>
+      退出
+    </st-button>
+  </div>
+
+  <div class="body" on:cloud-nav="onCloudNav">
+    <slot></slot>
+  </div>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
+      return {
+        data: {
+          username: "",
+          connState: "connecting",
+          crumbItems: [],
+          depth: 0,
+        },
+        proto: {
+          // 子页面经冒泡事件（cloud-nav）同步导航状态
+          onCloudNav(e) {
+            const d = e.data || {};
+            if ("username" in d) this.username = d.username;
+            if ("connState" in d) this.connState = d.connState;
+            if ("crumbItems" in d) this.crumbItems = d.crumbItems;
+            if ("depth" in d) this.depth = d.depth;
+          },
+
+          enterDir(dirId) {
+            // 路由方式切换目录，子页面随路由刷新，支持浏览器后退
+            this.goto("./files.html?dir=" + encodeURIComponent(dirId));
+          },
+
+          async logout() {
+            await getSharedClient().logout();
+            const base = new URL(this.src || "./pages/layout.html", location.href);
+            const homeUrl = new URL("home.html", base);
+            const entry = new URL("../", homeUrl).href; // 应用根（client/）
+            location.replace(entry + "#" + homeUrl.pathname);
+          },
+        },
+      };
+    };
+  </script>
+</template>

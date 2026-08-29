@@ -914,11 +914,12 @@ export class CloudDriveServer {
     await this._storage.setItem(`tree:${spaceId}`, tree);
   }
 
+  /** 根目录以下（含当前目录）的路径，返回 [{ id, name }]，与本地空间路径结构一致 */
   _buildPath(tree, nodeId) {
     const parts = [];
     let cur = tree.nodes[nodeId];
     while (cur && cur.id !== tree.rootId) {
-      parts.unshift(cur.name);
+      parts.unshift({ id: cur.id, name: cur.name });
       cur = tree.nodes[cur.parentId];
     }
     return parts;

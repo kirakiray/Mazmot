@@ -8,74 +8,14 @@
     :host {
       display: block;
       height: 100%;
+    }
+    /* 布局放在根级 div 上：o-page 默认样式会把 :host 覆盖为 block，flex 不可依赖 :host */
+    .page {
+      height: 100%;
       display: flex;
       flex-direction: column;
       background: var(--md-sys-color-surface);
       color: var(--md-sys-color-on-surface);
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 18px;
-      background: var(--md-sys-color-surface-container);
-      flex-shrink: 0;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 600;
-      font-size: 15px;
-      flex-shrink: 0;
-    }
-    .brand .logo {
-      width: 32px;
-      height: 32px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 17px;
-      background: var(--md-sys-color-primary-container);
-      color: var(--md-sys-color-on-primary-container);
-    }
-    .crumbs {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      overflow-x: auto;
-      font-size: 13px;
-      color: var(--md-sys-color-on-surface-variant);
-      scrollbar-width: none;
-    }
-    .crumb {
-      border: none;
-      background: none;
-      font: inherit;
-      color: inherit;
-      cursor: pointer;
-      padding: 4px 6px;
-      border-radius: 8px;
-      white-space: nowrap;
-    }
-    .crumb:hover {
-      background: var(--md-sys-color-surface-container-high);
-    }
-    .crumb.current {
-      color: var(--md-sys-color-on-surface);
-      font-weight: 600;
-    }
-    .crumb n-icon {
-      font-size: 14px;
-      vertical-align: middle;
-    }
-    .user-tag {
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-      flex-shrink: 0;
     }
     .toolbar {
       display: flex;
@@ -186,19 +126,6 @@
     .hidden-input {
       display: none;
     }
-    .conn-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--md-sys-color-error);
-      margin-right: 6px;
-      vertical-align: middle;
-      transition: background 0.2s ease;
-    }
-    .conn-dot.online {
-      background: #43a047;
-    }
     .spinner {
       width: 28px;
       height: 28px;
@@ -215,37 +142,8 @@
     }
   </style>
 
-  <div class="topbar">
-    <div class="brand">
-      <div class="logo">📁</div>
-      <span>我的云盘</span>
-    </div>
-    <div class="crumbs">
-      <button class="crumb" class:current="depth === 0" on:click="enterDir('root')">全部文件</button>
-      <o-fill :value="crumbItems" fill-key="id">
-        <span style="display: inline-flex; align-items: center">
-          <n-icon icon="mdi:chevron-right"></n-icon>
-          <button
-            class="crumb"
-            class:current="$data.current"
-            on:click="$host.enterDir($data.id)"
-          >
-            {{$data.name}}
-          </button>
-        </span>
-      </o-fill>
-    </div>
-    <span class="user-tag"
-      ><span class="conn-dot" class:online="connState === 'connected'"></span
-      >{{username || "连接中…"}}</span
-    >
-    <st-button variant="text" on:click="logout()">
-      <n-icon icon="mdi:logout"></n-icon>
-      退出
-    </st-button>
-  </div>
-
-  <div class="toolbar">
+  <div class="page">
+    <div class="toolbar">
     <st-button on:click="pickUpload()">
       <n-icon icon="mdi:upload"></n-icon>
       上传
@@ -322,8 +220,12 @@
     multiple
     id="upload-input"
   />
+  </div>
 
   <script>
+    // 挂在 layout（顶栏 / 面包屑 / 连接状态）之下，本页只负责文件区
+    export const parent = "./layout.html";
+
     export default async ({ load, query }) => {
       const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
       const { formatBytes, formatTime, fileIcon } = await load(
@@ -341,11 +243,9 @@
 
       return {
         data: {
-          username: "",
+          // connState 仅驱动本页 loading 文案（顶栏状态在父 layout）
           connState: "connecting",
           loading: true,
-          crumbItems: [],
-          depth: 0,
           fileItems: [],
           keyword: "",
           tasks: [],
@@ -363,10 +263,18 @@
             }
           }
           this.connState = "connected";
-          this.username = this._client.username;
+          this.syncNav({
+            connState: "connected",
+            username: this._client.username,
+          });
           await this.reload();
         },
         proto: {
+          // 把导航状态（用户名 / 连接状态 / 面包屑）同步给父 layout
+          syncNav(patch) {
+            this.emit("cloud-nav", { data: patch, bubbles: true, composed: true });
+          },
+
           async reload() {
             this.loading = true;
             try {
@@ -381,12 +289,14 @@
                     ? `${formatTime(e.mtime)}`
                     : `${formatBytes(e.size)} · ${formatTime(e.mtime)}`,
               }));
-              this.crumbItems = path.map((p, i) => ({
-                id: p.id,
-                name: p.name,
-                current: i === path.length - 1,
-              }));
-              this.depth = path.length;
+              this.syncNav({
+                crumbItems: path.map((p, i) => ({
+                  id: p.id,
+                  name: p.name,
+                  current: i === path.length - 1,
+                })),
+                depth: path.length,
+              });
               this.loading = false;
             } catch (err) {
               this.loading = false;
@@ -507,10 +417,7 @@
             this.finishTask(task);
           },
 
-          async logout() {
-            await this._client.logout();
-            this.gotoHome();
-          },
+          // 退出登录在父 layout 的顶栏处理
 
           addTask(icon, name) {
             const task = {

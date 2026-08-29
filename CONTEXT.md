@@ -111,7 +111,7 @@ Mazmot/
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架 + /mz/cloud-drive/server-core.js）：pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
-│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：home.html 三步登录（连接服务器 userId → 选空间 → 账号密码）+ 未完成传输「继续 / 取消」询问；files.html 文件页（面包屑 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条）；核心逻辑在 /mz/cloud-drive/client-core.js（getSharedClient 单例），登录态 / 续传记录存 getStorage("cloud-drive-client") 的 last-server 与 transfers 键
+│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；核心逻辑在 /mz/cloud-drive/client-core.js（getSharedClient 单例），登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键
 │
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）

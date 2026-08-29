@@ -12,7 +12,9 @@
 ├── index.html        # 入口 HTML：加载 ofa.js + 定义 Material 主题变量 + <o-router>/<o-app>
 ├── app-config.js     # ofa.js 应用配置：导出 home 路由与页面切换动画 pageAnime
 └── pages/
-    └── home.html     # 首页模块（<template page>）：展示 appName / appDesc
+    ├── home.html     # 登录页（<template page>）：连接服务器 userId → 用户名密码两步登录
+    ├── layout.html   # 登录后布局父页面：顶栏（品牌 / 面包屑导航 / 连接状态点红绿 / 退出按钮）+ <slot>
+    └── files.html    # 文件页：挂在 layout 之下（export const parent），负责目录列表 / 上传下载 / 续传
 ```
 
 ## 关键约定
@@ -20,7 +22,9 @@
 - **入口链路**：`index.html` → `<o-app src="./app-config.js">` → `app-config.js` 中 `export const home = "./pages/home.html"` → 加载首页模块。
 - **主题**：`index.html` 里以 CSS 变量定义 Material Design 3 亮 / 暗色调色板（`--md-sys-color-*`），页面样式统一引用这些变量，方便整套换肤。
 - **元数据同步**：修改 [app.json](app.json) 的 `name` / `description` / `icon` 后，如果这些字段也出现在页面文案里，请顺带更新对应模板/页面。
-- **连接状态反馈**：[files.html](pages/files.html) 用 `connState`（connecting/connected）+ `loading` 两个 data 字段驱动 UI——恢复会话 / 连接服务器期间文件区显示 spinner（「正在连接服务器… / 正在加载目录…」），避免渲染成空白目录；顶栏用户名左侧有连接状态点（红 = 连接中，绿 = 已连接）。刷新目录（`reload`）负责置位/复位 `loading`，空目录文案只在 `!loading` 时渲染。
+- **嵌套布局（顶栏在 layout 层）**：[layout.html](pages/layout.html) 是登录后页面的父页面（子页面 `export const parent = "./layout.html"`），承载顶栏与 `<slot>`。子页面通过冒泡事件向 layout 同步导航状态：`this.emit("cloud-nav", { data: {...}, bubbles: true, composed: true })`，layout 在 slot 容器上以**裸方法名**监听（`on:cloud-nav="onCloudNav"`，带 `()` 调用形式会报表达式求值错误）；面包屑点击 / 退出登录也由 layout 处理（`enterDir` 走路由、`logout` 调 client-core 后跳回登录页）。
+- **页面根级布局 div（重要）**：o-page 的默认样式会把 `:host` 覆盖为 `display: block`，页面模板里写的 `:host { display: flex }` 不生效，内部依赖 flex 的列布局会塌陷。因此 layout 与 files 的模板内容都包在**根级 div**（`.layout` / `.page`，`height: 100%` + flex column）上，`:host` 只保留 `display: block; height: 100%`。
+- **连接状态反馈**：[layout.html](pages/layout.html) 用 `connState`（connecting/connected）驱动顶栏状态点（红 = 连接中，绿 = 已连接），用户名未就绪时显示「连接中…」；[files.html](pages/files.html) 另持有同名 `connState` 仅驱动文件区 loading 文案。刷新恢复会话期间文件区显示 spinner（「正在连接服务器… / 正在加载目录…」），空目录文案只在 `!loading` 时渲染；`reload` 负责置位/复位 `loading`。
 
 ## 扩展指引
 
