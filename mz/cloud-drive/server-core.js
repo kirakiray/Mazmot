@@ -287,6 +287,8 @@ export class CloudDriveServer {
         if (!parent) return { ok: false, error: "目录不存在" };
         const children = Object.values(tree.nodes)
           .filter((n) => n.parentId === parentId)
+          // 不向客户端下发隐藏文件（.DS_Store 等）
+          .filter((n) => !n.name.startsWith("."))
           .sort(
             (a, b) =>
               (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1)
@@ -728,6 +730,8 @@ export class CloudDriveServer {
         if (!dir) return { ok: false, error: "目录不存在" };
         const entries = [];
         for await (const handle of dir.values()) {
+          // 不向客户端下发隐藏文件（.DS_Store 等）
+          if (handle.name.startsWith(".")) continue;
           const entry = {
             id: join(parent, handle.name),
             name: handle.name,
