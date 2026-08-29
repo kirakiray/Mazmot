@@ -1,5 +1,7 @@
 export const home = "./pages/home.html";
 
+export const files = "./pages/files.html";
+
 export const pageAnime = {
   current: {
     opacity: 1,

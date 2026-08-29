@@ -1,37 +1,641 @@
 <template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button-group.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/split-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <style>
     :host {
       display: block;
       height: 100%;
+      overflow-y: auto;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
     }
-    .welcome {
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 16px 80px;
+    }
+    .header {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
       align-items: center;
       justify-content: center;
-      height: 100%;
-      padding: 20px;
-      text-align: center;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 24px;
+      flex-shrink: 0;
     }
     h1 {
-      color: var(--md-sys-color-primary);
-      margin-bottom: 12px;
+      font-size: 20px;
+      margin: 0 0 2px;
     }
-    p {
+    .sub {
+      font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline);
+    }
+    .dot.on {
+      background: var(--md-sys-color-primary);
+    }
+    .server-card {
+      border-radius: 16px;
+      background: var(--md-sys-color-surface-container);
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .id-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .id-label {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .id-value {
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      background: var(--md-sys-color-surface);
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 8px;
+      padding: 6px 10px;
+      word-break: break-all;
+      flex: 1;
+      min-width: 200px;
+    }
+    .stats {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      flex: 1;
+      min-width: 110px;
+      background: var(--md-sys-color-surface);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .stat b {
+      display: block;
+      font-size: 18px;
+      color: var(--md-sys-color-primary);
+    }
+    .stat span {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .section-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .section-bar st-input {
+      flex: 1;
+    }
+    .row-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--md-sys-color-surface-container);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .row .grow {
+      flex: 1;
+      min-width: 0;
+    }
+    .row .name {
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .row .meta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+    }
+    .chips {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .chip.local {
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+    }
+    .empty {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 40px 0;
+      font-size: 14px;
+    }
+    .dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 280px;
+    }
+    .field label {
+      display: block;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 4px;
+    }
+    .field st-input {
+      width: 100%;
+    }
+    .space-picks {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pick {
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface-variant);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .pick.active {
+      background: var(--md-sys-color-primary-container);
+      border-color: transparent;
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .dialog-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
     }
   </style>
-  <div class="welcome">
-    <h1>Hello, {{appName}}!</h1>
-    <p>{{appDesc}}</p>
+
+  <div class="wrap">
+    <div class="header">
+      <div class="logo">🗄️</div>
+      <div>
+        <h1>云盘服务器</h1>
+        <div class="sub">
+          <span class:dot="running"></span>
+          <span>{{running ? "服务运行中" : "服务未启动"}}</span>
+        </div>
+      </div>
+      <div style="flex: 1"></div>
+      <st-button attr:variant="running ? 'outlined' : 'filled'" on:click="toggleServer()">
+        {{running ? "停止服务" : "启动服务"}}
+      </st-button>
+    </div>
+
+    <o-if :value="running">
+      <div class="server-card">
+        <div class="id-row">
+          <span class="id-label">服务器 ID（发给客户端连接）</span>
+          <div class="id-value">{{myId}}</div>
+          <st-button variant="text" on:click="copyId()">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-button>
+        </div>
+        <div class="stats">
+          <div class="stat"><b>{{stats.spaceCount}}</b><span>空间</span></div>
+          <div class="stat"><b>{{stats.accountCount}}</b><span>账号</span></div>
+          <div class="stat"><b>{{stats.fileCount}}</b><span>文件</span></div>
+          <div class="stat"><b>{{stats.sizeText}}</b><span>总容量</span></div>
+        </div>
+      </div>
+
+      <div class="section-bar">
+        <st-button-group connected>
+          <st-button attr:variant="activeTab === 'space' ? 'filled' : 'outlined'" on:click="switchTab('space')">空间管理</st-button>
+          <st-button attr:variant="activeTab === 'user' ? 'filled' : 'outlined'" on:click="switchTab('user')">用户管理</st-button>
+        </st-button-group>
+      </div>
+
+      <o-if :value="activeTab === 'space'">
+        <div class="section-bar">
+          <st-input
+            placeholder="新空间名称"
+            sync:value="newSpaceName"
+          ></st-input>
+          <st-split-button on:click="createSpace()">
+            创建空间
+            <st-menu-item slot="menu" on:click="mountLocalFolder()">
+              <n-icon slot="prefix" icon="mdi:folder-open-outline"></n-icon>
+              挂载本地文件夹
+            </st-menu-item>
+          </st-split-button>
+        </div>
+        <o-if :value="spaces.length">
+          <div class="row-list">
+            <o-fill :value="spaces" fill-key="id">
+              <div class="row">
+                <n-icon attr:icon="$data.icon" style="font-size: 22px"></n-icon>
+                <div class="grow">
+                  <div class="name">{{$data.name}}</div>
+                  <div class="meta">{{$data.kindText}} · {{$data.timeText}}</div>
+                </div>
+                <span class="chip" class:local="$data.kind === 'local'">{{$data.kind === 'local' ? "本地" : "虚拟"}}</span>
+                <st-button variant="text" on:click="$host.deleteSpace($data)">
+                  <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
+                </st-button>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+        <o-if :value="!spaces.length">
+          <div class="empty">还没有空间，创建一个开始使用</div>
+        </o-if>
+      </o-if>
+
+      <o-if :value="activeTab === 'user'">
+        <div class="section-bar">
+          <div style="flex: 1"></div>
+          <st-button on:click="openUserDialog()">添加账号</st-button>
+        </div>
+        <o-if :value="accounts.length">
+          <div class="row-list">
+            <o-fill :value="accounts" fill-key="id">
+              <div class="row">
+                <n-icon icon="mdi:account-circle-outline" style="font-size: 22px"></n-icon>
+                <div class="grow">
+                  <div class="name">{{$data.username}}</div>
+                  <div class="meta">{{$data.timeText}}</div>
+                </div>
+                <div class="chips">
+                  <o-fill :value="$data.spaceChips" fill-key="id">
+                    <span class="chip">{{$data.name}}</span>
+                  </o-fill>
+                </div>
+                <st-button variant="text" on:click="$host.openEditDialog($data)">
+                  <n-icon icon="mdi:pencil-outline"></n-icon>
+                </st-button>
+                <st-button variant="text" on:click="$host.deleteAccount($data)">
+                  <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
+                </st-button>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+        <o-if :value="!accounts.length">
+          <div class="empty">还没有账号，为客户端创建一个</div>
+        </o-if>
+      </o-if>
+    </o-if>
+
+    <o-if :value="!running">
+      <div class="empty" style="padding-top: 80px">
+        <p>启动服务后，客户端即可通过你的用户 ID 连接。</p>
+        <p style="font-size: 12px">空间、账号与文件数据都保存在本机浏览器中。</p>
+      </div>
+    </o-if>
   </div>
+
+  <st-dialog sync:open="userDialogOpen">
+    <div class="dialog-body">
+      <div style="font-size: 16px; font-weight: 600">添加账号</div>
+      <div class="field">
+        <label>用户名</label>
+        <st-input placeholder="客户端登录名" sync:value="formUsername"></st-input>
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <st-input placeholder="登录密码" sync:value="formPassword"></st-input>
+      </div>
+      <div class="field">
+        <label>授权空间（可多选）</label>
+        <div class="space-picks">
+          <o-fill :value="dialogSpaces" fill-key="id">
+            <button
+              class="pick"
+              class:active="$data.picked"
+              on:click="$host.togglePick($data)"
+            >
+              {{$data.name}}
+            </button>
+          </o-fill>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <st-button variant="text" on:click="closeUserDialog()">取消</st-button>
+        <st-button on:click="submitUser()">创建</st-button>
+      </div>
+    </div>
+  </st-dialog>
+
+  <st-dialog sync:open="editDialogOpen">
+    <div class="dialog-body">
+      <div style="font-size: 16px; font-weight: 600">编辑账号</div>
+      <div class="field">
+        <label>用户名</label>
+        <st-input :value="editUsername" attr:disabled="true"></st-input>
+      </div>
+      <div class="field">
+        <label>新密码（留空表示不修改）</label>
+        <st-input placeholder="输入新密码" sync:value="editPassword"></st-input>
+      </div>
+      <div class="field">
+        <label>授权空间（可多选）</label>
+        <div class="space-picks">
+          <o-fill :value="editSpaces" fill-key="id">
+            <button
+              class="pick"
+              class:active="$data.picked"
+              on:click="$host.togglePick($data)"
+            >
+              {{$data.name}}
+            </button>
+          </o-fill>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <st-button variant="text" on:click="editDialogOpen = false">取消</st-button>
+        <st-button on:click="submitEdit()">保存</st-button>
+      </div>
+    </div>
+  </st-dialog>
+
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { CloudDriveServer } = await load("/mz/cloud-drive/server-core.js");
+      const { getUser } = await load("/nos/user/main.js");
+      const { formatBytes, formatTime } = await load(
+        "/mz/cloud-drive/protocol.js"
+      );
+      // 页面模块编译为 data: URL，内部不能动态 import("/gh/...")，
+      // 统一在初始化期经 load() 解析
+      const [{ default: confirm }, { default: toast }, { default: alert }] =
+        await Promise.all([
+          load("/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js"),
+          load("/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"),
+          load("/gh/ofajs/senti-ui@latest/packages/dialog/alert.js"),
+        ]);
+      const { open } = await load("/nos/fs/main.js");
+
       return {
         data: {
-          appName: "云盘服务器",
-          appDesc: "提供云盘存储服务的服务端应用，管理存储空间与分享访问。",
+          running: false,
+          myId: "",
+          activeTab: sessionStorage.getItem("cloud-drive-server-tab") || "space",
+          newSpaceName: "",
+          spaces: [],
+          dialogSpaces: [],
+          accounts: [],
+          stats: {
+            spaceCount: 0,
+            accountCount: 0,
+            fileCount: 0,
+            sizeText: "0 B",
+          },
+          userDialogOpen: false,
+          formUsername: "",
+          formPassword: "",
+          editDialogOpen: false,
+          editingAccountId: "",
+          editUsername: "",
+          editPassword: "",
+          editSpaces: [],
+        },
+        ready() {
+          this.init();
+        },
+        detached() {
+          this._server?.stop();
+        },
+        proto: {
+          async init() {
+            const user = await getUser("cloud-drive");
+            this.myId = user.userId;
+            const server = new CloudDriveServer(user, (e) => {
+              if (
+                [
+                  "login",
+                  "upload-complete",
+                  "space-created",
+                  "space-deleted",
+                  "account-created",
+                ].includes(e.type)
+              ) {
+                this.refreshAll();
+              }
+            });
+            this._server = server;
+            await server.start();
+            this.running = true;
+            await this.refreshAll();
+          },
+
+          async refreshAll() {
+            const server = this._server;
+            if (!server?.running) return;
+            this.spaces = (await server.listSpaces()).map((s) => ({
+              ...s,
+              kindText: s.kind === "local" ? "本地文件夹" : "虚拟空间",
+              icon: s.kind === "local" ? "mdi:folder-open-outline" : "mdi:database-outline",
+              timeText: formatTime(s.createdAt),
+            }));
+            const accounts = await server.listAccounts();
+            const spaceMap = new Map(this.spaces.map((s) => [s.id, s.name]));
+            this.accounts = accounts.map((a) => ({
+              ...a,
+              timeText: `创建于 ${formatTime(a.createdAt)}`,
+              spaceChips: a.spaces
+                .map((id) => ({ id, name: spaceMap.get(id) || "?" }))
+                .filter((c) => c.name !== "?"),
+            }));
+            const stats = await server.getStats();
+            stats.sizeText = formatBytes(stats.totalSize);
+            this.stats = stats;
+          },
+
+          async toggleServer() {
+            if (this.running) {
+              this._server.stop();
+              this.running = false;
+            } else {
+              await this._server.start();
+              this.running = true;
+              await this.refreshAll();
+            }
+          },
+
+          async copyId() {
+            await navigator.clipboard.writeText(this.myId);
+            this.tip("已复制服务器 ID");
+          },
+
+          switchTab(tab) {
+            this.activeTab = tab;
+            // sessionStorage：标签页级记忆，刷新后停在原 tab
+            sessionStorage.setItem("cloud-drive-server-tab", tab);
+          },
+
+          async mountLocalFolder() {
+            // File System Access API 仅 Chromium 系浏览器支持
+            if (!window.showDirectoryPicker) {
+              alert(
+                "当前浏览器不支持挂载本地文件夹（缺少 File System Access API）。\n\n请改用 Chrome、Edge 等基于 Chromium 的浏览器打开服务器端后再试。虚拟空间的创建不受影响。",
+                { title: "浏览器不支持" }
+              );
+              return;
+            }
+            try {
+              const handle = await open();
+              if (!handle) return;
+              await this._server.createLocalSpace(handle);
+              await this.refreshAll();
+              this.tip(`已挂载本地文件夹「${handle.name}」`);
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async createSpace() {
+            const name = this.newSpaceName.trim();
+            if (!name) return this.tip("请输入空间名称");
+            try {
+              await this._server.createSpace(name);
+              this.newSpaceName = "";
+              await this.refreshAll();
+              this.tip("空间已创建");
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async deleteSpace(space) {
+            const ok = await this.confirmDialog(
+              space.kind === "local"
+                ? `移除空间「${space.name}」？仅解除挂载登记，本地文件不会被删除。`
+                : `删除空间「${space.name}」？空间内所有文件与授权将被清除，不可恢复。`
+            );
+            if (!ok) return;
+            await this._server.deleteSpace(space.id);
+            await this.refreshAll();
+            this.tip("空间已删除");
+          },
+
+          openUserDialog() {
+            this.formUsername = "";
+            this.formPassword = "";
+            this.dialogSpaces = this.spaces.map((s) => ({
+              ...s,
+              picked: false,
+            }));
+            this.userDialogOpen = true;
+          },
+
+          closeUserDialog() {
+            this.userDialogOpen = false;
+          },
+
+          openEditDialog(account) {
+            this.editingAccountId = account.id;
+            this.editUsername = account.username;
+            this.editPassword = "";
+            const pickedIds = new Set(account.spaces);
+            this.editSpaces = this.spaces.map((s) => ({
+              ...s,
+              picked: pickedIds.has(s.id),
+            }));
+            this.editDialogOpen = true;
+          },
+
+          async submitEdit() {
+            const picked = this.editSpaces
+              .filter((s) => s.picked)
+              .map((s) => s.id);
+            if (!picked.length) return this.tip("至少授权一个空间");
+            const password = this.editPassword.trim();
+            try {
+              await this._server.updateAccount(this.editingAccountId, {
+                password: password || undefined,
+                spaces: picked,
+              });
+              this.editDialogOpen = false;
+              await this.refreshAll();
+              this.tip(password ? "账号已更新（密码已修改）" : "账号已更新");
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          togglePick(space) {
+            space.picked = !space.picked;
+          },
+
+          async submitUser() {
+            const username = this.formUsername.trim();
+            const password = this.formPassword;
+            const picked = this.dialogSpaces
+              .filter((s) => s.picked)
+              .map((s) => s.id);
+            try {
+              await this._server.createAccount({
+                username,
+                password,
+                spaces: picked,
+              });
+              this.userDialogOpen = false;
+              await this.refreshAll();
+              this.tip("账号已创建");
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async deleteAccount(account) {
+            const ok = await this.confirmDialog(
+              `删除账号「${account.username}」？`
+            );
+            if (!ok) return;
+            await this._server.deleteAccount(account.id);
+            await this.refreshAll();
+          },
+
+          confirmDialog(text) {
+            return confirm(text, { title: "云盘服务器" });
+          },
+
+          tip(text) {
+            toast(text);
+          },
         },
       };
     };

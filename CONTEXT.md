@@ -90,6 +90,12 @@ Mazmot/
 │   ├── org/                  # 系统级组织账户机制（URL = /mz/org/*）
 │   │   ├── main.js           # 组织 = 独立 NoneOS 用户（命名空间 org:<name>，**离线身份，从不连服务器**）：createOrg（org 给创建者签 role="owner" 永久证书，extras 带 type:"org"+org:<name> 标记并 cred.import 进创建者凭证库；profile 自定义字段带 type:"org" 标记，isOrgProfile 判别）/ listOrgs / getOrg / updateOrgInfo / issueStaffCert（默认 role="staff"，证书同样带 type/org 标记，签发后自动 cred.import 托管进创建者 default 凭证库，员工用 claimCert(创建者ID, role, {issuerId: 组织ID}) 领取，计入带 issuer 的签发历史）/ listOrgIssued（经 /mz/cert 的 listIssuedBy 查 org 用户凭证库）/ revokeOrgCert / deleteOrg（deleteUser 不可逆）；组织清单存 getStorage("mz-orgs")，业务应用凭「证书 issuer === org userId」做员工权限判断
 │   │   └── test/             # validateOrgName 等纯函数测试
+│   ├── cloud-drive/          # 云盘套件共享层（URL = /mz/cloud-drive/*，被 official-apps/cloud-drive-client 与 cloud-drive-server 共用）
+│   │   ├── protocol.js       # 协议常量与纯工具（APP_SERVICE_ID="cloud-drive-v1" / USER_NAMESPACE="cloud-drive" / CHUNK_SIZE=48KB / RESUME_MIN_SIZE=256KB / MSG 消息类型表 / base64 互转 / formatBytes / newId / sha256Hex / fileIcon）
+│   │   ├── reliable.js       # ReliableChannel 可靠投递通道（纯模块可注入 transport 便于模拟丢包）：信封 {msgId, kind:"data"|"ack", payload}，ACK 确认 + 超时重发（复用同一 msgId）+ 接收端去重（TTL 5min + 容量上限）+ 同目标串行队列；ACK 先于去重回；payload 超 112KB 立即 reject
+│   │   ├── server-core.js    # CloudDriveServer（构造传 LocalUser + onEvent）：start/stop（registerService cloud-drive-v1）；空间/账号管理 listSpaces / createSpace（虚拟）/ createLocalSpace（挂载本地文件夹：kind:"local"，挂载句柄存 mount:<spaceId>，fileId 为相对路径直读写真实目录，暂不支持重命名）/ deleteSpace / listAccounts / createAccount / updateAccount / deleteAccount / getStats；指令处理（每远端串行）login（SHA-256 密码 + 空间授权校验，token 会话）/ list / mkdir / rename / remove（递归）/ up-init（按 clientUploadId 幂等续传）/ up-chunk / up-complete（合并入 fs）/ up-cancel / down-init / down-chunk；远端通道 ReliableChannel 按 remoteUserId 缓存
+│   │   ├── client-core.js    # CloudDriveClient（getSharedClient 单例跨页面共享连接与登录态）：connect（connectUser + 注册应答服务 + ping 握手）/ fetchSpaces / login / list / mkdir / rename / remove；uploadFile / downloadFile（48KB 分块走可靠通道，≥256KB 先落本地 fs transfers/ 并写续传记录）；listTransfers / resumeTransfer / cancelTransfer（断点续传：刷新后 UI 询问继续或取消）
+│   │   └── test/reliable.sb.html  # reliable.js 单元测试（有损线路模拟：丢包全送达 / 去重 / 保序 / 黑洞 reject / 超限 reject）
 │   └── comps/                # 系统级公共组件（URL = /mz/comps/*），详见 mz/comps/CONTEXT.md
 │       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
 │       ├── o-md/             # <o-md> Markdown 渲染组件
@@ -103,7 +109,9 @@ Mazmot/
 │   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 互授 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；live-share.html 互授页（配对码连接后自动拉取与自己相关的证书：服务消息只传匹配通知与元数据清单，证书本体走 core 按精确 key 拉取，经 lib/live-share.js 封装 registerService/sendToService 可靠层，详见其应用内 CONTEXT.md）；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
-│   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
+│   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
+│   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架 + /mz/cloud-drive/server-core.js）：pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
+│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：home.html 三步登录（连接服务器 userId → 选空间 → 账号密码）+ 未完成传输「继续 / 取消」询问；files.html 文件页（面包屑 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条）；核心逻辑在 /mz/cloud-drive/client-core.js（getSharedClient 单例），登录态 / 续传记录存 getStorage("cloud-drive-client") 的 last-server 与 transfers 键
 │
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
@@ -419,6 +427,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |
 | 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
+| 云盘套件可靠传输通道（ACK + 重发 + 去重 + 串行队列，可注入传输层模拟丢包） | [mz/cloud-drive/reliable.js](mz/cloud-drive/reliable.js)（测试 [mz/cloud-drive/test/reliable.sb.html](mz/cloud-drive/test/reliable.sb.html)） |
+| 云盘服务器 / 客户端核心（空间与账号体系、分块上传下载、断点续传） | [mz/cloud-drive/server-core.js](mz/cloud-drive/server-core.js) / [mz/cloud-drive/client-core.js](mz/cloud-drive/client-core.js) / [mz/cloud-drive/protocol.js](mz/cloud-drive/protocol.js) |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |

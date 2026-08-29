@@ -1,0 +1,500 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/progress/progress.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      background: var(--md-sys-color-surface-container);
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .brand .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .crumbs {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      overflow-x: auto;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      scrollbar-width: none;
+    }
+    .crumb {
+      border: none;
+      background: none;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .crumb:hover {
+      background: var(--md-sys-color-surface-container-high);
+    }
+    .crumb.current {
+      color: var(--md-sys-color-on-surface);
+      font-weight: 600;
+    }
+    .crumb n-icon {
+      font-size: 14px;
+      vertical-align: middle;
+    }
+    .user-tag {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex-shrink: 0;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      flex-shrink: 0;
+    }
+    .toolbar st-input {
+      flex: 1;
+      max-width: 320px;
+    }
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 18px 20px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .row:hover {
+      background: var(--md-sys-color-surface-container);
+    }
+    .row n-icon.file-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+      color: var(--md-sys-color-primary);
+    }
+    .row n-icon.dir-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+      color: var(--md-sys-color-tertiary, var(--md-sys-color-primary));
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+    }
+    .fname {
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fmeta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+    }
+    .acts {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+      /* 始终参与布局，仅透明度切换，避免 hover 时行高闪变 */
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+    .row:hover .acts,
+    .acts:focus-within {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .acts st-icon-button {
+      font-size: 12px;
+    }
+    .empty {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 80px 0;
+      font-size: 14px;
+    }
+    .tasks {
+      flex-shrink: 0;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container);
+      padding: 10px 18px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .task {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .task .tname {
+      width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .task st-progress {
+      flex: 1;
+    }
+    .task .tpct {
+      width: 40px;
+      text-align: right;
+      color: var(--md-sys-color-on-surface-variant);
+      font-variant-numeric: tabular-nums;
+    }
+    .hidden-input {
+      display: none;
+    }
+  </style>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">📁</div>
+      <span>{{spaceName}}</span>
+    </div>
+    <div class="crumbs">
+      <button class="crumb" class:current="depth === 0" on:click="enterDir('root')">全部文件</button>
+      <o-fill :value="crumbItems" fill-key="id">
+        <span style="display: inline-flex; align-items: center">
+          <n-icon icon="mdi:chevron-right"></n-icon>
+          <button
+            class="crumb"
+            class:current="$data.current"
+            on:click="$host.enterDir($data.id)"
+          >
+            {{$data.name}}
+          </button>
+        </span>
+      </o-fill>
+    </div>
+    <span class="user-tag">{{username}}</span>
+    <st-button variant="text" on:click="logout()">
+      <n-icon icon="mdi:logout"></n-icon>
+      退出
+    </st-button>
+  </div>
+
+  <div class="toolbar">
+    <st-button on:click="pickUpload()">
+      <n-icon icon="mdi:upload"></n-icon>
+      上传
+    </st-button>
+    <st-button variant="outlined" on:click="newFolder()">
+      <n-icon icon="mdi:folder-plus-outline"></n-icon>
+      新建文件夹
+    </st-button>
+    <div style="flex: 1"></div>
+    <st-input placeholder="搜索当前目录" sync:value="keyword"></st-input>
+    <st-button variant="text" on:click="reload()">
+      <n-icon icon="mdi:refresh"></n-icon>
+    </st-button>
+  </div>
+
+  <div class="file-list">
+    <o-if :value="shownEntries.length">
+      <o-fill :value="shownEntries" fill-key="id">
+        <div class="row" on:click="$host.openEntry($data)">
+          <n-icon
+            class:file-icon="$data.type === 'file'"
+            class:dir-icon="$data.type === 'dir'"
+            attr:icon="$data.icon"
+          ></n-icon>
+          <div class="main">
+            <div class="fname">{{$data.name}}</div>
+            <div class="fmeta">{{$data.metaText}}</div>
+          </div>
+          <div class="acts">
+            <o-if :value="$data.type === 'file'">
+              <st-icon-button on:click="$host.downloadEntry($data, $event)" title="下载">
+                <n-icon icon="mdi:download-outline"></n-icon>
+              </st-icon-button>
+            </o-if>
+            <st-icon-button on:click="$host.renameEntry($data, $event)" title="重命名">
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+            </st-icon-button>
+            <st-icon-button on:click="$host.deleteEntry($data, $event)" title="删除">
+              <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
+            </st-icon-button>
+          </div>
+        </div>
+      </o-fill>
+    </o-if>
+    <o-if :value="!shownEntries.length">
+      <div class="empty">{{keyword ? "没有匹配的文件" : "空目录，上传一个文件试试"}}</div>
+    </o-if>
+  </div>
+
+  <o-if :value="tasks.length">
+    <div class="tasks">
+      <o-fill :value="tasks" fill-key="id">
+        <div class="task">
+          <n-icon attr:icon="$data.icon" style="font-size: 18px"></n-icon>
+          <span class="tname">{{$data.name}}</span>
+          <st-progress :value="$data.pct"></st-progress>
+          <span class="tpct">{{$data.pct}}%</span>
+        </div>
+      </o-fill>
+    </div>
+  </o-if>
+
+  <input
+    class="hidden-input"
+    type="file"
+    multiple
+    id="upload-input"
+  />
+
+  <script>
+    export default async ({ load }) => {
+      const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
+      const { formatBytes, formatTime, fileIcon } = await load(
+        "/mz/cloud-drive/protocol.js"
+      );
+      const [
+        { default: confirm },
+        { default: prompt },
+        { default: toast },
+      ] = await Promise.all([
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"),
+      ]);
+
+      return {
+        data: {
+          spaceName: "",
+          username: "",
+          crumbItems: [],
+          depth: 0,
+          fileItems: [],
+          keyword: "",
+          tasks: [],
+        },
+        async ready() {
+          this._client = getSharedClient();
+          this._currentDir = "root";
+          if (!this._client.loggedIn) {
+            // 刷新后凭持久化会话自动恢复登录
+            const restored = await this._client.tryRestoreSession();
+            if (!restored) {
+              this.goto("./home.html");
+              return;
+            }
+          }
+          this.spaceName = this._client.spaceName;
+          this.username = this._client.username;
+          this.reload();
+        },
+        proto: {
+          async reload() {
+            try {
+              const { path, entries } = await this._client.list(
+                this._currentDir
+              );
+              this.fileItems = entries.map((e) => ({
+                ...e,
+                icon: fileIcon(e.name, e.type === "dir"),
+                metaText:
+                  e.type === "dir"
+                    ? `${formatTime(e.mtime)}`
+                    : `${formatBytes(e.size)} · ${formatTime(e.mtime)}`,
+              }));
+              this.crumbItems = path.map((p, i) => ({
+                id: p.id,
+                name: p.name,
+                current: i === path.length - 1,
+              }));
+              this.depth = path.length;
+            } catch (err) {
+              this.tip(err.message);
+              if (String(err.message).includes("登录")) {
+                this.goto("./home.html");
+              }
+            }
+          },
+
+          get shownEntries() {
+            const kw = (this.keyword || "").trim().toLowerCase();
+            if (!kw) return this.fileItems;
+            return this.fileItems.filter((e) =>
+              e.name.toLowerCase().includes(kw)
+            );
+          },
+
+          enterDir(dirId) {
+            this._currentDir = dirId;
+            this.reload();
+          },
+
+          openEntry(entry) {
+            if (entry.type === "dir") this.enterDir(entry.id);
+            else this.downloadEntry(entry);
+          },
+
+          pickUpload() {
+            const input = this.shadow.$("#upload-input").ele;
+            input.value = "";
+            input.onchange = () => {
+              for (const file of input.files) this.uploadOne(file);
+            };
+            input.click();
+          },
+
+          async uploadOne(file) {
+            const task = this.addTask("mdi:upload", file.name);
+            try {
+              await this._client.uploadFile(file, this._currentDir, {
+                onProgress: ({ sent, total }) =>
+                  this.updateTask(task, sent, total),
+              });
+              this.tip(`「${file.name}」上传完成`);
+            } catch (err) {
+              this.tip(`上传失败：${err.message}`);
+            }
+            this.finishTask(task);
+            this.reload();
+          },
+
+          async newFolder() {
+            const name = await prompt("文件夹名称", {
+              title: "新建文件夹",
+            });
+            if (!name?.trim()) return;
+            try {
+              await this._client.mkdir(this._currentDir, name.trim());
+              this.reload();
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async renameEntry(entry, e) {
+            e.stopPropagation();
+            const name = await prompt("新名称", {
+              title: "重命名",
+              value: entry.name,
+            });
+            if (!name?.trim() || name === entry.name) return;
+            try {
+              await this._client.rename(entry.id, name.trim());
+              this.reload();
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async deleteEntry(entry, e) {
+            e.stopPropagation();
+            const ok = await confirm(
+              entry.type === "dir"
+                ? `删除文件夹「${entry.name}」及其全部内容？`
+                : `删除文件「${entry.name}」？`,
+              { title: "删除" }
+            );
+            if (!ok) return;
+            try {
+              await this._client.remove(entry.id);
+              this.reload();
+              this.tip("已删除");
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async downloadEntry(entry, e) {
+            if (e) e.stopPropagation();
+            const task = this.addTask("mdi:download", entry.name);
+            try {
+              const blob = await this._client.downloadFile(entry, {
+                onProgress: ({ sent, total }) =>
+                  this.updateTask(task, sent, total),
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = entry.name;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+              this.tip(`「${entry.name}」下载完成`);
+            } catch (err) {
+              this.tip(`下载失败：${err.message}`);
+            }
+            this.finishTask(task);
+          },
+
+          async logout() {
+            await this._client.logout();
+            this.goto("./home.html");
+          },
+
+          addTask(icon, name) {
+            const task = {
+              id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              icon,
+              name,
+              pct: 0,
+            };
+            this.tasks = [...this.tasks, task];
+            return task;
+          },
+
+          updateTask(task, sent, total) {
+            task.pct = total ? Math.round((sent / total) * 100) : 100;
+          },
+
+          finishTask(task) {
+            task.pct = 100;
+            setTimeout(() => {
+              this.tasks = this.tasks.filter((t) => t.id !== task.id);
+            }, 800);
+          },
+
+          tip(text) {
+            toast(text);
+          },
+        },
+      };
+    };
+  </script>
+</template>

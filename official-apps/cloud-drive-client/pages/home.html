@@ -1,37 +1,344 @@
 <template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <style>
     :host {
       display: block;
       height: 100%;
+      overflow-y: auto;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
     }
-    .welcome {
+    .wrap {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 48px 20px 60px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .hero .logo {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 12px;
+      border-radius: 20px;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100%;
-      padding: 20px;
-      text-align: center;
+      font-size: 30px;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
     }
     h1 {
-      color: var(--md-sys-color-primary);
-      margin-bottom: 12px;
+      font-size: 22px;
+      margin: 0 0 4px;
     }
-    p {
+    .hero p {
+      font-size: 13px;
       color: var(--md-sys-color-on-surface-variant);
-      line-height: 1.6;
+      margin: 0;
+    }
+    .card {
+      background: var(--md-sys-color-surface-container);
+      border-radius: 20px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .field label {
+      display: block;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 4px;
+    }
+    .field st-input {
+      width: 100%;
+    }
+    .connect-row {
+      display: flex;
+      gap: 8px;
+    }
+    .connect-row st-input {
+      flex: 1;
+    }
+    .conn-state {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .conn-state n-icon {
+      font-size: 14px;
+    }
+    .conn-ok {
+      color: var(--md-sys-color-primary);
+    }
+    .space-picks {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pick {
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface-variant);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .pick.active {
+      background: var(--md-sys-color-primary-container);
+      border-color: transparent;
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .login-btn {
+      width: 100%;
+      margin-top: 4px;
+    }
+    .resume-card {
+      margin-top: 16px;
+      background: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .resume-card h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .resume-card h3 n-icon {
+      font-size: 18px;
+    }
+    .resume-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      padding: 6px 0;
+      border-top: 1px solid rgb(from var(--md-sys-color-on-tertiary-container) r g b / 0.15);
+    }
+    .resume-item .name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .error-text {
+      font-size: 12px;
+      color: var(--md-sys-color-error);
+      min-height: 16px;
     }
   </style>
-  <div class="welcome">
-    <h1>Hello, {{appName}}!</h1>
-    <p>{{appDesc}}</p>
+
+  <div class="wrap">
+    <div class="hero">
+      <div class="logo">📁</div>
+      <h1>云盘客户端</h1>
+      <p>连接云盘服务器，安全存取你的文件</p>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label>第一步 · 连接服务器</label>
+        <div class="connect-row">
+          <st-input
+            placeholder="粘贴服务器用户 ID"
+            sync:value="serverId"
+          ></st-input>
+          <st-button
+            on:click="connectServer()"
+            attr:disabled="connecting || connected"
+          >
+            {{connected ? "已连接" : connecting ? "连接中…" : "连接"}}
+          </st-button>
+        </div>
+        <div class="conn-state">
+          <o-if :value="connected">
+            <n-icon icon="mdi:check-circle" class="conn-ok"></n-icon>
+            <span class="conn-ok">服务器已连接</span>
+          </o-if>
+          <o-if :value="!connected">
+            <n-icon icon="mdi:cloud-off-outline"></n-icon>
+            <span>未连接</span>
+          </o-if>
+        </div>
+      </div>
+
+      <o-if :value="connected">
+        <div class="field">
+          <label>第二步 · 选择空间</label>
+          <div class="space-picks">
+            <o-fill :value="spaces" fill-key="id">
+              <button
+                class="pick"
+                class:active="$data.picked"
+                on:click="$host.pickSpace($data)"
+              >
+                {{$data.name}}
+              </button>
+            </o-fill>
+          </div>
+        </div>
+        <div class="field">
+          <label>第三步 · 登录账号</label>
+          <st-input placeholder="用户名" sync:value="username"></st-input>
+        </div>
+        <div class="field">
+          <st-input placeholder="密码" sync:value="password"></st-input>
+        </div>
+        <st-button class="login-btn" on:click="login()" attr:disabled="loggingIn">
+          {{loggingIn ? "登录中…" : "登录云盘"}}
+        </st-button>
+      </o-if>
+
+      <div class="error-text">{{errorText}}</div>
+    </div>
+
+    <o-if :value="transfers.length">
+      <div class="resume-card">
+        <h3>
+          <n-icon icon="mdi:progress-upload"></n-icon>
+          检测到未完成的传输任务
+        </h3>
+        <o-fill :value="transfers" fill-key="key">
+          <div class="resume-item">
+            <n-icon attr:icon="$data.icon"></n-icon>
+            <span class="name">{{$data.name}}</span>
+            <span>{{$data.progressText}}</span>
+            <st-button variant="text" on:click="$host.resumeOne($data)">继续</st-button>
+            <st-button variant="text" on:click="$host.cancelOne($data)">取消</st-button>
+          </div>
+        </o-fill>
+        <p style="font-size: 11px; margin: 8px 0 0">
+          连接并登录到对应的服务器与空间后即可继续。
+        </p>
+      </div>
+    </o-if>
   </div>
+
   <script>
-    export default async () => {
+    export default async ({ load }) => {
+      const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
+      const { formatBytes } = await load("/mz/cloud-drive/protocol.js");
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"
+      );
+
       return {
         data: {
-          appName: "云盘客户端",
-          appDesc: "连接云盘服务器进行文件上传、下载与管理的客户端应用。",
+          serverId: "",
+          connecting: false,
+          connected: false,
+          spaces: [],
+          username: "",
+          password: "",
+          loggingIn: false,
+          errorText: "",
+          transfers: [],
+        },
+        ready() {
+          this._client = getSharedClient(() => {});
+          this.init();
+        },
+        proto: {
+          async init() {
+            const last = await this._client.getLastServer();
+            if (last) this.serverId = last;
+            await this.refreshTransfers();
+            // 有持久化登录态（含刷新后恢复）直接回文件页
+            if (this._client.loggedIn || (await this._client.tryRestoreSession())) {
+              this.app.goto("./files.html");
+            }
+          },
+
+          async refreshTransfers() {
+            const list = await this._client.listTransfers();
+            this.transfers = list.map((r) => ({
+              ...r,
+              icon:
+                r.dir === "up"
+                  ? "mdi:upload-outline"
+                  : "mdi:download-outline",
+              progressText: `${r.received.length}/${r.chunkTotal} 块 · ${formatBytes(r.size)}`,
+            }));
+          },
+
+          async connectServer() {
+            const id = this.serverId.trim();
+            if (!id) return (this.errorText = "请输入服务器用户 ID");
+            this.errorText = "";
+            this.connecting = true;
+            try {
+              await this._client.connect(id);
+              this.connected = true;
+              this.spaces = (await this._client.fetchSpaces()).map((s) => ({
+                ...s,
+                picked: false,
+              }));
+              if (!this.spaces.length)
+                this.errorText = "服务器上还没有空间，请先在服务器端创建";
+            } catch (err) {
+              this.connected = false;
+              this.errorText = `连接失败：${err.message}`;
+            }
+            this.connecting = false;
+          },
+
+          pickSpace(space) {
+            this.spaces = this.spaces.map((s) => ({
+              ...s,
+              picked: s.id === space.id,
+            }));
+          },
+
+          async login() {
+            const picked = this.spaces.find((s) => s.picked);
+            if (!picked) return (this.errorText = "请选择一个空间");
+            if (!this.username.trim() || !this.password)
+              return (this.errorText = "请输入用户名和密码");
+            this.errorText = "";
+            this.loggingIn = true;
+            try {
+              await this._client.login({
+                spaceId: picked.id,
+                username: this.username.trim(),
+                password: this.password,
+              });
+              this.goto("./files.html");
+            } catch (err) {
+              this.errorText = `登录失败：${err.message}`;
+            }
+            this.loggingIn = false;
+          },
+
+          async resumeOne(record) {
+            try {
+              await this._client.resumeTransfer(record);
+              this.tip("续传完成");
+              await this.refreshTransfers();
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async cancelOne(record) {
+            await this._client.cancelTransfer(record.key);
+            await this.refreshTransfers();
+          },
+
+          tip(text) {
+            toast(text);
+          },
         },
       };
     };
