@@ -42,6 +42,7 @@ export class CloudDriveServer {
     this._fsRoot = null;
     this._service = null;
     this._channels = new Map(); // remoteUserId -> ReliableChannel
+    this._remotes = new Map(); // remoteUserId -> 最新 RemoteUser（每次收到消息都更新）
     this._handlerQueues = new Map(); // remoteUserId -> 尾部 Promise（串行处理指令）
     this._sessions = new Map(); // token -> { username, remoteUserId, spaceId }
     this._uploads = new Map(); // uploadId -> { received: Set<number> }
@@ -75,6 +76,7 @@ export class CloudDriveServer {
     this._service = null;
     for (const ch of this._channels.values()) ch.destroy();
     this._channels.clear();
+    this._remotes.clear();
     // 会话持久化在 storage 中，刷新 / 重启后依然有效，这里不清除
     this._running = false;
     this._onEvent({ type: "stopped" });
@@ -110,15 +112,16 @@ export class CloudDriveServer {
   }
 
   _ensureChannel(remoteUserId, remoteUser) {
+    // 始终记录最新连接：客户端刷新后会用同一 userId 重新 connectUser，
+    // 旧 RemoteUser 的 RTC 可能已失效，若应答仍发往旧连接客户端将收不到
+    this._remotes.set(remoteUserId, remoteUser);
     let ch = this._channels.get(remoteUserId);
     if (!ch) {
       ch = new ReliableChannel({
         channelId: `server->${remoteUserId.slice(0, 8)}`,
         send: async (envelope) => {
-          const results = await remoteUser.sendToService(
-            APP_SERVICE_ID,
-            envelope
-          );
+          const ru = this._remotes.get(remoteUserId);
+          const results = await ru.sendToService(APP_SERVICE_ID, envelope);
           return results.some((r) => r.status === "ok");
         },
         onData: (payload) => this._dispatch(payload, remoteUserId, remoteUser),
