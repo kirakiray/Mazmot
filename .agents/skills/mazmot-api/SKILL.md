@@ -402,7 +402,7 @@ ch.destroy();                          // 通道销毁时 reject 所有在途发
 
 ### `server-core.js` —— `new CloudDriveServer(user, onEvent)`
 
-`start()`（registerService + storage/fs 初始化）/ `stop()`；空间管理 `listSpaces / createSpace（虚拟） / createLocalSpace(handle)（挂载本地文件夹，需调用方检测 window.showDirectoryPicker，仅 Chromium） / deleteSpace`；本地空间 `kind:"local"`，挂载句柄存 `mount:<spaceId>`，文件读写直接作用于真实目录（fileId 为相对路径，暂不支持重命名）；账号体系 `listAccounts / createAccount({username, password, spaces}) / updateAccount / deleteAccount`；统计 `getStats()`。客户端指令（token 会话，每远端串行处理）：`list / mkdir / rename / remove / up-init（按 clientUploadId 幂等续传）/ up-chunk / up-complete / up-cancel / down-init / down-chunk`。存储布局见文件头注释。
+`start()`（registerService + storage/fs 初始化）/ `stop()`；空间管理 `listSpaces / createSpace（虚拟） / createLocalSpace(handle)（挂载本地文件夹，需调用方检测 window.showDirectoryPicker，仅 Chromium） / deleteSpace`；本地空间 `kind:"local"`，挂载句柄存 `mount:<spaceId>`，文件读写直接作用于真实目录（fileId 为相对路径，暂不支持重命名）；账号体系 `listAccounts / createAccount({username, password, spaces}) / updateAccount / deleteAccount`；统计 `getStats()`；审计日志 `listAudit() / clearAudit()`（storage 键 `audit`，最新在前上限 500 条：`login`（含 token）/ `refresh-login`（刷新恢复，经 MSG.RESUME）/ `login-fail` / `logout`，字段 `{id, time, type, username, remoteUserId, token?}`）。客户端指令（token 会话，每远端串行处理）：`login / resume（刷新恢复校验 + 记审计）/ logout（注销会话并记审计）/ list / mkdir / rename / remove / up-init（按 clientUploadId 幂等续传）/ up-chunk / up-complete / up-cancel / down-init / down-chunk`。存储布局见文件头注释。
 
 ### `client-core.js` —— `getSharedClient(onEvent)` 单例
 

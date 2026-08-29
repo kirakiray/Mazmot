@@ -20,6 +20,7 @@
 - **入口链路**：`index.html` → `<o-app src="./app-config.js">` → `app-config.js` 中 `export const home = "./pages/home.html"` → 加载首页模块。
 - **主题**：`index.html` 里以 CSS 变量定义 Material Design 3 亮 / 暗色调色板（`--md-sys-color-*`），页面样式统一引用这些变量，方便整套换肤。
 - **元数据同步**：修改 [app.json](app.json) 的 `name` / `description` / `icon` 后，如果这些字段也出现在页面文案里，请顺带更新对应模板/页面。
+- **连接状态反馈**：[files.html](pages/files.html) 用 `connState`（connecting/connected）+ `loading` 两个 data 字段驱动 UI——恢复会话 / 连接服务器期间文件区显示 spinner（「正在连接服务器… / 正在加载目录…」），避免渲染成空白目录；顶栏用户名左侧有连接状态点（红 = 连接中，绿 = 已连接）。刷新目录（`reload`）负责置位/复位 `loading`，空目录文案只在 `!loading` 时渲染。
 
 ## 扩展指引
 
@@ -60,5 +61,15 @@
 - **原因**：服务器的应答（含 ReliableChannel 的 ACK）是通过 `sendToService(APP_SERVICE_ID, …)` 回投的；客户端不 `registerService(APP_SERVICE_ID)` 时应答全部 `no_receiver`。
 - **正确写法**：`connect()` 时在客户端注册同名服务，`onMessage` 里把信封交给本端 ReliableChannel `handle()`（见 client-core.js）。
 
-### 5. `sessionStorage` 用于标签页级 UI 状态记忆
+### 5. 空间信息属于登录后数据，不得提前暴露
+- **教训**：早期版本在登录前就提供「选择空间」步骤（`space-list` 指令公开返回所有空间名），属于隐私泄漏。
+- **现行模型**：登录（用户名 + 密码）→ 服务器仅返回**该账号被授权的空间** → 客户端把空间合成为根目录下的文件夹（`list("root")` 时合成，条目带 `virtual: true` 标记，页面据此隐藏重命名/删除）。空间内文件 id 统一编码为 `真实id@spaceId`，由 client-core 解包并在每个指令中显式携带 `spaceId`，服务器逐次校验当前授权（管理员改授权立即生效）。
+- 注意 `mkdir` / 上传要兼容 `space:<id>`（空间根）与 `真实id@spaceId`（子目录）两种目录标识（`_unwrapDir`）。
+
+### 6. 客户端刷新后概率连不上：30s 服务发现缓存把应答投给已销毁的 session
+- **现象**：只刷新客户端，偶发「连接失败 / 请求超时: ping」，重试又好了。
+- **原因**：刷新后 userId 不变、session 更新，但服务器端 `serviceSessionCache`（TTL 30s）还记着旧 session，应答按缓存投给已销毁的会话而丢失；能否成功取决于缓存过期与新 session 注册的时序赛跑。同一身份开多个标签页会把「旧 session 仍在线」的窗口拉得更长。
+- **正确写法**：① 服务器应答**定向回投** `ctx.fromSessionId`（可靠消息规范「回 ACK 必须带 sessionId」），见 server-core 的 `_sessionTargets`；② 客户端 ping 握手重试 3 次（client-core `connect()`）；③ 避免同身份多标签页并存。
+
+### 7. `sessionStorage` 用于标签页级 UI 状态记忆
 - 登录态等需要跨刷新的用 `/nos/storage` 持久化（如 `session` 键 + 服务器 7 天会话）；tab 位置这类「关页即失效」的记忆用 `sessionStorage`（如 `cloud-drive-server-tab`），符合 AGENTS.md 的例外约定。

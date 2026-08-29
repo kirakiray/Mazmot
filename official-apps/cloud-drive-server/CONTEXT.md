@@ -20,6 +20,7 @@
 - **入口链路**：`index.html` → `<o-app src="./app-config.js">` → `app-config.js` 中 `export const home = "./pages/home.html"` → 加载首页模块。
 - **主题**：`index.html` 里以 CSS 变量定义 Material Design 3 亮 / 暗色调色板（`--md-sys-color-*`），页面样式统一引用这些变量，方便整套换肤。
 - **元数据同步**：修改 [app.json](app.json) 的 `name` / `description` / `icon` 后，如果这些字段也出现在页面文案里，请顺带更新对应模板/页面。
+- **登录记录（审计日志）**：[home.html](pages/home.html) 第三个 tab「登录记录」，数据来自 server-core 的 `listAudit()`（storage 键 `audit`，最新在前，上限 500 条）。记录四类事件：`login`（登录成功，含 token 会话标识）/ `refresh-login`（客户端刷新后凭持久化 token 恢复登录，经 `MSG.RESUME` 指令，服务器校验 token 后记录）/ `login-fail`（用户名或密码错误）/ `logout`（客户端登出时经 `MSG.LOGOUT` 指令通知服务器，服务器注销会话后记录；token 未知也幂等返回 ok）。列表每页 10 条分页（`auditPage` / `auditPageItems` getter + 上/下一页按钮），行内小字号展示时间、账号、会话 token 前缀、来源远端 userId 前缀；各类事件会经 onEvent 自动刷新列表，另有「清空记录」按钮（`clearAudit()`）。
 
 ## 扩展指引
 

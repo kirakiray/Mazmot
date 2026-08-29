@@ -77,26 +77,6 @@
     .conn-ok {
       color: var(--md-sys-color-primary);
     }
-    .space-picks {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .pick {
-      padding: 6px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      background: var(--md-sys-color-surface);
-      color: var(--md-sys-color-on-surface-variant);
-      font: inherit;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .pick.active {
-      background: var(--md-sys-color-primary-container);
-      border-color: transparent;
-      color: var(--md-sys-color-on-primary-container);
-    }
     .login-btn {
       width: 100%;
       margin-top: 4px;
@@ -176,21 +156,7 @@
 
       <o-if :value="connected">
         <div class="field">
-          <label>第二步 · 选择空间</label>
-          <div class="space-picks">
-            <o-fill :value="spaces" fill-key="id">
-              <button
-                class="pick"
-                class:active="$data.picked"
-                on:click="$host.pickSpace($data)"
-              >
-                {{$data.name}}
-              </button>
-            </o-fill>
-          </div>
-        </div>
-        <div class="field">
-          <label>第三步 · 登录账号</label>
+          <label>第二步 · 登录账号</label>
           <st-input placeholder="用户名" sync:value="username"></st-input>
         </div>
         <div class="field">
@@ -199,6 +165,9 @@
         <st-button class="login-btn" on:click="login()" attr:disabled="loggingIn">
           {{loggingIn ? "登录中…" : "登录云盘"}}
         </st-button>
+        <p style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin: 0">
+          登录后，账号被授权的空间会以文件夹形式出现在根目录。
+        </p>
       </o-if>
 
       <div class="error-text">{{errorText}}</div>
@@ -220,7 +189,7 @@
           </div>
         </o-fill>
         <p style="font-size: 11px; margin: 8px 0 0">
-          连接并登录到对应的服务器与空间后即可继续。
+          连接服务器并登录后即可继续（未授权的空间不会出现在根目录）。
         </p>
       </div>
     </o-if>
@@ -239,7 +208,6 @@
           serverId: "",
           connecting: false,
           connected: false,
-          spaces: [],
           username: "",
           password: "",
           loggingIn: false,
@@ -281,12 +249,6 @@
             try {
               await this._client.connect(id);
               this.connected = true;
-              this.spaces = (await this._client.fetchSpaces()).map((s) => ({
-                ...s,
-                picked: false,
-              }));
-              if (!this.spaces.length)
-                this.errorText = "服务器上还没有空间，请先在服务器端创建";
             } catch (err) {
               this.connected = false;
               this.errorText = `连接失败：${err.message}`;
@@ -294,23 +256,13 @@
             this.connecting = false;
           },
 
-          pickSpace(space) {
-            this.spaces = this.spaces.map((s) => ({
-              ...s,
-              picked: s.id === space.id,
-            }));
-          },
-
           async login() {
-            const picked = this.spaces.find((s) => s.picked);
-            if (!picked) return (this.errorText = "请选择一个空间");
             if (!this.username.trim() || !this.password)
               return (this.errorText = "请输入用户名和密码");
             this.errorText = "";
             this.loggingIn = true;
             try {
               await this._client.login({
-                spaceId: picked.id,
                 username: this.username.trim(),
                 password: this.password,
               });
@@ -343,7 +295,12 @@
           // ofa.js@latest 的 goto("./x") 相对 app 根目录解析，
           // 显式按本页 src 构造绝对路由，避免丢掉 /pages/ 段
           gotoFiles() {
-            location.hash = "#" + new URL("files.html", this.src).pathname;
+            // 跨页跳转回到应用入口 + hash 路由，避开 ofa.js@latest goto
+            // 相对解析基准不一致的问题（低频操作，整页加载可接受）
+            const base = new URL(this.src || "./pages/home.html", location.href);
+            const filesUrl = new URL("files.html", base);
+            const entry = new URL("../", filesUrl).href; // 应用根（client/）
+            location.replace(entry + "#" + filesUrl.pathname);
           },
         },
       };

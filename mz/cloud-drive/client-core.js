@@ -47,8 +47,7 @@ export class CloudDriveClient {
     this.serverUserId = null;
     this.token = null;
     this.username = null;
-    this.spaceId = null;
-    this.spaceName = null;
+    this.mySpaces = [];
     this._storage = null;
     this._fsRoot = null;
     this._inited = false;
@@ -102,7 +101,7 @@ export class CloudDriveClient {
     this._remote = remote;
     this.serverUserId = serverUserId;
     this.token = null;
-    this.spaceId = null;
+    this.mySpaces = [];
 
     this._channel = new ReliableChannel({
       channelId: `client->${String(serverUserId).slice(0, 8)}`,
@@ -123,7 +122,23 @@ export class CloudDriveClient {
       },
     });
 
-    await this._rpc(MSG.PING, {}, { timeout: 15 * 1000 });
+    // ping 握手：服务器后台节流 / 服务发现 / RTC 建链存在偶发竞态，
+    // 单发超时会造成「概率连不上」，这里重试 3 次
+    let lastErr = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        await this._rpc(MSG.PING, {}, { timeout: 10 * 1000 });
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+    if (lastErr) {
+      this.disconnect();
+      throw lastErr;
+    }
     await this._storage.setItem("last-server", serverUserId);
     this._onEvent({ type: "connected", serverUserId });
     return { userId: serverUserId };
@@ -137,8 +152,7 @@ export class CloudDriveClient {
     this._remote = null;
     this.token = null;
     this.username = null;
-    this.spaceId = null;
-    this.spaceName = null;
+    this.mySpaces = [];
   }
 
   _onResponse(payload) {
@@ -171,21 +185,34 @@ export class CloudDriveClient {
 
   // ============ 登录与浏览 ============
 
-  /** 获取服务器上的空间列表（无需登录） */
-  async fetchSpaces() {
-    const res = await this._rpc(MSG.SPACE_LIST);
-    return res.spaces || [];
-  }
-
-  async login({ spaceId, username, password }) {
-    const res = await this._rpc(MSG.LOGIN, { spaceId, username, password });
+  async login({ username, password }) {
+    const res = await this._rpc(MSG.LOGIN, { username, password });
     this.token = res.token;
     this.username = res.username;
-    this.spaceId = spaceId;
-    this.spaceName = res.spaceName;
+    // 仅登录后可见：本账号被授权的空间（根目录将以此为文件夹呈现）
+    this.mySpaces = res.spaces || [];
     await this._saveSession();
-    this._onEvent({ type: "login", username: res.username, spaceId });
-    return { username: res.username, spaceName: res.spaceName };
+    this._onEvent({ type: "login", username: res.username });
+    return { username: res.username, spaces: this.mySpaces };
+  }
+
+  /** 编码空间上下文到文件 id（对页面透明）：真实id@spaceId */
+  _wrapId(id, spaceId) {
+    return `${id}@${spaceId}`;
+  }
+
+  _unwrapId(encoded) {
+    const i = String(encoded).lastIndexOf("@");
+    if (i === -1) throw new Error("无效的文件标识");
+    return [encoded.slice(0, i), encoded.slice(i + 1)];
+  }
+
+  /** 目录标识解包：space:<id> → 空间根；其余 → [真实id, spaceId] */
+  _unwrapDir(dirEncoded) {
+    if (String(dirEncoded).startsWith("space:")) {
+      return ["root", dirEncoded.slice(6)];
+    }
+    return this._unwrapId(dirEncoded);
   }
 
   /**
@@ -203,10 +230,10 @@ export class CloudDriveClient {
     }
     this.token = s.token;
     this.username = s.username;
-    this.spaceId = s.spaceId;
-    this.spaceName = s.spaceName;
+    this.mySpaces = s.spaces || [];
     try {
-      await this.list("root"); // 验证 token 仍有效
+      // resume：校验 token 仍有效，同时让服务器记一条「刷新登录」审计
+      await this._rpc(MSG.RESUME, { token: this.token });
       return true;
     } catch {
       this.disconnect();
@@ -214,8 +241,14 @@ export class CloudDriveClient {
     }
   }
 
-  /** 退出登录：清会话（本地 + 通知服务器失效由过期机制兜底）并断开连接 */
+  /** 退出登录：通知服务器注销会话（尽力而为）并清本地状态断开连接 */
   async logout() {
+    // 服务器端注销会话并记审计日志；网络异常不阻塞本地登出
+    if (this._channel && this.token) {
+      try {
+        await this._rpc(MSG.LOGOUT, { token: this.token }, { timeout: 5000 });
+      } catch {}
+    }
     await this._ensureLocal();
     await this._storage.removeItem("session");
     this.disconnect();
@@ -227,40 +260,94 @@ export class CloudDriveClient {
       serverUserId: this.serverUserId,
       token: this.token,
       username: this.username,
-      spaceId: this.spaceId,
-      spaceName: this.spaceName,
+      spaces: this.mySpaces,
     });
   }
 
   async list(parentId = "root") {
     this._assertLogin();
-    const res = await this._rpc(MSG.LIST, { token: this.token, parentId });
-    return { path: res.path || [], entries: res.entries || [] };
+    // 根目录：把授权空间合成为文件夹（未进入具体空间前不暴露内部结构）
+    if (parentId === "root") {
+      return {
+        path: [],
+        entries: this.mySpaces.map((s) => ({
+          id: `space:${s.id}`,
+          name: s.name,
+          type: "dir",
+          size: 0,
+          mtime: 0,
+          virtual: true, // 空间文件夹是合成视图，不支持重命名/删除
+        })),
+      };
+    }
+    // 空间根：parentId 形如 space:<id>
+    if (parentId.startsWith("space:")) {
+      const spaceId = parentId.slice(6);
+      const space = this.mySpaces.find((s) => s.id === spaceId);
+      const res = await this._rpc(MSG.LIST, {
+        token: this.token,
+        spaceId,
+        parentId: "root",
+      });
+      return {
+        path: [{ id: parentId, name: space?.name || "空间" }],
+        entries: (res.entries || []).map((e) => ({
+          ...e,
+          id: this._wrapId(e.id, spaceId),
+        })),
+      };
+    }
+    // 空间内子目录：id 编码了空间上下文
+    const [realId, spaceId] = this._unwrapId(parentId);
+    const space = this.mySpaces.find((s) => s.id === spaceId);
+    const res = await this._rpc(MSG.LIST, {
+      token: this.token,
+      spaceId,
+      parentId: realId,
+    });
+    return {
+      path: [
+        { id: `space:${spaceId}`, name: space?.name || "空间" },
+        ...(res.path || []).map((p) => ({
+          id: this._wrapId(p.id, spaceId),
+          name: p.name,
+        })),
+      ],
+      entries: (res.entries || []).map((e) => ({
+        ...e,
+        id: this._wrapId(e.id, spaceId),
+      })),
+    };
   }
 
-  async mkdir(parentId, name) {
+  async mkdir(parentEncoded, name) {
     this._assertLogin();
+    const [parentId, spaceId] = this._unwrapDir(parentEncoded);
     const res = await this._rpc(MSG.MKDIR, {
       token: this.token,
+      spaceId,
       parentId,
       name,
     });
-    return res.entry;
+    return { ...res.entry, id: this._wrapId(res.entry.id, spaceId) };
   }
 
-  async rename(fileId, name) {
+  async rename(fileEncoded, name) {
     this._assertLogin();
+    const [fileId, spaceId] = this._unwrapId(fileEncoded);
     const res = await this._rpc(MSG.RENAME, {
       token: this.token,
+      spaceId,
       fileId,
       name,
     });
-    return res.entry;
+    return { ...res.entry, id: this._wrapId(res.entry.id, spaceId) };
   }
 
-  async remove(fileId) {
+  async remove(fileEncoded) {
     this._assertLogin();
-    await this._rpc(MSG.REMOVE, { token: this.token, fileId });
+    const [fileId, spaceId] = this._unwrapId(fileEncoded);
+    await this._rpc(MSG.REMOVE, { token: this.token, spaceId, fileId });
   }
 
   // ============ 上传（分块 + 可靠投递 + 断点续传） ============
@@ -271,8 +358,12 @@ export class CloudDriveClient {
    * @param {File} file
    * @returns {Promise<{entry: object}>}
    */
-  async uploadFile(file, parentId = "root", { onProgress } = {}) {
+  async uploadFile(file, parentEncoded = "root", { onProgress } = {}) {
     this._assertLogin();
+    if (parentEncoded === "root") {
+      throw new Error("请先进入一个空间再上传");
+    }
+    const [parentId, spaceId] = this._unwrapDir(parentEncoded);
     const resumable = file.size >= RESUME_MIN_SIZE;
     const clientUploadId = newId("cu");
     let record = null;
@@ -283,7 +374,7 @@ export class CloudDriveClient {
         key: clientUploadId,
         dir: "up",
         serverUserId: this.serverUserId,
-        spaceId: this.spaceId,
+        spaceId,
         parentId,
         name: file.name,
         size: file.size,
@@ -301,13 +392,14 @@ export class CloudDriveClient {
     try {
       const entry = await this._runUpload({
         file,
+        spaceId,
         parentId,
         clientUploadId,
         record,
         onProgress,
       });
       if (record) await this._removeTransferRecord(record.key);
-      return entry;
+      return { ...entry, id: this._wrapId(entry.id, spaceId) };
     } catch (err) {
       if (!record) throw err;
       // 大文件失败：保留续传记录与暂存分块，等待用户恢复
@@ -320,7 +412,7 @@ export class CloudDriveClient {
     }
   }
 
-  async _runUpload({ file, parentId, clientUploadId, record, onProgress }) {
+  async _runUpload({ file, spaceId, parentId, clientUploadId, record, onProgress }) {
     const readSlice = async (index) => {
       if (file) {
         const start = index * CHUNK_SIZE;
@@ -338,6 +430,7 @@ export class CloudDriveClient {
 
     const init = await this._rpc(MSG.UPLOAD_INIT, {
       token: this.token,
+      spaceId,
       parentId,
       name: record?.name ?? file.name,
       size: record?.size ?? file.size,
@@ -361,7 +454,7 @@ export class CloudDriveClient {
       const bytes = await readSlice(i);
       await this._rpc(
         MSG.UPLOAD_CHUNK,
-        { token: this.token, uploadId, index: i, b64: bytesToBase64(bytes) },
+        { token: this.token, spaceId, uploadId, index: i, b64: bytesToBase64(bytes) },
         { timeout: 120 * 1000 }
       );
       done.add(i);
@@ -374,6 +467,7 @@ export class CloudDriveClient {
 
     const res = await this._rpc(MSG.UPLOAD_COMPLETE, {
       token: this.token,
+      spaceId,
       uploadId,
     });
     if (record) {
@@ -395,6 +489,7 @@ export class CloudDriveClient {
    */
   async downloadFile(entry, { onProgress } = {}) {
     this._assertLogin();
+    const [fileId, spaceId] = this._unwrapId(entry.id);
     const resumable = entry.size >= RESUME_MIN_SIZE;
     let record = null;
     if (resumable) {
@@ -403,8 +498,8 @@ export class CloudDriveClient {
         key: newId("dl"),
         dir: "down",
         serverUserId: this.serverUserId,
-        spaceId: this.spaceId,
-        fileId: entry.id,
+        spaceId,
+        fileId,
         name: entry.name,
         size: entry.size,
         chunkTotal: Math.ceil(entry.size / CHUNK_SIZE),
@@ -417,7 +512,7 @@ export class CloudDriveClient {
     }
 
     try {
-      const blob = await this._runDownload({ entry, record, onProgress });
+      const blob = await this._runDownload({ entry, fileId, spaceId, record, onProgress });
       if (record) await this._removeTransferRecord(record.key);
       return blob;
     } catch (err) {
@@ -431,10 +526,11 @@ export class CloudDriveClient {
     }
   }
 
-  async _runDownload({ entry, record, onProgress }) {
+  async _runDownload({ entry, fileId, spaceId, record, onProgress }) {
     const init = await this._rpc(MSG.DOWNLOAD_INIT, {
       token: this.token,
-      fileId: entry.id,
+      spaceId,
+      fileId,
     });
     const total = init.chunkTotal;
     const done = new Set();
@@ -467,7 +563,7 @@ export class CloudDriveClient {
       if (done.has(i)) continue;
       const res = await this._rpc(
         MSG.DOWNLOAD_CHUNK,
-        { token: this.token, fileId: entry.id, index: i },
+        { token: this.token, spaceId, fileId, index: i },
         { timeout: 120 * 1000 }
       );
       const bytes = base64ToBytes(res.b64);
@@ -515,8 +611,8 @@ export class CloudDriveClient {
     this._assertLogin();
     if (record.serverUserId !== this.serverUserId)
       throw new Error("该续传任务属于其他服务器，请先连接原服务器");
-    if (record.spaceId !== this.spaceId)
-      throw new Error("该续传任务属于其他空间，请登录对应空间");
+    if (!this.mySpaces?.some((s) => s.id === record.spaceId))
+      throw new Error("该续传任务的空间不在当前账号授权范围内");
     if (record.dir === "up") {
       const fh = await this._fsRoot.get(`${record.tempPath}/src`);
       if (!fh) throw new Error("本地暂存文件丢失，无法续传");

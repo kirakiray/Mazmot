@@ -8,10 +8,13 @@
 // 存储布局：
 //   storage(getStorage("cloud-drive-server"))
 //     - spaces: [{ id, name, createdAt }]
-//     - accounts: [{ id, username, passHash, spaces: [spaceId], createdAt }]
+//     - accounts: [{ id, username, passHash, passPlain, spaces: [spaceId], createdAt }]
+//       （passPlain 为明文密码，供管理员在 UI 查看；早期账号可能缺失）
 //     - tree:<spaceId>: { rootId, nodes: { [id]: { id, name, type, parentId, size, mtime } } }
 //     - upload:<uploadId>: { uploadId, spaceId, parentId, name, size, chunkTotal,
 //                            received: number[], clientUploadId, createdAt }
+//     - audit: 审计日志（最新在前，上限 500 条）
+//       [{ id, time, type: "login"|"login-fail"|"logout", username, remoteUserId, token? }]
 //   fs(init("cloud-drive-server"))
 //     - spaces/<spaceId>/<fileId>   文件内容
 //     - tmp/<uploadId>/<index>      上传中的分块
@@ -170,51 +173,83 @@ export class CloudDriveServer {
       case MSG.PING:
         return { ok: true, time: Date.now() };
 
-      case MSG.SPACE_LIST: {
-        const spaces = await this.listSpaces();
-        return {
-          ok: true,
-          spaces: spaces.map(({ id, name, createdAt }) => ({
-            id,
-            name,
-            createdAt,
-          })),
-        };
-      }
+      // 注意：不再提供公开的空间列表指令，空间信息仅登录后按账号授权返回
 
       case MSG.LOGIN: {
         const accounts = await this._getAccounts();
         const account = accounts.find((a) => a.username === p.username);
         const passHash = await sha256Hex(String(p.password ?? ""));
         if (!account || account.passHash !== passHash) {
+          await this._log({
+            type: "login-fail",
+            username: String(p.username ?? ""),
+            remoteUserId,
+          });
           return { ok: false, error: "用户名或密码错误" };
         }
-        if (!account.spaces.includes(p.spaceId)) {
-          return { ok: false, error: "该账号无权访问此空间" };
-        }
-        const spaces = await this.listSpaces();
-        const space = spaces.find((s) => s.id === p.spaceId);
-        if (!space) return { ok: false, error: "空间不存在" };
-        const token = newId("tk");
+        // 只返回该账号被授权的空间，未登录前空间信息不可见
+        const spaces = (await this.listSpaces()).filter((s) =>
+          account.spaces.includes(s.id)
+        );
+        if (!spaces.length) {
+          return { ok: false, error: "该账号尚未被授权任何空间，请联系管理员" };
+        }        const token = newId("tk");
         await this._saveSession({
           token,
           username: account.username,
           remoteUserId,
-          spaceId: p.spaceId,
           createdAt: Date.now(),
         });
         this._onEvent({
           type: "login",
           username: account.username,
-          spaceId: p.spaceId,
           remoteUserId,
+        });
+        await this._log({
+          type: "login",
+          username: account.username,
+          remoteUserId,
+          token,
         });
         return {
           ok: true,
           token,
           username: account.username,
-          spaceName: space.name,
+          spaces: spaces.map(({ id, name }) => ({ id, name })),
         };
+      }
+      case MSG.LOGOUT: {
+        // 客户端主动登出：注销会话并记录审计（token 失效 / 未知也返回 ok，幂等）
+        const session = this._sessions.get(p.token);
+        if (session) {
+          this._sessions.delete(p.token);
+          await this._storage.setItem("sessions", [...this._sessions.values()]);
+          await this._log({
+            type: "logout",
+            username: session.username,
+            remoteUserId,
+            token: p.token,
+          });
+          this._onEvent({ type: "logout", username: session.username });
+        }
+        return { ok: true };
+      }
+      case MSG.RESUME: {
+        // 刷新后凭持久化 token 恢复登录：校验并记「刷新登录」审计
+        const session = this._sessions.get(p.token);
+        const valid =
+          session &&
+          session.remoteUserId === remoteUserId &&
+          session.createdAt >= Date.now() - CloudDriveServer.SESSION_TTL;
+        if (!valid) return { ok: false, error: "登录已失效，请重新登录" };
+        await this._log({
+          type: "refresh-login",
+          username: session.username,
+          remoteUserId,
+          token: p.token,
+        });
+        this._onEvent({ type: "refresh-login", username: session.username });
+        return { ok: true };
       }
     }
 
@@ -227,7 +262,16 @@ export class CloudDriveServer {
     ) {
       return { ok: false, error: "登录已失效，请重新登录" };
     }
-    const spaceId = session.spaceId;
+    // 会话不再绑定单一空间：每个指令显式携带 spaceId，逐次校验当前授权
+    // （管理员调整授权后立即生效，不依赖登录时快照）
+    if (!p.spaceId) return { ok: false, error: "缺少空间标识" };
+    const account = (await this._getAccounts()).find(
+      (a) => a.username === session.username
+    );
+    if (!account || !account.spaces.includes(p.spaceId)) {
+      return { ok: false, error: "无权访问该空间" };
+    }
+    const spaceId = p.spaceId;
     const spaceRecord = (await this.listSpaces()).find((s) => s.id === spaceId);
     const isLocal = spaceRecord?.kind === "local";
 
@@ -477,6 +521,27 @@ export class CloudDriveServer {
     return { ok: false, error: `未知指令: ${p.t}` };
   }
 
+  // ============ 审计日志（登录 / 登出记录） ============
+
+  static AUDIT_MAX = 500;
+
+  /** 追加一条审计记录（最新在前，超出上限裁剪） */
+  async _log(entry) {
+    const list = (await this._storage.getItem("audit")) || [];
+    list.unshift({ ...entry, id: newId("au"), time: Date.now() });
+    if (list.length > CloudDriveServer.AUDIT_MAX) list.length = CloudDriveServer.AUDIT_MAX;
+    await this._storage.setItem("audit", list);
+  }
+
+  /** 审计记录（最新在前）：{ id, time, type: "login"|"login-fail"|"logout", username, remoteUserId, token? } */
+  async listAudit() {
+    return (await this._storage.getItem("audit")) || [];
+  }
+
+  async clearAudit() {
+    await this._storage.removeItem("audit");
+  }
+
   // ============ 空间与用户管理（供服务器 UI 调用） ============
 
   async listSpaces() {
@@ -565,11 +630,13 @@ export class CloudDriveServer {
 
   async listAccounts() {
     const accounts = await this._getAccounts();
-    return accounts.map(({ id, username, spaces, createdAt }) => ({
+    // passPlain：管理员可见的明文密码（早期账号可能未记录）
+    return accounts.map(({ id, username, spaces, createdAt, passPlain }) => ({
       id,
       username,
       spaces,
       createdAt,
+      passPlain: passPlain ?? null,
     }));
   }
 
@@ -586,6 +653,7 @@ export class CloudDriveServer {
       id: newId("u"),
       username,
       passHash: await sha256Hex(password),
+      passPlain: password,
       spaces,
       createdAt: Date.now(),
     };
@@ -599,7 +667,10 @@ export class CloudDriveServer {
     const accounts = await this._getAccounts();
     const account = accounts.find((a) => a.id === id);
     if (!account) throw new Error("账号不存在");
-    if (password) account.passHash = await sha256Hex(password);
+    if (password) {
+      account.passHash = await sha256Hex(password);
+      account.passPlain = password;
+    }
     if (Array.isArray(spaces)) account.spaces = spaces;
     await this._storage.setItem("accounts", accounts);
     return this.listAccounts();

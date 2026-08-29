@@ -165,6 +165,38 @@
       padding: 40px 0;
       font-size: 14px;
     }
+    .row.audit-row {
+      padding: 8px 12px;
+      gap: 10px;
+    }
+    .row.audit-row n-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .row.audit-row n-icon.audit-err {
+      color: var(--md-sys-color-error);
+    }
+    .row.audit-row .name {
+      font-size: 12.5px;
+      font-weight: 400;
+    }
+    .row.audit-row .meta {
+      font-size: 11px;
+      margin-top: 1px;
+    }
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .pager-text {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-variant-numeric: tabular-nums;
+    }
     .dialog-body {
       display: flex;
       flex-direction: column;
@@ -245,6 +277,7 @@
         <st-button-group connected>
           <st-button attr:variant="activeTab === 'space' ? 'filled' : 'outlined'" on:click="switchTab('space')">空间管理</st-button>
           <st-button attr:variant="activeTab === 'user' ? 'filled' : 'outlined'" on:click="switchTab('user')">用户管理</st-button>
+          <st-button attr:variant="activeTab === 'audit' ? 'filled' : 'outlined'" on:click="switchTab('audit')">登录记录</st-button>
         </st-button-group>
       </div>
 
@@ -317,6 +350,48 @@
           <div class="empty">还没有账号，为客户端创建一个</div>
         </o-if>
       </o-if>
+
+      <o-if :value="activeTab === 'audit'">
+        <div class="section-bar">
+          <div style="flex: 1; font-size: 13px; color: var(--md-sys-color-on-surface-variant); align-self: center">
+            记录最近 {{auditLogs.length}} 条登录 / 登出事件（最多保留 500 条）
+          </div>
+          <st-button variant="outlined" attr:disabled="!auditLogs.length" on:click="clearAuditLogs()">
+            <n-icon icon="mdi:delete-sweep-outline"></n-icon>
+            清空记录
+          </st-button>
+        </div>
+        <o-if :value="auditLogs.length">
+          <div class="row-list">
+            <o-fill :value="auditPageItems" fill-key="id">
+              <div class="row audit-row">
+                <n-icon
+                  attr:icon="$data.icon"
+                  class:audit-err="$data.type === 'login-fail'"
+                ></n-icon>
+                <div class="grow">
+                  <div class="name">{{$data.typeText}} · {{$data.username || "（未知账号）"}}</div>
+                  <div class="meta">{{$data.timeText}} · 会话 {{$data.tokenShort}} · 来自 {{$data.remoteShort}}</div>
+                </div>
+              </div>
+            </o-fill>
+          </div>
+          <div class="pager">
+            <st-button variant="text" attr:disabled="auditPage <= 1" on:click="auditPage--">
+              <n-icon icon="mdi:chevron-left"></n-icon>
+              上一页
+            </st-button>
+            <span class="pager-text">第 {{auditPage}} / {{auditPageCount}} 页 · 共 {{auditLogs.length}} 条</span>
+            <st-button variant="text" attr:disabled="auditPage >= auditPageCount" on:click="auditPage++">
+              下一页
+              <n-icon icon="mdi:chevron-right"></n-icon>
+            </st-button>
+          </div>
+        </o-if>
+        <o-if :value="!auditLogs.length">
+          <div class="empty">暂无登录记录</div>
+        </o-if>
+      </o-if>
     </o-if>
 
     <o-if :value="!running">
@@ -365,6 +440,10 @@
       <div class="field">
         <label>用户名</label>
         <st-input :value="editUsername" attr:disabled="true"></st-input>
+      </div>
+      <div class="field">
+        <label>当前密码</label>
+        <st-input :value="editPasswordShown" attr:disabled="true"></st-input>
       </div>
       <div class="field">
         <label>新密码（留空表示不修改）</label>
@@ -417,6 +496,9 @@
           spaces: [],
           dialogSpaces: [],
           accounts: [],
+          auditLogs: [],
+          auditPage: 1,
+          auditPageCount: 1,
           stats: {
             spaceCount: 0,
             accountCount: 0,
@@ -430,6 +512,7 @@
           editingAccountId: "",
           editUsername: "",
           editPassword: "",
+          editPasswordShown: "",
           editSpaces: [],
         },
         ready() {
@@ -439,6 +522,12 @@
           this._server?.stop();
         },
         proto: {
+          // 当前页的审计条目（每页 10 条，auditLogs 已是最新在前）
+          get auditPageItems() {
+            const start = (this.auditPage - 1) * 10;
+            return this.auditLogs.slice(start, start + 10);
+          },
+
           async init() {
             const user = await getUser("cloud-drive");
             this.myId = user.userId;
@@ -446,6 +535,8 @@
               if (
                 [
                   "login",
+                  "logout",
+                  "refresh-login",
                   "upload-complete",
                   "space-created",
                   "space-deleted",
@@ -474,7 +565,7 @@
             const spaceMap = new Map(this.spaces.map((s) => [s.id, s.name]));
             this.accounts = accounts.map((a) => ({
               ...a,
-              timeText: `创建于 ${formatTime(a.createdAt)}`,
+              timeText: `创建于 ${formatTime(a.createdAt)} · 密码 ${a.passPlain ?? "未记录"}`,
               spaceChips: a.spaces
                 .map((id) => ({ id, name: spaceMap.get(id) || "?" }))
                 .filter((c) => c.name !== "?"),
@@ -482,6 +573,43 @@
             const stats = await server.getStats();
             stats.sizeText = formatBytes(stats.totalSize);
             this.stats = stats;
+            this.auditLogs = (await server.listAudit()).map((a) => ({
+              ...a,
+              typeText:
+                a.type === "login"
+                  ? "登录成功"
+                  : a.type === "refresh-login"
+                    ? "刷新登录"
+                    : a.type === "login-fail"
+                      ? "登录失败"
+                      : "登出",
+              icon:
+                a.type === "login"
+                  ? "mdi:login-variant"
+                  : a.type === "refresh-login"
+                    ? "mdi:refresh"
+                    : a.type === "login-fail"
+                      ? "mdi:shield-alert-outline"
+                      : "mdi:logout-variant",
+              timeText: formatTime(a.time),
+              tokenShort: a.token ? String(a.token).slice(0, 12) + "…" : "-",
+              remoteShort: a.remoteUserId
+                ? String(a.remoteUserId).slice(0, 10) + "…"
+                : "-",
+            }));
+            this.auditPageCount = Math.max(
+              1,
+              Math.ceil(this.auditLogs.length / 10)
+            );
+            if (this.auditPage > this.auditPageCount) this.auditPage = 1;
+          },
+
+          async clearAuditLogs() {
+            const ok = await this.confirmDialog("清空全部登录记录？");
+            if (!ok) return;
+            await this._server.clearAudit();
+            await this.refreshAll();
+            this.tip("登录记录已清空");
           },
 
           async toggleServer() {
@@ -569,6 +697,7 @@
             this.editingAccountId = account.id;
             this.editUsername = account.username;
             this.editPassword = "";
+            this.editPasswordShown = account.passPlain ?? "（未记录，修改密码后可显示）";
             const pickedIds = new Set(account.spaces);
             this.editSpaces = this.spaces.map((s) => ({
               ...s,

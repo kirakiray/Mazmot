@@ -186,12 +186,39 @@
     .hidden-input {
       display: none;
     }
+    .conn-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-error);
+      margin-right: 6px;
+      vertical-align: middle;
+      transition: background 0.2s ease;
+    }
+    .conn-dot.online {
+      background: #43a047;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid var(--md-sys-color-surface-container-highest);
+      border-top-color: var(--md-sys-color-primary);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
 
   <div class="topbar">
     <div class="brand">
       <div class="logo">📁</div>
-      <span>{{spaceName}}</span>
+      <span>我的云盘</span>
     </div>
     <div class="crumbs">
       <button class="crumb" class:current="depth === 0" on:click="enterDir('root')">全部文件</button>
@@ -208,7 +235,10 @@
         </span>
       </o-fill>
     </div>
-    <span class="user-tag">{{username}}</span>
+    <span class="user-tag"
+      ><span class="conn-dot" class:online="connState === 'connected'"></span
+      >{{username || "连接中…"}}</span
+    >
     <st-button variant="text" on:click="logout()">
       <n-icon icon="mdi:logout"></n-icon>
       退出
@@ -232,7 +262,13 @@
   </div>
 
   <div class="file-list">
-    <o-if :value="shownEntries.length">
+    <o-if :value="loading">
+      <div class="empty">
+        <div class="spinner"></div>
+        {{connState === 'connected' ? "正在加载目录…" : "正在连接服务器…"}}
+      </div>
+    </o-if>
+    <o-if :value="!loading && shownEntries.length">
       <o-fill :value="shownEntries" fill-key="id">
         <div class="row" on:click="$host.openEntry($data)">
           <n-icon
@@ -250,17 +286,19 @@
                 <n-icon icon="mdi:download-outline"></n-icon>
               </st-icon-button>
             </o-if>
-            <st-icon-button on:click="$host.renameEntry($data, $event)" title="重命名">
-              <n-icon icon="mdi:pencil-outline"></n-icon>
-            </st-icon-button>
-            <st-icon-button on:click="$host.deleteEntry($data, $event)" title="删除">
-              <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
-            </st-icon-button>
+            <o-if :value="!$data.virtual">
+              <st-icon-button on:click="$host.renameEntry($data, $event)" title="重命名">
+                <n-icon icon="mdi:pencil-outline"></n-icon>
+              </st-icon-button>
+              <st-icon-button on:click="$host.deleteEntry($data, $event)" title="删除">
+                <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
+              </st-icon-button>
+            </o-if>
           </div>
         </div>
       </o-fill>
     </o-if>
-    <o-if :value="!shownEntries.length">
+    <o-if :value="!loading && !shownEntries.length">
       <div class="empty">{{keyword ? "没有匹配的文件" : "空目录，上传一个文件试试"}}</div>
     </o-if>
   </div>
@@ -286,7 +324,7 @@
   />
 
   <script>
-    export default async ({ load }) => {
+    export default async ({ load, query }) => {
       const { getSharedClient } = await load("/mz/cloud-drive/client-core.js");
       const { formatBytes, formatTime, fileIcon } = await load(
         "/mz/cloud-drive/protocol.js"
@@ -303,8 +341,9 @@
 
       return {
         data: {
-          spaceName: "",
           username: "",
+          connState: "connecting",
+          loading: true,
           crumbItems: [],
           depth: 0,
           fileItems: [],
@@ -313,21 +352,23 @@
         },
         async ready() {
           this._client = getSharedClient();
-          this._currentDir = "root";
+          // 目录位置走 ofa.js 路由（hash query），支持浏览器后退 / 刷新恢复
+          this._currentDir = query.dir ? decodeURIComponent(query.dir) : "root";
           if (!this._client.loggedIn) {
-            // 刷新后凭持久化会话自动恢复登录
+            // 刷新后凭持久化会话自动恢复登录（连接期间页面显示 loading + 红点）
             const restored = await this._client.tryRestoreSession();
             if (!restored) {
               this.gotoHome();
               return;
             }
           }
-          this.spaceName = this._client.spaceName;
+          this.connState = "connected";
           this.username = this._client.username;
-          this.reload();
+          await this.reload();
         },
         proto: {
           async reload() {
+            this.loading = true;
             try {
               const { path, entries } = await this._client.list(
                 this._currentDir
@@ -346,7 +387,9 @@
                 current: i === path.length - 1,
               }));
               this.depth = path.length;
+              this.loading = false;
             } catch (err) {
+              this.loading = false;
               this.tip(err.message);
               if (String(err.message).includes("登录")) {
                 this.gotoHome();
@@ -363,8 +406,9 @@
           },
 
           enterDir(dirId) {
-            this._currentDir = dirId;
-            this.reload();
+            if (dirId === this._currentDir) return;
+            // 以路由方式切换目录，支持浏览器后退 / 刷新恢复
+            this.goto("./files.html?dir=" + encodeURIComponent(dirId));
           },
 
           openEntry(entry) {
@@ -496,7 +540,10 @@
 
           // 同 home.html 的 gotoFiles：绕开 goto 相对解析变更
           gotoHome() {
-            location.hash = "#" + new URL("home.html", this.src).pathname;
+            const base = new URL(this.src || "./pages/files.html", location.href);
+            const homeUrl = new URL("home.html", base);
+            const entry = new URL("../", homeUrl).href; // 应用根（client/）
+            location.replace(entry + "#" + homeUrl.pathname);
           },
         },
       };

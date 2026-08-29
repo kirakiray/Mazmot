@@ -21,6 +21,8 @@ export const MSG = {
   PING: "ping",
   SPACE_LIST: "space-list",
   LOGIN: "login",
+  LOGOUT: "logout",
+  RESUME: "resume", // 刷新后凭持久化会话恢复登录（服务器记审计）
   LIST: "list",
   MKDIR: "mkdir",
   REMOVE: "remove",
