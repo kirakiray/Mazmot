@@ -1,4 +1,4 @@
-// mz/cloud-drive/client-core —— 云盘客户端核心逻辑
+// official-apps/cloud-drive-client/lib/client-core —— 云盘客户端核心逻辑
 //
 // 职责：连接服务器（NoneOS userId）、登录、目录浏览、可靠分块上传 / 下载，
 // 以及基于本地 fs 暂存的大文件断点续传（刷新后可继续或取消）。

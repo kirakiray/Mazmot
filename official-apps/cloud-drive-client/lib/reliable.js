@@ -1,4 +1,4 @@
-// mz/cloud-drive/reliable —— 应用层可靠消息投递通道（纯模块，无 /nos / DOM 依赖）
+// reliable —— 应用层可靠消息投递通道（纯模块，无 /nos / DOM 依赖）
 //
 // 解决 noneos-core sendToService「尽力投递」的静默丢包问题：ACK 确认 + 超时重发
 // （复用同一 msgId）+ 接收端 msgId 去重 + 同一目标串行发送。规范来源：

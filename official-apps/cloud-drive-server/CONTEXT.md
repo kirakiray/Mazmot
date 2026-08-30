@@ -11,9 +11,39 @@
 ├── app.json          # 应用元数据：name / version / icon / entry / appConfig / permissions
 ├── index.html        # 入口 HTML：加载 ofa.js + 定义 Material 主题变量 + <o-router>/<o-app>
 ├── app-config.js     # ofa.js 应用配置：导出 home 路由与页面切换动画 pageAnime
+├── lib/              # 业务工具库：protocol.js（协议常量，与 cloud-drive-client 同副本）/ reliable.js（ReliableChannel，同副本）/ server-core.js（CloudDriveServer 核心）；test/reliable.sb.html 单元测试
 └── pages/
     └── home.html     # 首页模块（<template page>）：展示 appName / appDesc
 ```
+
+## lib/ 核心模块
+
+> `protocol.js` 与 `reliable.js` 在本应用与 `official-apps/cloud-drive-client/lib/` 内是**相同副本**（保持应用自包含、可独立安装分享）。修改协议或可靠层时**必须双侧同步**。
+
+### `protocol.js`（纯函数/常量，与客户端同副本）
+
+`APP_SERVICE_ID`（"cloud-drive-v1"）、`USER_NAMESPACE`（"cloud-drive"，双方 getUser 命名空间）、`CHUNK_SIZE`（48KB）、`RESUME_MIN_SIZE`（256KB）、`MSG` 消息类型表；`bytesToBase64` / `base64ToBytes` / `formatBytes` / `formatTime` / `newId` / `sha256Hex` / `chunkIndexes` / `fileIcon`。
+
+### `reliable.js` —— ReliableChannel（纯模块，可注入传输层，与客户端同副本）
+
+解决 `sendToService` 尽力投递的静默丢包（详见 noneos-core-docs「应用层可靠消息投递」）：
+
+```js
+const ch = new ReliableChannel({
+  send: async (envelope) => boolean,  // 交给传输通道（返回是否受理）
+  onData: (payload, envelope) => {},  // 收到去重后的业务数据
+  timeout, maxRetry, maxPayload,       // 默认 3000ms / 5 次 / 112KB
+});
+await ch.send(payload);                // ACK 到达 resolve，重试耗尽 reject；同目标串行
+transport 收到信封后调用 ch.handle(envelope)；  // 数据与 ACK 都走这里
+ch.destroy();                          // 通道销毁时 reject 所有在途发送
+```
+
+要点：信封 `{msgId, kind:"data"|"ack", payload}`；重发复用同一 msgId；接收端 **ACK 先于去重回**；payload 超限立即 reject（不占重试）。测试 `test/reliable.sb.html` 用有损线路模拟丢包/黑洞/重复 ACK。
+
+### `server-core.js` —— `new CloudDriveServer(user, onEvent)`
+
+`start()`（registerService + storage/fs 初始化）/ `stop()`；空间管理 `listSpaces / createSpace（虚拟） / createLocalSpace(handle)（挂载本地文件夹，需调用方检测 window.showDirectoryPicker，仅 Chromium） / deleteSpace`；本地空间 `kind:"local"`，挂载句柄存 `mount:<spaceId>`，文件读写直接作用于真实目录（fileId 为相对路径，暂不支持重命名）；账号体系 `listAccounts / createAccount({username, password, spaces}) / updateAccount / deleteAccount`；统计 `getStats()`；审计日志 `listAudit() / clearAudit()`（storage 键 `audit`，最新在前上限 500 条：`login`（含 token）/ `refresh-login`（刷新恢复，经 MSG.RESUME）/ `login-fail` / `logout`，字段 `{id, time, type, username, remoteUserId, token?}`）。客户端指令（token 会话，每远端串行处理）：`login / resume（刷新恢复校验 + 记审计）/ logout（注销会话并记审计）/ list / mkdir / rename / remove / up-init（按 clientUploadId 幂等续传）/ up-chunk / up-complete / up-cancel / down-init / down-chunk`。存储布局见文件头注释。
 
 ## 关键约定
 

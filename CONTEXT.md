@@ -90,12 +90,6 @@ Mazmot/
 │   ├── org/                  # 系统级组织账户机制（URL = /mz/org/*）
 │   │   ├── main.js           # 组织 = 独立 NoneOS 用户（命名空间 org:<name>，**离线身份，从不连服务器**）：createOrg（org 给创建者签 role="owner" 永久证书，extras 带 type:"org"+org:<name> 标记并 cred.import 进创建者凭证库；profile 自定义字段带 type:"org" 标记，isOrgProfile 判别）/ listOrgs / getOrg / updateOrgInfo / issueStaffCert（默认 role="staff"，证书同样带 type/org 标记，签发后自动 cred.import 托管进创建者 default 凭证库，员工用 claimCert(创建者ID, role, {issuerId: 组织ID}) 领取，计入带 issuer 的签发历史）/ listOrgIssued（经 /mz/cert 的 listIssuedBy 查 org 用户凭证库）/ revokeOrgCert / deleteOrg（deleteUser 不可逆）；组织清单存 getStorage("mz-orgs")，业务应用凭「证书 issuer === org userId」做员工权限判断
 │   │   └── test/             # validateOrgName 等纯函数测试
-│   ├── cloud-drive/          # 云盘套件共享层（URL = /mz/cloud-drive/*，被 official-apps/cloud-drive-client 与 cloud-drive-server 共用）
-│   │   ├── protocol.js       # 协议常量与纯工具（APP_SERVICE_ID="cloud-drive-v1" / USER_NAMESPACE="cloud-drive" / CHUNK_SIZE=48KB / RESUME_MIN_SIZE=256KB / MSG 消息类型表 / base64 互转 / formatBytes / newId / sha256Hex / fileIcon）
-│   │   ├── reliable.js       # ReliableChannel 可靠投递通道（纯模块可注入 transport 便于模拟丢包）：信封 {msgId, kind:"data"|"ack", payload}，ACK 确认 + 超时重发（复用同一 msgId）+ 接收端去重（TTL 5min + 容量上限）+ 同目标串行队列；ACK 先于去重回；payload 超 112KB 立即 reject
-│   │   ├── server-core.js    # CloudDriveServer（构造传 LocalUser + onEvent）：start/stop（registerService cloud-drive-v1）；空间/账号管理 listSpaces / createSpace（虚拟）/ createLocalSpace（挂载本地文件夹：kind:"local"，挂载句柄存 mount:<spaceId>，fileId 为相对路径直读写真实目录，暂不支持重命名）/ deleteSpace / listAccounts（含 passPlain 明文，供管理员 UI 查看；早期账号可能缺失）/ createAccount / updateAccount / deleteAccount / getStats；指令处理（每远端串行）login（SHA-256 密码 + 空间授权校验，token 会话）/ logout（注销会话 + 记审计）/ list / mkdir / rename / remove（递归）/ up-init（按 clientUploadId 幂等续传）/ up-chunk / up-complete（合并入 fs）/ up-cancel / down-init / down-chunk；审计日志 listAudit / clearAudit（storage 键 audit，最新在前上限 500 条：login / refresh-login（客户端刷新后凭 token 恢复，经 MSG.RESUME）/ login-fail / logout，含 username / remoteUserId / token）；远端通道 ReliableChannel 按 remoteUserId 缓存
-│   │   ├── client-core.js    # CloudDriveClient（getSharedClient 单例跨页面共享连接与登录态）：connect（connectUser + 注册应答服务 + ping 握手）/ fetchSpaces / login / list / mkdir / rename / remove；uploadFile / downloadFile（48KB 分块走可靠通道，≥256KB 先落本地 fs transfers/ 并写续传记录）；listTransfers / resumeTransfer / cancelTransfer（断点续传：刷新后 UI 询问继续或取消）
-│   │   └── test/reliable.sb.html  # reliable.js 单元测试（有损线路模拟：丢包全送达 / 去重 / 保序 / 黑洞 reject / 超限 reject）
 │   └── comps/                # 系统级公共组件（URL = /mz/comps/*），详见 mz/comps/CONTEXT.md
 │       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
 │       ├── o-md/             # <o-md> Markdown 渲染组件
@@ -110,8 +104,8 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架 + /mz/cloud-drive/server-core.js）：pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
-│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；核心逻辑在 /mz/cloud-drive/client-core.js（getSharedClient 单例），登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键
+│   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
+│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
@@ -427,8 +421,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |
 | 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
-| 云盘套件可靠传输通道（ACK + 重发 + 去重 + 串行队列，可注入传输层模拟丢包） | [mz/cloud-drive/reliable.js](mz/cloud-drive/reliable.js)（测试 [mz/cloud-drive/test/reliable.sb.html](mz/cloud-drive/test/reliable.sb.html)） |
-| 云盘服务器 / 客户端核心（空间与账号体系、分块上传下载、断点续传） | [mz/cloud-drive/server-core.js](mz/cloud-drive/server-core.js) / [mz/cloud-drive/client-core.js](mz/cloud-drive/client-core.js) / [mz/cloud-drive/protocol.js](mz/cloud-drive/protocol.js) |
+| 云盘套件可靠传输通道（ACK + 重发 + 去重 + 串行队列，可注入传输层模拟丢包） | [official-apps/cloud-drive-client/lib/reliable.js](official-apps/cloud-drive-client/lib/reliable.js)（与 server 侧同副本；测试 [official-apps/cloud-drive-client/lib/test/reliable.sb.html](official-apps/cloud-drive-client/lib/test/reliable.sb.html)） |
+| 云盘服务器 / 客户端核心（空间与账号体系、分块上传下载、断点续传） | [official-apps/cloud-drive-server/lib/server-core.js](official-apps/cloud-drive-server/lib/server-core.js) / [official-apps/cloud-drive-client/lib/client-core.js](official-apps/cloud-drive-client/lib/client-core.js)（协议 [lib/protocol.js](official-apps/cloud-drive-client/lib/protocol.js) 双侧同副本） |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |

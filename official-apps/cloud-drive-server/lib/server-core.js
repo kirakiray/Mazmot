@@ -1,8 +1,8 @@
-// mz/cloud-drive/server-core —— 云盘服务器核心逻辑
+// official-apps/cloud-drive-server/lib/server-core —— 云盘服务器核心逻辑
 //
 // 职责：空间（storage dir）管理、用户账号体系、文件树元数据、基于 NoneOS fs 的
 // 文件存取，以及基于 ReliableChannel 的可靠指令应答。
-// 由页面模块经 load("/mz/cloud-drive/server-core.js") 使用；/nos/* 全部按需动态
+// 由页面模块经 load("../lib/server-core.js") 使用；/nos/* 全部按需动态
 // 加载，本模块顶层不 import /nos/*。
 //
 // 存储布局：

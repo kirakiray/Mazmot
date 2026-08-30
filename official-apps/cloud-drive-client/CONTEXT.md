@@ -11,10 +11,42 @@
 ├── app.json          # 应用元数据：name / version / icon / entry / appConfig / permissions
 ├── index.html        # 入口 HTML：加载 ofa.js + 定义 Material 主题变量 + <o-router>/<o-app>
 ├── app-config.js     # ofa.js 应用配置：导出 home 路由与页面切换动画 pageAnime
+├── lib/              # 业务工具库：protocol.js（协议常量，与 cloud-drive-server 同副本）/ reliable.js（ReliableChannel，同副本）/ client-core.js（CloudDriveClient，getSharedClient 单例）；test/reliable.sb.html 单元测试
 └── pages/
     ├── home.html     # 登录页（<template page>）：连接服务器 userId → 用户名密码两步登录
     ├── layout.html   # 登录后布局父页面：顶栏（品牌 / 面包屑导航 / 连接状态点红绿 / 退出按钮）+ <slot>
     └── files.html    # 文件页：挂在 layout 之下（export const parent），负责目录列表 / 上传下载 / 续传
+```
+
+## lib/ 核心模块
+
+> `protocol.js` 与 `reliable.js` 在本应用与 `official-apps/cloud-drive-server/lib/` 内是**相同副本**（保持应用自包含、可独立安装分享）。修改协议或可靠层时**必须双侧同步**。
+
+### `protocol.js`（纯函数/常量，与服务器同副本）
+
+`APP_SERVICE_ID`（"cloud-drive-v1"）、`USER_NAMESPACE`（"cloud-drive"，双方 getUser 命名空间）、`CHUNK_SIZE`（48KB）、`RESUME_MIN_SIZE`（256KB）、`MSG` 消息类型表；`bytesToBase64` / `base64ToBytes` / `formatBytes` / `formatTime` / `newId` / `sha256Hex` / `chunkIndexes` / `fileIcon`。
+
+### `reliable.js` —— ReliableChannel（纯模块，可注入传输层，与服务器同副本）
+
+解决 `sendToService` 尽力投递的静默丢包（详见 noneos-core-docs「应用层可靠消息投递」）：构造时注入 `send`（交信封给传输通道，返回是否受理）/ `onData`（收到去重后的业务数据）/ `timeout / maxRetry / maxPayload`（默认 3000ms / 5 次 / 112KB）；`ch.send(payload)` 等 ACK 到达 resolve、重试耗尽 reject（同目标串行）；transport 收到信封统一交 `ch.handle(envelope)`（数据与 ACK 都走这里）；`ch.destroy()` 销毁时 reject 所有在途发送。
+
+要点：信封 `{msgId, kind:"data"|"ack", payload}`；重发复用同一 msgId；接收端 **ACK 先于去重回**；payload 超限立即 reject（不占重试）。测试 `test/reliable.sb.html` 用有损线路模拟丢包/黑洞/重复 ACK。
+
+### `client-core.js` —— `getSharedClient(onEvent)` 单例
+
+```js
+const client = getSharedClient();
+await client.connect(serverUserId);          // connectUser + 注册应答服务 + ping 握手
+await client.fetchSpaces();                  // 无需登录
+await client.login({ spaceId, username, password });
+const { path, entries } = await client.list(parentId);
+await client.mkdir / rename / remove;
+await client.uploadFile(file, parentId, { onProgress });   // Blob；≥256KB 断点续传
+const blob = await client.downloadFile(entry, { onProgress });
+await client.listTransfers();                // 刷新后未完成任务（UI 询问继续/取消）
+await client.resumeTransfer(record);         // 需先重连并登录到同一服务器 + 空间
+await client.cancelTransfer(key);            // 清暂存与记录
+client.disconnect();
 ```
 
 ## 关键约定
