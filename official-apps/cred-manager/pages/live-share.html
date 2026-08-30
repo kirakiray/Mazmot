@@ -1,0 +1,599 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .page-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .query-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .query-row st-input {
+      flex: 1;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.6;
+    }
+    .my-code-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .my-code-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .my-code {
+      font-family: monospace;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title n-icon {
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .peer-card {
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-color: var(--md-sys-color-surface-container-low);
+    }
+    .peer-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .peer-name {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .verify-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .verify-badge[data-valid="false"] {
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .peer-id {
+      font-size: 11px;
+      font-family: monospace;
+      color: var(--md-sys-color-on-surface-variant);
+      word-break: break-all;
+    }
+    .peer-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .peer-status[data-state="error"] {
+      color: var(--md-sys-color-on-error-container);
+      background-color: var(--md-sys-color-error-container);
+      border-radius: 8px;
+      padding: 6px 10px;
+    }
+    .peer-status n-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .cert-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      padding: 6px 0;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .cert-role {
+      font-weight: 500;
+    }
+    .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .cert-issuer {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .empty {
+      padding: 16px 8px;
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.7;
+      font-size: 13px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/ncomp/user-name/user-name.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="page">
+    <div class="page-title">
+      <n-icon icon="mdi:swap-horizontal"></n-icon>
+      <locale-text><span lang="cn">互授</span><span lang="en">Live Share</span></locale-text>
+    </div>
+
+    <!-- 我的匹配码：给对方扫我（与 my-info 取码同源，服务器同窗口幂等同码） -->
+    <st-card class="my-code-card">
+      <o-if :value="!myPairingCode">
+        <st-button color="primary" variant="outlined" on:click="genMyCode()" attr:loading="genCodeLoading">
+          <n-icon icon="mdi:qrcode-plus" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">生成我的匹配码</span><span lang="en">Generate my pairing code</span></locale-text>
+        </st-button>
+      </o-if>
+      <o-if :value="myPairingCode">
+        <div class="my-code-row">
+          <span class="my-code">{{myPairingCode}}</span>
+          <st-icon-button on:click="copyMyCode()" attr:title="copyTitle">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-icon-button>
+          <st-icon-button on:click="genMyCode()" attr:loading="genCodeLoading" attr:title="refreshTitle">
+            <n-icon icon="mdi:refresh"></n-icon>
+          </st-icon-button>
+        </div>
+        <div class="hint">{{myCodeCountdown}}</div>
+      </o-if>
+    </st-card>
+
+    <!-- 输入对方匹配码：连上后自动拉取与我相关的证书 -->
+    <div class="query-row">
+      <st-input
+        sync:value="codeInput"
+        attr:placeholder="codePlaceholder"
+      ></st-input>
+      <st-button color="primary" on:click="matchByCode()" attr:loading="matching">
+        <n-icon icon="mdi:link-variant" slot="prefix"></n-icon>
+        <locale-text><span lang="cn">匹配</span><span lang="en">Match</span></locale-text>
+      </st-button>
+    </div>
+    <div class="hint">
+      <locale-text>
+        <span lang="cn">输入对方的匹配码连接对方（对方需打开本页面）。连接成功后会自动把对方保管的、与你相关的证书拉取到本地；对方匹配你时，这里也会实时出现并自动拉取。</span>
+        <span lang="en">Enter the peer's pairing code to connect (the peer must keep this page open). Certificates related to you held by the peer are pulled automatically once connected; incoming matches appear here in real time and pull automatically too.</span>
+      </locale-text>
+    </div>
+
+    <!-- 已连接的对方：卡片 + 自动拉取结果 -->
+    <o-if :value="matchedPeers.length > 0">
+      <div class="section-title">
+        <n-icon icon="mdi:account-check-outline"></n-icon>
+        <locale-text><span lang="cn">已连接</span><span lang="en">Connected</span></locale-text>
+      </div>
+      <o-fill :value="matchedPeers" fill-key="userId">
+        <div class="peer-card">
+          <div class="peer-head">
+            <span class="peer-name">{{$host.displayName($data.card)}}</span>
+            <span class="verify-badge" attr:data-valid="$data.valid ? 'true' : 'false'">
+              <n-icon icon="mdi:shield-check-outline"></n-icon>
+              <o-if :value="$data.valid">
+                <locale-text><span lang="cn">已验证</span><span lang="en">Verified</span></locale-text>
+              </o-if>
+              <o-if :value="!$data.valid">
+                <locale-text><span lang="cn">验签失败</span><span lang="en">Invalid</span></locale-text>
+              </o-if>
+            </span>
+            <st-icon-button color="error" on:click="$host.disconnect($data.userId)" attr:title="$host.disconnectTitle">
+              <n-icon icon="mdi:close"></n-icon>
+            </st-icon-button>
+          </div>
+          <div class="peer-id">{{$data.userId}}</div>
+          <div class="peer-status" attr:data-state="$data.pullState">
+            <n-icon icon="mdi:autorenew"></n-icon>
+            <span>{{$host.statusText($data)}}</span>
+          </div>
+          <o-fill :value="$data.pulled" fill-key="id">
+            <div class="cert-line">
+              <n-icon icon="mdi:check-circle-outline"></n-icon>
+              <span class="cert-role">{{$data.role}}</span>
+              <o-if :value="$data.relayed">
+                <span class="cert-badge">
+                  <n-icon icon="mdi:swap-horizontal"></n-icon>
+                  <locale-text><span lang="cn">他人签发 · 对方中转</span><span lang="en">issued by other · relayed</span></locale-text>
+                </span>
+              </o-if>
+              <span class="cert-issuer">
+                <locale-text><span lang="cn">签发者</span><span lang="en">issuer</span></locale-text>
+                <n-user-name attr:user-id="$data.issuer"></n-user-name>
+              </span>
+            </div>
+          </o-fill>
+        </div>
+      </o-fill>
+    </o-if>
+    <o-if :value="matchedPeers.length === 0">
+      <div class="empty">
+        <locale-text><span lang="cn">还没有连接任何对方（生成你的匹配码给对方，或输入对方的匹配码）</span><span lang="en">No peer connected yet (share your code or enter the peer's)</span></locale-text>
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
+    import { verifyProfileCard, claimCert } from "/mz/cert/main.js";
+    import { PAIRING_CODE_PATTERN, resolvePairingCard, requestPairingCode } from "/mz/cert/pairing.js";
+    import {
+      registerShareService,
+      notifyMatch,
+      requestCertList,
+      addOutgoingMatch,
+    } from "../lib/live-share.js";
+
+    export const parent = "./home.html";
+
+    const formatExpire = (expire) => {
+      if (!expire) return "∞";
+      try {
+        return new Date(expire).toLocaleDateString();
+      } catch {
+        return String(expire);
+      }
+    };
+
+    export default async () => {
+      return {
+        data: {
+          codeInput: "",
+          codePlaceholder: getLocaleText({
+            cn: "输入对方的匹配码",
+            en: "Enter the peer's pairing code",
+          }),
+          matching: false,
+          genCodeLoading: false,
+          myPairingCode: "",
+          myCodeCountdown: "",
+          copyTitle: getLocaleText({ cn: "复制", en: "Copy" }),
+          refreshTitle: getLocaleText({ cn: "刷新配对码", en: "Refresh code" }),
+          disconnectTitle: getLocaleText({ cn: "移除该对方", en: "Remove peer" }),
+          // { userId, card, valid, pullState: idle|pulling|done|empty|error,
+          //   statusText, pulled: [{ id, role, issuer, relayed }] }
+          matchedPeers: [],
+        },
+        async attached() {
+          const user = await ensureUser();
+          this._user = user;
+          // 注册互授服务：页面（应用）打开期间接收 match 通知 / 响应清单请求
+          this._service = registerShareService(user, {
+            onMatch: (card, fromUserId) => this.onIncomingMatch(card, fromUserId),
+            // 对方请求清单：列出本地保管的、与 subject（对方 userId）相关的证书元数据
+            listCerts: async (subject) => this.listLocalRelatedCerts(subject),
+          });
+          // 只响应本次会话内的匹配动作：一方输入配对码才开始联动，
+          // 不恢复历史记录、不自动连接任何用户
+        },
+        detached() {
+          // 离开页面即注销服务（对端会拿到「对方不在线」）
+          this._service?.unregister();
+          this._service = null;
+          this._user = null;
+          this.stopMyCodeCountdown();
+        },
+        proto: {
+          displayName(card) {
+            return (card && card.username) || "…";
+          },
+          statusText(p) {
+            return p.statusText || "";
+          },
+          findPeer(userId) {
+            return this.matchedPeers.find((p) => p.userId === userId);
+          },
+          // ———— 我的匹配码（与 my-info 取码同源：服务器同窗口幂等返回同码） ————
+          async genMyCode() {
+            this.genCodeLoading = true;
+            try {
+              const card = await this._user.getInfo();
+              if (
+                !card ||
+                !card.publicKey ||
+                !card.signature ||
+                !card.role ||
+                !card.issuer ||
+                !card.subject
+              ) {
+                toast({
+                  message: getLocaleText({
+                    cn: "还没有用户资料，请先到「我的信息」页保存一次用户名",
+                    en: "No profile yet; save a username on the My Info page first",
+                  }),
+                  color: "error",
+                });
+                return;
+              }
+              const { code, expiresAt } = await requestPairingCode(card);
+              this.myPairingCode = code;
+              this.startMyCodeCountdown(expiresAt);
+            } catch (err) {
+              console.error("生成匹配码失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "生成匹配码失败：{msg}", en: "Failed to generate code: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.genCodeLoading = false;
+            }
+          },
+          startMyCodeCountdown(expiresAt) {
+            this.stopMyCodeCountdown();
+            const tick = () => {
+              const remainSec = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+              const m = Math.floor(remainSec / 60);
+              const s = String(remainSec % 60).padStart(2, "0");
+              this.myCodeCountdown =
+                remainSec > 0
+                  ? getLocaleText({
+                      cn: `${m}:${s} 后失效（到期后点刷新换新码）`,
+                      en: `expires in ${m}:${s} (tap refresh for a new one)`,
+                    })
+                  : getLocaleText({
+                      cn: "已过期，请点击刷新获取新配对码",
+                      en: "Expired — tap refresh for a new code",
+                    });
+              if (remainSec <= 0) this.stopMyCodeCountdown();
+            };
+            tick();
+            this.__myCodeTimer = setInterval(tick, 1000);
+          },
+          stopMyCodeCountdown() {
+            if (this.__myCodeTimer) {
+              clearInterval(this.__myCodeTimer);
+              this.__myCodeTimer = null;
+            }
+          },
+          async copyMyCode() {
+            try {
+              await navigator.clipboard.writeText(this.myPairingCode);
+              toast({
+                message: getLocaleText({ cn: "已复制", en: "Copied" }),
+              });
+            } catch (err) {
+              console.error("复制失败：", err);
+              toast({
+                message: getLocaleText({ cn: "复制失败", en: "Copy failed" }),
+                color: "error",
+              });
+            }
+          },
+          // ———— 匹配 + 自动拉取 ————
+          async matchByCode() {
+            const code = this.codeInput.trim();
+            if (!code) return;
+            if (!PAIRING_CODE_PATTERN.test(code)) {
+              toast({
+                message: getLocaleText({
+                  cn: "输入的不是合法匹配码",
+                  en: "Not a valid pairing code",
+                }),
+                color: "error",
+              });
+              return;
+            }
+            this.matching = true;
+            try {
+              // 凭码解析对方卡片（服务器只做中转，本地验签为准）
+              const card = await resolvePairingCard(code);
+              const peerId = card.subject || "";
+              if (!peerId) throw new Error("配对码返回的卡片缺少 subject");
+              const valid = await verifyProfileCard(card, peerId);
+              if (!valid) {
+                toast({
+                  message: getLocaleText({
+                    cn: "对方资料签名验证失败，已取消匹配",
+                    en: "Peer card signature verification failed; match cancelled",
+                  }),
+                  color: "error",
+                });
+                return;
+              }
+              // 连接对方并推送「我匹配了你」（对方页面打开时实时可见）
+              const remoteUser = await this._user.connectUser(peerId);
+              await notifyMatch(remoteUser, await this._user.getInfo());
+              await addOutgoingMatch(card);
+              this.codeInput = "";
+              await this.addPeerEntry(card, peerId, { autoPull: true });
+            } catch (err) {
+              console.error("匹配失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "匹配失败：{msg}", en: "Match failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.matching = false;
+            }
+          },
+          // 对方匹配了我：实时出现并自动拉取
+          async onIncomingMatch(card, fromUserId) {
+            const peerId = card.subject || fromUserId;
+            const valid = await verifyProfileCard(card, peerId).catch(() => false);
+            if (!valid) return; // 验签失败不显示也不拉取
+            await this.addPeerEntry(card, peerId, { autoPull: true });
+          },
+          // 加入 / 更新已连接列表
+          async addPeerEntry(card, userId, { autoPull }) {
+            let entry = this.findPeer(userId);
+            if (!entry) {
+              entry = {
+                userId,
+                card,
+                valid: await verifyProfileCard(card, userId).catch(() => false),
+                pullState: "idle",
+                statusText: "",
+                pulled: [],
+              };
+              this.matchedPeers.push(entry);
+            } else {
+              entry.card = card;
+              entry.valid = await verifyProfileCard(card, userId).catch(() => false);
+            }
+            if (autoPull) await this.pullFrom(userId);
+          },
+          async disconnect(userId) {
+            this.matchedPeers = this.matchedPeers.filter(
+              (p) => p.userId !== userId,
+            );
+          },
+          // 本地保管的、与 subject 相关的证书元数据（服务端响应 list-request 用；
+          // 只出元数据，不含签名内容——对方正式拉取走 core 按精确 key 验签）
+          async listLocalRelatedCerts(subject) {
+            const list = [];
+            for await (const cert of this._user.cred.values(
+              {},
+              { includeExpired: false },
+            )) {
+              if (cert.role === "profile") continue;
+              if (cert.subject !== subject) continue;
+              list.push({
+                id: cert.id,
+                role: cert.role || "",
+                issuer: cert.issuer || "",
+                subject: cert.subject || "",
+                signTime: cert.signTime || 0,
+                expire: cert.expire || null,
+              });
+            }
+            return list;
+          },
+          // 连接确认后自动执行：拉清单 → 逐条 claimCert（core 验签入库，幂等）
+          async pullFrom(peerId) {
+            const entry = this.findPeer(peerId);
+            if (!entry || entry.pullState === "pulling") return;
+            entry.pullState = "pulling";
+            entry.statusText = getLocaleText({
+              cn: "正在拉取…",
+              en: "Pulling…",
+            });
+            try {
+              const remoteUser = await this._user.connectUser(peerId);
+              const list = await requestCertList(remoteUser, this._user.userId);
+              if (!list.length) {
+                entry.pullState = "empty";
+                entry.statusText = getLocaleText({
+                  cn: "对方没有保管与你相关的证书",
+                  en: "The peer holds no certificates related to you",
+                });
+                return;
+              }
+              const pulled = [];
+              const failed = [];
+              for (const meta of list) {
+                try {
+                  // issuerId 显式传清单里的签发者：他人签发、对方中转时 != 保管人
+                  await claimCert(peerId, meta.role, { issuerId: meta.issuer });
+                  pulled.push({
+                    id: meta.id,
+                    role: meta.role,
+                    issuer: meta.issuer,
+                    relayed: meta.issuer !== peerId,
+                  });
+                } catch (err) {
+                  console.warn("拉取证书失败：", meta.id, err);
+                  failed.push(meta.id);
+                }
+              }
+              entry.pulled = pulled;
+              if (failed.length) {
+                entry.pullState = "error";
+                entry.statusText = getLocaleText(
+                  {
+                    cn: "{ok} 条已拉取，{bad} 条失败（对方可能已吊销或离线）",
+                    en: "{ok} pulled, {bad} failed (peer may have revoked or gone offline)",
+                  },
+                  { ok: pulled.length, bad: failed.length },
+                );
+              } else {
+                entry.pullState = "done";
+                entry.statusText = getLocaleText(
+                  { cn: "已拉取 {n} 条证书到本地", en: "Pulled {n} certificates locally" },
+                  { n: pulled.length },
+                );
+              }
+            } catch (err) {
+              console.error("自动拉取失败：", err);
+              entry.pullState = "error";
+              entry.statusText = getLocaleText(
+                { cn: "拉取失败：{msg}", en: "Pull failed: {msg}" },
+                { msg: err.message || err },
+              );
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

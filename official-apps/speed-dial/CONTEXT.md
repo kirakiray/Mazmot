@@ -2,7 +2,7 @@
 
 Speed Dial 风格的网页收藏夹应用：分组筛选、拖拽排序、AI 导入（从任意文本/文件中识别网址批量收藏）、AI 自动分组（按主题整理已有收藏），数据全部保存在本地（NoneOS storage）。本文件是本应用的**活文档**，与代码保持一致；修改代码必须同步更新本文件（规则见 [AGENTS.md](AGENTS.md)）。
 
-> 注意：搜索框是**网络搜索**（输入关键词跳转所选搜索引擎，默认 Google，可切换 Bing / 百度 / DuckDuckGo，选择持久化），不是本地收藏筛选，本地筛选仅靠分组 chips；AI 导入 / AI 分组需联网且依赖宿主已配置 AI Key。
+> 注意：搜索框是**网络搜索**（输入关键词跳转所选搜索引擎，默认 Google，可切换 Bing / 百度 / DuckDuckGo，选择持久化；启动时若探测到 Google 不可达会临时降级 Bing），输入以 `http(s)://` 开头则直接进入该网址（引擎菜单隐藏、按钮变进入箭头）；不是本地收藏筛选，本地筛选仅靠分组 chips；AI 导入 / AI 分组需联网且依赖宿主已配置 AI Key。
 
 ## 目录结构
 
@@ -69,19 +69,22 @@ speed-dial/
 
 状态（`data`）：`dials`（收藏数组）、`activeGroup`（当前筛选组，`""` 为全部）、`draggingId` / `dropTargetId`（拖拽中）、`searchText`（搜索框输入）、`engineId`（当前搜索引擎 id，默认 `"google"`）、`engines`（模块级 `ENGINES` 常量注入，供 `o-fill` 渲染菜单）。弹窗状态（`dialogOpen` / `form` / `editingId`）已下沉到 `pages/dial-form.html`，AI 导入弹窗状态已下沉到 `pages/ai-import.html`。
 
-搜索框（品牌图标与工具栏之间，`.search-bar` 居中 max-width 560px）：`p-input`（`sync:value="searchText"`，Enter 提交）+ prefix 插槽内 `p-menu`（`align="left"`）引擎切换——触发按钮显示当前引擎名 + `mdi:chevron-down`，菜单项由 `o-fill :value="engines"` 渲染（当前项文字高亮 `.engine-active`，点击调 `setEngine` 后菜单自动关闭）+ suffix 插槽 `mdi:magnify` 搜索按钮。
+搜索框（品牌图标与工具栏之间，`.search-bar` 居中 max-width 560px）：`p-input`（`sync:value="searchText"`，Enter 提交）+ prefix 插槽内 `p-menu`（`align="left"`）引擎切换——触发按钮显示当前引擎名 + `mdi:chevron-down`，菜单项由 `o-fill :value="engines"` 渲染（当前项文字高亮 `.engine-active`，点击调 `setEngine` 后菜单自动关闭）+ suffix 插槽搜索按钮（`mdi:magnify`；`isUrlInput` 为真时换成 `mdi:arrow-right` 进入网页，且引擎菜单 `:style.display` 隐藏）。
 
 计算属性（`proto` getter）：
 
 - `visibleDials`：`activeGroup` 为空返回全部，否则按 `dial.group === activeGroup` 过滤
 - `groups`：由 `dials` 实时聚合出 `[{ name, count }]`，空 group 记作「未分组」
 - `currentEngine`：按 `engineId` 从 `ENGINES` 查引擎对象，查不到回落 `ENGINES[0]`
+- `isUrlInput`：`searchText` trim 后以 `http://` / `https://` 开头时为真（输入的是网址而非关键词）
 
 关键方法（`proto`）：
 
 - `onSearchKey(event)`：搜索框 keydown（keydown 是 composed 事件，可穿透 `p-input` shadow），Enter 触发 `doSearch()`
-- `doSearch()`：`searchText` trim 非空时 `location.href = currentEngine.url + encodeURIComponent(q)` **当前页跳转**搜索引擎（应用本就在独立标签页整页运行，无需开新标签）；空输入不动作
+- `doSearch()`：`searchText` trim 非空时，若以 `http(s)://` 开头则直接 `location.href` 进入该网址；否则 `location.href = currentEngine.url + encodeURIComponent(q)` **当前页跳转**搜索引擎（应用本就在独立标签页整页运行，无需开新标签）；空输入不动作
 - `setEngine(id)`：id 在 `ENGINES` 内才生效，更新 `engineId` 并 `await store.setItem("searchEngine", id)` 持久化
+- `checkReachable(url, timeout=5000)`：`fetch` no-cors + AbortController 超时探测 URL 可达性，成功 true / 失败或超时 false
+- `probeEngine()`：启动时后台异步探测当前引擎（`ENGINES` 项带 `probe` 字段才探测，目前仅 google 有 `https://www.google.com/generate_204`）；不可达且当前是默认 google 时**临时**切到 bing（只改运行时 `engineId`，不写回 `searchEngine` 持久化）
 - `normalizeUrl(input)`：trim，已有协议（`scheme://`）原样返回，否则补 `https://`；空串原样返回
 - `hostOf(url)`：解析 hostname 并去掉 `www.`，解析失败返回原串
 - `openDial(dial)`：当前标签跳转 `location.href = url`；拖拽中（`draggingId` 非空）不触发
@@ -96,7 +99,7 @@ speed-dial/
 - 拖拽：`onDragStart/onDragOver/onDragLeave/onDrop/onDragEnd`，drop 时在 `plainDials()` 拷贝上 splice 换位后整体回写 `this.dials`
 - `plainDials()`：把响应式对象拍平为纯对象数组（仅保留 7 个持久化字段，`icon` 空值归一为空串），**写库必须经过它**，避免代理对象入库
 - `persist()`：`store.setItem("dials", this.plainDials())`
-- `attached()`：`Promise.all` 并行读 `dials` 与 `searchEngine`（引擎 id 校验在 `ENGINES` 内才应用，否则保持默认 google），最后 `this.shadow.$("#search-input")?.focus()` 实现**应用打开时搜索框自动聚焦**
+- `attached()`：`Promise.all` 并行读 `dials` 与 `searchEngine`（引擎 id 校验在 `ENGINES` 内才应用，否则保持默认 google），最后 `this.shadow.$("#search-input")?.focus()` 实现**应用打开时搜索框自动聚焦**，并异步调用 `probeEngine()` 探测默认引擎（不阻塞页面）
 
 ## dial-form.html 弹窗页面要点
 

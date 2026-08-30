@@ -109,6 +109,14 @@
         </st-list-item>
         <st-list-item
           button
+          attr:active="activeShare"
+          on:click="navShare()"
+        >
+          <n-icon icon="mdi:swap-horizontal" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">互授</span><span lang="en">Live Share</span></locale-text>
+        </st-list-item>
+        <st-list-item
+          button
           attr:active="activeCerts"
           on:click="navCerts()"
         >
@@ -131,6 +139,7 @@
           activeCerts: false,
           activeKnown: false,
           activeOrgs: false,
+          activeShare: false,
         },
         routerChange() {
           this.refreshActive();
@@ -148,6 +157,7 @@
             this.activeCerts =
               path.endsWith("my-certs.html") || path.endsWith("cert-detail.html");
             this.activeKnown = path.endsWith("known-users.html");
+            this.activeShare = path.endsWith("live-share.html");
             // org-detail 是组织管理的子页，进入详情时保持该项高亮
             this.activeOrgs =
               path.endsWith("orgs.html") || path.endsWith("org-detail.html");
@@ -167,6 +177,9 @@
           },
           navOrgs() {
             this.app.goto("./pages/orgs.html");
+          },
+          navShare() {
+            this.app.goto("./pages/live-share.html");
           },
         },
       };

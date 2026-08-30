@@ -7,7 +7,19 @@
 // 安装时根据 __app.json 中的 replacements 清单替换变量（如 CREATED_AT），
 // 然后写入虚拟目录的 client/ 子目录。
 
-import { getLang } from "/nos/locale-text/get-locale-text.js";
+// getLang 按需懒加载，且直连在线 Core（core.noneos.com）而非 "/nos/" 前缀：
+// 本模块被 run-app 在 Core SW 注册前使用（官方应用安装链路），此时 /nos/ 不可用。
+let _getLangPromise = null;
+const getLang = () => {
+  if (!_getLangPromise) {
+    _getLangPromise = import(
+      "https://core.noneos.com/nos/locale-text/get-locale-text.js"
+    )
+      .then((m) => m.getLang())
+      .catch(() => "cn"); // 拉取失败回退中文基准
+  }
+  return _getLangPromise;
+};
 
 const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
 
@@ -15,11 +27,11 @@ const OFFICIAL_APPS_ROOT = new URL("/official-apps/", location.origin);
  * 按当前语言解析 __app.json 的 name/desc。
  * 回退链：i18n[当前语言] → 基准英文（meta.name / meta.desc）。
  * @param {Object} meta __app.json 解析结果
- * @returns {{ name: string, desc: string }}
+ * @returns {Promise<{ name: string, desc: string }>}
  */
-function resolveLocalizedMeta(meta) {
+async function resolveLocalizedMeta(meta) {
   const langMap = (meta && meta.i18n) || {};
-  const langEntry = langMap[getLang()] || {};
+  const langEntry = langMap[(await getLang())] || {};
   return {
     name: langEntry.name || meta.name || "",
     desc: langEntry.desc || meta.desc || "",
@@ -52,7 +64,7 @@ export async function loadOfficialAppMeta(id) {
     console.warn(`读取官方应用 ${id} 版本号失败：`, err);
   }
 
-  const { name, desc } = resolveLocalizedMeta(meta);
+  const { name, desc } = await resolveLocalizedMeta(meta);
   return {
     id,
     name: name || id,
@@ -212,7 +224,7 @@ export async function installOfficialApp({
     }
   }
 
-  const { name, desc } = resolveLocalizedMeta(meta);
+  const { name, desc } = await resolveLocalizedMeta(meta);
   return {
     name: name || appId,
     desc,

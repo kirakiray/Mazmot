@@ -374,3 +374,4 @@ Mazmot 的每个库模块都配有 `.sb.html` 测试，测试 API 形如：
 - **不重新封装 noneos-core**：`fs` / `user` / `DataPublisher` / `n-icon` 等 API 直接按 noneos-core 文档调用，Mazmot 只在上层（`share-mgr.js` 等）做业务编排。
 - **不支持二进制分享**：当前只支持 UTF-8 文本文件（见 §3 / §4）。
 - **应用不跑在沙箱**：应用直接在主域通过 NoneOS 挂载路径运行，没有 iframe 容器。
+

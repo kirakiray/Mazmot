@@ -41,7 +41,7 @@ Mazmot/
 │   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（遍历 default 用户 cred 凭证库，展示个人资料与全部证书）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
-│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/）
+│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
 │   │   │   ├── templates/            # 应用模板资源目录
 │   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
 │   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc（基准英文 + i18n 按语言覆盖）+ 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、ping-pong（应用间定时 ping/pong 通信）、tic-tac-toe（应用间井字棋联机对战）
@@ -100,10 +100,12 @@ Mazmot/
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
-│   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
+│   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 互授 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；live-share.html 互授页（配对码连接后自动拉取与自己相关的证书：服务消息只传匹配通知与元数据清单，证书本体走 core 按精确 key 拉取，经 lib/live-share.js 封装 registerService/sendToService 可靠层，详见其应用内 CONTEXT.md）；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
-│   └── cloud-drive/          # P2P 云盘（服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
+│   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
+│   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
+│   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
@@ -419,6 +421,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |
 | 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
+| 云盘套件可靠传输通道（ACK + 重发 + 去重 + 串行队列，可注入传输层模拟丢包） | [official-apps/cloud-drive-client/lib/reliable.js](official-apps/cloud-drive-client/lib/reliable.js)（与 server 侧同副本；测试 [official-apps/cloud-drive-client/lib/test/reliable.sb.html](official-apps/cloud-drive-client/lib/test/reliable.sb.html)） |
+| 云盘服务器 / 客户端核心（空间与账号体系、分块上传下载、断点续传） | [official-apps/cloud-drive-server/lib/server-core.js](official-apps/cloud-drive-server/lib/server-core.js) / [official-apps/cloud-drive-client/lib/client-core.js](official-apps/cloud-drive-client/lib/client-core.js)（协议 [lib/protocol.js](official-apps/cloud-drive-client/lib/protocol.js) 双侧同副本） |
 | 分享接收页（壳 + 编排） | [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
@@ -433,6 +437,6 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
-| 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
+| 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息 + 互授） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [live-share.html](official-apps/cred-manager/pages/live-share.html) + [lib/live-share.js](official-apps/cred-manager/lib/live-share.js) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |

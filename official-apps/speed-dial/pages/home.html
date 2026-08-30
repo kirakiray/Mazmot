@@ -293,7 +293,7 @@
         attr:placeholder="t('searchPlaceholder')"
         on:keydown="onSearchKey($event)"
       >
-        <st-menu slot="prefix" align="left">
+        <st-menu slot="prefix" align="left" :style.display="isUrlInput ? 'none' : ''">
           <button class="engine-btn" slot="trigger">
             <span>{{currentEngine.name}}</span>
             <n-icon icon="mdi:chevron-down"></n-icon>
@@ -307,8 +307,13 @@
             </st-menu-item>
           </o-fill>
         </st-menu>
-        <st-icon-button slot="suffix" style="font-size: 13px" on:click="doSearch" attr:title="t('search')" attr:aria-label="t('search')">
-          <n-icon icon="mdi:magnify"></n-icon>
+        <st-icon-button slot="suffix" style="font-size: 13px" on:click="doSearch" attr:title="isUrlInput ? t('go') : t('search')" attr:aria-label="isUrlInput ? t('go') : t('search')">
+          <x-if :value="isUrlInput">
+            <n-icon icon="mdi:arrow-right"></n-icon>
+          </x-if>
+          <x-if :value="!isUrlInput">
+            <n-icon icon="mdi:magnify"></n-icon>
+          </x-if>
         </st-icon-button>
       </st-input>
     </div>
@@ -423,7 +428,7 @@
   <script>
     // 可选搜索引擎；当前选择持久化在 speed-dial 空间的 searchEngine 键（存引擎 id）
     const ENGINES = [
-      { id: "google", name: "Google", url: "https://www.google.com/search?q=" },
+      { id: "google", name: "Google", url: "https://www.google.com/search?q=", probe: "https://www.google.com/generate_204" },
       { id: "bing", name: "Bing", url: "https://www.bing.com/search?q=" },
       { id: "baidu", name: "百度", url: "https://www.baidu.com/s?wd=" },
       {
@@ -451,6 +456,7 @@
       const L10N = {
         searchPlaceholder: { cn: "输入关键词，回车搜索", en: "Type keywords and press Enter to search" },
         search: { cn: "搜索", en: "Search" },
+        go: { cn: "进入网页", en: "Open URL" },
         add: { cn: "添加网址", en: "Add site" },
         edit: { cn: "编辑", en: "Edit" },
         remove: { cn: "删除", en: "Delete" },
@@ -497,6 +503,11 @@
             );
           },
 
+          // 输入以 http(s):// 开头时视为网址直接进入，而非搜索
+          get isUrlInput() {
+            return /^https?:\/\//i.test(this.searchText.trim());
+          },
+
           onSearchKey(event) {
             if (event.key === "Enter") this.doSearch();
           },
@@ -504,6 +515,10 @@
           doSearch() {
             const query = this.searchText.trim();
             if (!query) return;
+            if (/^https?:\/\//i.test(query)) {
+              location.href = query;
+              return;
+            }
             // 应用在独立标签页整页运行，直接当前页跳转搜索引擎
             location.href = this.currentEngine.url + encodeURIComponent(query);
           },
@@ -512,6 +527,35 @@
             if (!ENGINES.some((engine) => engine.id === id)) return;
             this.engineId = id;
             await store.setItem("searchEngine", id);
+          },
+
+          async checkReachable(url, timeout = 5000) {
+            try {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(), timeout);
+              await fetch(url, {
+                mode: "no-cors",
+                cache: "no-store",
+                signal: controller.signal,
+              });
+              clearTimeout(timer);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+
+          // 启动时后台探测当前引擎是否可达；默认 google 不可达则临时降级 bing
+          // （仅改运行时 engineId，不写回持久化，网络恢复后下次启动仍按默认/用户选择）
+          async probeEngine() {
+            const { probe } = ENGINES.find(
+              (engine) => engine.id === this.engineId,
+            ) || { probe: null };
+            if (!probe) return;
+            const reachable = await this.checkReachable(probe);
+            if (!reachable && this.engineId === "google") {
+              this.engineId = "bing";
+            }
           },
 
           hostOf(url) {
@@ -866,6 +910,8 @@ ${sections}
           }
           // 应用打开时聚焦搜索框
           this.shadow.$("#search-input")?.focus();
+          // 异步探测默认搜索引擎可用性，不阻塞页面
+          this.probeEngine();
         },
       };
     };

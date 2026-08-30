@@ -1,0 +1,504 @@
+<template page>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/progress/progress.html"></l-m>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    /* 布局放在根级 div 上：o-page 默认样式会把 :host 覆盖为 block，flex 不可依赖 :host */
+    .page {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      flex-shrink: 0;
+    }
+    .toolbar st-input {
+      flex: 1;
+      max-width: 320px;
+    }
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 18px 20px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .row:hover {
+      background: var(--md-sys-color-surface-container);
+    }
+    .row n-icon.file-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+      color: var(--md-sys-color-primary);
+    }
+    .row n-icon.dir-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+      color: var(--md-sys-color-tertiary, var(--md-sys-color-primary));
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+    }
+    .fname {
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fmeta {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-top: 2px;
+    }
+    .acts {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+      /* 始终参与布局，仅透明度切换，避免 hover 时行高闪变 */
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+    .row:hover .acts,
+    .acts:focus-within {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .acts st-icon-button {
+      font-size: 12px;
+    }
+    .empty {
+      text-align: center;
+      color: var(--md-sys-color-on-surface-variant);
+      padding: 80px 0;
+      font-size: 14px;
+    }
+    .tasks {
+      flex-shrink: 0;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container);
+      padding: 10px 18px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .task {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .task .tname {
+      width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .task st-progress {
+      flex: 1;
+    }
+    .task .tspeed {
+      width: 72px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .task .tpct {
+      width: 40px;
+      text-align: right;
+      color: var(--md-sys-color-on-surface-variant);
+      font-variant-numeric: tabular-nums;
+    }
+    .hidden-input {
+      display: none;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid var(--md-sys-color-surface-container-highest);
+      border-top-color: var(--md-sys-color-primary);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
+  <div class="page">
+    <div class="toolbar">
+      <st-button attr:disabled="isRoot" on:click="pickUpload()">
+        <n-icon icon="mdi:upload"></n-icon>
+        上传
+      </st-button>
+      <st-button variant="outlined" attr:disabled="isRoot" on:click="newFolder()">
+        <n-icon icon="mdi:folder-plus-outline"></n-icon>
+        新建文件夹
+      </st-button>
+    <div style="flex: 1"></div>
+    <st-input placeholder="搜索当前目录" sync:value="keyword"></st-input>
+    <st-button variant="text" on:click="reload()">
+      <n-icon icon="mdi:refresh"></n-icon>
+    </st-button>
+  </div>
+
+  <div class="file-list">
+    <o-if :value="loading">
+      <div class="empty">
+        <div class="spinner"></div>
+        {{connState === 'connected' ? "正在加载目录…" : "正在连接服务器…"}}
+      </div>
+    </o-if>
+    <o-if :value="!loading && shownEntries.length">
+      <o-fill :value="shownEntries" fill-key="id">
+        <div class="row" on:click="$host.openEntry($data)">
+          <n-icon
+            class:file-icon="$data.type === 'file'"
+            class:dir-icon="$data.type === 'dir'"
+            attr:icon="$data.icon"
+          ></n-icon>
+          <div class="main">
+            <div class="fname">{{$data.name}}</div>
+            <div class="fmeta">{{$data.metaText}}</div>
+          </div>
+          <div class="acts">
+            <o-if :value="$data.type === 'file'">
+              <st-icon-button on:click="$host.downloadEntry($data, $event)" title="下载">
+                <n-icon icon="mdi:download-outline"></n-icon>
+              </st-icon-button>
+            </o-if>
+            <o-if :value="!$data.virtual">
+              <st-icon-button on:click="$host.renameEntry($data, $event)" title="重命名">
+                <n-icon icon="mdi:pencil-outline"></n-icon>
+              </st-icon-button>
+              <st-icon-button on:click="$host.deleteEntry($data, $event)" title="删除">
+                <n-icon icon="mdi:delete-outline" style="color: var(--md-sys-color-error)"></n-icon>
+              </st-icon-button>
+            </o-if>
+          </div>
+        </div>
+      </o-fill>
+    </o-if>
+    <o-if :value="!loading && !shownEntries.length">
+      <div class="empty">{{keyword ? "没有匹配的文件" : "空目录，上传一个文件试试"}}</div>
+    </o-if>
+  </div>
+
+  <o-if :value="tasks.length">
+    <div class="tasks">
+      <o-fill :value="tasks" fill-key="id">
+        <div class="task">
+          <n-icon attr:icon="$data.icon" style="font-size: 18px"></n-icon>
+          <span class="tname">{{$data.name}}</span>
+          <st-progress :value="$data.pct"></st-progress>
+          <span class="tspeed">{{$data.speed}}</span>
+          <span class="tpct">{{$data.pct}}%</span>
+        </div>
+      </o-fill>
+    </div>
+  </o-if>
+
+  <input
+    class="hidden-input"
+    type="file"
+    multiple
+    id="upload-input"
+  />
+  </div>
+
+  <script>
+    // 挂在 layout（顶栏 / 面包屑 / 连接状态）之下，本页只负责文件区
+    export const parent = "./layout.html";
+
+    export default async ({ load, query }) => {
+      const { getSharedClient } = await load("../lib/client-core.js");
+      const { formatBytes, formatTime, fileIcon, CHUNK_SIZE } = await load(
+        "../lib/protocol.js"
+      );
+      const [
+        { default: confirm },
+        { default: prompt },
+        { default: toast },
+      ] = await Promise.all([
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"),
+      ]);
+
+      return {
+        data: {
+          // connState 仅驱动本页 loading 文案（顶栏状态在父 layout）
+          connState: "connecting",
+          loading: true,
+          isRoot: true, // 根目录（空间选择层）禁用上传 / 新建文件夹
+          fileItems: [],
+          keyword: "",
+          tasks: [],
+        },
+        async ready() {
+          this._client = getSharedClient();
+          // 目录位置走 ofa.js 路由（hash query），支持浏览器后退 / 刷新恢复
+          this._currentDir = query.dir ? decodeURIComponent(query.dir) : "root";
+          this.isRoot = this._currentDir === "root";
+          if (!this._client.loggedIn) {
+            // 刷新后凭持久化会话自动恢复登录（连接期间页面显示 loading + 红点）
+            const restored = await this._client.tryRestoreSession();
+            if (!restored) {
+              this.gotoHome();
+              return;
+            }
+          }
+          this.connState = "connected";
+          this.syncNav({
+            connState: "connected",
+            username: this._client.username,
+          });
+          await this.reload();
+        },
+        proto: {
+          // 把导航状态（用户名 / 连接状态 / 面包屑）同步给父 layout
+          syncNav(patch) {
+            this.emit("cloud-nav", { data: patch, bubbles: true, composed: true });
+          },
+
+          async reload() {
+            this.loading = true;
+            try {
+              const { path, entries } = await this._client.list(
+                this._currentDir
+              );
+              this.fileItems = entries.map((e) => ({
+                ...e,
+                // 根目录下的空间是"存储位置"而非普通文件夹，用存储盘图标
+                icon: e.virtual
+                  ? "mdi:database-outline"
+                  : fileIcon(e.name, e.type === "dir"),
+                metaText:
+                  e.type === "dir"
+                    ? `${formatTime(e.mtime)}`
+                    : `${formatBytes(e.size)} · ${formatTime(e.mtime)}`,
+              }));
+              this.syncNav({
+                crumbItems: path.map((p, i) => ({
+                  id: p.id,
+                  name: p.name,
+                  current: i === path.length - 1,
+                })),
+                depth: path.length,
+              });
+              this.loading = false;
+            } catch (err) {
+              this.loading = false;
+              this.tip(err.message);
+              if (String(err.message).includes("登录")) {
+                this.gotoHome();
+              }
+            }
+          },
+
+          get shownEntries() {
+            const kw = (this.keyword || "").trim().toLowerCase();
+            if (!kw) return this.fileItems;
+            return this.fileItems.filter((e) =>
+              e.name.toLowerCase().includes(kw)
+            );
+          },
+
+          enterDir(dirId) {
+            if (dirId === this._currentDir) return;
+            // 以路由方式切换目录，支持浏览器后退 / 刷新恢复
+            this.goto("./files.html?dir=" + encodeURIComponent(dirId));
+          },
+
+          openEntry(entry) {
+            if (entry.type === "dir") this.enterDir(entry.id);
+            else this.downloadEntry(entry);
+          },
+
+          pickUpload() {
+            const input = this.shadow.$("#upload-input").ele;
+            input.value = "";
+            input.onchange = () => {
+              for (const file of input.files) this.uploadOne(file);
+            };
+            input.click();
+          },
+
+          async uploadOne(file) {
+            const task = this.addTask("mdi:upload", file.name);
+            const tick = this.makeSpeedTracker();
+            try {
+              await this._client.uploadFile(file, this._currentDir, {
+                onProgress: ({ sent, total }) =>
+                  this.updateTask(task, sent, total, tick(sent)),
+              });
+              this.tip(`「${file.name}」上传完成`);
+            } catch (err) {
+              this.tip(`上传失败：${err.message}`);
+            }
+            this.finishTask(task);
+            this.reload();
+          },
+
+          async newFolder() {
+            const name = await prompt("文件夹名称", {
+              title: "新建文件夹",
+            });
+            if (!name?.trim()) return;
+            try {
+              await this._client.mkdir(this._currentDir, name.trim());
+              this.reload();
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async renameEntry(entry, e) {
+            e.stopPropagation();
+            const name = await prompt("新名称", {
+              title: "重命名",
+              value: entry.name,
+            });
+            if (!name?.trim() || name === entry.name) return;
+            try {
+              await this._client.rename(entry.id, name.trim());
+              this.reload();
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async deleteEntry(entry, e) {
+            e.stopPropagation();
+            const ok = await confirm(
+              entry.type === "dir"
+                ? `删除文件夹「${entry.name}」及其全部内容？`
+                : `删除文件「${entry.name}」？`,
+              { title: "删除" }
+            );
+            if (!ok) return;
+            try {
+              await this._client.remove(entry.id);
+              this.reload();
+              this.tip("已删除");
+            } catch (err) {
+              this.tip(err.message);
+            }
+          },
+
+          async downloadEntry(entry, e) {
+            if (e) e.stopPropagation();
+            const task = this.addTask("mdi:download", entry.name);
+            const tick = this.makeSpeedTracker();
+            try {
+              const blob = await this._client.downloadFile(entry, {
+                onProgress: ({ sent, total }) =>
+                  this.updateTask(task, sent, total, tick(sent)),
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = entry.name;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+              this.tip(`「${entry.name}」下载完成`);
+            } catch (err) {
+              this.tip(`下载失败：${err.message}`);
+            }
+            this.finishTask(task);
+          },
+
+          // 退出登录在父 layout 的顶栏处理
+
+          addTask(icon, name) {
+            const task = {
+              id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              icon,
+              name,
+              pct: 0,
+              speed: "",
+            };
+            this.tasks = [...this.tasks, task];
+            return task; // 仅作句柄，更新须走 updateTask / _setTask
+          },
+
+          /**
+           * 按 id 定位任务并写入字段。
+           * 必须经 this.tasks[idx] 修改：stanz 数组项经索引访问才是响应式代理，
+           * find 返回的引用 / 外部持有的原始对象改了不触发视图更新。
+           */
+          _setTask(task, patch) {
+            const idx = this.tasks.findIndex((t) => t.id === task.id);
+            if (idx === -1) return;
+            const item = this.tasks[idx];
+            for (const k in patch) item[k] = patch[k];
+          },
+
+          /** 速度采样器：按块计数换算字节，每 0.5s 返回一次"x/s"文案 */
+          makeSpeedTracker(chunkSize = CHUNK_SIZE) {
+            let lastBytes = 0;
+            let lastTime = Date.now();
+            return (sent) => {
+              const bytes = sent * chunkSize;
+              const now = Date.now();
+              const dt = (now - lastTime) / 1000;
+              if (dt < 0.5) return null;
+              const bps = (bytes - lastBytes) / dt;
+              lastBytes = bytes;
+              lastTime = now;
+              return `${formatBytes(bps)}/s`;
+            };
+          },
+
+          updateTask(task, sent, total, speed) {
+            const patch = { pct: total ? Math.round((sent / total) * 100) : 100 };
+            if (speed) patch.speed = speed;
+            this._setTask(task, patch);
+          },
+
+          finishTask(task) {
+            this._setTask(task, { pct: 100 });
+            setTimeout(() => {
+              this.tasks = this.tasks.filter((t) => t.id !== task.id);
+            }, 800);
+          },
+
+          tip(text) {
+            toast(text);
+          },
+
+          // 同 home.html 的 gotoFiles：走 ofa 页面路由（相对本页 src 解析）；
+          // 禁止 location 导航（目录 URL 在虚拟目录 SW 下 NS_ERROR，见 home.html 注释）
+          gotoHome() {
+            this.goto("./home.html");
+          },
+        },
+      };
+    };
+  </script>
+</template>

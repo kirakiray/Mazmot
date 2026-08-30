@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>reliable.js 可靠投递通道单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="创建：缺少 send 函数应报错">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            let threw = false;
+            try {
+              new ReliableChannel({});
+            } catch {
+              threw = true;
+            }
+            return { assert: threw, content: { threw } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="payload 超限应立即拒绝（不占用重试）">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const ch = new ReliableChannel({
+              send: async () => true,
+              maxPayload: 100,
+            });
+            const big = "x".repeat(101);
+            const t0 = performance.now();
+            let msg = "";
+            try {
+              await ch.send(big);
+            } catch (e) {
+              msg = e.message;
+            }
+            return {
+              assert: msg.includes("payload too large"),
+              content: { msg, elapsed: performance.now() - t0 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="无损链路：消息按序送达且每条恰好处理一次">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const received = [];
+            const deliver = (to) => async (env) => {
+              await to.handle(JSON.parse(JSON.stringify(env)));
+              return true;
+            };
+            const a = new ReliableChannel({
+              send: async () => true, // 占位，下面接线后覆盖
+              timeout: 30,
+              maxRetry: 10,
+              channelId: "a",
+            });
+            const b = new ReliableChannel({
+              send: deliver(a),
+              onData: (payload) => received.push(payload),
+              timeout: 30,
+              maxRetry: 10,
+              channelId: "b",
+            });
+            a._send = deliver(b);
+            for (let i = 0; i < 20; i++) await a.send({ i });
+            const okOrder = received.every(
+              (p, idx) => p.i === idx
+            );
+            return {
+              assert: received.length === 20 && okOrder,
+              content: { count: received.length, okOrder },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="30% 丢包：全部送达、无重复处理、顺序保持">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const received = [];
+            const LOSS = 0.3;
+            const LATENCY = 1;
+            // 有损单向线路
+            const lossy = (target) => {
+              let wired = null;
+              const fn = async (env) => {
+                if (Math.random() < LOSS) return true; // 受理但静默丢弃
+                setTimeout(() => target.handle(env), LATENCY);
+                return true;
+              };
+              fn._target = (t) => (wired = t);
+              fn._wire = (t) => (target = t);
+              return fn;
+            };
+            const sendB = lossy(null);
+            const sendA = lossy(null);
+            const a = new ReliableChannel({
+              send: sendA,
+              onData: () => {},
+              timeout: 20,
+              maxRetry: 200,
+              channelId: "a",
+            });
+            const b = new ReliableChannel({
+              send: sendB,
+              onData: (payload) => received.push(payload),
+              timeout: 20,
+              maxRetry: 200,
+              channelId: "b",
+            });
+            sendA._wire(b);
+            sendB._wire(a);
+            const N = 15;
+            const t0 = performance.now();
+            await Promise.all(
+              Array.from({ length: N }, (_, i) => a.send({ i }))
+            );
+            const elapsed = performance.now() - t0;
+            const inOrder = received.every((p, idx) => p.i === idx);
+            const counts = new Map();
+            for (const p of received)
+              counts.set(p.i, (counts.get(p.i) || 0) + 1);
+            const noDup = [...counts.values()].every((c) => c === 1);
+            return {
+              assert:
+                received.length === N && inOrder && noDup,
+              content: { received: received.length, inOrder, noDup, elapsed },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="数据与 ACK 双向都丢包：依然可靠送达">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const received = [];
+            const LOSS = 0.4;
+            const makeWire = () => {
+              let target = null;
+              const fn = async (env) => {
+                if (Math.random() < LOSS) return true;
+                setTimeout(() => target.handle(env), 1);
+                return true;
+              };
+              fn.wireTo = (t) => (target = t);
+              return fn;
+            };
+            const wireA = makeWire();
+            const wireB = makeWire();
+            wireA.wireTo(new ReliableChannel({ send: async () => true }));
+            const a = new ReliableChannel({
+              send: wireA,
+              timeout: 15,
+              maxRetry: 300,
+              channelId: "a",
+            });
+            const b = new ReliableChannel({
+              send: wireB,
+              onData: (p) => received.push(p),
+              timeout: 15,
+              maxRetry: 300,
+              channelId: "b",
+            });
+            wireA.wireTo(b);
+            wireB.wireTo(a);
+            await a.send({ hello: "world" });
+            return {
+              assert: received.length === 1 && received[0].hello === "world",
+              content: { received },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="持续丢包：重试耗尽后 reject，不无限等待">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const ch = new ReliableChannel({
+              send: async () => true, // 永远受理但对端黑洞
+              timeout: 20,
+              maxRetry: 3,
+              channelId: "blackhole",
+            });
+            const t0 = performance.now();
+            let msg = "";
+            try {
+              await ch.send({ x: 1 });
+            } catch (e) {
+              msg = e.message;
+            }
+            const elapsed = performance.now() - t0;
+            return {
+              assert: msg.includes("ACK timeout") && elapsed < 2000,
+              content: { msg, elapsed },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接收端业务处理抛错不影响 ACK 与后续消息">
+      <template>
+        <script type="module">
+          import { ReliableChannel } from "../reliable.js";
+          {
+            const received = [];
+            const deliverTo = (to) => async (env) => {
+              setTimeout(() => to.handle(env), 1);
+              return true;
+            };
+            const a = new ReliableChannel({
+              send: async () => true, // 占位，接线后覆盖
+              timeout: 30,
+              maxRetry: 10,
+              channelId: "a",
+            });
+            const b = new ReliableChannel({
+              send: async () => true, // 占位，接线后覆盖
+              onData: (p) => {
+                received.push(p);
+                if (p.boom) throw new Error("handler crashed");
+              },
+              timeout: 30,
+              maxRetry: 10,
+              channelId: "b",
+            });
+            a._send = deliverTo(b);
+            b._send = deliverTo(a);
+            await a.send({ boom: true });
+            await a.send({ ok: true });
+            return {
+              assert: received.length === 2 && received[1].ok === true,
+              content: { received },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

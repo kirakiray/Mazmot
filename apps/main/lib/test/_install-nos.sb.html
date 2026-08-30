@@ -27,25 +27,34 @@
       await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
     </script>
 
-    <sb-test name="nos-version 安装完成，installed 事件携带版本号">
+    <!-- 前置安装页：test-all.html 中本文件排在最前，负责在测试环境安装 NoneOS Core，
+         使后续依赖 /nos/* 的测试文件可用。必须配合限时等待，安装失败时快速报错而非挂起。 -->
+    <sb-test name="nos-version 安装完成，installed 事件携带版本号" parallel="false">
       <template>
         <script type="module">
           {
-            // 等待 installed 事件触发
-            const version =
-              window._nosVersion ||
-              (await new Promise((resolve) => {
-                const check = () => {
-                  if (window._nosVersion) return resolve(window._nosVersion);
-                  setTimeout(check, 100);
-                };
-                check();
-              }));
+            // 等待 installed 事件触发；限时 120s，避免安装失败时整个 test-all 挂起超时
+            const TIMEOUT_MS = 120000;
+            const version = await new Promise((resolve) => {
+              const started = Date.now();
+              const check = () => {
+                if (window._nosVersion) return resolve(window._nosVersion);
+                if (Date.now() - started > TIMEOUT_MS) return resolve(null);
+                setTimeout(check, 100);
+              };
+              check();
+            });
 
             return {
-              assert:
-                typeof version === "string" && version.length > 0,
-              content: { version },
+              assert: typeof version === "string" && version.length > 0,
+              content: {
+                version,
+                timeoutMs: TIMEOUT_MS,
+                hint:
+                  version === null
+                    ? "NoneOS Core 安装超时：检查 sw.js 的 Core 拉取地址是否可达（localhost:3002 或 core.noneos.com）"
+                    : "ok",
+              },
             };
           }
         </script>

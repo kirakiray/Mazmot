@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="cn">
+  <head>
+    <meta charset="UTF-8" />
+    <title>live-share 协议层测试</title>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
+  </head>
+  <body>
+    <!--
+      测试 official-apps/cred-manager/lib/live-share.js 的纯逻辑层：
+      消息收发走 mock 的 RemoteUser / LocalUser 对象（不发起真实网络连接），
+      验证 msgId/ACK/重发/去重协议、清单请求/响应关联与本地存储读写。
+      注意：存储函数依赖 /nos/storage（getStorage("mz-cert")），
+      本文件需在 NoneOS Core 环境下运行。
+    -->
+
+    <sb-test name="ACK 正常到达：notifyMatch 成功且对方收到 match 消息">
+      <template>
+        <script type="module">
+          const liveShare = await import("../lib/live-share.js");
+
+          // mock RemoteUser：记录 sendToService 调用，收到 data 后回 ACK
+          let received = [];
+          const remoteUserMock = {
+            userId: "peer-user-id-1",
+            async sendToService(appId, data) {
+              received.push({ appId, data });
+              if (data.kind === "data") {
+                // 模拟接收方回 ACK
+                setTimeout(() => {
+                  ackHandler?.({
+                    msgId: data.msgId,
+                    kind: "ack",
+                  });
+                }, 10);
+              }
+              return [{ status: "ok" }];
+            },
+          };
+          let ackHandler = null;
+
+          // mock LocalUser：registerService 捕获 onMessage
+          let messageHandler = null;
+          const userMock = {
+            registerService(appId, { onMessage }) {
+              messageHandler = onMessage;
+              ackHandler = onMessage;
+              return { unregister() {} };
+            },
+          };
+
+          const svc = liveShare.registerShareService(userMock, {});
+          await liveShare.notifyMatch(remoteUserMock, {
+            subject: "my-user-id",
+            username: "alice",
+          });
+
+          await new Promise((r) => setTimeout(r, 50));
+          const dataMsgs = received.filter((m) => m.data.kind === "data");
+          const ok =
+            dataMsgs.length === 1 &&
+            dataMsgs[0].appId === liveShare.SERVICE_APP_ID &&
+            dataMsgs[0].data.payload.type === "match" &&
+            dataMsgs[0].data.payload.card.username === "alice";
+          svc.unregister();
+          return {
+            assert: ok,
+            content: { receivedCount: received.length, dataMsgs },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接收方回 ACK 且同 msgId 去重（重复投递只处理一次）">
+      <template>
+        <script type="module">
+          const liveShare = await import("../lib/live-share.js");
+
+          const replies = [];
+          const remoteUserMock = {
+            userId: "sender-user-id",
+            async sendToService(appId, data) {
+              if (data.kind === "ack") replies.push(data);
+              return [{ status: "ok" }];
+            },
+          };
+          let handler = null;
+          const userMock = {
+            registerService(appId, { onMessage }) {
+              handler = onMessage;
+              return { unregister() {} };
+            },
+          };
+          const handled = [];
+          const svc = liveShare.registerShareService(userMock, {
+            onMatch: (card) => handled.push(card),
+          });
+
+          const ctx = { fromUserId: "sender-user-id", fromSessionId: "s1", remoteUser: remoteUserMock };
+          const msg = { msgId: "m-dup-1", kind: "data", payload: { type: "match", card: { subject: "sender-user-id", username: "bob" } } };
+          await handler(msg, ctx);
+          // 同一 msgId 重投（模拟 ACK 丢失后的重发）
+          await handler({ ...msg }, ctx);
+
+          await new Promise((r) => setTimeout(r, 30));
+          svc.unregister();
+          return {
+            assert:
+              replies.length === 2 && // 重复消息也必须再回 ACK
+              replies.every((r) => r.msgId === "m-dup-1") &&
+              handled.length === 1 && // 业务只处理一次
+              handled[0].username === "bob",
+            content: { ackCount: replies.length, handledCount: handled.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="对方不可达（offline）时直接失败且不空耗重试">
+      <template>
+        <script type="module">
+          const liveShare = await import("../lib/live-share.js");
+          let calls = 0;
+          const remoteUserMock = {
+            userId: "offline-peer",
+            async sendToService() {
+              calls++;
+              return [{ status: "offline" }];
+            },
+          };
+          const start = Date.now();
+          let err = null;
+          try {
+            await liveShare.notifyMatch(remoteUserMock, { subject: "x" });
+          } catch (e) {
+            err = e;
+          }
+          return {
+            assert: !!err && calls === 1 && err.message.includes("不在线"),
+            content: { calls, errMsg: err && err.message, costMs: Date.now() - start },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="list-request/list-response 端到端关联（含他人签发中转条目）">
+      <template>
+        <script type="module">
+          const liveShare = await import("../lib/live-share.js");
+
+          // 双端各自注册服务，再把对方的 sendToService 异步路由到自己的 onMessage
+          const handlersA = {};
+          const userA = { registerService(appId, h) { handlersA.dispatch = h.onMessage; return { unregister() {} }; } };
+          const handlersB = {};
+          const userB = { registerService(appId, h) { handlersB.dispatch = h.onMessage; return { unregister() {} }; } };
+
+          const remoteForA = { // A 视角中的 B（A 借它回 ACK / 响应）
+            userId: "b-user",
+            async sendToService(appId, data) {
+              setTimeout(() => handlersB.dispatch(data, {
+                fromUserId: "a-user", fromSessionId: "sA",
+                remoteUser: remoteForB,
+              }), 0);
+              return [{ status: "ok" }];
+            },
+          };
+          const remoteForB = { // B 视角中的 A
+            userId: "a-user",
+            async sendToService(appId, data) {
+              setTimeout(() => handlersA.dispatch(data, {
+                fromUserId: "b-user", fromSessionId: "sB",
+                remoteUser: remoteForA,
+              }), 0);
+              return [{ status: "ok" }];
+            },
+          };
+
+          const svcA = liveShare.registerShareService(userA, {
+            listCerts: async (subject) =>
+              subject === "my-user-id"
+                ? [
+                    { id: "e-a-me", role: "editor", issuer: "a-user", subject: "my-user-id", signTime: 1, expire: null },
+                    { id: "s-org-me", role: "staff", issuer: "org-user", subject: "my-user-id", signTime: 2, expire: 999 },
+                  ]
+                : [],
+          });
+          const svcB = liveShare.registerShareService(userB, {});
+
+          const list = await liveShare.requestCertList(remoteForB, "my-user-id");
+          svcA.unregister();
+          svcB.unregister();
+          return {
+            assert:
+              list.length === 2 &&
+              list[0].id === "e-a-me" &&
+              list[1].issuer === "org-user",
+            content: { list },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="incoming-matches 存储读写与去重（同用户覆盖）">
+      <template>
+        <script type="module">
+          const liveShare = await import("../lib/live-share.js");
+          await liveShare.addIncomingMatch({ subject: "u-1", username: "u1" }, "u-1");
+          await liveShare.addIncomingMatch({ subject: "u-1", username: "u1-new" }, "u-1");
+          await liveShare.addIncomingMatch({ subject: "u-2", username: "u2" }, "u-2");
+          const list = await liveShare.listIncomingMatches();
+          // 只考察本测试写入的记录，避免同文件其他用例留下的共享存储状态影响断言
+          const mine = list.filter((m) => m.userId === "u-1" || m.userId === "u-2");
+          const u1 = mine.find((m) => m.userId === "u-1");
+          const ok =
+            mine.length === 2 &&
+            u1.card.username === "u1-new"; // 同用户以最新为准（覆盖而非新增）
+          await liveShare.removeIncomingMatch("u-1");
+          await liveShare.removeIncomingMatch("u-2");
+          const after = await liveShare.listIncomingMatches();
+          return {
+            assert:
+              ok &&
+              !after.some((m) => m.userId === "u-1" || m.userId === "u-2"),
+            content: { mine, after },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
