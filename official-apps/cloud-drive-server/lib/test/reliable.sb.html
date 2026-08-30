@@ -63,7 +63,7 @@
               return true;
             };
             const a = new ReliableChannel({
-              send: null,
+              send: async () => true, // 占位，下面接线后覆盖
               timeout: 30,
               maxRetry: 10,
               channelId: "a",
@@ -227,18 +227,18 @@
           import { ReliableChannel } from "../reliable.js";
           {
             const received = [];
-            const deliver = (from, to) => async (env) => {
+            const deliverTo = (to) => async (env) => {
               setTimeout(() => to.handle(env), 1);
               return true;
             };
             const a = new ReliableChannel({
-              send: null,
+              send: async () => true, // 占位，接线后覆盖
               timeout: 30,
               maxRetry: 10,
               channelId: "a",
             });
             const b = new ReliableChannel({
-              send: deliver(b, a),
+              send: async () => true, // 占位，接线后覆盖
               onData: (p) => {
                 received.push(p);
                 if (p.boom) throw new Error("handler crashed");
@@ -247,7 +247,8 @@
               maxRetry: 10,
               channelId: "b",
             });
-            a._send = deliver(a, b);
+            a._send = deliverTo(b);
+            b._send = deliverTo(a);
             await a.send({ boom: true });
             await a.send({ ok: true });
             return {

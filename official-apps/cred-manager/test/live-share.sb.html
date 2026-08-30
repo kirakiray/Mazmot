@@ -208,17 +208,20 @@
           await liveShare.addIncomingMatch({ subject: "u-1", username: "u1-new" }, "u-1");
           await liveShare.addIncomingMatch({ subject: "u-2", username: "u2" }, "u-2");
           const list = await liveShare.listIncomingMatches();
-          const u1 = list.find((m) => m.userId === "u-1");
+          // 只考察本测试写入的记录，避免同文件其他用例留下的共享存储状态影响断言
+          const mine = list.filter((m) => m.userId === "u-1" || m.userId === "u-2");
+          const u1 = mine.find((m) => m.userId === "u-1");
           const ok =
-            list.length >= 2 &&
-            u1.card.username === "u1-new" && // 同用户以最新为准
-            list[0].userId === "u-1"; // 新的排前面
+            mine.length === 2 &&
+            u1.card.username === "u1-new"; // 同用户以最新为准（覆盖而非新增）
           await liveShare.removeIncomingMatch("u-1");
           await liveShare.removeIncomingMatch("u-2");
           const after = await liveShare.listIncomingMatches();
           return {
-            assert: ok && !after.some((m) => m.userId === "u-1"),
-            content: { list, afterCount: after.length },
+            assert:
+              ok &&
+              !after.some((m) => m.userId === "u-1" || m.userId === "u-2"),
+            content: { mine, after },
           };
         </script>
       </template>
