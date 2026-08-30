@@ -295,15 +295,13 @@
             toast(text);
           },
 
-          // ofa.js@latest 的 goto("./x") 相对 app 根目录解析，
-          // 显式按本页 src 构造绝对路由，避免丢掉 /pages/ 段
+          // 走 ofa 页面路由：goto 相对本页 src 解析（ofa@latest 实测，
+          // resolvePath(src, this.src)），无需手工拼 hash；
+          // 禁止 location.replace(应用根目录 + hash)：目录 URL（client/）
+          // 在虚拟目录 SW（/$mazmot-apps/*）下没有 directory-index 解析，
+          // 文档导航直接 NS_ERROR（/apps 静态部署由服务器兜底故未暴露）
           gotoFiles() {
-            // 跨页跳转回到应用入口 + hash 路由，避开 ofa.js@latest goto
-            // 相对解析基准不一致的问题（低频操作，整页加载可接受）
-            const base = new URL(this.src || "./pages/home.html", location.href);
-            const filesUrl = new URL("files.html", base);
-            const entry = new URL("../", filesUrl).href; // 应用根（client/）
-            location.replace(entry + "#" + filesUrl.pathname);
+            this.goto("./files.html");
           },
         },
       };

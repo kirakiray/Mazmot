@@ -160,10 +160,9 @@
 
           async logout() {
             await getSharedClient().logout();
-            const base = new URL(this.src || "./pages/layout.html", location.href);
-            const homeUrl = new URL("home.html", base);
-            const entry = new URL("../", homeUrl).href; // 应用根（client/）
-            location.replace(entry + "#" + homeUrl.pathname);
+            // ofa 页面路由 replace（相对本页 src 解析），登出不残留历史记录；
+            // 禁止 location 导航（目录 URL 在虚拟目录 SW 下 NS_ERROR，见 home.html 注释）
+            this.replace("./home.html");
           },
         },
       };

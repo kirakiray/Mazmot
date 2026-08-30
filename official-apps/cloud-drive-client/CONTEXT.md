@@ -77,11 +77,8 @@ client.disconnect();
 ### 1. ofa.js@latest 的 `goto("./x.html")` 相对解析基准变更 → 路由缺 `/pages/` 反复白屏
 - **现象**：登录成功后跳转文件页报「加载页面模块 …/cloud-drive-client/files.html 失败」，地址栏 hash 变成 `#/…/cloud-drive-client/files.html`（缺 `/pages/` 段），且坏 hash 被记住，之后每次刷新都循环报错。
 - **原因**：ofa.js 走 `@latest`，新版本把 `goto("./x.html")` 的相对解析基准从页面路径改成了 **app 根目录**，`./files.html` 被解析成 `…/client/files.html`。
-- **正确写法**：不依赖 goto 的相对解析，按页面自身 src 显式构造绝对路由：
-  ```js
-  location.hash = "#" + new URL("files.html", this.src).pathname;
-  ```
-  见本页 `gotoFiles()` / `gotoHome()`。注意 `pathname` 自带前导 `/`，拼 hash 用 `"#"` 不要 `"#/"`（否则产生 `#//…` 双斜杠坏路由）。
+- **正确写法**：直接用 ofa 页面路由 `this.goto("./files.html")`。已核实当前 ofa@latest 的 `page.goto(src)` 实现为 `this.app.goto(resolvePath(src, this.src))`，**相对当前页面 src 解析**（`new URL(url, this.src)`）；早先「相对基准变成 app 根目录」的回归已不存在。见本页 `gotoFiles()` / `gotoHome()` / layout 的 `logout()`（登出用 `this.replace` 不留历史）。
+- **衍生坑（目录 URL 导航）**：早期版本用 `location.replace(应用根目录 + "#" + pathname)`（如 `…/client/#/…`）实现跳转。`client/` 这种**目录 URL** 在 `/apps/` 静态部署下由服务器兜底重写到 index.html，但在 run-app 安装的虚拟目录（`/$mazmot-apps/*`）下，NoneOS SW 没有 directory-index 解析，文档导航直接 `NS_ERROR_NET_ERROR_RESPONSE`（表现即登录后 404）。**禁止用 `location.*` 做页面跳转**，一律走 `this.goto` / `this.replace`。
 
 ### 2. 页面模块内动态 `import("/gh/…")` 报 Failed to resolve module specifier
 - **现象**：`confirm` / `prompt` / `toast` 等在点击事件里 `await import("/gh/ofajs/senti-ui@latest/…")` 抛 `TypeError: Failed to resolve module specifier`。
