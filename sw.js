@@ -17,8 +17,13 @@ if (globalThis.serviceWorker) {
 // SW 加载时读取 /host-cache.json，将 files 列表预缓存到 OPFS，实现离线访问
 globalThis.HOST_CACHE_CONFIG = true; // 开启离线缓存
 
-if (location.host.includes("localhost")) {
-  importScripts("http://localhost:3002/sw/dist.js");
-} else {
-  importScripts("https://core.noneos.com/sw/dist.js?v=" + version);
-}
+// if (location.host.includes("localhost")) {
+//   try {
+//     importScripts("http://localhost:3002/sw/dist.js");
+//   } catch (err) {
+//     // 本地 dev Core 服务（localhost:3002）未启动（如 CI 环境），回退到线上 Core
+//     importScripts("https://core.noneos.com/sw/dist.js?v=" + version);
+//   }
+// } else {
+importScripts("https://core.noneos.com/sw/dist.js?v=" + version);
+// }
