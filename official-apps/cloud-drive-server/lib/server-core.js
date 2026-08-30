@@ -68,6 +68,9 @@ export class CloudDriveServer {
     });
     this._running = true;
     this._onEvent({ type: "started", userId: this._user.userId });
+    // 刷新后浏览器可能已收回本地目录的读写授权（requestPermission 需要用户
+    // 手势，不能在启动链路里自动弹），这里只做非交互探测并通知 UI 引导重授权
+    this._probeLocalPermissions().catch(() => {});
   }
 
   stop() {
@@ -148,6 +151,11 @@ export class CloudDriveServer {
           ),
         (err) => {
           console.warn("[cloud-drive-server] handler error:", err);
+          // 本地空间的读写权限失效时，get/mount 会抛 Permission denied，
+          // 通知 UI 弹出重新授权入口（requestPermission 需要用户手势）
+          if (/permission/i.test(err?.message || "")) {
+            this._onEvent({ type: "local-perm-error", error: err.message });
+          }
           return this._respond(
             remoteUserId,
             payload,
@@ -604,6 +612,46 @@ export class CloudDriveServer {
       await this._storage.setItem(`mount:${spaceId}`, handle);
     }
     return handle;
+  }
+
+  /**
+   * 非交互探测所有本地空间的读写权限。nos-storage 读取 fs 句柄时会经
+   * fs.get() 还原，内部先 queryPermission，未授权且无用户手势时直接抛
+   * "Permission denied"——以此作为探测信号，全程不弹授权框。
+   * 返回权限未就绪的空间列表 [{ spaceId, name, state }]：
+   *   - state "prompt"：浏览器授权已过期，可经 authorizeLocalSpace 重授权
+   *   - state "lost"：句柄已不可还原（目录被移除等），只能删除空间重挂
+   */
+  async checkLocalPermissions() {
+    const spaces = (await this.listSpaces()).filter((s) => s.kind === "local");
+    const failed = [];
+    for (const s of spaces) {
+      try {
+        await this._storage.getItem(`mount:${s.id}`);
+      } catch (err) {
+        const msg = err?.message || "";
+        const state = /permission/i.test(msg) ? "prompt" : "lost";
+        failed.push({ spaceId: s.id, name: s.name, state });
+      }
+    }
+    return failed;
+  }
+
+  async _probeLocalPermissions() {
+    const failed = await this.checkLocalPermissions();
+    if (failed.length) {
+      this._onEvent({ type: "local-perm-required", spaces: failed });
+    }
+  }
+
+  /**
+   * 重新授权本地空间的读写权限。**必须由用户点击等手势内调用**：
+   * 内部经 _getMount 还原句柄，nos/fs 的 checkPermission 会在手势窗口内
+   * 弹出浏览器授权框；用户允许后返回，拒绝则抛 "Permission denied"。
+   */
+  async authorizeLocalSpace(spaceId) {
+    await this._getMount(spaceId);
+    this._onEvent({ type: "local-perm-granted", spaceId });
   }
 
   async deleteSpace(spaceId) {

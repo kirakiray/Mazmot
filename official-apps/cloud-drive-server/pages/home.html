@@ -55,7 +55,7 @@
       background: var(--md-sys-color-outline);
     }
     .dot.on {
-      background: var(--md-sys-color-primary);
+      background: #43a047;
     }
     .server-card {
       border-radius: 16px;
@@ -115,6 +115,44 @@
     .section-bar st-input {
       flex: 1;
     }
+    .perm-banner {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+    .perm-title {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .perm-desc {
+      font-size: 12px;
+      opacity: 0.8;
+      margin-bottom: 6px;
+    }
+    .perm-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      margin-top: 6px;
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    .perm-name {
+      font-weight: 500;
+    }
+    .perm-state {
+      flex: 1;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
     .row-list {
       display: flex;
       flex-direction: column;
@@ -265,6 +303,13 @@
             <n-icon icon="mdi:content-copy"></n-icon>
           </st-button>
         </div>
+        <div class="id-row">
+          <span class="id-label">客户端分享链接</span>
+          <div class="id-value" :title="shareLink">{{shareLink}}</div>
+          <st-button variant="text" on:click="copyShareLink()">
+            <n-icon icon="mdi:content-copy"></n-icon>
+          </st-button>
+        </div>
         <div class="stats">
           <div class="stat"><b>{{stats.spaceCount}}</b><span>空间</span></div>
           <div class="stat"><b>{{stats.accountCount}}</b><span>账号</span></div>
@@ -295,6 +340,28 @@
             </st-menu-item>
           </st-split-button>
         </div>
+        <o-if :value="permRequired.length">
+          <div class="perm-banner">
+            <n-icon icon="mdi:folder-key-outline" style="font-size: 22px"></n-icon>
+            <div class="grow">
+              <div class="perm-title">本地文件夹需要重新授权</div>
+              <div class="perm-desc">浏览器的读写授权已失效，重新授权后才能继续访问这些空间</div>
+              <o-fill :value="permRequired" fill-key="spaceId">
+                <div class="perm-row">
+                  <n-icon icon="mdi:folder-open-outline" style="font-size: 18px"></n-icon>
+                  <span class="perm-name">{{$data.name}}</span>
+                  <span class="perm-state">{{$data.state === 'lost' ? '句柄已失效，请删除后重新挂载' : '读写权限已失效'}}</span>
+                  <o-if :value="$data.state === 'prompt'">
+                    <st-button variant="text" on:click="$host.reauthorize($data.spaceId)">
+                      <n-icon icon="mdi:key-variant" style="font-size: 16px"></n-icon>
+                      重新授权
+                    </st-button>
+                  </o-if>
+                </div>
+              </o-fill>
+            </div>
+          </div>
+        </o-if>
         <o-if :value="spaces.length">
           <div class="row-list">
             <o-fill :value="spaces" fill-key="id">
@@ -514,6 +581,8 @@
           editPassword: "",
           editPasswordShown: "",
           editSpaces: [],
+          permRequired: [],
+          shareLink: "",
         },
         ready() {
           this.init();
@@ -531,6 +600,12 @@
           async init() {
             const user = await getUser("cloud-drive");
             this.myId = user.userId;
+            // 官方应用「一键安装 + 传参」链接：接收端经 run-app 安装 cloud-drive-client，
+            // server 参数透传到客户端入口，客户端据此自动填入本服务器 ID
+            const { buildOfficialRunUrl } = await load("/mz/share-mgr.js");
+            this.shareLink = buildOfficialRunUrl(location.origin, "cloud-drive-client", {
+              server: user.userId,
+            });
             const server = new CloudDriveServer(user, (e) => {
               if (
                 [
@@ -541,6 +616,8 @@
                   "space-created",
                   "space-deleted",
                   "account-created",
+                  "local-perm-required",
+                  "local-perm-error",
                 ].includes(e.type)
               ) {
                 this.refreshAll();
@@ -550,6 +627,10 @@
             await server.start();
             this.running = true;
             await this.refreshAll();
+            // start() 里的非交互探测若发现权限失效，这里补一条可见提示
+            if (this.permRequired.length) {
+              this.tip("有本地文件夹需要重新授权，见空间管理顶部提示");
+            }
           },
 
           async refreshAll() {
@@ -573,6 +654,7 @@
             const stats = await server.getStats();
             stats.sizeText = formatBytes(stats.totalSize);
             this.stats = stats;
+            this.permRequired = await server.checkLocalPermissions();
             this.auditLogs = (await server.listAudit()).map((a) => ({
               ...a,
               typeText:
@@ -628,6 +710,11 @@
             this.tip("已复制服务器 ID");
           },
 
+          async copyShareLink() {
+            await navigator.clipboard.writeText(this.shareLink);
+            this.tip("已复制客户端分享链接，发给对方粘贴到浏览器即可安装客户端并自动填入本服务器 ID");
+          },
+
           switchTab(tab) {
             this.activeTab = tab;
             // sessionStorage：标签页级记忆，刷新后停在原 tab
@@ -651,6 +738,17 @@
               this.tip(`已挂载本地文件夹「${handle.name}」`);
             } catch (err) {
               this.tip(err.message);
+            }
+          },
+
+          // 必须由点击触发：requestPermission 需要用户手势才能弹授权框
+          async reauthorize(spaceId) {
+            try {
+              await this._server.authorizeLocalSpace(spaceId);
+              await this.refreshAll();
+              this.tip("本地文件夹已重新授权");
+            } catch (err) {
+              this.tip(/permission/i.test(err?.message || "") ? "已取消授权" : err.message);
             }
           },
 

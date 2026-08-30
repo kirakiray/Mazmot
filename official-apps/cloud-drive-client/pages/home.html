@@ -220,8 +220,11 @@
         },
         proto: {
           async init() {
+            // 分享链接带来的服务器 ID（?server=xxx，经 run-app 安装后透传到入口）
+            // 优先于上次连接记录，跳过手填这一步
+            const shared = new URLSearchParams(location.search).get("server");
             const last = await this._client.getLastServer();
-            if (last) this.serverId = last;
+            this.serverId = (shared && shared.trim()) || last || "";
             await this.refreshTransfers();
             // 有持久化登录态（含刷新后恢复）直接回文件页
             if (this._client.loggedIn || (await this._client.tryRestoreSession())) {

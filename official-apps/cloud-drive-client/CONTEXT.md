@@ -64,6 +64,7 @@ client.disconnect();
   1. 在 [pages/](pages/) 下新建 `<name>.html`，遵循 `<template page>` 结构。
   2. 在 [app-config.js](app-config.js) 导出 `export const <name> = "./pages/<name>.html"`。
   3. 通过 `<a href="//<name>">` 或 `this.app.goto("//<name>")` 跳转。
+- **分享链接预填服务器 ID**：服务器端可复制「客户端分享链接」（`?app=cloud-drive-client&server=<服务器ID>`，经 run-app 安装后参数透传到本应用入口）。[home.html](pages/home.html) `init()` 读取 `location.search` 的 `server` 参数，优先于 `getLastServer()` 记录直接填入第一步输入框。
 - **接入 NoneOS Core**：
   - 顶层禁止 `import "/nos/*"`。
   - 在页面模块中：`const load = lm(import.meta); const { init } = await load("/nos/fs/main.js");`
