@@ -1,0 +1,526 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      padding: 28px 24px;
+      border-radius: 16px;
+      background: var(--md-sys-color-surface-container-low);
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .icon {
+      font-size: 56px;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      word-break: break-word;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 20px;
+      word-break: break-word;
+    }
+    .bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--md-sys-color-surface-variant);
+    }
+    .fill {
+      height: 100%;
+      background: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      min-height: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .error-text {
+      color: var(--md-sys-color-error);
+      font-size: 13px;
+      word-break: break-word;
+    }
+    .form {
+      text-align: left;
+      margin-top: 4px;
+    }
+    .field-label {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .field-desc {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+      margin: 0 0 12px;
+      word-break: break-word;
+    }
+    st-input {
+      width: 100%;
+      margin-bottom: 12px;
+      --input-font-size: 13px;
+    }
+    .actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
+    }
+    .saved-text {
+      font-size: 12px;
+      color: var(--md-sys-color-primary);
+      margin-right: auto;
+      min-height: 16px;
+    }
+    .warn {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: left;
+    }
+    /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
+    nos-version {
+      display: none !important;
+    }
+  </style>
+
+  <!-- dev 是可直接访问的首访入口，渲染时 NoneOS Core SW 可能尚未注册，
+       /gh/ 本地前缀不可用，故与 run-app 一致使用完整 jsdelivr URL -->
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="https://core.noneos.com/nos/locale-text/locale-text.html"></l-m>
+
+  <!--
+    隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core。
+    通过 on:xxx 声明式绑定所有事件；即使组件定义稍后通过 load() 加载，
+    浏览器升级元素时同步触发的 check-start / installed 也能被稳定接收。
+  -->
+  <nos-version
+    auto-install
+    on:check-start="onCoreCheckStart"
+    on:uninstalled="onCoreUninstalled"
+    on:upgradable="onCoreUpgradable"
+    on:install-start="onCoreInstallStart"
+    on:install-progress="onCoreInstallProgress"
+    on:installed="onCoreInstalled"
+    on:error="onCoreError($event)"
+  ></nos-version>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="icon">{{iconText}}</div>
+      <h1 class="title">{{titleText}}</h1>
+      <div class="subtitle">{{subtitleText}}</div>
+
+      <!-- Core 安装进度 -->
+      <o-if :value="step === 'core' || step === 'error'">
+        <o-if :value="step === 'core'">
+          <div class="bar">
+            <div class="fill" :style.width="progress + '%'"></div>
+          </div>
+          <div class="status">{{statusText}}</div>
+        </o-if>
+        <o-if :value="step === 'error'">
+          <div class="error-text">{{errorText}}</div>
+        </o-if>
+      </o-if>
+
+      <!-- 未开启开发者模式的域名/端口：不可用提示 -->
+      <o-if :value="step === 'unsupported'">
+        <div class="error-text">{{unsupportedText}}</div>
+        <div class="field-desc" style="margin-top: 12px;">
+            <locale-text><span lang="cn">开发者模式仅在本机 localhost（端口 30033 - 30040）或 https 下的 dev1-6.mazmot.noneos.com 由 sw.js 允许开启。请改用开发端口 / 域名访问，或在宿主 sw.js 中调整允许范围。</span><span lang="en">Dev mode is only allowed by sw.js on localhost (ports 30033 - 30040) or https dev1-6.mazmot.noneos.com. Visit via a dev port / domain, or adjust the allowed range in the host sw.js.</span></locale-text>
+        </div>
+      </o-if>
+
+      <!-- 注入脚本配置表单 -->
+      <o-if :value="step === 'ready'">
+        <div class="form">
+          <div class="field-label">
+            <locale-text><span lang="cn">开发者模式注入脚本</span><span lang="en">Dev-mode injection script</span></locale-text>
+          </div>
+          <div class="field-desc">
+            <locale-text><span lang="cn">填写要注入到每个页面顶部的脚本 URL（仅 localhost 的开发端口生效）。保存后写入 systemConfig（nos-config/system.json 的 devBridge 字段），并访问 /__config 触发 Service Worker 重载生效。</span><span lang="en">Enter the script URL to inject into every page (only effective on localhost dev ports). Saving writes it into systemConfig (the devBridge field of nos-config/system.json), then fetches /__config to reload the Service Worker config.</span></locale-text>
+          </div>
+          <st-input
+            sync:value="scriptValue"
+            attr:disabled="saving"
+            attr:placeholder="scriptPlaceholder"
+          ></st-input>
+          <div class="actions">
+            <span class="saved-text">{{savedText}}</span>
+            <st-button
+              color="error"
+              variant="text"
+              on:click="clearLocalData"
+              attr:disabled="clearing"
+            >
+              {{clearBtnText}}
+            </st-button>
+            <st-button variant="text" on:click="clearScript" attr:disabled="saving">
+              <locale-text><span lang="cn">清空</span><span lang="en">Clear</span></locale-text>
+            </st-button>
+            <st-button on:click="saveScript" attr:disabled="saving">
+              <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+            </st-button>
+          </div>
+          <div class="warn">
+            <locale-text><span lang="cn">开发者模式会把上方脚本注入到本站所有页面，请仅填写你完全信任的脚本地址，勿在开启期间输入敏感数据。</span><span lang="en">Dev mode injects the script above into every page of this site. Only use script URLs you fully trust, and avoid entering sensitive data while it is enabled.</span></locale-text>
+          </div>
+        </div>
+      </o-if>
+    </div>
+  </div>
+
+  <script>
+    // Core 安装阶段占 0-40%，加载/写入配置阶段占 40-100%
+    const CORE_END = 40;
+
+    // 本地化取词函数：默认回退中文；页面模块工厂内加载
+    // core.noneos.com 的 get-locale-text.js 后替换为真实实现。
+    // （不能顶层 import /nos/*，本页可能在 Core SW 注册前执行。）
+    let gl = (item) => item.cn;
+
+    export default async ({ load }) => {
+      try {
+        const localeMod = await load(
+          "https://core.noneos.com/nos/locale-text/get-locale-text.js",
+        );
+        gl = localeMod.getLocaleText;
+      } catch (_) {
+        // 加载失败时保持中文回退
+      }
+
+      // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
+      let coreResolve;
+      let coreReject;
+      const coreReady = new Promise((resolve, reject) => {
+        coreResolve = resolve;
+        coreReject = reject;
+      });
+      let coreDone = false;
+
+      return {
+        data: {
+          step: "core", // core | ready | unsupported | error
+          iconText: "🛠️",
+          titleText: gl({ cn: "开发者工具", en: "Developer Tools" }),
+          subtitleText: gl({ cn: "正在准备运行环境", en: "Preparing environment" }),
+          statusText: gl({ cn: "正在检测 NoneOS Core...", en: "Detecting NoneOS Core..." }),
+          progress: 0,
+          errorText: "",
+          scriptValue: "", // 注入脚本 URL（双向绑定到输入框）
+          scriptPlaceholder: gl({
+            cn: "例如 http://127.0.0.1:8765/client.js",
+            en: "e.g. http://127.0.0.1:8765/client.js",
+          }),
+          saving: false,
+          savedText: "",
+          unsupportedText: "",
+          clearing: false,
+          clearArmed: false,
+          clearBtnText: gl({ cn: "清除本地数据", en: "Wipe Local Data" }),
+        },
+        attached() {
+          this.startFlow();
+        },
+        proto: {
+          // 与 sw.js 的开发者模式总开关保持一致：
+          // 1. localhost 且端口 30033 - 30040
+          // 2. https 下的 dev1.mazmot.noneos.com ~ dev6.mazmot.noneos.com
+          isDevHostAllowed() {
+            const { hostname, port, protocol } = new URL(location.href);
+            const portNum = Number(port);
+            const isLocalDev =
+              hostname === "localhost" && portNum >= 30033 && portNum <= 30040;
+            const isRemoteDev =
+              protocol === "https:" &&
+              /^dev[1-6]\.mazmot\.noneos\.com$/.test(hostname);
+            return isLocalDev || isRemoteDev;
+          },
+          setProgress(p, text) {
+            this.progress = Math.max(0, Math.min(100, p));
+            if (text != null) this.statusText = text;
+          },
+          async startFlow() {
+            // 未开启开发者模式的域名/端口：直接提示不可用，不进入安装/配置流程
+            if (!this.isDevHostAllowed()) {
+              this.subtitleText = "";
+              this.unsupportedText = gl({
+                cn: "当前域名 / 端口未开启开发者模式，此工具不可用",
+                en: "Dev mode is not enabled for this host / port; this tool is unavailable",
+              });
+              this.step = "unsupported";
+              return;
+            }
+
+            // 步骤 1：检测 / 安装 NoneOS Core（与根 index.html 一致的组件来源）
+            try {
+              await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
+              await coreReady;
+            } catch (err) {
+              return; // onCoreError 已进入错误态
+            }
+
+            // 步骤 2：读取现有 systemConfig，回填注入脚本
+            this.setProgress(CORE_END, gl({ cn: "读取开发者模式配置...", en: "Reading dev-mode config..." }));
+            try {
+              const fsMod = await load("/nos/fs/main.js");
+              const configFile = await fsMod.get("nos-config/system.json");
+              if (configFile) {
+                const config = await configFile.json();
+                const script = config && config.devBridge && config.devBridge.script;
+                if (script) this.scriptValue = script;
+              }
+            } catch (err) {
+              console.warn("读取 nos-config/system.json 失败：", err);
+              // 读取失败不阻断配置表单，按无配置处理
+            }
+
+            this.setProgress(100, gl({ cn: "就绪", en: "Ready" }));
+            this.iconText = "🛠️";
+            this.titleText = gl({ cn: "开发者工具", en: "Developer Tools" });
+            this.subtitleText = gl({
+              cn: "配置开发者模式注入脚本",
+              en: "Configure dev-mode injection script",
+            });
+            this.step = "ready";
+
+            // URL 带 ?script=<url> 时自动填充并确认保存（免手动输入）
+            const urlScript = new URLSearchParams(window.location.search || "").get("script");
+            if (urlScript) {
+              this.scriptValue = urlScript;
+              await this.saveScript();
+            }
+          },
+
+          async saveScript() {
+            const script = (this.scriptValue || "").trim();
+            this.saving = true;
+            this.savedText = "";
+            try {
+              const fsMod = await load("/nos/fs/main.js");
+              // 读取现有配置合并写入，避免覆盖 devBridge 之外的字段
+              let config = {};
+              const configFile = await fsMod.get("nos-config/system.json");
+              if (configFile) {
+                try {
+                  config = (await configFile.json()) || {};
+                } catch (_) {
+                  config = {};
+                }
+              }
+              if (!script) {
+                delete config.devBridge;
+                // 清空注入时重置刷新标记，下次再添加脚本仍会触发一次生效刷新
+                sessionStorage.removeItem("__dev-app-script-saved-reloaded");
+              } else {
+                config.devBridge = Object.assign({}, config.devBridge, {
+                  script,
+                });
+              }
+              const target = await fsMod.get("nos-config/system.json", {
+                create: "file",
+              });
+              await target.write(JSON.stringify(config, null, 2));
+
+              // 访问 /__config 触发 SW 重载配置，无需重启 Service Worker
+              try {
+                await fetch("/__config", { cache: "no-store" });
+              } catch (_) {
+                // 触发失败不阻断保存结果提示
+              }
+
+              this.savedText = gl({
+                cn: "已保存 ✓（已触发配置重载）",
+                en: "Saved ✓ (config reload triggered)",
+              });
+
+              // 保存注入脚本后刷新一次页面，让当前页也带上注入脚本生效；
+              // sessionStorage 标记防止死循环（刷新后不再重复刷新）。
+              const RELOAD_FLAG = "__dev-app-script-saved-reloaded";
+              if (script && !sessionStorage.getItem(RELOAD_FLAG)) {
+                sessionStorage.setItem(RELOAD_FLAG, "1");
+                window.location.reload();
+                return;
+              }
+            } catch (err) {
+              this.savedText = gl({
+                cn: "保存失败：",
+                en: "Save failed: ",
+              }) + ((err && err.message) || err);
+            }
+            this.saving = false;
+          },
+
+          clearScript() {
+            this.scriptValue = "";
+            this.saveScript();
+          },
+
+          // 清除本地数据（仅开发者模式下可用）：localStorage / sessionStorage /
+          // IndexedDB 全清；OPFS 保留 nos 前缀的关键目录（nos-config 等），其余全删。
+          // 二次点击确认，避免误触。
+          async clearLocalData() {
+            if (!this.isDevHostAllowed()) return;
+            if (!this.clearArmed) {
+              // 第一次点击：进入确认态（4s 内再点一次才执行）
+              this.clearArmed = true;
+              this.clearBtnText = gl({
+                cn: "再点一次确认清除",
+                en: "Click again to confirm",
+              });
+              setTimeout(() => {
+                if (this.clearArmed) {
+                  this.clearArmed = false;
+                  this.clearBtnText = gl({ cn: "清除本地数据", en: "Wipe Local Data" });
+                }
+              }, 4000);
+              return;
+            }
+            // 第二次点击：真正执行
+            this.clearArmed = false;
+            this.clearing = true;
+            this.savedText = gl({ cn: "清除中...", en: "Wiping..." });
+            try {
+              // localStorage / sessionStorage
+              try { localStorage.clear(); } catch (_) {}
+              try { sessionStorage.clear(); } catch (_) {}
+
+              // IndexedDB 全部删除
+              if (indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                await Promise.all(
+                  dbs
+                    .filter((db) => db && db.name)
+                    .map(
+                      (db) =>
+                        new Promise((resolve) => {
+                          const req = indexedDB.deleteDatabase(db.name);
+                          req.onsuccess = req.onerror = req.onblocked = resolve;
+                        }),
+                    ),
+                );
+              }
+
+              // OPFS：保留 nos 前缀（nos-config / ncomp 等 Core 关键数据），其余全删
+              const root = await navigator.storage.getDirectory();
+              const names = [];
+              for await (const [name] of root.entries()) names.push(name);
+              for (const name of names) {
+                if (name.startsWith("nos")) continue;
+                try {
+                  await root.removeEntry(name, { recursive: true });
+                } catch (err) {
+                  // 普通文件不带 recursive 选项也合法；递归失败时按文件再试一次
+                  try {
+                    await root.removeEntry(name);
+                  } catch (_) {
+                    console.warn("清除 OPFS 条目失败：", name, err);
+                  }
+                }
+              }
+
+              this.savedText = gl({
+                cn: "已清除本地数据 ✓（nos 关键数据已保留），建议刷新页面",
+                en: "Local data wiped ✓ (nos data kept); reload recommended",
+              });
+            } catch (err) {
+              this.savedText = gl({ cn: "清除失败：", en: "Wipe failed: " }) +
+                ((err && err.message) || err);
+            }
+            this.clearing = false;
+            this.clearBtnText = gl({ cn: "清除本地数据", en: "Wipe Local Data" });
+          },
+
+          // ============ nos-version 事件处理 ============
+          onCoreCheckStart() {
+            this.setProgress(2, gl({ cn: "正在检测 NoneOS Core...", en: "Detecting NoneOS Core..." }));
+          },
+          onCoreUninstalled() {
+            this.setProgress(5, gl({ cn: "首次运行，正在安装 NoneOS Core...", en: "First run, installing NoneOS Core..." }));
+          },
+          onCoreUpgradable(e) {
+            const d = e.detail || {};
+            this.setProgress(
+              5,
+              gl(
+                { cn: "NoneOS Core 升级中（{a} → {b}）...", en: "Upgrading NoneOS Core ({a} → {b})..." },
+                { a: d.version || "?", b: d.lastVersion || "?" },
+              ),
+            );
+          },
+          onCoreInstallStart() {
+            this.setProgress(6, gl({ cn: "NoneOS Core 安装准备中...", en: "Preparing NoneOS Core installation..." }));
+          },
+          onCoreInstallProgress(e) {
+            const d = e.detail || {};
+            // step/total 线性映射到 6 - CORE_END
+            const total = d.total || 1;
+            const p = 6 + Math.round(((d.step || 0) / total) * (CORE_END - 6));
+            const desc = d.desc || gl({ cn: "安装中", en: "installing" });
+            this.setProgress(
+              p,
+              gl({ cn: "NoneOS Core：{desc}", en: "NoneOS Core: {desc}" }, { desc }),
+            );
+          },
+          onCoreInstalled() {
+            if (coreDone) return;
+            coreDone = true;
+            this.setProgress(CORE_END, gl({ cn: "NoneOS Core 就绪", en: "NoneOS Core ready" }));
+            coreResolve();
+          },
+          onCoreError(event) {
+            if (coreDone) return;
+            coreDone = true;
+            const d = (event && event.detail) || {};
+            const rawErr = d.error || d.err || d.cause;
+            const detailMsg =
+              d.message ||
+              (rawErr && (rawErr.message || String(rawErr))) ||
+              "";
+            this.errorText =
+              gl(
+                { cn: "NoneOS Core {phase}失败：{msg}", en: "NoneOS Core {phase} failed: {msg}" },
+                {
+                  phase: d.phase || gl({ cn: "初始化", en: "initialization" }),
+                  msg: detailMsg || gl({ cn: "未知错误", en: "Unknown error" }),
+                },
+              );
+            this.subtitleText = "";
+            this.step = "error";
+            console.error("[dev] NoneOS Core 初始化失败", event && d);
+          },
+        },
+      };
+    };
+  </script>
+</template>
