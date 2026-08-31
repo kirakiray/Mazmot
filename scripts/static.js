@@ -1,6 +1,6 @@
 import httpServer from 'http-server';
 
-const PORTS = [30031, 30032, 30033];
+const PORTS = [30031, 30032, 30033, 30034, 30035, 30036, 30037, 30038, 30039, 30040];
 const servers = [];
 
 for (const port of PORTS) {

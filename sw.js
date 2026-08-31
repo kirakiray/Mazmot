@@ -17,6 +17,20 @@ if (globalThis.serviceWorker) {
 // SW 加载时读取 /host-cache.json，将 files 列表预缓存到 OPFS，实现离线访问
 globalThis.HOST_CACHE_CONFIG = true; // 开启离线缓存
 
+// 开发者模式（dev-bridge 脚本注入）总开关
+// 允许两种环境：
+// 1. 本地 localhost 且端口为 30033 - 30040
+// 2. https 下的 dev1.mazmot.noneos.com ~ dev6.mazmot.noneos.com
+{
+  const { hostname, port, protocol } = new URL(location.href);
+  const portNum = Number(port);
+  const isLocalDev = hostname === "localhost" && portNum >= 30033 && portNum <= 30040;
+  const isRemoteDev =
+    protocol === "https:" &&
+    /^dev[1-6]\.mazmot\.noneos\.com$/.test(hostname);
+  globalThis.DEV_BRIDGE_ENABLED = isLocalDev || isRemoteDev;
+}
+
 // if (location.host.includes("localhost")) {
 //   try {
 //     importScripts("http://localhost:3002/sw/dist.js");

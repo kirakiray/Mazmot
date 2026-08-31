@@ -62,6 +62,11 @@ Mazmot/
 │   │       └── test/
 │   │           └── run-app-utils.sb.html  # run-app-utils 的 sibyl-test 单测
 │   │
+│   ├── dev/                  # 开发者工具应用（可直接访问的首访入口），URL = /apps/dev/（用途与流程详见 apps/dev/README.md）
+│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">（同 run-app：整目录用 jsdelivr 完整 URL，渲染时 Core SW 可能未注册）
+│   │   ├── app-config.js     # 声明 home = ./dev.html（不 init 文件系统，Core 由页面模块自己装）
+│   │   └── dev.html          # 页面模块：先校验当前 host 是否允许开发者模式（与 sw.js 一致：localhost + 端口 30033-30040，或 https 下 dev1-6.mazmot.noneos.com，不满足则显示不可用）→ 内嵌 <nos-version auto-install> 装 Core（进度条同 run-app 模式）→ 经 /nos/fs 读取 nos-config/system.json 回填 devBridge.script → 表单保存注入脚本（合并写回 system.json 后 fetch /__config 触发 SW 重载；清空保存即移除 devBridge；保存后 sessionStorage 标记控制刷新一次让当前页生效）；URL 带 ?script=<url>（encodeURIComponent 编码）时自动填充并确认保存
+│   │
 │   └── network/              # 网络应用（服务器/用户连接状态与流量监控），URL = /apps/network/
 │       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
 │       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
