@@ -16,6 +16,9 @@ ai-app-builder/
 ├── CONTEXT.md          # 本文件
 ├── lib/
 │   ├── builder.js      # 核心库：系统提示词、应用名/路径校验、VFS 写入编排、apps[] 登记/注销
+│   ├── builder-store.js # 可观察状态仓库：AI 创作/运行的全部业务逻辑（Agent 编排、应用/会话管理、
+│   │                    #   写入目标与本地句柄、消息流水线、持久化）封装为独立运行的状态对象，
+│   │                    #   页面只 subscribe 事件同步视图（见「状态仓库」小节）
 │   ├── markdown.js     # Markdown 渲染（与 ai-chat 同源副本，代码块带复制按钮）
 │   ├── skill-sync.js   # 技能知识库：源清单 + zip 解析 + 下载安装到 VFS skills 空间 + 索引/读取
 │   └── tools/          # Agent 工具插件（每工具一文件，见「工具插件体系」）
@@ -25,7 +28,8 @@ ai-app-builder/
 │       ├── read-file.js    # read_file：读文件（迭代修改前查看）
 │       └── list-files.js   # list_files：列文件清单
 ├── pages/
-│   ├── home.html       # 唯一页面：三段布局（顶栏 / 左会话栏 / 聊天列）+ 右侧应用面板
+│   ├── home.html       # 唯一页面：三段布局（顶栏 / 左会话栏 / 聊天列）+ 右侧资源面板（只负责视觉与交互，
+│   │                   #   业务全部委托 builder-store）
 │   └── home.css        # 样式（M3 CSS 变量，含应用卡片 / 会话栏 / 滑出面板 / 目标切换器）
 └── test/
     └── builder.sb.html # sibyl-test：纯函数 + 工具注册中心 + Core 端到端用例
@@ -108,33 +112,32 @@ Agent 的「查文档」能力，技能**不内置**在应用内：启动后后�
 | `lib/builder.js` | `NAMESPACE`/`REQUIRED_FILES` 常量；`sanitizeAppName`（规范化为 `/^[a-z0-9_-]+$/`）、`validateRelPath`（路径白名单校验）；`buildAppJson` / `buildAppRecord` / `buildLocalAppRecord`；`createAppDir` / `writeAppFile` / `readAppFile` / `listAppFiles` / `validateApp`（均接受可选 `rootHandle` 切换渠道）；`registerAppRecord` / `unregisterAppRecord` / `listRegisteredApps` / `deleteVfsApp`；`SYSTEM_PROMPT`（教模型 Mazmot/ofa.js 结构与硬性约束；工作流程要求功能文件完成后补写 **AGENTS.md**（给 AI 的开发规范）与 **CONTEXT.md**（项目说明）两份项目文档，且内容须基于实际生成的代码）+ `buildSystemPrompt(ctx)`（按当前上下文动态构建：已选应用时注入应用名/渠道与「回答项目问题前必须先 list_files / read_file，禁止凭猜测描述项目」的强制规则；草稿阶段退回基础提示词） |
 | `lib/tools/index.js` | 插件注册中心（见「工具插件体系」） |
 | `lib/tools/*.js` | 四个工具插件，宿主依赖全走 `ctx` |
-| `pages/home.html` | 唯一页面模块（见下节） |
+| `pages/home.html` | 唯一页面模块（见下节；只负责视觉与交互，业务委托仓库） |
+| `lib/builder-store.js` | `createBuilderStore({ fs, mazmotStore, selfStore, load })` 可观察状态仓库（见「状态仓库」小节） |
 | `lib/markdown.js` | Markdown → HTML（代码块带复制按钮，事件委托处理 `:html` 内的点击） |
+
+## 状态仓库（lib/builder-store.js）
+
+AI 创作 / 运行过程的全部业务逻辑封装在 `createBuilderStore({ fs, mazmotStore, selfStore, load })` 返回的可观察状态对象中，页面不持有任何业务状态，只订阅事件更新视觉数据。这样「进行中的对话切换应用」等上下文切换都在仓库内部单一代码路径里完成，不会出现页面作用域变量错乱。
+
+**事件契约（`store.subscribe(cb)`）**：
+
+- `{ type: "patch", data }`——state 标量 / 整组数据更新（data 为键值对；`nextId` 为内部计数，页面忽略）
+- `{ type: "messages", op, ... }`——消息流水线细粒度变更：`op: "replace"`（带 `list`）/ `"push"`（带 `item`）/ `"patch"`（带 `id, patch`）/ `"splice"`（带 `id`）
+
+**state 字段**：`messages` / `sending` / `keyError` / `coreError` / `nextId`（消息与发送）；`apps` / `currentAppName`（`""` = 草稿）/ `currentAppDisplay` / `currentAppIcon` / `currentAppMode` / `currentAppSessions` / `currentSessionId` / `currentSessionTitle`（顶栏展示的当前会话标题，`syncSessionTitle` 从 registry 解析，草稿/无会话为空）（应用与会话）；`storageMode` / `localDirLabel` / `permGrantNeeded`（写入目标与授权）；`skills`（技能索引镜像）。
+
+**非响应式闭包资源**（不进 state，防响应式拆原型）：`agent`（惰性创建，切换应用/会话/目标后置 null 重建）、`activeBubble`、`pendingNewApp`、`localRootHandle`（本地句柄）、`checkpointer`、`/mz/ai` 与 `/mz/ai/chain` 模块缓存。
+
+**仓库方法**：`init({ initialApp })`（项目标签按 URL `?p=<name>` 恢复并打开最近会话；无 `p` = 草稿标签恢复 `chat:draft`；启动先读一次已安装技能索引填充 `skills`，再后台增量同步）、`send(text)`（prepareContext → 用户消息入列 → Agent 流式对话 → finishTurn 收尾，含 `adoptNewApp` 新应用落地迁移与 `ensureAppRegistered` 兜底登记）、`reloadApps` / `selectApp` / `startDraft(wipeDraft)` / `newSessionFor` / `loadSession` / `deleteApp` / `deleteSession` / `selectMode` / `chooseLocalDir` / `grantLocalPermission` / `openApp` / `toggleTool` / `stop`（中断当前生成：`currentAbort.stopped` 置位后流式回调链抛错中断，已生成内容保留并照常落盘，下次发送继续同一 thread）/ `getLocalHandle()`（句柄只读查询）。
 
 ## home.html 页面要点
 
-**布局**：`.app`（relative，容纳右侧滑出面板）> `topbar` + `.body-row` > 左 `.side`（会话栏，选中应用即常驻显示：`currentAppName !== ""`）+ `.main-col`（聊天区 + 输入区）。右侧 `.panel`（滑出面板：头部关闭按钮 + `st-tab-bar` 三 tab——「应用」（新建应用按钮 + 应用列表）/「工具」（Agent 可用工具清单，数据来自 `TOOL_DEFS` 映射、新增插件自动出现）/「技能」（Agent 可用技能知识库清单，数据来自 VFS skills 空间索引、后台同步完成后刷新），`panelTab` 状态切换）+ `.panel-mask` 为 absolute 覆盖层。
+**布局**：`.app`（relative，容纳右侧滑出面板）> `topbar` + `.body-row` > 左 `.side`（会话栏，选中应用即常驻显示：`currentAppName !== ""`）+ `.main-col`（聊天区 + 输入区；发送按钮在 `sending` 时切换为红色停止按钮 → `handleStop`）。
 
-**状态（`data`）**：`messages` / `input` / `sending` / `keyError` / `coreError` / `nextId` / `atBottom`（聊天）；`panelOpen` / `apps` / `currentAppName`（`""` = 草稿）/ `currentAppDisplay` / `currentAppIcon` / `currentAppMode` / `currentAppSessions` / `currentSessionId`（应用与会话）；`storageMode` / `localDirLabel`（草稿目标偏好）；`confirmingDelApp` / `confirmingDelSession`（两步删除确认，不弹原生 confirm）；`skills`（已安装技能知识库列表，供「技能」tab 渲染，随后台同步刷新）。
+**项目导航（标签制）**：每个项目一个网页标签，URL 以 `?p=<name>` 标识（草稿标签无 `p`）。顶栏品牌区——已进入项目时只显示应用 Logo + 名称 + 渠道徽标 + 当前会话标题（不显示生成器品牌）；草稿时显示「AI 应用生成器 / 新应用 · 未创建」。项目名右侧下拉按钮（`st-icon-button` + `mdi:chevron-down`）→ **左侧项目抽屉**（`.proj-drawer` + 遮罩，复用 `.panel-item` 列表项样式）：顶部「＋ 新建项目」按钮；项目清单每项含图标 / 名称 / 渠道徽标 / 目录名、「已打开」徽标（`openTabs`）与两步确认删除按钮。点击项 → `window.open(url, 窗口名)` 新标签打开——窗口名 `ai-builder-<name>` / `ai-builder-draft` 命中已开标签则聚焦复用，不重复开。「已打开」状态由跨标签感知维护：`BroadcastChannel("ai-builder-tabs")` 广播 `hello` / `alive` / `bye`（本标签 `announce(currentAppName)`，`beforeunload` 发 `bye`；打开抽屉时 `refreshAliveTabs()` 清空重探测）。URL `p` 参数由 `syncUrlParam()` 跟随 `currentAppName` 用 `history.replaceState` 同步（草稿落地为新应用后自动补 `p`，刷新不丢项目）。右侧 `.panel` 为「工具 / 技能」双 tab 的资源面板，`.panel-mask` 为 absolute 覆盖层。
 
-**模块级非响应式变量**：`agent`（惰性创建，切换应用/会话/目标后置 null 重建）、`activeBubble`（流式写入目标）、`pendingNewApp`（本轮 create_app 捕获）、`localRootHandle`（本地句柄，下划线规则防 ofa 响应式包装）、`fs` / `mazmotStore` / `selfStore`（Core 依赖，`load()` 运行时注入）。
-
-**关键方法（`proto`）**：
-
-- `ensureAgent()`：惰性建 Agent；`useLocal` 按「已选应用看 `currentAppMode`、草稿看 `storageMode` + 有句柄」判定，`rootHandle` 注入工具；`onAppCreated` 捕获 `pendingNewApp`（mode 随之定格）
-- `reloadApps()` / `syncCurrentFromRegistry()`：registry 读写与 currentApp* 展示字段同步（会话按 `updatedAt` 倒序）
-- `selectApp(name)`：`applyApp`（恢复本地句柄、重置确认态、置空 agent）+ 打开最近会话；`loadSession(sid)`：换消息与 threadId；`startDraft(wipeDraft)`：回草稿（目标重新可选，恢复 `chat:draft`；`wipeDraft = true` 时连历史草稿消息与 `thread:draft` 记忆一并清空，删光所有应用后回落草稿走此分支）；`newSessionFor(name)`：清空进入新会话（发首条消息时才落 registry）
-- `selectMode(mode)` / `chooseLocalDir()`：草稿目标切换与 `fs.open()`（不支持时提示 Safari/Firefox 用虚拟渠道）
-- `deleteApp(event, name)` / `deleteSession(event, sid)`：两步确认；删应用按渠道决定是否删文件；删会话清 `chat:` / `thread:` 键后切到剩余最近会话
-- `prepareContext(text)`：发送前落点准备——草稿本地缺句柄则重选（失败降级 vfs）；已选应用无会话则自动新建（标题取首条用户消息前 24 字）；本地句柄丢失则从记录恢复，随后 `ensureLocalPermission` 补授权，失败才回退重选
-- `handleSend()` / `handleStreamEvent(ev)` / `newBubble()`：发送与流式渲染（text 增量进 activeBubble、toolCalls 出工具行、toolResult 回填、done 兜底）
-- `finishTurn(text, threadId)`：回合收尾——本轮若 `pendingNewApp` 走 `adoptNewApp`；否则消息落 `chat:` 键并更新会话标题/updatedAt
-- `adoptNewApp(info, text, plain)`：校验文件完整性（`validateApp`，缺 `REQUIRED_FILES` 则卡片标缺失）→ **立即**登记 `apps[]`（不等文件齐全；本地记录携带句柄，尽早落库才能在刷新后恢复授权）→ registry 建应用 + 首个会话，草稿消息与 Agent 记忆从 `chat:draft` / `thread:draft` **迁移**过去 → `applyApp` 切入新应用上下文（目标锁定）→ 聊天流追加应用预览卡片（`role: "app"`）
-- `ensureAppRegistered()`：每回合兜底——`apps[]` 里缺当前应用记录（历史会话 / 旧版本创建）时补登记，本地渠道带上句柄；由 `finishTurn` 的已选应用分支调用
-- `openApp(appName, mode)`：预览——vfs 直接 `window.open("/$ai-apps/...")`；local 走 `openLocalApp`（所选目录即项目根，句柄缺失先从记录恢复 / 重选，`getRunUrl` 直接挂载该目录）
-- `openPanel()` / `closePanel()`：右侧应用面板；`ready()`：恢复 ui 停留位置或草稿
-
-**ofa.js 模板注意**：o-fill 内用 `$data` / `$host`，根级直接用 data 字段名与方法名；布尔属性用 `attr:`；删除按钮 `event.stopPropagation()` 防触发所在行选中。
+**职责边界**：页面 `data` 是仓库状态的**视觉投影**——`ready()` 里 `store.subscribe()` 把 patch 事件键值直接赋给同名 data 字段，messages 事件细粒度应用到 `this.messages`（`applyMessageEvent`）；`proto` 方法是对仓库方法的薄代理（会话两步删除 `confirmingDelSession`、项目两步删除 `confirmingDelApp` 与 `panelOpen` / `panelTab` / `projDrawerOpen` / `openTabs` / `input` / `atBottom` 等纯 UI 状态留在页面）。业务变更一律调仓库方法，页面不直接改业务数据。
 
 ## 运行方式
 
