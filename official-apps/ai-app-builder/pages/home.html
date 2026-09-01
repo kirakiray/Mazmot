@@ -1,0 +1,1443 @@
+<template page>
+  <link rel="stylesheet" href="./home.css" />
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">🪄</div>
+        <div class="brand-app">
+          <div class="brand-name">AI 应用生成器</div>
+          <div class="brand-current">
+            <o-if :value="currentAppName !== ''">
+              <span class="cur-app">
+                <span class="cur-icon">{{currentAppIcon}}</span>
+                {{currentAppDisplay}}
+                <span class="mode-badge" attr:mode="currentAppMode">{{modeText(currentAppMode)}}</span>
+              </span>
+            </o-if>
+            <o-if :value="currentAppName === ''">
+              <span class="cur-app draft">新应用 · 未创建</span>
+            </o-if>
+          </div>
+
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <st-icon-button title="应用列表" on:click="openPanel">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
+        </st-icon-button>
+      </div>
+    </header>
+
+    <div class="body-row">
+      <!-- 左侧：当前应用的历史对话（应用创建后常驻） -->
+      <aside class="side" class:show="currentAppName !== ''">
+        <div class="side-head">
+          <span>对话</span>
+          <st-icon-button
+            title="新建对话"
+            style="font-size: 12px"
+            on:click="newSessionFor(currentAppName)"
+          >
+            ＋
+          </st-icon-button>
+        </div>
+        <div class="side-body">
+          <o-fill :value="currentAppSessions" fill-key="id">
+            <div
+              class="session-item"
+              class:active="$data.id === $host.currentSessionId"
+              on:click="$host.loadSession($data.id)"
+            >
+              <span class="session-title">{{$data.title}}</span>
+              <st-button
+                class="del-btn"
+                variant="text"
+                class:confirm="$host.confirmingDelSession === $data.id"
+                attr:title="$host.confirmingDelSession === $data.id ? '再点一次确认删除' : '删除对话'"
+                style="font-size: 11px"
+                on:click="$host.deleteSession($event, $data.id)"
+              >
+                <o-if :value="$host.confirmingDelSession === $data.id">
+                  <span>确认</span>
+                </o-if>
+                <o-if :value="$host.confirmingDelSession !== $data.id">
+                  <n-icon icon="mdi:close"></n-icon>
+                </o-if>
+              </st-button>
+            </div>
+          </o-fill>
+        </div>
+      </aside>
+
+      <div class="main-col">
+    <div class="chat-wrap">
+      <section class="chat-scroll" id="chatScroll" on:scroll="onChatScroll">
+        <div class="column">
+          <o-if :value="messages.length === 0 && !sending">
+            <div class="hero">
+              <div class="hero-icon">🪄</div>
+              <h2>描述你想要的应用</h2>
+              <p class="hero-sub">
+                AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
+              </p>
+              <div class="chips">
+                <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
+                  🍅 番茄钟
+                </button>
+                <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
+                  💰 记账本
+                </button>
+                <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
+                  🎯 随机点名
+                </button>
+              </div>
+            </div>
+          </o-if>
+
+          <o-fill :value="messages" fill-key="id">
+            <div
+              class="msg"
+              class:new-group="$data.newGroup"
+              attr:role="$data.role"
+            >
+              <o-if :value="$data.role === 'user'">
+                <div class="user-bubble">{{$data.content}}</div>
+              </o-if>
+
+              <o-if :value="$data.role === 'assistant'">
+                <div class="ai-block">
+                  <div class="ai-text" :html="$host.renderMd($data.content)"></div>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'tool'">
+                <div
+                  class="tool-row"
+                  class:open="$data.open"
+                  class:pending="$data.pending"
+                >
+                  <button class="tool-head" on:click="$host.toggleTool($data.id)">
+                    <span class="tool-chev">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </span>
+                    <span class="tool-title">{{$data.name}}</span>
+                    <span class="tool-sep"></span>
+                    <span class="tool-summary">{{$data.summary}}</span>
+                    <span class="tool-state">
+                      <span class="tool-dot"></span>
+                      <span class="tool-result">= {{$data.result}}</span>
+                    </span>
+                  </button>
+                  <o-if :value="$data.open">
+                    <div class="tool-body">
+                      <div class="tool-line">
+                        <span class="tool-label">参数</span>
+                        <span class="tool-value">{{$data.args}}</span>
+                      </div>
+                      <div class="tool-line">
+                        <span class="tool-label">结果</span>
+                        <span class="tool-value">{{$data.result}}</span>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'app'">
+                <div class="app-card">
+                  <div class="app-card-head">
+                    <span class="app-card-icon">{{$data.icon}}</span>
+                    <div class="app-card-title">
+                      <div class="app-card-name">{{$data.displayName}}</div>
+                      <div class="app-card-dir">{{$host.dirText($data)}}</div>
+                    </div>
+                  </div>
+                  <o-if :value="$data.ready">
+                    <div class="app-card-actions">
+                      <st-button
+                        on:click="$host.openApp($data.appName, $data.mode)"
+                      >
+                        ▶ 预览应用
+                      </st-button>
+                    </div>
+                  </o-if>
+                  <o-if :value="$data.ready === false">
+                    <div class="app-card-missing">
+                      还缺文件：{{$data.missing.join('、')}}
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+            </div>
+          </o-fill>
+
+          <o-if :value="sending">
+            <div class="turn-status">生成中…</div>
+          </o-if>
+        </div>
+      </section>
+
+      <o-if :value="!atBottom && messages.length > 0">
+        <button class="to-bottom" title="回到底部" on:click="toBottomNow">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </o-if>
+    </div>
+
+    <footer class="composer-wrap">
+      <o-if :value="keyError">
+        <div class="key-error-row">
+          <div class="key-error">{{keyError}}</div>
+          <o-if :value="permGrantNeeded">
+            <st-button class="perm-grant-btn" on:click="grantLocalPermission">
+              🔑 授权目录
+            </st-button>
+          </o-if>
+        </div>
+      </o-if>
+      <div class="composer">
+        <textarea
+          id="inputer"
+          sync:value="input"
+          rows="1"
+          placeholder="描述你想生成的应用…"
+          attr:disabled="sending"
+          on:keydown="handleKeydown($event)"
+        ></textarea>
+        <div class="composer-row">
+          <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
+          <o-if :value="currentAppName === ''">
+            <div class="target-picker">
+              <button
+                class="target-opt"
+                class:active="storageMode === 'vfs'"
+                on:click="selectMode('vfs')"
+                title="写入虚拟文件系统 /$ai-apps/"
+              >
+                📁 虚拟系统
+              </button>
+              <button
+                class="target-opt"
+                class:active="storageMode === 'local'"
+                on:click="selectMode('local')"
+                title="写入本地磁盘目录（仅 Chrome）"
+              >
+                📂 本地目录
+              </button>
+              <button
+                class="target-dir"
+                class:show="storageMode === 'local'"
+                on:click="chooseLocalDir"
+                title="重新选择本地目录"
+              >
+                {{ localDirLabel ? localDirLabel : '选择目录…' }}
+              </button>
+            </div>
+          </o-if>
+          <o-if :value="currentAppName !== ''">
+            <span class="composer-meta">📂 {{dirText({ mode: currentAppMode, appName: currentAppName })}}</span>
+          </o-if>
+          <button
+            class="send-btn"
+            attr:disabled="!input.trim() || sending"
+            on:click="handleSend"
+            title="发送（Enter）"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 19V5" />
+              <path d="M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="disclaimer">内容由 AI 生成，请注意甄别</div>
+    </footer>
+      </div>
+    </div>
+
+    <!-- 应用列表侧栏（右） -->
+    <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
+    <aside class="panel" class:show="panelOpen">
+      <div class="panel-head">
+        <span>应用</span>
+        <st-icon-button title="关闭" on:click="closePanel">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <st-tab-bar class="panel-tabs">
+        <st-tab-item attr:active="panelTab === 'apps'" on:click="setPanelTab('apps')">
+          📦 应用
+        </st-tab-item>
+        <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
+          🔧 工具
+        </st-tab-item>
+        <st-tab-item attr:active="panelTab === 'skills'" on:click="setPanelTab('skills')">
+          📚 技能
+        </st-tab-item>
+      </st-tab-bar>
+      <div class="panel-body">
+        <o-if :value="panelTab === 'apps'">
+        <o-if :value="apps.length === 0">
+          <div class="panel-empty">还没有生成过应用</div>
+        </o-if>
+        <o-fill :value="apps" fill-key="name">
+          <div
+            class="panel-item"
+            class:active="$data.name === $host.currentAppName"
+            on:click="$host.selectApp($data.name)"
+          >
+            <span class="panel-item-icon">{{$data.icon}}</span>
+            <div class="panel-item-title">
+              <div class="panel-item-name">{{$data.displayName || $data.name}}</div>
+              <div class="panel-item-dir">
+                <span class="mode-badge" attr:mode="$data.mode">{{$host.modeText($data.mode)}}</span>
+                {{$data.name}}
+              </div>
+            </div>
+            <st-button
+              class="del-btn"
+              variant="text"
+              class:confirm="$host.confirmingDelApp === $data.name"
+              attr:title="$host.confirmingDelApp === $data.name ? '再点一次确认删除（本地目录渠道不删盘上文件）' : '删除应用'"
+              style="font-size: 11px"
+              on:click="$host.deleteApp($event, $data.name)"
+            >
+              <o-if :value="$host.confirmingDelApp === $data.name">
+                <span>确认</span>
+              </o-if>
+              <o-if :value="$host.confirmingDelApp !== $data.name">
+                <n-icon icon="mdi:close"></n-icon>
+              </o-if>
+            </st-button>
+          </div>
+        </o-fill>
+
+        <st-button
+          class="panel-new"
+          variant="outlined"
+          style="width: 100%; margin: 4px 0"
+          on:click="startDraft"
+        >
+          ＋ 新建应用
+        </st-button>
+        </o-if>
+
+        <!-- 可用工具（数据来自 lib/tools 注册中心，新增插件自动出现） -->
+        <o-if :value="panelTab === 'tools'">
+          <div class="tool-defs">
+            <div class="tool-defs-head">Agent 可调用的工具 · {{toolDefs.length}}</div>
+            <o-fill :value="toolDefs" fill-key="name">
+              <div class="tool-def">
+                <span class="tool-def-name">{{$data.name}}</span>
+                <span class="tool-def-desc">{{$data.desc}}</span>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+
+        <!-- 可用技能知识库（数据来自 VFS skills 空间的已安装副本） -->
+        <o-if :value="panelTab === 'skills'">
+          <div class="tool-defs">
+            <div class="tool-defs-head">Agent 可用的技能知识库 · {{skills.length}}</div>
+            <o-if :value="skills.length === 0">
+              <div class="panel-empty">暂无已安装技能（启动后会后台同步）</div>
+            </o-if>
+            <o-fill :value="skills" fill-key="id">
+              <div class="tool-def">
+                <span class="tool-def-name">{{$data.id}}</span>
+                <span class="tool-def-name-text">{{$data.name}}</span>
+                <span class="tool-def-desc">{{$data.description}}</span>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const { getAssistant, getApiKeys } = await load("/mz/ai/main.js");
+      const { createAgent, tool, MemorySaver } = await load(
+        "/mz/ai/chain/main.js",
+      );
+      const { renderMarkdown } = await load("../lib/markdown.js");
+      const {
+        SYSTEM_PROMPT,
+        buildSystemPrompt,
+        NAMESPACE,
+        buildRunUrl,
+        buildAppRecord,
+        buildLocalAppRecord,
+        validateApp,
+        registerAppRecord,
+        unregisterAppRecord,
+        deleteVfsApp,
+        sanitizeAppName,
+        migrateVfsNamespace,
+      } = await load("../lib/builder.js");
+      const { createTools, TOOL_DEFS } = await load("../lib/tools/index.js");
+      const {
+        syncSkills,
+        loadSkillIndex,
+        readSkillFile,
+      } = await load("../lib/skill-sync.js");
+
+      let agent = null;
+      let activeBubble = null;
+      // 本轮对话生成的应用（create_app 工具回调写入），回合结束后校验并出卡片
+      let pendingNewApp = null;
+      // 本地目录渠道的根目录句柄（fs.open() 产物或从 apps[] 记录恢复，非响应式数据须下划线开头）
+      let localRootHandle = null;
+
+      // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式
+      let fs = null;
+      let mazmotStore = null;
+      let selfStore = null;
+      try {
+        fs = await load("/nos/fs/main.js");
+        const { getStorage } = await load("/nos/storage/main.js");
+        mazmotStore = getStorage("mazmot");
+        selfStore = getStorage("ai-app-builder");
+      } catch (err) {
+        console.warn("NoneOS Core 不可用，生成功能受限：", err);
+      }
+
+      // 技能知识库索引（VFS skills 空间内的已安装副本；须在 fs 初始化之后读取）
+      let skillIndex = [];
+      if (fs) {
+        try {
+          skillIndex = await loadSkillIndex(fs);
+        } catch (err) {
+          console.warn("加载技能索引失败：", err);
+        }
+      }
+
+      // ---- 本应用自身的持久化模型（selfStore 空间）----
+      // apps-registry: [{ name, displayName, icon, mode, createdAt, sessions: [{ id, title, createdAt, updatedAt }] }]
+      // chat:<app>:<sid> / chat:draft  —— 各会话消息
+      // thread:<threadId>（checkpointer）—— Agent 会话记忆
+      // ui: { app, session }           —— 上次停留位置
+      const REGISTRY_KEY = "apps-registry";
+      const UI_KEY = "ui";
+
+      const checkpointer = selfStore
+        ? {
+            async get(threadId) {
+              return (await selfStore.getItem(`thread:${threadId}`)) ?? [];
+            },
+            async set(threadId, messages) {
+              await selfStore.setItem(`thread:${threadId}`, messages);
+            },
+            async delete(threadId) {
+              await selfStore.removeItem(`thread:${threadId}`);
+            },
+          }
+        : new MemorySaver();
+
+      const loadRegistry = async () =>
+        selfStore ? ((await selfStore.getItem(REGISTRY_KEY)) ?? []) : [];
+      const saveRegistry = async (reg) => {
+        if (selfStore) await selfStore.setItem(REGISTRY_KEY, reg);
+      };
+
+      // 从 mazmot apps[] 记录恢复本地目录句柄（local 渠道跨会话复用，无需重新 open）
+      const getLocalHandleFromRecord = async (appName) => {
+        if (!mazmotStore) return null;
+        const apps = (await mazmotStore.getItem("apps")) || [];
+        const rec = apps.find(
+          (a) =>
+            a.mazmot?.source === "ai-builder" &&
+            a.source === "local" &&
+            a.name === sanitizeAppName(appName),
+        );
+        return rec?.handle || null;
+      };
+
+      const prettyArgs = (raw) => {
+        try {
+          const obj = JSON.parse(raw);
+          const text = Object.entries(obj)
+            .map(([k, v]) => {
+              const vText = String(v);
+              return `${k} = ${vText.length > 60 ? vText.slice(0, 60) + "…" : vText}`;
+            })
+            .join("，");
+          return text || raw;
+        } catch {
+          return raw;
+        }
+      };
+
+      // 面板展示用的工具清单（取每个插件描述的第一句）
+      const toolDefs = TOOL_DEFS.map((d) => ({
+        name: d.name,
+        desc: (d.description || "").split("。")[0] + "。",
+      }));
+
+      const pickAssistant = () => {
+        // 代码生成优先用 deepseek-v4-flash，其余随机负载均衡
+        try {
+          const deepseekKey = getApiKeys().find(
+            (k) => k.provider === "deepseek",
+          );
+          if (deepseekKey) {
+            const a = getAssistant(deepseekKey.id);
+            return { assistant: a, model: "deepseek-v4-flash" };
+          }
+        } catch {
+          /* 无 key 时 getAssistant 稍后统一报错 */
+        }
+        return { assistant: getAssistant(), model: undefined };
+      };
+
+      return {
+        data: {
+          messages: [],
+          input: "",
+          sending: false,
+          keyError: "",
+          coreError: "",
+          nextId: 1,
+          atBottom: true,
+          panelOpen: false,
+          panelTab: "apps", // 右侧面板 tab："apps" | "tools" | "skills"
+          apps: [],
+          // 当前开发的应用（"" = 新应用草稿，尚未 create_app 落地）
+          currentAppName: "",
+          currentAppDisplay: "",
+          currentAppIcon: "📦",
+          currentAppMode: "vfs",
+          currentAppSessions: [],
+          currentSessionId: "",
+          // 草稿阶段的写入目标偏好（create_app 落地后随应用锁定）
+          storageMode: "vfs",
+          localDirLabel: "",
+          confirmingDelApp: "",
+          confirmingDelSession: "",
+          permGrantNeeded: false, // 本地句柄权限待授予（显示「授权目录」按钮）
+          toolDefs,
+          skills: [...skillIndex], // 已安装技能知识库（与 skillIndex 同步刷新）
+        },
+
+        async ready() {
+          if (!fs) {
+            this.coreError =
+              "NoneOS Core 未就绪：无法写入文件系统，请从 Mazmot 主系统打开本应用。";
+          }
+          if (!selfStore) return;
+          // 旧命名空间一次性迁移（mazmot-apps/ → ai-apps/，按登记记录逐应用搬回，含 mazmot 登记记录同步）
+          try {
+            await migrateVfsNamespace(fs, mazmotStore);
+          } catch (err) {
+            console.warn("旧命名空间迁移失败：", err);
+          }
+          await this.reloadApps();
+
+          // 恢复上次停留位置：应用 + 会话；应用已不存在则回草稿
+          const ui = (await selfStore.getItem(UI_KEY)) || {};
+          const hit = this.apps.find((a) => a.name === ui.app);
+          if (hit) {
+            await this.applyApp(hit);
+            const ses = hit.sessions?.find((s) => s.id === ui.session);
+            if (ses) await this.loadSession(ses.id);
+          } else {
+            const draft = (await selfStore.getItem("chat:draft")) || [];
+            if (Array.isArray(draft) && draft.length) {
+              this.messages = draft.map((m) => ({
+                ...m,
+                pending: false,
+                open: false,
+              }));
+              this.nextId =
+                Math.max(...draft.map((m) => m.id), 0) + 1;
+              this.followScroll(true);
+            }
+          }
+          // 后台同步技能知识库（不阻塞首屏；完成后刷新索引并重建 Agent 提示词）
+          if (fs) this.backgroundSyncSkills();
+        },
+
+        watch: {
+          input() {
+            this.autoGrow();
+          },
+        },
+
+        proto: {
+          renderMd(text) {
+            return renderMarkdown(text ?? "");
+          },
+
+          // 启动后台任务：按技能源清单下载安装到 VFS skills 空间（zip / 裸 SKILL.md），
+          // 同内容（sha256 一致）跳过写入；离线或单个失败保留已有副本不影响使用
+          async backgroundSyncSkills() {
+            try {
+              const { changed } = await syncSkills({ fs, storage: selfStore });
+              if (changed) {
+                skillIndex = await loadSkillIndex(fs);
+                this.skills = [...skillIndex];
+                agent = null; // 提示词中的技能清单随之更新
+              }
+            } catch (err) {
+              console.warn("技能后台同步失败：", err);
+            }
+          },
+
+          modeText(mode) {
+            return mode === "local" ? "本地" : "虚拟";
+          },
+
+          dirText(d) {
+            return d.mode === "local"
+              ? `本地目录 · 项目根`
+              : `/${NAMESPACE}/${d.appName}/client/`;
+          },
+
+          // ---- Agent ----
+
+          ensureAgent() {
+            if (agent) return agent;
+            const { assistant, model } = pickAssistant();
+            // 写入目标：已选应用随应用记录锁定；草稿阶段跟随目标偏好
+            const useLocal =
+              this.currentAppName !== ""
+                ? this.currentAppMode === "local"
+                : this.storageMode === "local" && !!localRootHandle;
+            const lockedMode =
+              this.currentAppName !== ""
+                ? this.currentAppMode
+                : this.storageMode;
+            const tools = createTools({
+              tool,
+              fs,
+              rootHandle: useLocal ? localRootHandle : undefined,
+              onAppCreated: (info) => {
+                pendingNewApp = { ...info, mode: lockedMode };
+              },
+              readSkill: (id, path) => readSkillFile(fs, id, path),
+            });
+            agent = createAgent({
+              assistant,
+              ...(model ? { model } : {}),
+              tools: Object.values(tools),
+              // 注入当前应用上下文：已选应用时强制模型先读文件再回答/修改；
+              // 同时列出可用技能知识库（read_skill）
+              systemPrompt: buildSystemPrompt({
+                appName: this.currentAppName || undefined,
+                displayName: this.currentAppDisplay || undefined,
+                mode: this.currentAppMode,
+                skills: skillIndex,
+              }),
+              checkpointer,
+            });
+            return agent;
+          },
+
+          // ---- 应用 / 会话切换 ----
+
+          async reloadApps() {
+            this.apps = await loadRegistry();
+            this.syncCurrentFromRegistry();
+          },
+
+          // registry 变化后同步 currentApp* 展示字段与当前应用的会话列表
+          syncCurrentFromRegistry() {
+            const hit = this.apps.find((a) => a.name === this.currentAppName);
+            if (this.currentAppName === "" || !hit) return;
+            this.currentAppDisplay = hit.displayName || hit.name;
+            this.currentAppIcon = hit.icon || "📦";
+            this.currentAppMode = hit.mode || "vfs";
+            this.currentAppSessions = [...(hit.sessions || [])].sort(
+              (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+            );
+          },
+
+          // 选中应用（恢复本地句柄 + 展示会话列表 + 打开最近会话）
+          async selectApp(name) {
+            const hit = this.apps.find((a) => a.name === name);
+            if (!hit) return;
+            await this.applyApp(hit);
+            const latest = [...(hit.sessions || [])].sort(
+              (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+            )[0];
+            if (latest) {
+              await this.loadSession(latest.id);
+            } else {
+              this.currentSessionId = "";
+              this.messages = [];
+            }
+            await this.saveUi();
+          },
+
+          async applyApp(hit) {
+            this.currentAppName = hit.name;
+            this.currentAppDisplay = hit.displayName || hit.name;
+            this.currentAppIcon = hit.icon || "📦";
+            this.currentAppMode = hit.mode || "vfs";
+            this.syncCurrentFromRegistry();
+            this.confirmingDelApp = "";
+            this.confirmingDelSession = "";
+            agent = null; // 切换应用后重建 Agent（工具根目录随应用变化）
+            if (this.currentAppMode === "local") {
+              localRootHandle =
+                (await getLocalHandleFromRecord(hit.name)) || null;
+              this.localDirLabel = localRootHandle?.name || "";
+              this.permGrantNeeded = false;
+              if (!localRootHandle) {
+                this.keyError =
+                  "本地目录授权已失效，发送消息时会重新选择目录。";
+              } else if (!(await this.ensureLocalPermission(localRootHandle))) {
+                // 刷新后权限重置且用户未授权：给出「授权目录」按钮主动补授权
+                this.permGrantNeeded = true;
+                this.keyError = "本地目录权限未授予，点击右侧按钮重新授权。";
+              }
+            } else {
+              // 切到虚拟应用：本地句柄与相关提示一并清除
+              localRootHandle = null;
+              this.permGrantNeeded = false;
+              this.keyError = "";
+            }
+          },
+
+          async loadSession(sid) {
+            if (!selfStore) return;
+            const key = `chat:${this.currentAppName}:${sid}`;
+            const saved = (await selfStore.getItem(key)) || [];
+            this.currentSessionId = sid;
+            this.messages = Array.isArray(saved)
+              ? saved.map((m) => ({ ...m, pending: false, open: false }))
+              : [];
+            this.nextId = Math.max(...this.messages.map((m) => m.id), 0) + 1;
+            this.confirmingDelSession = "";
+            agent = null; // 会话切换后重建 Agent（threadId 变化）
+            this.followScroll(true);
+            await this.saveUi();
+          },
+
+          // 回到「新应用」草稿（写入目标重新可选）；
+          // wipeDraft = true 时连历史草稿一起清空（删光所有应用后的全新开始）
+          async startDraft(wipeDraft = false) {
+            this.currentAppName = "";
+            this.currentAppDisplay = "";
+            this.currentAppIcon = "📦";
+            this.currentAppMode = "vfs";
+            this.currentAppSessions = [];
+            this.currentSessionId = "";
+            this.confirmingDelApp = "";
+            this.confirmingDelSession = "";
+            this.panelOpen = false;
+            localRootHandle = null;
+            this.localDirLabel = "";
+            this.permGrantNeeded = false;
+            this.keyError = ""; // 离开本地应用上下文，旧提示随之清除
+            agent = null;
+            if (selfStore) {
+              if (wipeDraft) {
+                await selfStore.removeItem("chat:draft");
+                await selfStore.removeItem("thread:draft");
+                this.messages = [];
+                this.nextId = 1;
+              } else {
+                const draft = (await selfStore.getItem("chat:draft")) || [];
+                this.messages = Array.isArray(draft)
+                  ? draft.map((m) => ({ ...m, pending: false, open: false }))
+                  : [];
+                this.nextId = Math.max(...this.messages.map((m) => m.id), 0) + 1;
+              }
+              await this.saveUi();
+            } else {
+              this.messages = [];
+            }
+            this.followScroll(true);
+          },
+
+          // 在当前应用下新建会话
+          async newSessionFor(name) {
+            if (this.currentAppName !== name) {
+              await this.selectApp(name);
+            }
+            this.currentSessionId = "";
+            this.messages = [];
+            this.nextId = 1;
+            agent = null;
+            await this.saveUi();
+          },
+
+          async saveUi() {
+            if (!selfStore) return;
+            await selfStore.setItem(UI_KEY, {
+              app: this.currentAppName,
+              session: this.currentSessionId,
+            });
+          },
+
+          // ---- 写入目标（仅草稿阶段） ----
+
+          selectMode(mode) {
+            if (this.storageMode === mode) return;
+            if (mode === "local" && !localRootHandle) {
+              this.chooseLocalDir().then((ok) => {
+                if (ok) {
+                  this.storageMode = mode;
+                  agent = null; // 工具根目录随目标变化
+                }
+              });
+              return;
+            }
+            this.storageMode = mode;
+            agent = null;
+          },
+
+          // 确认句柄的读写权限：已授权直接通过；仅剩 prompt 状态则借助用户手势
+          // requestPermission 补授权（刷新后句柄仍在但权限重置的场景）；被拒/异常返回 false
+          async ensureLocalPermission(handle) {
+            if (!handle || typeof handle.queryPermission !== "function") {
+              return false;
+            }
+            const opts = { mode: "readwrite" };
+            try {
+              if ((await handle.queryPermission(opts)) === "granted") {
+                return true;
+              }
+              if ((await handle.requestPermission(opts)) !== "granted") {
+                return false;
+              }
+              return true;
+            } catch {
+              return false;
+            }
+          },
+
+          // 「授权目录」按钮：主动补授权本地句柄（点击手势内 requestPermission）
+          async grantLocalPermission() {
+            if (!localRootHandle) {
+              this.permGrantNeeded = false;
+              return;
+            }
+            if (await this.ensureLocalPermission(localRootHandle)) {
+              this.keyError = "";
+              this.permGrantNeeded = false;
+            } else {
+              this.keyError =
+                "授权未完成，可再次点击授权，或重新选择目录。";
+            }
+          },
+
+          // fs.open() 打开本地目录选择器（仅 Chrome 支持），成功返回 true；
+          // 用户取消（AbortError）静默返回 false，不算失败
+          async chooseLocalDir() {
+            if (!fs || typeof fs.open !== "function") {
+              this.keyError =
+                "当前环境不支持本地目录选择（fs.open 仅 Chrome 可用），请使用「虚拟系统」渠道。";
+              return false;
+            }
+            try {
+              let handle = await fs.open();
+              if (!handle) return false; // 用户取消
+              // nos-storage 按路径引用存句柄：open() 的本地目录必须先 mount()，
+              // 否则登记记录写 mazmot apps[] 时 setItem 直接抛错（句柄存不进去）
+              if (typeof fs.mount === "function") {
+                try {
+                  handle = await fs.mount(handle);
+                } catch (err) {
+                  this.keyError = `挂载本地目录失败：${err.message}`;
+                  return false;
+                }
+              }
+              localRootHandle = handle;
+              this.localDirLabel = handle.name || "本地目录";
+              this.keyError = "";
+              this.permGrantNeeded = false;
+              // 旧应用补救：已登记的本地应用记录可能缺失句柄（mount 修复前
+              // 入库失败），重选目录后把新挂载句柄写回登记记录
+              if (
+                mazmotStore &&
+                this.currentAppName !== "" &&
+                this.currentAppMode === "local"
+              ) {
+                try {
+                  await registerAppRecord(
+                    mazmotStore,
+                    buildLocalAppRecord({
+                      name: this.currentAppName,
+                      displayName: this.currentAppDisplay,
+                      icon: this.currentAppIcon,
+                      handle,
+                    }),
+                  );
+                } catch (err) {
+                  console.warn("更新应用登记句柄失败：", err);
+                }
+              }
+              return true;
+            } catch (err) {
+              if (err?.name === "AbortError") return false; // 用户关闭选择器
+              this.keyError = `选择本地目录失败：${err.message}`;
+              return false;
+            }
+          },
+
+          // ---- 删除 ----
+
+          async deleteApp(event, name) {
+            event?.stopPropagation?.();
+            if (this.confirmingDelApp !== name) {
+              this.confirmingDelApp = name;
+              this.confirmingDelSession = "";
+              return;
+            }
+            this.confirmingDelApp = "";
+            const reg = await loadRegistry();
+            const hit = reg.find((a) => a.name === name);
+            if (!hit) return;
+            try {
+              // 虚拟渠道：连同载体目录一起删；本地渠道：保留盘上文件，仅移除登记
+              if (fs && hit.mode !== "local") {
+                await deleteVfsApp(fs, name);
+              }
+              if (mazmotStore) {
+                await unregisterAppRecord(mazmotStore, name);
+              }
+              if (selfStore) {
+                for (const s of hit.sessions || []) {
+                  await selfStore.removeItem(`chat:${name}:${s.id}`);
+                  await selfStore.removeItem(`thread:${name}:${s.id}`);
+                }
+                await saveRegistry(reg.filter((a) => a.name !== name));
+              }
+            } catch (err) {
+              this.keyError = `删除应用失败：${err.message}`;
+              return;
+            }
+            await this.reloadApps();
+            if (this.apps.length === 0) {
+              // 所有应用已删光：回草稿并清空残留对话（含历史草稿消息与记忆）
+              await this.startDraft(true);
+            } else if (this.currentAppName === name) {
+              // 当前应用被删：切到下一个应用
+              await this.selectApp(this.apps[0].name);
+            }
+          },
+
+          async deleteSession(event, sid) {
+            event?.stopPropagation?.();
+            if (this.confirmingDelSession !== sid) {
+              this.confirmingDelSession = sid;
+              this.confirmingDelApp = "";
+              return;
+            }
+            this.confirmingDelSession = "";
+            const name = this.currentAppName;
+            const reg = await loadRegistry();
+            const hit = reg.find((a) => a.name === name);
+            if (!hit) return;
+            hit.sessions = (hit.sessions || []).filter((s) => s.id !== sid);
+            await saveRegistry(reg);
+            if (selfStore) {
+              await selfStore.removeItem(`chat:${name}:${sid}`);
+              await selfStore.removeItem(`thread:${name}:${sid}`);
+            }
+            await this.reloadApps();
+            if (this.currentSessionId === sid) {
+              const latest = this.currentAppSessions[0];
+              if (latest) {
+                await this.loadSession(latest.id);
+              } else {
+                this.currentSessionId = "";
+                this.messages = [];
+              }
+              await this.saveUi();
+            }
+          },
+
+          // ---- 预览 ----
+
+          openApp(appName, mode) {
+            const name = sanitizeAppName(appName);
+            if (!name) return;
+            if (mode === "local") {
+              this.openLocalApp(name);
+              return;
+            }
+            window.open(buildRunUrl(name), `mazmot-app-${name}`);
+          },
+
+          // 本地目录应用：所选目录即项目根，直接挂载该目录打开
+          // （app-runner 的 getRunUrl 本地逻辑会挂载 client/，不存在时回退挂载根目录）
+          async openLocalApp(name) {
+            if (!localRootHandle) {
+              const fromRecord = await getLocalHandleFromRecord(name);
+              if (fromRecord) {
+                localRootHandle = fromRecord;
+                this.localDirLabel = localRootHandle?.name || "";
+              }
+            }
+            if (localRootHandle) {
+              // 刷新后权限重置：requestPermission 补授权，失败回退重选
+              const granted = await this.ensureLocalPermission(localRootHandle);
+              if (!granted) {
+                const ok = await this.chooseLocalDir();
+                if (!ok) return;
+              }
+            } else {
+              const ok = await this.chooseLocalDir();
+              if (!ok) return;
+            }
+            try {
+              const { getRunUrl } = await load("/mz/app-runner.js");
+              const url = await getRunUrl({
+                source: "local",
+                _handle: localRootHandle,
+              });
+              window.open(url, `mazmot-app-${name}`);
+            } catch (err) {
+              this.keyError = `打开应用失败：${err.message}`;
+            }
+          },
+
+          async openPanel() {
+            this.panelOpen = true;
+            await this.reloadApps();
+          },
+
+          closePanel() {
+            this.panelOpen = false;
+          },
+
+          setPanelTab(tab) {
+            this.panelTab = tab;
+          },
+
+          // ---- 聊天 ----
+          autoGrow() {
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#inputer")?.ele;
+              if (!el) return;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            });
+          },
+
+          followScroll(force = false) {
+            if (!force && !this.atBottom) return;
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#chatScroll")?.ele;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          },
+
+          onChatScroll() {
+            const el = this.shadow.$("#chatScroll")?.ele;
+            if (!el) return;
+            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            this.atBottom = dist <= 24;
+          },
+
+          toBottomNow() {
+            this.atBottom = true;
+            this.followScroll(true);
+          },
+
+          useChip(text) {
+            this.input = text;
+            this.autoGrow();
+            this.shadow.$("#inputer")?.ele.focus();
+          },
+
+          handleKeydown(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+              if (event.isComposing) return;
+              event.preventDefault();
+              this.handleSend();
+            }
+          },
+
+          toggleTool(id) {
+            const item = this.messages.find((m) => m.id === id);
+            if (item) item.open = !item.open;
+          },
+
+          handleStreamEvent(ev) {
+            if (ev.type === "text" && ev.delta) {
+              const bubble = activeBubble ?? this.newBubble();
+              bubble.content += ev.delta;
+              this.followScroll();
+            } else if (ev.type === "toolCalls") {
+              if (activeBubble && !activeBubble.content) {
+                const idx = this.messages.indexOf(activeBubble);
+                if (idx > -1) this.messages.splice(idx, 1);
+              }
+              activeBubble = null;
+              for (const call of ev.toolCalls) {
+                const args = call.function?.arguments ?? call.args ?? "{}";
+                this.messages.push({
+                  id: this.nextId++,
+                  role: "tool",
+                  name: call.function?.name ?? call.name,
+                  args,
+                  summary: prettyArgs(args),
+                  result: "",
+                  pending: true,
+                  open: false,
+                  newGroup: false,
+                  toolCallId: call.id,
+                });
+              }
+              this.followScroll();
+            } else if (ev.type === "toolResult") {
+              const item = this.messages.find(
+                (m) => m.toolCallId === ev.toolCallId,
+              );
+              if (item) {
+                item.result = ev.result;
+                item.pending = false;
+              }
+              this.followScroll();
+            } else if (ev.type === "done") {
+              if (activeBubble) {
+                if (ev.content) activeBubble.content = ev.content;
+              } else if (ev.content) {
+                this.newBubble().content = ev.content;
+              }
+            }
+          },
+
+          newBubble() {
+            this.messages.push({
+              id: this.nextId++,
+              role: "assistant",
+              content: "",
+              newGroup: false,
+            });
+            activeBubble = this.messages[this.messages.length - 1];
+            return activeBubble;
+          },
+
+          // 发送前确保落点就绪：草稿需本地句柄；已选应用需会话（无则自动新建）
+          async prepareContext(text) {
+            if (this.currentAppName === "") {
+              if (this.storageMode === "local" && !localRootHandle) {
+                const ok = await this.chooseLocalDir();
+                if (!ok) {
+                  this.storageMode = "vfs";
+                  agent = null;
+                }
+              }
+              return "draft";
+            }
+            if (this.currentSessionId === "") {
+              const reg = await loadRegistry();
+              const hit = reg.find((a) => a.name === this.currentAppName);
+              if (!hit) throw new Error("当前应用记录已不存在");
+              const sid = `s${Date.now().toString(36)}`;
+              hit.sessions = hit.sessions || [];
+              hit.sessions.push({
+                id: sid,
+                title: text.slice(0, 24) || "新对话",
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              });
+              await saveRegistry(reg);
+              await this.reloadApps();
+              this.currentSessionId = sid;
+              await this.saveUi();
+            }
+            // 本地渠道句柄可能因切换应用 / 刷新丢失，从记录恢复；
+            // 句柄还在时先尝试补授权（requestPermission），失败才回退重选目录
+            if (this.currentAppMode === "local") {
+              if (!localRootHandle) {
+                localRootHandle = await getLocalHandleFromRecord(
+                  this.currentAppName,
+                );
+                if (localRootHandle) {
+                  this.localDirLabel = localRootHandle?.name || "";
+                }
+              }
+              if (localRootHandle) {
+                const granted = await this.ensureLocalPermission(
+                  localRootHandle,
+                );
+                if (!granted) {
+                  const ok = await this.chooseLocalDir();
+                  if (!ok) throw new Error("本地目录不可用，无法继续开发");
+                }
+              } else {
+                const ok = await this.chooseLocalDir();
+                if (!ok) throw new Error("本地目录不可用，无法继续开发");
+              }
+              agent = null; // 工具闭包需要新句柄
+            }
+            return `${this.currentAppName}:${this.currentSessionId}`;
+          },
+
+          async handleSend() {
+            const text = this.input.trim();
+            if (!text || this.sending) return;
+            if (!fs) {
+              this.keyError = this.coreError;
+              return;
+            }
+
+            let threadId;
+            try {
+              threadId = await this.prepareContext(text);
+            } catch (err) {
+              this.keyError = err.message;
+              return;
+            }
+
+            this.input = "";
+            this.keyError = "";
+            this.messages.push({
+              id: this.nextId++,
+              role: "user",
+              content: text,
+              newGroup: true,
+            });
+            this.atBottom = true;
+            this.followScroll(true);
+
+            try {
+              this.ensureAgent();
+            } catch {
+              this.keyError =
+                "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。";
+              return;
+            }
+
+            this.sending = true;
+            this.followScroll(true);
+
+            try {
+              await agent.chat({
+                messages: [{ role: "user", content: text }],
+                threadId,
+                stream: true,
+                onStream: (ev) => this.handleStreamEvent(ev),
+              });
+            } catch (error) {
+              const bubble = activeBubble ?? this.newBubble();
+              bubble.content +=
+                (bubble.content ? "\n\n" : "") + `出错了：${error.message}`;
+            } finally {
+              activeBubble = null;
+              this.sending = false;
+              await this.finishTurn(text, threadId);
+              this.followScroll();
+            }
+          },
+
+          // 回合收尾：落盘会话、（若本轮创建了应用）迁移草稿 → 注册 → 出预览卡片
+          async finishTurn(firstUserText, threadId) {
+            if (!selfStore) return;
+            const plain = this.messages.map((m) => ({ ...m }));
+
+            // 本轮创建了新应用：草稿会话迁移为该应用的第一个会话
+            if (pendingNewApp) {
+              const info = pendingNewApp;
+              pendingNewApp = null;
+              await this.adoptNewApp(info, firstUserText, plain);
+              return;
+            }
+
+            const chatKey =
+              this.currentAppName === ""
+                ? "chat:draft"
+                : `chat:${this.currentAppName}:${this.currentSessionId}`;
+            await selfStore.setItem(chatKey, plain);
+
+            // 更新会话标题与时间
+            if (this.currentAppName !== "" && this.currentSessionId) {
+              const reg = await loadRegistry();
+              const app = reg.find((a) => a.name === this.currentAppName);
+              const ses = app?.sessions?.find(
+                (s) => s.id === this.currentSessionId,
+              );
+              if (ses) {
+                if (!ses.title || ses.title === "新对话") {
+                  ses.title = firstUserText.slice(0, 24) || "新对话";
+                }
+                ses.updatedAt = Date.now();
+                await saveRegistry(reg);
+                await this.reloadApps();
+              }
+              // 兜底：记录缺失（历史会话/旧版本创建）时补登记，保证句柄可恢复
+              await this.ensureAppRegistered();
+            }
+          },
+
+          // 确保 mazmot apps[] 里存在当前应用的登记记录（本地渠道携带句柄）
+          async ensureAppRegistered() {
+            if (!mazmotStore || this.currentAppName === "") return;
+            try {
+              const apps = (await mazmotStore.getItem("apps")) || [];
+              const hit = apps.some(
+                (a) =>
+                  a.mazmot?.source === "ai-builder" &&
+                  a.name === this.currentAppName,
+              );
+              if (hit) return;
+              const info = {
+                appName: this.currentAppName,
+                displayName: this.currentAppDisplay,
+                icon: this.currentAppIcon,
+              };
+              const isLocal =
+                this.currentAppMode === "local" && !!localRootHandle;
+              await registerAppRecord(
+                mazmotStore,
+                isLocal
+                  ? buildLocalAppRecord({ ...info, handle: localRootHandle })
+                  : buildAppRecord(info),
+              );
+            } catch (err) {
+              console.warn("补登记应用记录失败：", err);
+            }
+          },
+
+          // 新应用落地：注册（mazmot apps[] + 本应用 registry）、迁移草稿会话、出预览卡片
+          async adoptNewApp(info, firstUserText, plainMessages) {
+            const isLocal = info.mode === "local" && !!localRootHandle;
+            const check = await validateApp(
+              fs,
+              info.appName,
+              isLocal ? localRootHandle : undefined,
+            );
+
+            // 创建即登记（不等文件齐全）：本地句柄必须随记录尽早落库，
+            // 否则刷新后无法恢复授权、被迫重新选择目录
+            if (mazmotStore) {
+              try {
+                await registerAppRecord(
+                  mazmotStore,
+                  isLocal
+                    ? buildLocalAppRecord({ ...info, handle: localRootHandle })
+                    : buildAppRecord(info),
+                );
+              } catch (err) {
+                console.warn("登记应用记录失败：", err);
+              }
+            }
+
+            // registry + 第一个会话；草稿消息与 Agent 记忆迁移过去
+            const reg = await loadRegistry();
+            const sid = `s${Date.now().toString(36)}`;
+            const existed = reg.find((a) => a.name === info.appName);
+            const session = {
+              id: sid,
+              title: firstUserText.slice(0, 24) || "新对话",
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            if (existed) {
+              existed.sessions = existed.sessions || [];
+              existed.sessions.push(session);
+            } else {
+              reg.push({
+                name: info.appName,
+                displayName: info.displayName,
+                icon: info.icon,
+                mode: isLocal ? "local" : "vfs",
+                createdAt: Date.now(),
+                sessions: [session],
+              });
+            }
+            await saveRegistry(reg);
+
+            if (selfStore) {
+              const oldChat = (await selfStore.getItem("chat:draft")) ?? plainMessages;
+              await selfStore.setItem(
+                `chat:${info.appName}:${sid}`,
+                oldChat,
+              );
+              await selfStore.removeItem("chat:draft");
+              const oldThread = await selfStore.getItem("thread:draft");
+              if (oldThread) {
+                await selfStore.setItem(
+                  `thread:${info.appName}:${sid}`,
+                  oldThread,
+                );
+                await selfStore.removeItem("thread:draft");
+              }
+            }
+
+            // 切换到新应用上下文（目标随应用锁定）
+            this.apps = reg;
+            await this.applyApp(
+              this.apps.find((a) => a.name === info.appName),
+            );
+            this.currentSessionId = sid;
+            await this.saveUi();
+
+            this.messages.push({
+              id: this.nextId++,
+              role: "app",
+              appName: info.appName,
+              displayName: info.displayName,
+              icon: info.icon,
+              mode: isLocal ? "local" : "vfs",
+              ready: check.ready,
+              missing: check.missing,
+              newGroup: false,
+            });
+          },
+        },
+      };
+    };
+  </script>
+</template>

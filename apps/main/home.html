@@ -768,7 +768,11 @@
     const storage = getStorage("mazmot");
 
     async function loadApps() {
-      const apps = (await storage.getItem("apps")) || [];
+      // AI 应用生成器生成的应用不进主列表：虚拟应用在独立命名空间 ai-apps/
+      // 下自管理，本地渠道记录仅供 ai-app-builder 持久化句柄
+      const apps = ((await storage.getItem("apps")) || []).filter(
+        (a) => a.mazmot?.source !== "ai-builder",
+      );
       // 从 localStorage 恢复已打开路径快照
       const lsOpened = new Set(readOpenedFromLS());
       // 当前用户的 userId，用于判定「自己开发的应用」
