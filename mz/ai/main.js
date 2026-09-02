@@ -99,6 +99,7 @@ export const saveKey = (apiKey, provider) => {
     provider,
     apiKey,
     maskedKey: `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`,
+    disabled: false,
     createdAt: createdAt.toISOString(),
     formattedDate: createdAt.toLocaleString(),
   };
@@ -125,22 +126,43 @@ export const removeKey = (id) => {
 };
 
 /**
- * 根据 id 获取 Assistant 实例。不传 id 时随机选一个（多 key 负载均衡）。
+ * 设置 key 的临时禁用状态（保留 key 数据，禁用后 getAssistant 不可用，可随时恢复）。
+ * @param {string} id
+ * @param {boolean} disabled
+ * @returns {boolean} 是否设置成功
+ */
+export const setKeyDisabled = (id, disabled) => {
+  const item = _apiKeys.find((item) => item.id === id);
+  if (!item) return false;
+  item.disabled = !!disabled;
+  _persist();
+  _emit();
+  return true;
+};
+
+/**
+ * 根据 id 获取 Assistant 实例。不传 id 时随机选一个启用的 key（多 key 负载均衡）。
+ * 已禁用的 key 不参与随机选取；按 id 获取已禁用的 key 会抛错。
  * 同步函数（无 IO），调用方可省略 await。
  */
 export const getAssistant = (id) => {
-  if (_apiKeys.length === 0) {
+  const enabledItems = _apiKeys.filter((item) => !item.disabled);
+
+  if (enabledItems.length === 0) {
     throw new Error("no api key available");
   }
 
   let item;
 
   if (!id) {
-    item = _apiKeys[Math.floor(Math.random() * _apiKeys.length)];
+    item = enabledItems[Math.floor(Math.random() * enabledItems.length)];
   } else {
     item = _apiKeys.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");
+    }
+    if (item.disabled) {
+      throw new Error("key is disabled");
     }
   }
 

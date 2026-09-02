@@ -1,4 +1,4 @@
-// AI 应用生成器核心库
+// 妙造核心库
 // 职责：存放系统提示词、应用名/路径校验、VFS 写入编排、apps[] 记录登记。
 // 本模块不静态 import /nos/* 与 /mz/*（受 Core 加载时机约束），
 // fs / storage / tool 均由页面模块通过 load() 加载后注入。
@@ -254,6 +254,22 @@ export async function createAppDir(
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ path: string, bytes: number }>}
  */
+/**
+ * 确保目标应用已完成初始化（client/ 下存在 app.json）；缺失时自动补写一份
+ * 最小 app.json。兜底场景：模型偶尔会跳过 create_app 直接 write_file，
+ * 若不补初始化，应用永远不会登记、出预览卡片。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<boolean>} 是否发生了自动初始化
+ */
+export async function ensureAppInitialized(fs, appName, rootHandle) {
+  const existing = await readAppFile(fs, appName, "app.json", rootHandle);
+  if (existing !== null) return false;
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  await createAppDir(fs, { name: clean, displayName: clean }, rootHandle);
+  return true;
+}
+
 export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
   const check = validateRelPath(relPath);
   if (!check.ok) throw new Error(check.reason);
@@ -261,10 +277,11 @@ export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   const text = String(content ?? "");
+  const initialized = await ensureAppInitialized(fs, clean, rootHandle);
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
   const file = await base.get(rel + relPath, { create: "file" });
   await file.write(text);
-  return { path: relPath, bytes: new Blob([text]).size };
+  return { path: relPath, bytes: new Blob([text]).size, name: clean, initialized };
 }
 
 /** 读取应用的一个文件，不存在返回 null */
@@ -382,7 +399,7 @@ export async function deleteVfsApp(fs, appName) {
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
-export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 AI 应用生成器，通过对话为用户生成可直接运行的 ofa.js 网页应用，并把文件写入虚拟文件系统。
+export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 妙造，通过对话为用户生成可直接运行的 ofa.js 网页应用，并把文件写入虚拟文件系统。
 
 ## 工作流程
 1. 理解用户需求，必要时先简短澄清；然后调用 create_app（name 用小写英文短横线，如 todo-app；displayName 可用中文）。

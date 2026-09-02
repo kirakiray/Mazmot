@@ -758,6 +758,48 @@
     </template>
   </sb-test>
 
+  <sb-test name="main.js: setKeyDisabled 临时禁用后 getAssistant 跳过并抛错">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { saveKey, getAssistant, getApiKeys, removeKey, setKeyDisabled } = await import("../main.js");
+
+          const key = await saveKey("sk-test-ga-disable-abcdefgh", "kimi");
+
+          const checks = {};
+          // 默认不禁用
+          checks.defaultEnabled = getApiKeys().find((k) => k.id === key.id)?.disabled === false;
+          // 随机选取可用
+          checks.randomOkBefore = (() => { getAssistant(); return true; })();
+
+          const disabled = setKeyDisabled(key.id, true);
+          checks.setReturnsTrue = disabled === true;
+          checks.flagPersisted = getApiKeys().find((k) => k.id === key.id)?.disabled === true;
+
+          // 按 id 获取已禁用 key 抛 key is disabled
+          let byIdErr = null;
+          try {
+            getAssistant(key.id);
+          } catch (e) {
+            byIdErr = e;
+          }
+          checks.byIdThrowsDisabled = !!byIdErr && byIdErr.message.includes("key is disabled");
+
+          // 恢复后重新可用
+          checks.reEnable = setKeyDisabled(key.id, false) === true;
+          checks.reusableAfterEnable = getAssistant(key.id).id === key.id;
+
+          removeKey(key.id);
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks, byIdErr: byIdErr?.message },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
   <sb-test name="main.js: onApiKeysChange 在 saveKey 时被触发">
     <template>
       <script type="module">

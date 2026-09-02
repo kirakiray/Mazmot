@@ -1004,7 +1004,9 @@
           // ===== 根据已配置的 Key 刷新可选模型列表 =====
           refreshModelOptions() {
             const keys = this._apiKeys || [];
-            const configuredProviders = new Set(keys.map((k) => k.provider));
+            const configuredProviders = new Set(
+              keys.filter((k) => !k.disabled).map((k) => k.provider),
+            );
             const options = [];
             for (const [provider, models] of Object.entries(
               MODELS_BY_PROVIDER,
@@ -1028,7 +1030,7 @@
             const { getAssistant, getApiKeys } = await load("/mz/ai/main.js");
             if (this.aiModel && this.aiModel !== "auto") {
               const provider = this.providerOfModel(this.aiModel);
-              const key = getApiKeys().find((k) => k.provider === provider);
+              const key = getApiKeys().find((k) => k.provider === provider && !k.disabled);
               if (key) {
                 return { assistant: getAssistant(key.id), model: this.aiModel };
               }

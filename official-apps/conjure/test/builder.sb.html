@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>ai-app-builder 纯函数测试</title>
+    <title>conjure 纯函数测试</title>
     <script
       type="module"
       src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
@@ -157,6 +157,76 @@
               assert: Object.values(checks).every(Boolean),
               content: { checks, names, okCreate },
             };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="write_file 跳过 create_app 时自动初始化">
+      <template>
+        <script type="module">
+          import { createTools } from "../tools/index.js";
+          import { readAppFile } from "../builder.js";
+          {
+            try {
+              // 内存 fake fs：多级路径 get，文件内容存 Map；
+              // 无 create 读取缺失文件返回 null（模拟真实 Core 行为）
+              const fileTree = new Map();
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  for (let i = 0; i < segs.length; i++) {
+                    prefix = prefix ? `${prefix}/${segs[i]}` : segs[i];
+                    if (i < segs.length - 1) continue; // 中间目录隐式存在
+                    if (!fileTree.has(prefix)) {
+                      if (!opts.create) return null;
+                      fileTree.set(prefix, "");
+                    }
+                    return {
+                      kind: "file",
+                      path: prefix,
+                      text: async () => fileTree.get(prefix),
+                      write: async (c) => fileTree.set(prefix, c),
+                    };
+                  }
+                  return makeDir(prefix);
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              const seen = [];
+              const tools = createTools({
+                tool: (fn, cfg) => ({ fn, cfg }),
+                fs: fsFake,
+                onAppCreated: (info) => seen.push(info),
+              });
+              // 模型跳过 create_app，直接 write_file
+              await tools.writeFile.fn({
+                appName: "demo-app",
+                path: "index.html",
+                content: "<!doctype html>",
+              });
+              const appJson = await readAppFile(fsFake, "demo-app", "app.json");
+              const meta = JSON.parse(appJson || "{}");
+              // 已初始化后再次写入：不应重复触发 onAppCreated
+              await tools.writeFile.fn({
+                appName: "demo-app",
+                path: "pages/home.html",
+                content: "<template page></template>",
+              });
+              const checks = {
+                appJsonWritten: !!appJson && meta.name === "demo-app",
+                fired: seen.length === 1 && seen[0].appName === "demo-app",
+                onceOnly: seen.length === 1,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, meta, fired: seen },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
           }
         </script>
       </template>

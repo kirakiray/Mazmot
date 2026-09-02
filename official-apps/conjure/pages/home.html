@@ -8,7 +8,7 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <!-- 已进入项目：只显示应用 Logo + 名称 + 当前会话，不再显示生成器品牌 -->
+        <!-- 已进入项目：Logo + 名称 + 项目下拉按钮；会话标题（小字）+ 编辑在其右侧 -->
         <o-if :value="currentAppName !== ''">
           <div class="brand-group">
             <div class="brand-mark">{{currentAppIcon}}</div>
@@ -17,37 +17,52 @@
                 {{currentAppDisplay}}
                 <span class="mode-badge" attr:mode="currentAppMode">{{modeText(currentAppMode)}}</span>
               </div>
-              <div class="brand-current">
-                <o-if :value="currentSessionTitle !== ''">
-                  <span class="cur-session" attr:title="currentSessionTitle">{{currentSessionTitle}}</span>
-                </o-if>
-                <o-if :value="currentSessionTitle === ''">
-                  <span class="cur-app draft">无会话</span>
-                </o-if>
-              </div>
             </div>
+            <!-- 项目抽屉（左侧滑出）：项目清单，点击新标签打开（已开标签聚焦） -->
+            <st-icon-button
+              class="project-menu-btn"
+              title="项目列表"
+              on:click="openProjectDrawer"
+            >
+              <n-icon icon="mdi:chevron-down"></n-icon>
+            </st-icon-button>
+          </div>
+          <div class="session-line">
+            <o-if :value="currentSessionTitle !== ''">
+              <span class="cur-session" attr:title="currentSessionTitle">{{currentSessionTitle}}</span>
+            </o-if>
+            <o-if :value="currentSessionTitle === ''">
+              <span class="cur-app draft">无会话</span>
+            </o-if>
+            <st-icon-button
+              class="session-edit-btn"
+              attr:disabled="currentSessionId === ''"
+              title="编辑会话名称"
+              on:click="editSessionTitle"
+            >
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+            </st-icon-button>
           </div>
         </o-if>
-        <!-- 草稿（新建项目）：保持生成器品牌 -->
+        <!-- 草稿（新建项目）：保持生成器品牌；下拉按钮仍可直接切换项目 -->
         <o-if :value="currentAppName === ''">
           <div class="brand-group">
             <div class="brand-mark">🪄</div>
             <div class="brand-app">
-              <div class="brand-name">AI 应用生成器</div>
+              <div class="brand-name">妙造</div>
               <div class="brand-current">
                 <span class="cur-app draft">新应用 · 未创建</span>
               </div>
             </div>
+            <st-icon-button
+              class="project-menu-btn"
+              title="项目列表"
+              on:click="openProjectDrawer"
+            >
+              <n-icon icon="mdi:chevron-down"></n-icon>
+            </st-icon-button>
           </div>
         </o-if>
-        <!-- 项目抽屉（左侧滑出）：项目清单，点击新标签打开（已开标签聚焦） -->
-        <st-icon-button
-          class="project-menu-btn"
-          title="项目列表"
-          on:click="openProjectDrawer"
-        >
-          <n-icon icon="mdi:chevron-down"></n-icon>
-        </st-icon-button>
       </div>
       <div class="topbar-actions">
         <o-if :value="currentAppName !== ''">
@@ -77,7 +92,7 @@
 
     <div class="body-row">
       <!-- 左侧：当前应用的历史对话（应用创建后常驻） -->
-      <aside class="side" class:show="currentAppName !== ''">
+      <aside class="side" class:show="currentAppName !== ''" :style.width="sideWidth + 'px'">
         <div class="side-head">
           <span>对话</span>
           <st-icon-button
@@ -96,6 +111,11 @@
               on:click="$host.loadSession($data.id)"
             >
               <span class="session-title">{{$data.title}}</span>
+              <o-if :value="$data.busy === true">
+                <span class="session-busy" attr:title="'该会话正在对话中'">
+                  <n-icon icon="mdi:loading"></n-icon>
+                </span>
+              </o-if>
               <st-button
                 class="del-btn"
                 variant="text"
@@ -114,6 +134,8 @@
             </div>
           </o-fill>
         </div>
+        <!-- 拖拽调整会话栏宽度（150–400px） -->
+        <div class="side-resize" on:pointerdown="startSideResize($event)" title="拖动调整宽度"></div>
       </aside>
 
       <div class="main-col">
@@ -153,7 +175,42 @@
 
               <o-if :value="$data.role === 'assistant'">
                 <div class="ai-block">
+                  <div class="ai-head">
+                    <o-if :value="$host.aiModel($data) !== ''">
+                      <span class="ai-model" attr:title="'回答模型：' + $host.aiModel($data)">{{$host.aiModel($data)}}</span>
+                    </o-if>
+                    <o-if :value="$host.hasReasoning($data)">
+                      <button
+                        class="reasoning-toggle"
+                        class:open="$data.reasoningOpen"
+                        on:click="$host.toggleReasoning($data.id)"
+                      >
+                        <span class="tool-chev">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M9 6l6 6-6 6" />
+                          </svg>
+                        </span>
+                        <span class="reasoning-toggle-label">思考过程</span>
+                      </button>
+                    </o-if>
+                  </div>
+                  <o-if :value="$data.reasoning !== '' ? $data.reasoningOpen : false">
+                    <div class="reasoning-body">{{$data.reasoning}}</div>
+                  </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
+                  <o-if :value="$host.hasUsage($data)">
+                    <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
+                      <n-icon icon="mdi:counter"></n-icon>
+                      <span>{{$host.usageText($data)}}</span>
+                    </div>
+                  </o-if>
                 </div>
               </o-if>
 
@@ -176,23 +233,31 @@
                         <path d="M9 6l6 6-6 6" />
                       </svg>
                     </span>
+                    <span class="tool-icon">
+                      <n-icon attr:icon="$host.toolIcon($data.name)"></n-icon>
+                    </span>
                     <span class="tool-title">{{$data.name}}</span>
-                    <span class="tool-sep"></span>
                     <span class="tool-summary">{{$data.summary}}</span>
-                    <span class="tool-state">
-                      <span class="tool-dot"></span>
-                      <span class="tool-result">= {{$data.result}}</span>
+                    <span class="tool-status">
+                      <span class="tool-status-badge run">
+                        <n-icon icon="mdi:loading"></n-icon>
+                        <span>运行中</span>
+                      </span>
+                      <span class="tool-status-badge done">
+                        <n-icon icon="mdi:check"></n-icon>
+                        <span>完成</span>
+                      </span>
                     </span>
                   </button>
                   <o-if :value="$data.open">
                     <div class="tool-body">
-                      <div class="tool-line">
-                        <span class="tool-label">参数</span>
-                        <span class="tool-value">{{$data.args}}</span>
+                      <div class="tool-section">
+                        <div class="tool-label">参数</div>
+                        <pre class="tool-code">{{$data.args}}</pre>
                       </div>
-                      <div class="tool-line">
-                        <span class="tool-label">结果</span>
-                        <span class="tool-value">{{$data.result}}</span>
+                      <div class="tool-section">
+                        <div class="tool-label">结果</div>
+                        <pre class="tool-code">{{$data.result}}</pre>
                       </div>
                     </div>
                   </o-if>
@@ -270,6 +335,15 @@
           on:keydown="handleKeydown($event)"
         ></textarea>
         <div class="composer-row">
+          <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
+          <button
+            class="target-opt"
+            class:active="thinking"
+            attr:title="thinking ? '思考模式已开启：回答前先推理，速度较慢，点击关闭' : '思考模式已关闭：直接回答，点击开启推理'"
+            on:click="toggleThinking()"
+          >
+            🧠 思考模式
+          </button>
           <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
           <o-if :value="currentAppName === ''">
             <div class="target-picker">
@@ -443,7 +517,9 @@
         <!-- 可用工具（数据来自 lib/tools 注册中心，新增插件自动出现） -->
         <o-if :value="panelTab === 'tools'">
           <div class="tool-defs">
-            <div class="tool-defs-head">Agent 可调用的工具 · {{toolDefs.length}}</div>
+            <div class="tool-defs-head">
+              <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
+            </div>
             <o-fill :value="toolDefs" fill-key="name">
               <div class="tool-def">
                 <span class="tool-def-name">{{$data.name}}</span>
@@ -456,15 +532,44 @@
         <!-- 可用技能知识库（数据来自 VFS skills 空间的已安装副本） -->
         <o-if :value="panelTab === 'skills'">
           <div class="tool-defs">
-            <div class="tool-defs-head">Agent 可用的技能知识库 · {{skills.length}}</div>
+            <div class="tool-defs-head">
+              <span>Agent 可用的技能知识库 · {{skills.length}}</span>
+              <st-button
+                class="skill-add-btn"
+                variant="text"
+                title="从 zip 包或 SKILL.md 地址安装技能"
+                on:click="addSkillByUrl"
+              >
+                ＋ 添加
+              </st-button>
+            </div>
             <o-if :value="skills.length === 0">
               <div class="panel-empty">暂无已安装技能（启动后会后台同步）</div>
             </o-if>
             <o-fill :value="skills" fill-key="id">
-              <div class="tool-def">
-                <span class="tool-def-name">{{$data.id}}</span>
-                <span class="tool-def-name-text">{{$data.name}}</span>
-                <span class="tool-def-desc">{{$data.description}}</span>
+              <div class="tool-def skill-item" class:loading="$data.loading">
+                <div class="skill-item-main">
+                  <span class="tool-def-name">
+                    {{$data.id}}
+                    <o-if :value="$data.version !== ''">
+                      <span class="skill-version" attr:title="'版本 ' + $data.version">v{{$data.version}}</span>
+                    </o-if>
+                  </span>
+                  <span class="tool-def-name-text">{{$data.name}}</span>
+                  <span class="tool-def-desc">{{$data.description}}</span>
+                  <o-if :value="$data.source !== ''">
+                    <span class="skill-src" attr:title="$data.source">{{$data.source}}</span>
+                  </o-if>
+                </div>
+                <st-button
+                  class="skill-update-btn"
+                  variant="text"
+                  attr:disabled="$data.loading || $data.source === ''"
+                  attr:title="$data.source === '' ? '无来源地址，无法更新' : '从来源地址更新'"
+                  on:click="$host.updateSkill($data.source)"
+                >
+                  <n-icon icon="mdi:refresh"></n-icon>
+                </st-button>
               </div>
             </o-fill>
           </div>
@@ -490,7 +595,7 @@
         fs = await load("/nos/fs/main.js");
         const { getStorage } = await load("/nos/storage/main.js");
         mazmotStore = getStorage("mazmot");
-        selfStore = getStorage("ai-app-builder");
+        selfStore = getStorage("conjure");
       } catch (err) {
         console.warn("NoneOS Core 不可用，生成功能受限：", err);
       }
@@ -559,9 +664,11 @@
           messages: [],
           input: "",
           sending: false,
+          thinking: true,
           keyError: "",
           coreError: "",
           atBottom: true,
+          sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
           panelOpen: false,
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
@@ -585,6 +692,13 @@
 
         async ready() {
           page = this; // 供 BroadcastChannel 闭包回写 openTabs
+          // 恢复会话栏宽度（150–400）
+          try {
+            const w = parseInt(sessionStorage.getItem("aib:side-width"), 10);
+            if (w >= 150 && w <= 400) this.sideWidth = w;
+          } catch {
+            /* 忽略 */
+          }
           // 订阅仓库事件，把状态同步到页面响应式数据
           store.subscribe((evt) => {
             if (evt.type === "patch") {
@@ -645,6 +759,64 @@
             return renderMarkdown(text ?? "");
           },
 
+          // 工具行的类型图标（按工具名映射，未登记的用通用齿轮）
+          toolIcon(name) {
+            return (
+              {
+                create_app: "mdi:cube-outline",
+                write_file: "mdi:file-edit-outline",
+                read_file: "mdi:file-document-outline",
+                list_files: "mdi:file-tree-outline",
+                read_skill: "mdi:book-open-variant",
+              }[name] || "mdi:tools"
+            );
+          },
+
+          // AI 消息的模型徽标 / 思考过程判定（历史消息可能缺字段）
+          aiModel(m) {
+            return m?.model || "";
+          },
+
+          hasReasoning(m) {
+            return !!(m?.reasoning);
+          },
+
+          // 本轮 token 用量统计（挂在回合末条 AI 消息上，随消息持久化）
+          hasUsage(m) {
+            return !!(m?.usage?.total_tokens > 0);
+          },
+
+          usageText(m) {
+            const u = m?.usage || {};
+            // ≥1024 显示为 k（如 2.3k），否则千分位整数
+            const n = (v) => {
+              const num = Number(v || 0);
+              if (num >= 1024) return (num / 1024).toFixed(1).replace(/\.0$/, "") + "k";
+              return num.toLocaleString();
+            };
+            // 缓存命中字段：DeepSeek 风格 prompt_cache_hit_tokens，
+            // OpenAI 风格 prompt_tokens_details.cached_tokens
+            const hit =
+              u.prompt_cache_hit_tokens ??
+              u.prompt_tokens_details?.cached_tokens;
+            const parts = [];
+            parts.push(`输入 ${n(u.prompt_tokens)}`);
+            if (hit !== undefined && hit !== null) {
+              parts.push(`缓存命中 ${n(hit)}`);
+            }
+            parts.push(`输出 ${n(u.completion_tokens)}`);
+            parts.push(`共 ${n(u.total_tokens)} tok`);
+            return parts.join(" · ");
+          },
+
+          toggleReasoning(id) {
+            store.toggleReasoning(id);
+          },
+
+          toggleThinking() {
+            store.toggleThinking();
+          },
+
           modeText(mode) {
             return mode === "local" ? "本地" : "虚拟";
           },
@@ -664,6 +836,23 @@
 
           newSessionFor(name) {
             store.newSessionFor(name);
+          },
+
+          // 编辑当前会话名称（senti-ui prompt 命令式对话框）
+          async editSessionTitle() {
+            if (this.currentSessionId === "") return;
+            const { default: promptDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+            );
+            const val = await promptDlg({
+              title: "重命名会话",
+              value: this.currentSessionTitle,
+              placeholder: "会话名称",
+            });
+            if (val === null) return; // 取消 / 遮罩 / Escape
+            const title = String(val).trim();
+            if (!title) return;
+            await store.renameSession(title);
           },
 
           selectMode(mode) {
@@ -758,6 +947,31 @@
             await store.deleteApp(name);
           },
 
+          // ---- 会话栏宽度拖拽（150–400px，记忆到 sessionStorage） ----
+
+          startSideResize(event) {
+            event.preventDefault();
+            const el = event.target;
+            el.setPointerCapture(event.pointerId);
+            const startX = event.clientX;
+            const startW = this.sideWidth;
+            const onMove = (ev) => {
+              const w = startW + (ev.clientX - startX);
+              this.sideWidth = Math.min(400, Math.max(150, w));
+            };
+            const onUp = () => {
+              el.removeEventListener("pointermove", onMove);
+              el.removeEventListener("pointerup", onUp);
+              try {
+                sessionStorage.setItem("aib:side-width", String(this.sideWidth));
+              } catch {
+                /* 隐私模式静默降级 */
+              }
+            };
+            el.addEventListener("pointermove", onMove);
+            el.addEventListener("pointerup", onUp);
+          },
+
           openPanel() {
             this.panelOpen = true;
           },
@@ -768,6 +982,38 @@
 
           setPanelTab(tab) {
             this.panelTab = tab;
+          },
+
+          // ---- 技能安装 / 更新（列表项 loading 占位由仓库维护） ----
+
+          async addSkillByUrl() {
+            const { default: promptDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+            );
+            const val = await promptDlg({
+              title: "添加技能",
+              placeholder: "技能 zip 包或 SKILL.md 的 https 地址",
+            });
+            if (val === null) return; // 取消 / 遮罩 / Escape
+            const url = String(val).trim();
+            if (!url) return;
+            await this.installSkill(url);
+          },
+
+          async updateSkill(url) {
+            if (!url) return;
+            await this.installSkill(url);
+          },
+
+          async installSkill(url) {
+            try {
+              await store.installSkillFromSource(url);
+            } catch (err) {
+              const { default: alertDlg } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+              );
+              await alertDlg({ title: "技能安装失败", message: err.message });
+            }
           },
 
           // ---- 聊天输入（纯 UI） ----

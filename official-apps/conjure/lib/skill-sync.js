@@ -10,6 +10,7 @@
 export const DEFAULT_SKILL_SOURCES = [
   "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
   "https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip",
+  "https://raw.githubusercontent.com/ofajs/senti-ui/main/.agents/skills/senti-ui-skill.zip",
 ];
 
 // 安装时只落文本文件（知识库内容均为文本；二进制杂项跳过）
@@ -47,7 +48,7 @@ function validDocPath(path) {
   return p.toLowerCase().endsWith(".md");
 }
 
-const idFromUrl = (url) =>
+export const idFromUrl = (url) =>
   decodeURIComponent(String(url).split("?")[0].split("#")[0].split("/").pop() || "")
     .replace(/\.(zip|md|markdown)$/i, "")
     .replace(/[^A-Za-z0-9_-]+/g, "-")
@@ -174,7 +175,7 @@ async function writeEntries(fs, id, entries, meta) {
 
 /**
  * 获取技能源清单（存储覆盖 > 默认播种）。
- * @param {Object} storage getStorage("ai-app-builder") 实例
+ * @param {Object} storage getStorage("conjure") 实例
  */
 export async function getSkillSources(storage) {
   if (storage) {
@@ -260,8 +261,8 @@ export async function syncSkills({ fs, storage, onProgress }) {
 /* ---------- 索引与读取（VFS 内副本） ---------- */
 
 /**
- * 从 VFS skills 空间加载技能索引（各 <id>/SKILL.md 的 frontmatter）。
- * @returns {Promise<Array<{ id: string, name: string, description: string }>>}
+ * 从 VFS skills 空间加载技能索引（各 <id>/SKILL.md 的 frontmatter + __meta.json 来源）。
+ * @returns {Promise<Array<{ id: string, name: string, version: string, description: string, source: string, installedAt?: number }>>}
  */
 export async function loadSkillIndex(fs) {
   if (!fs) return [];
@@ -273,10 +274,14 @@ export async function loadSkillIndex(fs) {
       const f = await handle.get("SKILL.md");
       if (!f || f.kind !== "file") continue;
       const fm = parseFrontmatter(await f.text());
+      const meta = await readMeta(fs, handle.name);
       out.push({
         id: handle.name,
         name: fm.name || handle.name,
+        version: fm.version || "",
         description: fm.description || "",
+        source: meta?.source || "",
+        installedAt: meta?.installedAt,
       });
     } catch {
       /* 单个技能损坏不阻塞索引 */

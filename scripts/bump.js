@@ -6,7 +6,7 @@
  *   npm run bump minor      # 次版本 +0.1.0
  *   npm run bump major      # 主版本 +1.0.0
  *   npm run bump 2.0.0      # 直接指定版本号
- * 同时更新 package.json 与 package-lock.json。
+ * 同时更新 package.json、package-lock.json 与 .agents/skills/mazmot-api/SKILL.md 的 version。
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkgPath = join(root, "package.json");
 const lockPath = join(root, "package-lock.json");
+const skillPath = join(root, ".agents/skills/mazmot-api/SKILL.md");
 
 const arg = process.argv[2] ?? "patch";
 
@@ -47,6 +48,13 @@ try {
   lock.version = next;
   if (lock.packages?.[""]) lock.packages[""].version = next;
   writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+
+try {
+  const skill = readFileSync(skillPath, "utf8");
+  writeFileSync(skillPath, skill.replace(/^(version:\s*")[^"]*(")/m, `$1${next}$2`));
 } catch (err) {
   if (err.code !== "ENOENT") throw err;
 }
