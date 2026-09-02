@@ -1,7 +1,7 @@
 ---
 name: "mazmot-api"
 description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
-version: "1.3.9"
+version: "1.3.10"
 ---
 
 # Mazmot 能力 API 速查
