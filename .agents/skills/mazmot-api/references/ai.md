@@ -2,7 +2,7 @@
 
 Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/mz/ai/` 目录，统一封装 DeepSeek 和 Kimi 两家提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
 
-> **应用侧快速上手**：如果你的应用只需要调用 AI 对话能力，**基本不用关心 key 管理 API**（`saveKey` / `removeKey` / `getApiKeys` / `onApiKeysChange` / `testApiKey`）——那些是 AI Key 管理器应用自己用的。应用侧只需用 `getAssistant()` 拿到 Assistant 实例，然后调 `chat()` / `getModels()` / `getRemaining()` 即可：
+> **应用侧快速上手**：如果你的应用只需要调用 AI 对话能力，**基本不用关心 key 管理 API**（`saveKey` / `removeKey` / `setKeyDisabled` / `getApiKeys` / `onApiKeysChange` / `testApiKey`）——那些是 AI Key 管理器应用自己用的。应用侧只需用 `getAssistant()` 拿到 Assistant 实例，然后调 `chat()` / `getModels()` / `getRemaining()` 即可：
 
 ```js
 import { getAssistant } from "/mz/ai/main.js";
@@ -129,9 +129,18 @@ const keyObj = saveKey("sk-xxx", "deepseek");
 removeKey("abc123"); // true / false
 ```
 
+### setKeyDisabled(id, disabled)
+
+临时禁用 / 恢复一条 key（数据保留，仅切换状态）。禁用后不参与 `getAssistant()` 随机选取，按 id 获取抛 `key is disabled`。返回布尔，同样自动持久化 + 通知。
+
+```js
+setKeyDisabled("abc123", true); // 禁用
+setKeyDisabled("abc123", false); // 恢复
+```
+
 ### getAssistant(id?)
 
-根据 id 获取 Assistant 实例。**同步函数（无 IO）**，调用方可省略 `await`。不传 id 时随机选一个（多 key 负载均衡）。空列表抛 `no api key available`，id 不存在抛 `key not found`。
+根据 id 获取 Assistant 实例。**同步函数（无 IO）**，调用方可省略 `await`。不传 id 时从**未禁用**的 key 中随机选一个（多 key 负载均衡）。没有可用 key 抛 `no api key available`，id 不存在抛 `key not found`，key 已禁用抛 `key is disabled`。
 
 ```js
 const assistant = getAssistant("abc123");
@@ -148,12 +157,13 @@ const anyAssistant = getAssistant(); // 随机取
 | `provider` | `"deepseek"` / `"kimi"` |
 | `apiKey` | 原始 key（敏感，UI 展示用 `maskedKey`） |
 | `maskedKey` | 脱敏串，如 `sk-abcd...wxyz` |
+| `disabled` | 是否被临时禁用（boolean） |
 | `createdAt` | ISO 时间戳 |
 | `formattedDate` | 本地化时间字符串 |
 
 ### onApiKeysChange(callback)
 
-订阅列表变化，回调收到只读快照数组。返回**取消订阅函数**，组件销毁时务必调用。本模块不依赖框架响应式，UI 层可借此同步视图。
+订阅列表变化（`saveKey` / `removeKey` / `setKeyDisabled` 触发），回调收到只读快照数组。返回**取消订阅函数**，组件销毁时务必调用。本模块不依赖框架响应式，UI 层可借此同步视图。
 
 ```js
 const unsub = onApiKeysChange((keys) => renderKeyList(keys));

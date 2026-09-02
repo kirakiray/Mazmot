@@ -20,7 +20,7 @@
 ```
 
 ```javascript
-import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey } from "/mz/ai/main.js";
+import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey, setKeyDisabled } from "/mz/ai/main.js";
 ```
 
 ## API
@@ -43,9 +43,18 @@ const assistant = await saveKey("sk-xxx", "deepseek");
 removeKey("abc123"); // true / false
 ```
 
+### setKeyDisabled(id, disabled)
+
+临时禁用 / 恢复一条 key（数据保留，仅状态切换）。禁用后该 key 不参与 `getAssistant()` 随机选取，按 id 获取也会抛错。返回是否设置成功。同样自动持久化 + 通知订阅者。
+
+```javascript
+setKeyDisabled("abc123", true); // 禁用
+setKeyDisabled("abc123", false); // 恢复
+```
+
 ### getAssistant(id?)
 
-根据 id 获取 Assistant 实例。**不传 id** 时从已保存的 key 中随机选一个（适用于多 key 负载均衡）。空列表抛 `no api key available`，id 不存在抛 `key not found`。
+根据 id 获取 Assistant 实例。**不传 id** 时从已保存且未禁用的 key 中随机选一个（适用于多 key 负载均衡）。没有可用 key 抛 `no api key available`，id 不存在抛 `key not found`，key 已被临时禁用抛 `key is disabled`。
 
 > 同步函数（无 IO），调用方可省略 `await`。
 
@@ -72,12 +81,13 @@ console.log(keys.length, keys.map(k => k.maskedKey));
 | `provider` | string | `"deepseek"` / `"kimi"` |
 | `apiKey` | string | 原始 key（敏感，UI 展示请用 `maskedKey`） |
 | `maskedKey` | string | 脱敏后的展示串，如 `sk-abcd...wxyz` |
+| `disabled` | boolean | 是否被临时禁用（禁用后 `getAssistant` 不可用，可随时恢复） |
 | `createdAt` | string | ISO 时间戳 |
 | `formattedDate` | string | 本地化时间字符串 |
 
 ### onApiKeysChange(callback)
 
-订阅 API Key 列表变化（`saveKey` / `removeKey` 触发）。回调收到一份新的只读快照数组。返回**取消订阅函数**，组件销毁时务必调用以避免内存泄漏。
+订阅 API Key 列表变化（`saveKey` / `removeKey` / `setKeyDisabled` 触发）。回调收到一份新的只读快照数组。返回**取消订阅函数**，组件销毁时务必调用以避免内存泄漏。
 
 本模块不依赖任何框架响应式，UI 层（ofa.js / React / 原生等）可借此同步视图。
 
@@ -102,7 +112,7 @@ if (!valid) alert(message);
 
 ```javascript
 import {
-  saveKey, removeKey, getAssistant,
+  saveKey, removeKey, setKeyDisabled, getAssistant,
   getApiKeys, onApiKeysChange, testApiKey,
 } from "./main.js";
 

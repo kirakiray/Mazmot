@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>conjure 纯函数测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="sanitizeAppName 规范应用名">
+      <template>
+        <script type="module">
+          import { sanitizeAppName } from "../lib/builder.js";
+          {
+            const checks = {
+              upper: sanitizeAppName("Todo App") === "todo-app",
+              chinese: sanitizeAppName("番茄钟") === "",
+              mixed: sanitizeAppName("My App 2!") === "my-app-2",
+              trimDash: sanitizeAppName("--x--") === "x",
+              keep: sanitizeAppName("todo_app") === "todo_app",
+              empty: sanitizeAppName("") === "",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="validateRelPath 拦截非法路径">
+      <template>
+        <script type="module">
+          import { validateRelPath } from "../lib/builder.js";
+          {
+            const checks = {
+              normal: validateRelPath("pages/home.html").ok,
+              nested: validateRelPath("lib/util/test-1.js").ok,
+              absolute: !validateRelPath("/etc/passwd").ok,
+              escape: !validateRelPath("../outside.txt").ok,
+              middle: !validateRelPath("a/../../b.txt").ok,
+              binary: !validateRelPath("logo.png").ok,
+              empty: !validateRelPath("").ok,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildRunUrl / buildAppRecord 产物">
+      <template>
+        <script type="module">
+          import { buildRunUrl, buildAppRecord } from "../lib/builder.js";
+          {
+            const url = buildRunUrl("todo-app");
+            const record = buildAppRecord({
+              name: "Todo App",
+              desc: "番茄钟",
+              icon: "🍅",
+            });
+            const checks = {
+              url: url === "/$ai-apps/todo-app/client/index.html",
+              name: record.name === "todo-app",
+              source: record.source === "virtual",
+              namespace: record.namespace === "ai-apps",
+              dirName: record.dirName === "ai-apps/todo-app",
+              virtualDirName: record.virtualDirName === "todo-app",
+              handleNull: record.handle === null,
+              mazmot: record.mazmot.source === "ai-builder",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, url, record },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildLocalAppRecord 本地渠道记录">
+      <template>
+        <script type="module">
+          import { buildLocalAppRecord } from "../lib/builder.js";
+          {
+            const fakeHandle = { kind: "dir", name: "my-projects" };
+            const record = buildLocalAppRecord({
+              name: "Todo App",
+              desc: "本地开发",
+              icon: "🍅",
+              handle: fakeHandle,
+            });
+            const checks = {
+              name: record.name === "todo-app",
+              source: record.source === "local",
+              namespace: record.namespace === "",
+              dirName: record.dirName === "todo-app",
+              handle: record.handle === fakeHandle,
+              mazmot: record.mazmot.source === "ai-builder",
+              createdAt: typeof record.createdAt === "number",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, record },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="工具插件注册中心加载">
+      <template>
+        <script type="module">
+          import { TOOL_DEFS, createTools, toolNames } from "../lib/tools/index.js";
+          {
+            const names = toolNames();
+            // 用极简 fake tool 工厂 + 内存 fake fs 验证包装：exec 与回调经 ctx 注入连通
+            const fakeTool = (fn, cfg) => ({ fn, cfg });
+            const fakeDir = {
+              kind: "dir",
+              async get(name, opts) {
+                if (name.endsWith("app.json"))
+                  return { kind: "file", write: async () => {} };
+                return { kind: "dir", get: fakeDir.get };
+              },
+            };
+            const fakeFs = { init: async () => fakeDir };
+            const seen = [];
+            const tools = createTools({
+              tool: fakeTool,
+              fs: fakeFs,
+              onAppCreated: (info) => seen.push(info),
+            });
+            const okCreate = await tools.createApp.fn({
+              name: "X",
+              displayName: "X",
+            });
+            const checks = {
+              fiveDefs: TOOL_DEFS.length === 5,
+              names: ["create_app", "write_file", "read_file", "list_files", "read_skill"]
+                .every((n) => names.includes(n)),
+              defShape: TOOL_DEFS.every(
+                (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
+              ),
+              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill"].every(
+                (k) => tools[k],
+              ),
+              ctxEvents: seen.length === 1 && seen[0].appName === "x",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, names, okCreate },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="write_file 跳过 create_app 时自动初始化">
+      <template>
+        <script type="module">
+          import { createTools } from "../lib/tools/index.js";
+          import { readAppFile } from "../lib/builder.js";
+          {
+            try {
+              // 内存 fake fs：多级路径 get，文件内容存 Map；
+              // 无 create 读取缺失文件返回 null（模拟真实 Core 行为）
+              const fileTree = new Map();
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  for (let i = 0; i < segs.length; i++) {
+                    prefix = prefix ? `${prefix}/${segs[i]}` : segs[i];
+                    if (i < segs.length - 1) continue; // 中间目录隐式存在
+                    if (!fileTree.has(prefix)) {
+                      if (!opts.create) return null;
+                      fileTree.set(prefix, "");
+                    }
+                    return {
+                      kind: "file",
+                      path: prefix,
+                      text: async () => fileTree.get(prefix),
+                      write: async (c) => fileTree.set(prefix, c),
+                    };
+                  }
+                  return makeDir(prefix);
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              const seen = [];
+              const tools = createTools({
+                tool: (fn, cfg) => ({ fn, cfg }),
+                fs: fsFake,
+                onAppCreated: (info) => seen.push(info),
+              });
+              // 模型跳过 create_app，直接 write_file
+              await tools.writeFile.fn({
+                appName: "demo-app",
+                path: "index.html",
+                content: "<!doctype html>",
+              });
+              const appJson = await readAppFile(fsFake, "demo-app", "app.json");
+              const meta = JSON.parse(appJson || "{}");
+              // 已初始化后再次写入：不应重复触发 onAppCreated
+              await tools.writeFile.fn({
+                appName: "demo-app",
+                path: "pages/home.html",
+                content: "<template page></template>",
+              });
+              const checks = {
+                appJsonWritten: !!appJson && meta.name === "demo-app",
+                fired: seen.length === 1 && seen[0].appName === "demo-app",
+                onceOnly: seen.length === 1,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, meta, fired: seen },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildSystemPrompt 按上下文注入">
+      <template>
+        <script type="module">
+          import { buildSystemPrompt } from "../lib/builder.js";
+          {
+            const draft = buildSystemPrompt();
+            const withApp = buildSystemPrompt({
+              appName: "todo-app",
+              displayName: "番茄钟",
+              mode: "vfs",
+            });
+            const local = buildSystemPrompt({
+              appName: "demo",
+              mode: "local",
+            });
+            const checks = {
+              draftPlain: !draft.includes("当前上下文"),
+              appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
+              mustReadFirst: withApp.includes("必须先调用 list_files"),
+              vfsPath: withApp.includes("/$ai-apps/todo-app"),
+              localNoVfsPath: !local.includes("/$ai-apps/demo"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="本地渠道以所选目录为项目根（不建子目录）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            listAppFiles,
+          } from "../lib/builder.js";
+          {
+            try {
+              const files = new Map();
+              const content = new Map();
+              const fakeRoot = {
+                kind: "dir",
+                async get(p) {
+                  if (!files.has(p)) {
+                    files.set(p, {
+                      kind: "file",
+                      path: p,
+                      write: async (c) => content.set(p, c),
+                    });
+                  }
+                  return files.get(p);
+                },
+                async flat() {
+                  return [...files.values()];
+                },
+              };
+              // 本地渠道不应触碰 VFS（init 即视为用错落点）
+              const fsFake = {
+                init: async () => {
+                  throw new Error("本地渠道不应调用 fs.init");
+                },
+              };
+
+              await createAppDir(fsFake, { name: "My App" }, fakeRoot);
+              await writeAppFile(fsFake, "my-app", "pages/home.html", "hi", fakeRoot);
+              const list = await listAppFiles(fsFake, "my-app", fakeRoot);
+
+              const checks = {
+                appJsonAtRoot: files.has("app.json"),
+                pageAtRoot: files.has("pages/home.html"),
+                noNested: !files.has("my-app/client/app.json"),
+                listOk:
+                  list.includes("app.json") && list.includes("pages/home.html"),
+                metaWritten: (content.get("app.json") || "").includes("my-app"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, list },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="unzipText 解析 zip + stripCommonRoot 剥根目录">
+      <template>
+        <script type="module">
+          import { unzipText } from "../lib/skill-sync.js";
+          {
+            try {
+              // 构造一个最小 zip：单根目录 + 两个存储（未压缩）条目
+              const enc = new TextEncoder();
+              const files = [
+                { name: "my-skill/", dir: true },
+                { name: "my-skill/SKILL.md", text: "---\nname: my-skill\n---\nhello" },
+                { name: "my-skill/references/a.md", text: "ref-a" },
+              ];
+              const chunks = [];
+              const central = [];
+              let offset = 0;
+              const u16 = (v) => [v & 255, (v >> 8) & 255];
+              const u32 = (v) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255];
+              for (const f of files) {
+                const nameBytes = enc.encode(f.name);
+                const data = f.dir ? new Uint8Array(0) : enc.encode(f.text);
+                const local = [
+                  ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0),
+                  ...u16(0), ...u16(0), ...u32(data.length), ...u32(data.length), ...u32(data.length),
+                  ...u16(nameBytes.length), ...u16(0),
+                  ...nameBytes, ...data,
+                ];
+                chunks.push(local);
+                central.push({
+                  name: nameBytes, size: data.length, offset,
+                });
+                offset += local.length;
+              }
+              const cdStart = offset;
+              for (const c of central) {
+                chunks.push([
+                  ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0),
+                  ...u16(0), ...u16(0), ...u32(0), ...u32(c.size), ...u32(c.size),
+                  ...u16(c.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+                  ...u32(0), ...u32(c.offset), ...c.name,
+                ]);
+                offset += 46 + c.name.length;
+              }
+              chunks.push([
+                ...u32(0x06054b50), ...u16(0), ...u16(0),
+                ...u16(central.length), ...u16(central.length),
+                ...u32(offset - cdStart), ...u32(cdStart), ...u16(0),
+              ]);
+              const buf = new Uint8Array(chunks.flat());
+              const entries = await unzipText(buf.buffer);
+
+              const stripped = entries
+                .filter((e) => !e.dir)
+                .map((e) => e.name.replace(/^my-skill\//, ""));
+              const checks = {
+                entryCount: entries.filter((e) => !e.dir).length === 2,
+                skillMd: entries.some((e) => e.name === "my-skill/SKILL.md" && e.text.includes("hello")),
+                nested: entries.some((e) => e.name === "my-skill/references/a.md"),
+                stripped: stripped.includes("SKILL.md") && stripped.includes("references/a.md"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, names: entries.map((e) => e.name) },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildAppJson 生成合法 app.json">
+      <template>
+        <script type="module">
+          import { buildAppJson } from "../lib/builder.js";
+          {
+            const json = JSON.parse(
+              buildAppJson({
+                name: "todo-app",
+                displayName: "番茄钟",
+                description: "专注计时",
+                icon: "🍅",
+              }),
+            );
+            const checks = {
+              name: json.name === "todo-app",
+              entry: json.entry === "./index.html",
+              appConfig: json.appConfig === "./app-config.js",
+              displayName: json.displayName === "番茄钟",
+              icon: json.icon === "🍅",
+              createdAt: typeof json.createdAt === "number",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, json },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAppDir / writeAppFile / validateApp 端到端（需 Core）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            readAppFile,
+            listAppFiles,
+            validateApp,
+            NAMESPACE,
+          } from "../lib/builder.js";
+          {
+            try {
+              let fs;
+              try {
+                fs = await import("/nos/fs/main.js");
+              } catch {
+                // sb-test 环境无 NoneOS Core（SW 未注册，/nos/* 不可用），跳过端到端
+                return { assert: true, content: { skipped: "Core 未就绪，跳过 /nos/fs 端到端" } };
+              }
+              const appName = "sb-demo-app";
+              const created = await createAppDir(fs, {
+                name: appName,
+                displayName: "测试应用",
+                description: "sb-test 生成",
+                icon: "🧪",
+              });
+              await writeAppFile(
+                fs,
+                appName,
+                "index.html",
+                "<!doctype html><html></html>",
+              );
+              await writeAppFile(
+                fs,
+                appName,
+                "app-config.js",
+                'export const home = "./pages/home.html";\n',
+              );
+              await writeAppFile(
+                fs,
+                appName,
+                "pages/home.html",
+                "<template page><div>hi</div></template>",
+              );
+
+              const readBack = await readAppFile(fs, appName, "app-config.js");
+              const files = await listAppFiles(fs, appName);
+              const check = await validateApp(fs, appName);
+
+              const checks = {
+                created: created.name === appName,
+                namespace: NAMESPACE === "ai-apps",
+                readBack: readBack?.includes("export const home"),
+                hasAppJson: files.includes("app.json"),
+                hasNested: files.includes("pages/home.html"),
+                ready: check.ready,
+                missingEmpty: check.missing.length === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, files },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

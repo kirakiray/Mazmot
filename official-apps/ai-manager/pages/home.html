@@ -177,6 +177,23 @@
       color: var(--md-sys-color-on-surface-variant);
     }
 
+    st-list-item[data-disabled] .masked-key {
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+
+    .disabled-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+    }
+
     .item-actions {
       display: flex;
       align-items: center;
@@ -201,6 +218,11 @@
     .detail-icon.balance-icon {
       background-color: var(--md-sys-color-tertiary-container);
       color: var(--md-sys-color-on-tertiary-container);
+    }
+
+    .detail-icon.power-icon {
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
     }
 
     .detail-row {
@@ -448,11 +470,12 @@
 
       <o-if :value="apiKeys.length > 0">
         <st-list>
-          <o-fill :value="apiKeys">
+          <o-fill :value="apiKeys" fill-key="id">
             <st-list-item
               collapsible
               button
               attr:data-id="$data.id"
+              attr:data-disabled="$data.disabled"
             >
               <span slot="prefix">
                 <span
@@ -470,6 +493,12 @@
               <div class="key-info">
                 <div class="masked-key">{{$data.maskedKey}}</div>
                 <div class="key-meta">{{$data.formattedDate}}</div>
+                <o-if :value="$data.disabled">
+                  <span class="disabled-badge">
+                    <n-icon icon="mdi:pause-circle-outline"></n-icon>
+                    <locale-text><span lang="cn">已临时禁用</span><span lang="en">Temporarily disabled</span></locale-text>
+                  </span>
+                </o-if>
               </div>
 
               <div
@@ -522,6 +551,29 @@
                           }}
                         </span>
                       </o-if>
+                    </span>
+                  </div>
+                </st-list-item>
+                <st-list-item>
+                  <span slot="prefix" class="detail-icon power-icon">
+                    <n-icon icon="mdi:power"></n-icon>
+                  </span>
+                  <div class="detail-row">
+                    <span class="detail-label"><locale-text><span lang="cn">启用状态</span><span lang="en">Status</span></locale-text></span>
+                    <span class="detail-value-wrap">
+                      <st-button
+                        style="font-size: 11px"
+                        attr:variant="$data.disabled ? 'filled' : 'outlined'"
+                        attr:color="$data.disabled ? 'primary' : 'error'"
+                        on:click="$host.handleToggleDisabled($data.id, $data.disabled)"
+                      >
+                        <span slot="prefix">
+                          <n-icon
+                            attr:icon="$data.disabled ? 'mdi:play-circle-outline' : 'mdi:pause-circle-outline'"
+                          ></n-icon>
+                        </span>
+                        {{$data.disabled ? $host.t('enable') : $host.t('disable')}}
+                      </st-button>
                     </span>
                   </div>
                 </st-list-item>
@@ -594,6 +646,7 @@
       const {
         saveKey,
         removeKey,
+        setKeyDisabled,
         getApiKeys,
         onApiKeysChange,
         testApiKey,
@@ -616,6 +669,8 @@
           en: "Show/hide API Key",
         },
         delete: { cn: "删除", en: "Delete" },
+        disable: { cn: "临时禁用", en: "Temporarily disable" },
+        enable: { cn: "重新启用", en: "Re-enable" },
         expandToLoad: { cn: "点击展开后加载", en: "Load by expanding" },
       };
       const t = (key) => {
@@ -747,6 +802,18 @@
               JSON.stringify(this.detailMap[id]),
             );
             this.loadingIds[id] = false;
+          },
+
+          handleToggleDisabled(id, currentDisabled) {
+            setKeyDisabled(id, !currentDisabled);
+            toast({
+              message: getLocaleText(
+                currentDisabled
+                  ? { cn: "已重新启用", en: "Re-enabled" }
+                  : { cn: "已临时禁用，使用 AI 的应用将跳过此 Key", en: "Disabled temporarily; AI apps will skip this key" }
+              ),
+              color: "success",
+            });
           },
 
           async handleDelete(id) {

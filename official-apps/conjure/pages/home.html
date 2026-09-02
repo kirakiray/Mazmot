@@ -1,0 +1,1077 @@
+<template page>
+  <link rel="stylesheet" href="./home.css" />
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <!-- 已进入项目：Logo + 名称 + 项目下拉按钮；会话标题（小字）+ 编辑在其右侧 -->
+        <o-if :value="currentAppName !== ''">
+          <div class="brand-group">
+            <div class="brand-mark">{{currentAppIcon}}</div>
+            <div class="brand-app">
+              <div class="brand-name">
+                {{currentAppDisplay}}
+                <span class="mode-badge" attr:mode="currentAppMode">{{modeText(currentAppMode)}}</span>
+              </div>
+            </div>
+            <!-- 项目抽屉（左侧滑出）：项目清单，点击新标签打开（已开标签聚焦） -->
+            <st-icon-button
+              class="project-menu-btn"
+              title="项目列表"
+              on:click="openProjectDrawer"
+            >
+              <n-icon icon="mdi:chevron-down"></n-icon>
+            </st-icon-button>
+          </div>
+          <div class="session-line">
+            <o-if :value="currentSessionTitle !== ''">
+              <span class="cur-session" attr:title="currentSessionTitle">{{currentSessionTitle}}</span>
+            </o-if>
+            <o-if :value="currentSessionTitle === ''">
+              <span class="cur-app draft">无会话</span>
+            </o-if>
+            <st-icon-button
+              class="session-edit-btn"
+              attr:disabled="currentSessionId === ''"
+              title="编辑会话名称"
+              on:click="editSessionTitle"
+            >
+              <n-icon icon="mdi:pencil-outline"></n-icon>
+            </st-icon-button>
+          </div>
+        </o-if>
+        <!-- 草稿（新建项目）：保持生成器品牌；下拉按钮仍可直接切换项目 -->
+        <o-if :value="currentAppName === ''">
+          <div class="brand-group">
+            <div class="brand-mark">🪄</div>
+            <div class="brand-app">
+              <div class="brand-name">妙造</div>
+              <div class="brand-current">
+                <span class="cur-app draft">新应用 · 未创建</span>
+              </div>
+            </div>
+            <st-icon-button
+              class="project-menu-btn"
+              title="项目列表"
+              on:click="openProjectDrawer"
+            >
+              <n-icon icon="mdi:chevron-down"></n-icon>
+            </st-icon-button>
+          </div>
+        </o-if>
+      </div>
+      <div class="topbar-actions">
+        <o-if :value="currentAppName !== ''">
+          <st-icon-button title="预览应用" on:click="openApp(currentAppName, currentAppMode)">
+            <n-icon icon="mdi:play-circle-outline"></n-icon>
+          </st-icon-button>
+        </o-if>
+        <st-icon-button title="工具 / 技能" on:click="openPanel">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
+        </st-icon-button>
+      </div>
+    </header>
+
+    <div class="body-row">
+      <!-- 左侧：当前应用的历史对话（应用创建后常驻） -->
+      <aside class="side" class:show="currentAppName !== ''" :style.width="sideWidth + 'px'">
+        <div class="side-head">
+          <span>对话</span>
+          <st-icon-button
+            title="新建对话"
+            style="font-size: 12px"
+            on:click="newSessionFor(currentAppName)"
+          >
+            ＋
+          </st-icon-button>
+        </div>
+        <div class="side-body">
+          <o-fill :value="currentAppSessions" fill-key="id">
+            <div
+              class="session-item"
+              class:active="$data.id === $host.currentSessionId"
+              on:click="$host.loadSession($data.id)"
+            >
+              <span class="session-title">{{$data.title}}</span>
+              <o-if :value="$data.busy === true">
+                <span class="session-busy" attr:title="'该会话正在对话中'">
+                  <n-icon icon="mdi:loading"></n-icon>
+                </span>
+              </o-if>
+              <st-button
+                class="del-btn"
+                variant="text"
+                class:confirm="$host.confirmingDelSession === $data.id"
+                attr:title="$host.confirmingDelSession === $data.id ? '再点一次确认删除' : '删除对话'"
+                style="font-size: 11px"
+                on:click="$host.deleteSession($event, $data.id)"
+              >
+                <o-if :value="$host.confirmingDelSession === $data.id">
+                  <span>确认</span>
+                </o-if>
+                <o-if :value="$host.confirmingDelSession !== $data.id">
+                  <n-icon icon="mdi:close"></n-icon>
+                </o-if>
+              </st-button>
+            </div>
+          </o-fill>
+        </div>
+        <!-- 拖拽调整会话栏宽度（150–400px） -->
+        <div class="side-resize" on:pointerdown="startSideResize($event)" title="拖动调整宽度"></div>
+      </aside>
+
+      <div class="main-col">
+    <div class="chat-wrap">
+      <section class="chat-scroll" id="chatScroll" on:scroll="onChatScroll">
+        <div class="column">
+          <o-if :value="messages.length === 0 && !sending">
+            <div class="hero">
+              <div class="hero-icon">🪄</div>
+              <h2>描述你想要的应用</h2>
+              <p class="hero-sub">
+                AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
+              </p>
+              <div class="chips">
+                <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
+                  🍅 番茄钟
+                </button>
+                <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
+                  💰 记账本
+                </button>
+                <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
+                  🎯 随机点名
+                </button>
+              </div>
+            </div>
+          </o-if>
+
+          <o-fill :value="messages" fill-key="id">
+            <div
+              class="msg"
+              class:new-group="$data.newGroup"
+              attr:role="$data.role"
+            >
+              <o-if :value="$data.role === 'user'">
+                <div class="user-bubble">{{$data.content}}</div>
+              </o-if>
+
+              <o-if :value="$data.role === 'assistant'">
+                <div class="ai-block">
+                  <div class="ai-head">
+                    <o-if :value="$host.aiModel($data) !== ''">
+                      <span class="ai-model" attr:title="'回答模型：' + $host.aiModel($data)">{{$host.aiModel($data)}}</span>
+                    </o-if>
+                    <o-if :value="$host.hasReasoning($data)">
+                      <button
+                        class="reasoning-toggle"
+                        class:open="$data.reasoningOpen"
+                        on:click="$host.toggleReasoning($data.id)"
+                      >
+                        <span class="tool-chev">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M9 6l6 6-6 6" />
+                          </svg>
+                        </span>
+                        <span class="reasoning-toggle-label">思考过程</span>
+                      </button>
+                    </o-if>
+                  </div>
+                  <o-if :value="$data.reasoning !== '' ? $data.reasoningOpen : false">
+                    <div class="reasoning-body">{{$data.reasoning}}</div>
+                  </o-if>
+                  <div class="ai-text" :html="$host.renderMd($data.content)"></div>
+                  <o-if :value="$host.hasUsage($data)">
+                    <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
+                      <n-icon icon="mdi:counter"></n-icon>
+                      <span>{{$host.usageText($data)}}</span>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'tool'">
+                <div
+                  class="tool-row"
+                  class:open="$data.open"
+                  class:pending="$data.pending"
+                >
+                  <button class="tool-head" on:click="$host.toggleTool($data.id)">
+                    <span class="tool-chev">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </span>
+                    <span class="tool-icon">
+                      <n-icon attr:icon="$host.toolIcon($data.name)"></n-icon>
+                    </span>
+                    <span class="tool-title">{{$data.name}}</span>
+                    <span class="tool-summary">{{$data.summary}}</span>
+                    <span class="tool-status">
+                      <span class="tool-status-badge run">
+                        <n-icon icon="mdi:loading"></n-icon>
+                        <span>运行中</span>
+                      </span>
+                      <span class="tool-status-badge done">
+                        <n-icon icon="mdi:check"></n-icon>
+                        <span>完成</span>
+                      </span>
+                    </span>
+                  </button>
+                  <o-if :value="$data.open">
+                    <div class="tool-body">
+                      <div class="tool-section">
+                        <div class="tool-label">参数</div>
+                        <pre class="tool-code">{{$data.args}}</pre>
+                      </div>
+                      <div class="tool-section">
+                        <div class="tool-label">结果</div>
+                        <pre class="tool-code">{{$data.result}}</pre>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'app'">
+                <div class="app-card">
+                  <div class="app-card-head">
+                    <span class="app-card-icon">{{$data.icon}}</span>
+                    <div class="app-card-title">
+                      <div class="app-card-name">{{$data.displayName}}</div>
+                      <div class="app-card-dir">{{$host.dirText($data)}}</div>
+                    </div>
+                  </div>
+                  <o-if :value="$data.ready">
+                    <div class="app-card-actions">
+                      <st-button
+                        on:click="$host.openApp($data.appName, $data.mode)"
+                      >
+                        ▶ 预览应用
+                      </st-button>
+                    </div>
+                  </o-if>
+                  <o-if :value="$data.ready === false">
+                    <div class="app-card-missing">
+                      还缺文件：{{$data.missing.join('、')}}
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+            </div>
+          </o-fill>
+
+          <o-if :value="sending">
+            <div class="turn-status">生成中…</div>
+          </o-if>
+        </div>
+      </section>
+
+      <o-if :value="!atBottom && messages.length > 0">
+        <button class="to-bottom" title="回到底部" on:click="toBottomNow">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </o-if>
+    </div>
+
+    <footer class="composer-wrap">
+      <o-if :value="keyError">
+        <div class="key-error-row">
+          <div class="key-error">{{keyError}}</div>
+          <o-if :value="permGrantNeeded">
+            <st-button class="perm-grant-btn" on:click="grantLocalPermission">
+              🔑 授权目录
+            </st-button>
+          </o-if>
+        </div>
+      </o-if>
+      <div class="composer">
+        <textarea
+          id="inputer"
+          sync:value="input"
+          rows="1"
+          placeholder="描述你想生成的应用…"
+          attr:disabled="sending"
+          on:keydown="handleKeydown($event)"
+        ></textarea>
+        <div class="composer-row">
+          <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
+          <button
+            class="target-opt"
+            class:active="thinking"
+            attr:title="thinking ? '思考模式已开启：回答前先推理，速度较慢，点击关闭' : '思考模式已关闭：直接回答，点击开启推理'"
+            on:click="toggleThinking()"
+          >
+            🧠 思考模式
+          </button>
+          <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
+          <o-if :value="currentAppName === ''">
+            <div class="target-picker">
+              <button
+                class="target-opt"
+                class:active="storageMode === 'vfs'"
+                on:click="selectMode('vfs')"
+                title="写入虚拟文件系统 /$ai-apps/"
+              >
+                📁 虚拟系统
+              </button>
+              <button
+                class="target-opt"
+                class:active="storageMode === 'local'"
+                on:click="selectMode('local')"
+                title="写入本地磁盘目录（仅 Chrome）"
+              >
+                📂 本地目录
+              </button>
+              <button
+                class="target-dir"
+                class:show="storageMode === 'local'"
+                on:click="chooseLocalDir"
+                title="重新选择本地目录"
+              >
+                {{ localDirLabel ? localDirLabel : '选择目录…' }}
+              </button>
+            </div>
+          </o-if>
+          <o-if :value="currentAppName !== ''">
+            <span class="composer-meta">📂 {{dirText({ mode: currentAppMode, appName: currentAppName })}}</span>
+          </o-if>
+          <o-if :value="!sending">
+            <button
+              class="send-btn"
+              attr:disabled="!input.trim()"
+              on:click="handleSend"
+              title="发送（Enter）"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 19V5" />
+                <path d="M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </o-if>
+          <o-if :value="sending">
+            <button class="send-btn stop" on:click="handleStop" title="停止生成">
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="currentColor"
+                stroke-width="1"
+              >
+                <rect x="7" y="7" width="10" height="10" rx="1.5" />
+              </svg>
+            </button>
+          </o-if>
+        </div>
+      </div>
+      <div class="disclaimer">内容由 AI 生成，请注意甄别</div>
+    </footer>
+      </div>
+    </div>
+
+    <!-- 项目抽屉（左）：点击项新标签打开项目；已开标签聚焦复用 -->
+    <div class="panel-mask" class:show="projDrawerOpen" on:click="closeProjectDrawer"></div>
+    <aside class="proj-drawer" class:show="projDrawerOpen">
+      <div class="panel-head">
+        <span>项目</span>
+        <st-icon-button title="关闭" on:click="closeProjectDrawer">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <div class="panel-body">
+        <st-button
+          class="panel-new"
+          variant="outlined"
+          style="width: 100%; margin: 4px 0 8px"
+          on:click="newProjectTab"
+        >
+          ＋ 新建项目
+        </st-button>
+
+        <o-if :value="apps.length === 0">
+          <div class="panel-empty">还没有生成过应用</div>
+        </o-if>
+        <o-fill :value="apps" fill-key="name">
+          <div
+            class="panel-item"
+            class:active="$data.name === $host.currentAppName"
+            on:click="$host.openProjectTab($data.name)"
+          >
+            <span class="panel-item-icon">{{$data.icon}}</span>
+            <div class="panel-item-title">
+              <div class="panel-item-name">
+                {{$data.displayName || $data.name}}
+                <o-if :value="$host.isTabOpen($data.name)">
+                  <span class="open-tab-badge">已打开</span>
+                </o-if>
+              </div>
+              <div class="panel-item-dir">
+                <span class="mode-badge" attr:mode="$data.mode">{{$host.modeText($data.mode)}}</span>
+                {{$data.name}}
+              </div>
+            </div>
+            <st-button
+              class="del-btn"
+              variant="text"
+              class:confirm="$host.confirmingDelApp === $data.name"
+              attr:title="$host.confirmingDelApp === $data.name ? '再点一次确认删除（本地目录渠道不删盘上文件）' : '删除项目'"
+              style="font-size: 11px"
+              on:click="$host.deleteProjectFrom($event, $data.name)"
+            >
+              <o-if :value="$host.confirmingDelApp === $data.name">
+                <span>确认</span>
+              </o-if>
+              <o-if :value="$host.confirmingDelApp !== $data.name">
+                <n-icon icon="mdi:close"></n-icon>
+              </o-if>
+            </st-button>
+          </div>
+        </o-fill>
+      </div>
+    </aside>
+
+    <!-- 工具 / 技能面板（右） -->
+    <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
+    <aside class="panel" class:show="panelOpen">
+      <div class="panel-head">
+        <span>资源</span>
+        <st-icon-button title="关闭" on:click="closePanel">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <st-tab-bar class="panel-tabs">
+        <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
+          <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>工具</span>
+        </st-tab-item>
+        <st-tab-item attr:active="panelTab === 'skills'" on:click="setPanelTab('skills')">
+          <span class="tab-label"><n-icon icon="mdi:book-open-variant"></n-icon>技能</span>
+        </st-tab-item>
+      </st-tab-bar>
+      <div class="panel-body">
+        <!-- 可用工具（数据来自 lib/tools 注册中心，新增插件自动出现） -->
+        <o-if :value="panelTab === 'tools'">
+          <div class="tool-defs">
+            <div class="tool-defs-head">
+              <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
+            </div>
+            <o-fill :value="toolDefs" fill-key="name">
+              <div class="tool-def">
+                <span class="tool-def-name">{{$data.name}}</span>
+                <span class="tool-def-desc">{{$data.desc}}</span>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+
+        <!-- 可用技能知识库（数据来自 VFS skills 空间的已安装副本） -->
+        <o-if :value="panelTab === 'skills'">
+          <div class="tool-defs">
+            <div class="tool-defs-head">
+              <span>Agent 可用的技能知识库 · {{skills.length}}</span>
+              <st-button
+                class="skill-add-btn"
+                variant="text"
+                title="从 zip 包或 SKILL.md 地址安装技能"
+                on:click="addSkillByUrl"
+              >
+                ＋ 添加
+              </st-button>
+            </div>
+            <o-if :value="skills.length === 0">
+              <div class="panel-empty">暂无已安装技能（启动后会后台同步）</div>
+            </o-if>
+            <o-fill :value="skills" fill-key="id">
+              <div class="tool-def skill-item" class:loading="$data.loading">
+                <div class="skill-item-main">
+                  <span class="tool-def-name">
+                    {{$data.id}}
+                    <o-if :value="$data.version !== ''">
+                      <span class="skill-version" attr:title="'版本 ' + $data.version">v{{$data.version}}</span>
+                    </o-if>
+                  </span>
+                  <span class="tool-def-name-text">{{$data.name}}</span>
+                  <span class="tool-def-desc">{{$data.description}}</span>
+                  <o-if :value="$data.source !== ''">
+                    <span class="skill-src" attr:title="$data.source">{{$data.source}}</span>
+                  </o-if>
+                </div>
+                <st-button
+                  class="skill-update-btn"
+                  variant="text"
+                  attr:disabled="$data.loading || $data.source === ''"
+                  attr:title="$data.source === '' ? '无来源地址，无法更新' : '从来源地址更新'"
+                  on:click="$host.updateSkill($data.source)"
+                >
+                  <n-icon icon="mdi:refresh"></n-icon>
+                </st-button>
+              </div>
+            </o-fill>
+          </div>
+        </o-if>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // 页面只负责视觉与交互；AI 创作 / 运行的业务逻辑全部在
+    // lib/builder-store.js 的可观察状态仓库中，页面订阅事件同步视图。
+    export default async ({ load }) => {
+      const { renderMarkdown } = await load("../lib/markdown.js");
+      const { createBuilderStore } = await load("../lib/builder-store.js");
+      const { TOOL_DEFS } = await load("../lib/tools/index.js");
+
+      // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
+      // 句柄等类实例由仓库闭包持有，不进入响应式数据
+      let fs = null;
+      let mazmotStore = null;
+      let selfStore = null;
+      try {
+        fs = await load("/nos/fs/main.js");
+        const { getStorage } = await load("/nos/storage/main.js");
+        mazmotStore = getStorage("mazmot");
+        selfStore = getStorage("conjure");
+      } catch (err) {
+        console.warn("NoneOS Core 不可用，生成功能受限：", err);
+      }
+
+      const store = createBuilderStore({ fs, mazmotStore, selfStore, load });
+
+      // 面板展示用的工具清单（取每个插件描述的第一句）
+      const toolDefs = TOOL_DEFS.map((d) => ({
+        name: d.name,
+        desc: (d.description || "").split("。")[0] + "。",
+      }));
+
+      // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
+      // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
+      const aliveTabs = new Set();
+      let announcedName = null;
+      let bc = null;
+      let page = null;
+      try {
+        bc = new BroadcastChannel("ai-builder-tabs");
+      } catch {
+        /* 不支持则徽标退化为只显示本标签 */
+      }
+      const syncOpenTabs = () => {
+        if (page) page.openTabs = [...aliveTabs];
+      };
+      // 重新探测：清空后广播 hello，各存活标签回 alive 重建集合
+      const refreshAliveTabs = () => {
+        aliveTabs.clear();
+        if (announcedName) aliveTabs.add(announcedName);
+        syncOpenTabs();
+        bc?.postMessage({ type: "hello" });
+      };
+      const announce = (name) => {
+        if (announcedName === name) return;
+        if (announcedName) bc?.postMessage({ type: "bye", name: announcedName });
+        announcedName = name || null;
+        if (name) {
+          aliveTabs.add(name);
+          bc?.postMessage({ type: "alive", name });
+        }
+        syncOpenTabs();
+      };
+      if (bc) {
+        bc.onmessage = (e) => {
+          const { type, name } = e.data || {};
+          if (type === "hello") {
+            if (announcedName) {
+              bc.postMessage({ type: "alive", name: announcedName });
+            }
+          } else if (type === "alive" && name) {
+            aliveTabs.add(name);
+            syncOpenTabs();
+          } else if (type === "bye" && name) {
+            aliveTabs.delete(name);
+            syncOpenTabs();
+          }
+        };
+      }
+      window.addEventListener("beforeunload", () => {
+        if (announcedName) bc?.postMessage({ type: "bye", name: announcedName });
+      });
+
+      return {
+        data: {
+          messages: [],
+          input: "",
+          sending: false,
+          thinking: true,
+          keyError: "",
+          coreError: "",
+          atBottom: true,
+          sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
+          panelOpen: false,
+          panelTab: "tools", // 右侧面板 tab："tools" | "skills"
+          projDrawerOpen: false, // 左侧项目抽屉
+          openTabs: [], // 正在打开中的项目标签（跨标签感知）
+          confirmingDelApp: "",
+          apps: [],
+          currentAppName: "", // "" = 新应用草稿
+          currentAppDisplay: "",
+          currentAppIcon: "📦",
+          currentAppMode: "vfs",
+          currentAppSessions: [],
+          currentSessionId: "",
+          currentSessionTitle: "",
+          storageMode: "vfs",
+          localDirLabel: "",
+          permGrantNeeded: false,
+          confirmingDelSession: "",
+          toolDefs,
+          skills: [],
+        },
+
+        async ready() {
+          page = this; // 供 BroadcastChannel 闭包回写 openTabs
+          // 恢复会话栏宽度（150–400）
+          try {
+            const w = parseInt(sessionStorage.getItem("aib:side-width"), 10);
+            if (w >= 150 && w <= 400) this.sideWidth = w;
+          } catch {
+            /* 忽略 */
+          }
+          // 订阅仓库事件，把状态同步到页面响应式数据
+          store.subscribe((evt) => {
+            if (evt.type === "patch") {
+              for (const [key, value] of Object.entries(evt.data)) {
+                if (key === "nextId") continue; // 内部计数，页面不需要
+                this[key] = value;
+              }
+              // 当前项目变化时同步 URL 的 p 参数（刷新 / 分享可回到当前项目）
+              // 并向其他标签广播本标签的新项目名
+              if ("currentAppName" in evt.data) {
+                this.syncUrlParam();
+                announce(this.currentAppName);
+              }
+              return;
+            }
+            if (evt.type === "messages") {
+              this.applyMessageEvent(evt);
+            }
+            if (evt.type === "messages" && evt.op !== "patch") {
+              this.followScroll();
+            }
+          });
+          // 项目标签标识 ?p=<name>：o-router 路由下页面模块的 query 参数来自
+          // hash 路由串，location.search 上的 p 必须直接解析
+          await store.init({
+            initialApp: new URLSearchParams(location.search).get("p") || "",
+          });
+          this.syncUrlParam();
+          announce(this.currentAppName); // 本标签项目就位，向其他标签广播
+          this.followScroll(true);
+        },
+
+        watch: {
+          input() {
+            this.autoGrow();
+          },
+        },
+
+        proto: {
+          // ---- 仓库事件 → 页面消息列表 ----
+
+          applyMessageEvent(evt) {
+            const { op } = evt;
+            if (op === "replace") {
+              this.messages = evt.list.map((m) => ({ ...m }));
+            } else if (op === "push") {
+              this.messages.push({ ...evt.item });
+            } else if (op === "patch") {
+              const item = this.messages.find((m) => m.id === evt.id);
+              if (item) Object.assign(item, evt.patch);
+            } else if (op === "splice") {
+              const idx = this.messages.findIndex((m) => m.id === evt.id);
+              if (idx > -1) this.messages.splice(idx, 1);
+            }
+          },
+
+          renderMd(text) {
+            return renderMarkdown(text ?? "");
+          },
+
+          // 工具行的类型图标（按工具名映射，未登记的用通用齿轮）
+          toolIcon(name) {
+            return (
+              {
+                create_app: "mdi:cube-outline",
+                write_file: "mdi:file-edit-outline",
+                read_file: "mdi:file-document-outline",
+                list_files: "mdi:file-tree-outline",
+                read_skill: "mdi:book-open-variant",
+              }[name] || "mdi:tools"
+            );
+          },
+
+          // AI 消息的模型徽标 / 思考过程判定（历史消息可能缺字段）
+          aiModel(m) {
+            return m?.model || "";
+          },
+
+          hasReasoning(m) {
+            return !!(m?.reasoning);
+          },
+
+          // 本轮 token 用量统计（挂在回合末条 AI 消息上，随消息持久化）
+          hasUsage(m) {
+            return !!(m?.usage?.total_tokens > 0);
+          },
+
+          usageText(m) {
+            const u = m?.usage || {};
+            // ≥1024 显示为 k（如 2.3k），否则千分位整数
+            const n = (v) => {
+              const num = Number(v || 0);
+              if (num >= 1024) return (num / 1024).toFixed(1).replace(/\.0$/, "") + "k";
+              return num.toLocaleString();
+            };
+            // 缓存命中字段：DeepSeek 风格 prompt_cache_hit_tokens，
+            // OpenAI 风格 prompt_tokens_details.cached_tokens
+            const hit =
+              u.prompt_cache_hit_tokens ??
+              u.prompt_tokens_details?.cached_tokens;
+            const parts = [];
+            parts.push(`输入 ${n(u.prompt_tokens)}`);
+            if (hit !== undefined && hit !== null) {
+              parts.push(`缓存命中 ${n(hit)}`);
+            }
+            parts.push(`输出 ${n(u.completion_tokens)}`);
+            parts.push(`共 ${n(u.total_tokens)} tok`);
+            return parts.join(" · ");
+          },
+
+          toggleReasoning(id) {
+            store.toggleReasoning(id);
+          },
+
+          toggleThinking() {
+            store.toggleThinking();
+          },
+
+          modeText(mode) {
+            return mode === "local" ? "本地" : "虚拟";
+          },
+
+          dirText(d) {
+            return d.mode === "local"
+              ? `本地目录 · 项目根`
+              : `/ai-apps/${d.appName}/client/`;
+          },
+
+          // ---- 交互 → 仓库方法（薄代理） ----
+
+          loadSession(sid) {
+            this.confirmingDelSession = "";
+            store.loadSession(sid);
+          },
+
+          newSessionFor(name) {
+            store.newSessionFor(name);
+          },
+
+          // 编辑当前会话名称（senti-ui prompt 命令式对话框）
+          async editSessionTitle() {
+            if (this.currentSessionId === "") return;
+            const { default: promptDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+            );
+            const val = await promptDlg({
+              title: "重命名会话",
+              value: this.currentSessionTitle,
+              placeholder: "会话名称",
+            });
+            if (val === null) return; // 取消 / 遮罩 / Escape
+            const title = String(val).trim();
+            if (!title) return;
+            await store.renameSession(title);
+          },
+
+          selectMode(mode) {
+            store.selectMode(mode);
+          },
+
+          chooseLocalDir() {
+            store.chooseLocalDir();
+          },
+
+          grantLocalPermission() {
+            store.grantLocalPermission();
+          },
+
+          toggleTool(id) {
+            store.toggleTool(id);
+          },
+
+          handleStop() {
+            store.stop();
+          },
+
+          openApp(appName, mode) {
+            store.openApp(appName, mode);
+          },
+
+          async deleteSession(event, sid) {
+            event?.stopPropagation?.();
+            if (this.confirmingDelSession !== sid) {
+              this.confirmingDelSession = sid;
+              return;
+            }
+            this.confirmingDelSession = "";
+            await store.deleteSession(sid);
+          },
+
+          // ---- 项目抽屉（左侧滑出）：点击新标签打开；window name 命中已开标签则聚焦不重复开 ----
+
+          projectUrl(name) {
+            const u = new URL(location.href);
+            if (name) u.searchParams.set("p", name);
+            else u.searchParams.delete("p");
+            return u.href;
+          },
+
+          // URL 的 p 参数跟随 currentAppName（草稿移除），刷新后能回到当前项目
+          syncUrlParam() {
+            const u = new URL(location.href);
+            const has = u.searchParams.has("p");
+            const want = this.currentAppName !== "";
+            if (want && u.searchParams.get("p") !== this.currentAppName) {
+              u.searchParams.set("p", this.currentAppName);
+              history.replaceState(null, "", u.href);
+            } else if (!want && has) {
+              u.searchParams.delete("p");
+              history.replaceState(null, "", u.href);
+            }
+          },
+
+          isTabOpen(name) {
+            return this.openTabs.includes(name);
+          },
+
+          async openProjectDrawer() {
+            this.projDrawerOpen = true;
+            this.confirmingDelApp = "";
+            await store.reloadApps();
+            refreshAliveTabs(); // 重新探测各项目标签存活
+          },
+
+          closeProjectDrawer() {
+            this.projDrawerOpen = false;
+          },
+
+          openProjectTab(name) {
+            window.open(this.projectUrl(name), `ai-builder-${name}`);
+          },
+
+          newProjectTab() {
+            window.open(this.projectUrl(""), "ai-builder-draft");
+          },
+
+          async deleteProjectFrom(event, name) {
+            event?.stopPropagation?.();
+            if (this.confirmingDelApp !== name) {
+              this.confirmingDelApp = name;
+              return;
+            }
+            this.confirmingDelApp = "";
+            aliveTabs.delete(name);
+            syncOpenTabs();
+            await store.deleteApp(name);
+          },
+
+          // ---- 会话栏宽度拖拽（150–400px，记忆到 sessionStorage） ----
+
+          startSideResize(event) {
+            event.preventDefault();
+            const el = event.target;
+            el.setPointerCapture(event.pointerId);
+            const startX = event.clientX;
+            const startW = this.sideWidth;
+            const onMove = (ev) => {
+              const w = startW + (ev.clientX - startX);
+              this.sideWidth = Math.min(400, Math.max(150, w));
+            };
+            const onUp = () => {
+              el.removeEventListener("pointermove", onMove);
+              el.removeEventListener("pointerup", onUp);
+              try {
+                sessionStorage.setItem("aib:side-width", String(this.sideWidth));
+              } catch {
+                /* 隐私模式静默降级 */
+              }
+            };
+            el.addEventListener("pointermove", onMove);
+            el.addEventListener("pointerup", onUp);
+          },
+
+          openPanel() {
+            this.panelOpen = true;
+          },
+
+          closePanel() {
+            this.panelOpen = false;
+          },
+
+          setPanelTab(tab) {
+            this.panelTab = tab;
+          },
+
+          // ---- 技能安装 / 更新（列表项 loading 占位由仓库维护） ----
+
+          async addSkillByUrl() {
+            const { default: promptDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+            );
+            const val = await promptDlg({
+              title: "添加技能",
+              placeholder: "技能 zip 包或 SKILL.md 的 https 地址",
+            });
+            if (val === null) return; // 取消 / 遮罩 / Escape
+            const url = String(val).trim();
+            if (!url) return;
+            await this.installSkill(url);
+          },
+
+          async updateSkill(url) {
+            if (!url) return;
+            await this.installSkill(url);
+          },
+
+          async installSkill(url) {
+            try {
+              await store.installSkillFromSource(url);
+            } catch (err) {
+              const { default: alertDlg } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+              );
+              await alertDlg({ title: "技能安装失败", message: err.message });
+            }
+          },
+
+          // ---- 聊天输入（纯 UI） ----
+
+          useChip(text) {
+            this.input = text;
+            this.autoGrow();
+            this.shadow.$("#inputer")?.ele.focus();
+          },
+
+          handleKeydown(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+              if (event.isComposing) return;
+              event.preventDefault();
+              this.handleSend();
+            }
+          },
+
+          async handleSend() {
+            const text = this.input.trim();
+            if (!text || this.sending) return;
+            this.input = "";
+            this.autoGrow();
+            this.atBottom = true;
+            this.followScroll(true);
+            await store.send(text);
+          },
+
+          autoGrow() {
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#inputer")?.ele;
+              if (!el) return;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            });
+          },
+
+          followScroll(force = false) {
+            if (!force && !this.atBottom) return;
+            requestAnimationFrame(() => {
+              const el = this.shadow.$("#chatScroll")?.ele;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          },
+
+          onChatScroll() {
+            const el = this.shadow.$("#chatScroll")?.ele;
+            if (!el) return;
+            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            this.atBottom = dist <= 24;
+          },
+
+          toBottomNow() {
+            this.atBottom = true;
+            this.followScroll(true);
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -60,7 +60,10 @@ export const createAgent = ({
     const persistBase = messages.length;
     messages.push(...history, ...(inputMessages ?? []));
 
-    // 整个循环累计的 token 用量（模型可能被调用多次）
+    // 整个循环累计的 token 用量（模型可能被调用多次）。
+    // 缓存命中/未命中字段（DeepSeek 的 prompt_cache_hit_tokens /
+    // prompt_cache_miss_tokens、OpenAI 风格的 prompt_tokens_details.cached_tokens）
+    // 只在供应商有返回时才累计，未回报的供应商不产生 0 值假象
     const usage = {
       prompt_tokens: 0,
       completion_tokens: 0,
@@ -72,6 +75,20 @@ export const createAgent = ({
       usage.completion_tokens += u.completion_tokens ?? 0;
       usage.total_tokens +=
         u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
+      if (u.prompt_cache_hit_tokens !== undefined) {
+        usage.prompt_cache_hit_tokens =
+          (usage.prompt_cache_hit_tokens ?? 0) + u.prompt_cache_hit_tokens;
+      }
+      if (u.prompt_cache_miss_tokens !== undefined) {
+        usage.prompt_cache_miss_tokens =
+          (usage.prompt_cache_miss_tokens ?? 0) + u.prompt_cache_miss_tokens;
+      }
+      const cached = u.prompt_tokens_details?.cached_tokens;
+      if (cached !== undefined) {
+        usage.prompt_tokens_details = usage.prompt_tokens_details || {};
+        usage.prompt_tokens_details.cached_tokens =
+          (usage.prompt_tokens_details.cached_tokens ?? 0) + cached;
+      }
     };
 
     let lastModel = "";

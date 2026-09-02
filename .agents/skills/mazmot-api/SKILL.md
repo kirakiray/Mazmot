@@ -1,6 +1,7 @@
 ---
 name: "mazmot-api"
 description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
+version: "1.3.10"
 ---
 
 # Mazmot 能力 API 速查
@@ -77,14 +78,15 @@ Mazmot 把应用列表存在 `getStorage("mazmot")` 空间的 `apps` 键下，�
 | `name` | 记录名（recordName），用作目录名与应用标识 |
 | `desc` | 应用描述 |
 | `source` | `"local"`（本地目录）/ `"virtual"`（虚拟目录，含分享安装）/ `"official"`（官方市场） |
-| `namespace` | 虚拟目录命名空间（虚拟/官方为 `mazmot-apps`） |
+| `namespace` | 虚拟目录命名空间（虚拟/官方为 `mazmot-apps`；AI 生成器生成的应用为独立命名空间 `ai-apps`） |
 | `handle` | 本地目录句柄（本地应用为原生 handle，虚拟/官方为 `null`） |
-| `dirName` | 虚拟目录全路径（如 `mazmot-apps/my-app`） |
+| `dirName` | 虚拟目录全路径（如 `mazmot-apps/my-app`；AI 生成应用为 `ai-apps/my-app`） |
 | `appId` | `` `${name}-${publisherUserId}` ``，用于判定分享归属 |
 | `fileHash` | 应用包内容哈希（分享安装记录） |
 | `payloadHash` | 分享清单哈希（分享安装记录，即短链接里的 `h`） |
 | `officialId` | 官方应用 ID（官方市场记录） |
 | `createdAt` | 创建时间戳 |
+| `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏全部生成应用，记录仅供生成器持久化句柄与应用管理 |
 
 读写示例：
 
@@ -102,7 +104,7 @@ await storage.setItem("apps", apps);
 import { getRunUrl, readAppFiles } from "/mz/app-runner.js";
 
 // 生成运行 URL：
-//   virtual/official → /$mazmot-apps/{name}/client/index.html
+//   virtual/official → /$mazmot-apps/{name}/client/index.html（AI 生成应用为 /$ai-apps/{name}/...）
 //   local           → mount(client/) → /{mounted}/index.html
 const url = await getRunUrl(app);
 

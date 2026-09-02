@@ -109,6 +109,7 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files 工具生成 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：虚拟渠道直接开 /$ai-apps/<name>/client/index.html，本地渠道经 /mz/app-runner.js getRunUrl 挂载 client/（句柄从 mazmot apps[] 记录恢复）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
@@ -131,8 +132,8 @@ Mazmot/
 
 应用文件存放在两类目录中：
 
-- **虚拟目录**：`init("mazmot-apps").get(appName)` 下的 `client/` 子目录。
-  - 运行 URL：`/$mazmot-apps/{appName}/client/index.html`
+- **虚拟目录**：`init(<namespace>).get(appName)` 下的 `client/` 子目录（AI 生成应用用独立命名空间 `ai-apps`，其余用 `mazmot-apps`）。
+  - 运行 URL：`/${namespace}/{appName}/client/index.html`（AI 生成应用为 `/$ai-apps/{appName}/client/index.html`）
   - 由 NoneOS Core Service Worker 直接拦截并返回虚拟文件。
 - **本地目录**：用户通过 `open()` 选择的文件夹（仅 Chrome 支持）。
   - 运行前先把 `client/` 子目录 `mount()` 到主域，得到类似 `$mount-xxx>dirName` 的路径。
@@ -155,9 +156,9 @@ Mazmot/
    │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 apps 列表并关闭弹窗（不写模板）
    │         ├─ 命中且用户点「取消」→ 用 manifest.name / description 预填 step2 表单继续
    │         └─ 未命中 → 进入 step2 让用户填名称
-   └─ 虚拟目录：确认名称后 (await init("mazmot-apps")).get(name, {create:"dir"}) 建立子目录
+   └─ 虚拟目录：确认名称后 (await init(namespace)).get(name, {create:"dir"}) 建立子目录
    ↓
-存入 `getStorage("mazmot")` 的 `apps` 键（本地：存原生 handle；虚拟：namespace=mazmot-apps，handle=null）
+存入 `getStorage("mazmot")` 的 `apps` 键（本地：存原生 handle；虚拟：namespace 按来源（ai-builder 生成应用为 ai-apps），handle=null）
    ↓
 writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录（仅新建流程走到这里）
    ↓
@@ -172,7 +173,7 @@ handleOpen / handleOpenWindow / handleOpenTab
 loadApps 重新初始化存储的句柄（本地：new DirHandle(app.handle)；虚拟：init+get 重建）
    ↓
 app-runner.js getRunUrl(app)
-   ├─ 虚拟：返回 /$mazmot-apps/{name}/client/index.html
+   ├─ 虚拟：返回 /${namespace}/{name}/client/index.html
    └─ 本地：mount(clientDir) 后返回 /{mounted.path}/index.html
    ↓
 window.open(runUrl)
@@ -214,12 +215,15 @@ clearOpened → 关闭窗口
   name: "my-app",           // 唯一 recordName（字母/数字/_-，不含空格）；运行时常被映射到 _recordName
   desc: "描述",
   handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录/官方应用为 null
-  dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "mazmot-apps/<name>"
+  dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "<namespace>/<name>"（AI 生成应用为 "ai-apps/<name>"）
   source: "local" | "virtual" | "official",
-  namespace: "mazmot-apps",  // virtual / official 有值，(await init(namespace)).get(name) 即可重建 handle
+  namespace: "mazmot-apps | ai-apps",  // virtual / official / AI 生成应用有值，(await init(namespace)).get(name) 即可重建 handle
   appId: "my-app-abc123def456...",  // 稳定 ID = `${应用名}-${LocalUser.userId}`，跨设备识别同一应用
   officialId: "ai-manager", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
+  mazmot: { source: "ai-builder" }, // 仅妙造生成的应用有值：来源标记；
+                             // 主系统应用列表据此隐藏全部生成应用（记录仅供
+                             // conjure 持久化句柄与应用管理）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
   createdAt: timestamp
@@ -268,7 +272,7 @@ clearOpened → 关闭窗口
 
 以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
-- **应用目录布局**：每个应用在目标位置（本地目录或 `$mazmot-apps/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
+- **应用目录布局**：每个应用在目标位置（本地目录或 `${namespace}/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
 - **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。**仅自建应用可拥有 `appId`**：官方应用（`source === "official"`，含 `?app=` 链接与市场安装）不写 `appId`，以 `officialId` 标识来源，`isMine` 判定会显式排除 official 应用。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
@@ -442,6 +446,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| 妙造（Conjure）官方应用（对话生成 ofa.js 应用 → 写入 mazmot-apps VFS → 预览） | [official-apps/conjure/pages/home.html](official-apps/conjure/pages/home.html)（核心库 [lib/builder.js](official-apps/conjure/lib/builder.js)，测试 [test/builder.sb.html](official-apps/conjure/test/builder.sb.html)） |
 | 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息 + 互授） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [live-share.html](official-apps/cred-manager/pages/live-share.html) + [lib/live-share.js](official-apps/cred-manager/lib/live-share.js) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |
