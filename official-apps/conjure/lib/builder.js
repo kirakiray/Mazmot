@@ -302,13 +302,21 @@ export async function listAppFiles(fs, appName, rootHandle) {
   const clean = sanitizeAppName(appName);
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
   const prefix = rel ? rel : base.path ? base.path + "/" : "";
+  // Core 的 flat()/path 可能带命名空间前缀（如 ai-apps/<app>/client/），
+  // 统一剥成相对 client/ 的路径
+  const toRel = (path) => {
+    if (prefix && path.startsWith(prefix)) return path.slice(prefix.length);
+    if (rel) {
+      const idx = path.indexOf(rel);
+      if (idx > -1) return path.slice(idx + rel.length);
+    }
+    return path;
+  };
   const out = [];
   const walk = async (dir) => {
     if (typeof dir.flat === "function") {
       for (const f of await dir.flat()) {
-        out.push(prefix && f.path.startsWith(prefix)
-          ? f.path.slice(prefix.length)
-          : f.path);
+        out.push(toRel(f.path));
       }
       return;
     }
@@ -316,10 +324,7 @@ export async function listAppFiles(fs, appName, rootHandle) {
       const item = await dir.get(key);
       if (!item) continue;
       if (item.kind === "dir") await walk(item);
-      else
-        out.push(prefix && item.path.startsWith(prefix)
-          ? item.path.slice(prefix.length)
-          : item.path);
+      else out.push(toRel(item.path));
     }
   };
   await walk(base);
