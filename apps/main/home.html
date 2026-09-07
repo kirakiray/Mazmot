@@ -428,6 +428,25 @@
             <option value="ja">日本語</option>
             <option value="en">English</option>
           </st-select>
+          <div class="settings-field-label" style="margin-top: 16px">
+            <locale-text><span lang="cn">主题</span><span lang="en">Theme</span></locale-text>
+          </div>
+          <st-select
+            id="theme-select"
+            attr:default-value="themeMode"
+            style="width: 200px"
+            on:change="handleThemeChange"
+          >
+            <option value="auto">
+              <locale-text><span lang="cn">跟随系统</span><span lang="en">Follow system</span></locale-text>
+            </option>
+            <option value="light">
+              <locale-text><span lang="cn">浅色模式</span><span lang="en">Light</span></locale-text>
+            </option>
+            <option value="dark">
+              <locale-text><span lang="cn">深色模式</span><span lang="en">Dark</span></locale-text>
+            </option>
+          </st-select>
         </o-if>
         <o-if :value="settingsTab === 'user'">
           <o-page src="./home/settings-user.html" style="width: 100%"></o-page>
@@ -767,6 +786,19 @@
 
     const storage = getStorage("mazmot");
 
+    // 主题模式：auto（默认，跟随系统）/ light / dark。
+    // senti-ui 通过 <html> 上的 st-light / st-dark 类强制主题，不写类即跟随系统
+    const applyThemeMode = (mode) => {
+      const classes = document.documentElement.classList;
+      classes.remove("st-light", "st-dark");
+      if (mode === "light") classes.add("st-light");
+      else if (mode === "dark") classes.add("st-dark");
+    };
+
+    // 页面模块顶层尽早应用持久化主题，避免首屏闪色
+    const initialThemeMode = (await storage.getItem("theme-mode")) || "auto";
+    applyThemeMode(initialThemeMode);
+
     async function loadApps() {
       // 妙造生成的应用不进主列表：虚拟应用在独立命名空间 ai-apps/
       // 下自管理，本地渠道记录仅供妙造（conjure）持久化句柄
@@ -907,6 +939,7 @@
             { id: "certs", icon: "mdi:shield-key-outline", titleKey: "navCerts" },
           ],
           lang: getLang(),
+          themeMode: initialThemeMode,
         },
         async attached() {
           // 不能把含 _handle 的应用列表放进 data 默认值：ofa.js 注册时会
@@ -967,6 +1000,16 @@
             setLang(next);
             localStorage.setItem("lang", next);
             location.reload();
+          },
+
+          // 设置里的主题下拉切换：立即切换 <html> 上的 st-light / st-dark
+          // 类并持久化到 mazmot 存储空间，下次进入页面时顶层读取应用
+          async handleThemeChange(event) {
+            const mode = event.target.value || "auto";
+            if (mode === this.themeMode) return;
+            this.themeMode = mode;
+            applyThemeMode(mode);
+            await storage.setItem("theme-mode", mode);
           },
 
           t(key) {
