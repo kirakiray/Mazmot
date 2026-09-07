@@ -14,6 +14,89 @@ export const LEGACY_NAMESPACE = "mazmot-apps";
 // 一个可运行应用在 client/ 下必须存在的文件
 export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 
+// 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
+// 模型可选项依赖当前选中的 API Key 所属供应商
+export const MODEL_OPTIONS = {
+  deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  glm: ["glm-5.3-flash", "glm-5.3"],
+  "glm-coding": ["glm-5.3-flash", "glm-5.3"],
+  kimi: ["kimi-k3", "kimi-k2.7-code"],
+};
+
+/**
+ * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留
+ * 回合若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整体丢弃
+ * 该回合——悬空的 tool_calls 会让下一次模型请求报错。
+ * @param {Array} thread wire 格式消息数组（user / assistant(+tool_calls) / tool）
+ * @param {number} turns 保留的回合数
+ * @returns {Array}
+ */
+export function truncateThread(thread, turns) {
+  const kept = splitThreadSegments(thread).slice(0, turns);
+  return dropDanglingTurn(kept).flat();
+}
+
+/**
+ * 取 wire 记忆末尾的 k 个完整回合（悬空的 tool_calls 回合同样整段丢弃），
+ * 供上下文压缩后保留「最近原文」。
+ * @param {Array} thread wire 格式消息数组
+ * @param {number} keepTurns 保留的末尾回合数
+ * @returns {Array}
+ */
+export function tailThread(thread, keepTurns) {
+  if (!(keepTurns > 0)) return [];
+  const segments = splitThreadSegments(thread);
+  return dropDanglingTurn(segments)
+    .slice(-keepTurns)
+    .flat();
+}
+
+// 把 wire 记忆切成「回合」段（每个 user 消息开头一段；开头散段防御性丢弃）
+function splitThreadSegments(thread) {
+  const segments = [];
+  for (const m of thread || []) {
+    if (m.role === "user") segments.push([]);
+    if (!segments.length) continue;
+    segments[segments.length - 1].push(m);
+  }
+  return segments;
+}
+
+// 末段若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整段丢弃——
+// 悬空的 tool_calls 会让下一次模型请求报错
+function dropDanglingTurn(segments) {
+  const kept = [...segments];
+  const last = kept[kept.length - 1];
+  if (
+    last &&
+    last[last.length - 1]?.role === "assistant" &&
+    last[last.length - 1].tool_calls?.length
+  ) {
+    kept.pop();
+  }
+  return kept;
+}
+
+/**
+ * 读取会话当前的上下文占用（基于回合末条 AI 消息上挂的 usage）。
+ * usage.context_tokens 由 Agent 用「末次模型调用的 prompt + completion」覆盖写入，
+ * 即最接近当前对话真实上下文大小的估算值；总量（窗口大小）由页面 select 选定。
+ * @param {Array} messages 会话消息数组（含历史消息）
+ * @returns {{ used: number, model: string }}
+ *          used 为 0 表示会话还没有任何模型调用记录
+ */
+export function contextInfo(messages) {
+  let used = 0;
+  let model = "";
+  for (const m of messages || []) {
+    if (m?.role === "assistant" && m.usage?.context_tokens > 0) {
+      used = m.usage.context_tokens;
+      model = m.model || model;
+    }
+  }
+  return { used, model };
+}
+
 // 允许写入的文本文件扩展名（P2P 分享只支持 UTF-8 文本，二进制不可写入）
 const TEXT_EXT = [
   ".html", ".js", ".mjs", ".css", ".json", ".md", ".txt", ".svg",
@@ -472,6 +555,15 @@ await store.setItem("key", value);
 - 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改动后同步更新 AGENTS.md / CONTEXT.md 里受影响的描述。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
+
+/**
+ * 上下文压缩摘要的系统提示词：把对话记录压成一份短摘要，作为后续对话
+ * 的记忆主体。保留工作必需的骨架信息，丢弃可随时用 read_file 找回的细节。
+ */
+export const COMPACTION_PROMPT = `你是对话压缩器。把提供的 AI 应用开发对话记录压缩成一份简明摘要，这份摘要将作为后续对话的唯一上下文。要求：
+1. 必须保留：用户的应用需求与目标；已创建的应用名与文件清单（路径级别）；重要决策与用户偏好；当前进行中的任务与未完成事项；出现过的错误与教训。
+2. 可以丢弃：文件内容的代码细节、工具返回的原始输出、寒暄与重复内容（需要细节时 Agent 可用 read_file / list_files 自行找回）。
+3. 用中文条目化输出，总长度控制在 800 字以内。直接输出摘要正文，不要任何前后缀或评论。`;
 
 /**
  * 按当前上下文构建系统提示词：在基础规范上注入「正在开发哪个应用」，

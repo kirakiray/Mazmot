@@ -205,10 +205,12 @@ schema 字段定义：
   model: "使用的模型",
   usage: {
     prompt_tokens, completion_tokens, total_tokens,
+    // 当前上下文占用估算：末次模型调用的 prompt + completion（覆盖写入，非累计）
+    context_tokens,
     // 供应商有返回时才累计（DeepSeek：prompt_cache_hit_tokens /
     // prompt_cache_miss_tokens；OpenAI 风格：prompt_tokens_details.cached_tokens）
     prompt_cache_hit_tokens?, prompt_cache_miss_tokens?, prompt_tokens_details?,
-  }, // 整个循环累计
+  }, // prompt/completion/total 为整个循环累计
   toolCalls: [],           // 恒为空数组（最终回答不再发起工具调用）
   messages: [              // 完整轨迹（wire 格式，含 system / tool 消息）
     { role: "user", content: "..." },

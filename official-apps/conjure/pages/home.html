@@ -108,6 +108,7 @@
             <div
               class="session-item"
               class:active="$data.id === $host.currentSessionId"
+              class:removing="$host.removingSid === $data.id"
               on:click="$host.loadSession($data.id)"
             >
               <span class="session-title">{{$data.title}}</span>
@@ -116,12 +117,11 @@
                   <n-icon icon="mdi:loading"></n-icon>
                 </span>
               </o-if>
-              <st-button
-                class="del-btn"
-                variant="text"
+              <!-- 圆形删除按钮：确认时形变为圆角方形 -->
+              <button
+                class="session-del"
                 class:confirm="$host.confirmingDelSession === $data.id"
                 attr:title="$host.confirmingDelSession === $data.id ? '再点一次确认删除' : '删除对话'"
-                style="font-size: 11px"
                 on:click="$host.deleteSession($event, $data.id)"
               >
                 <o-if :value="$host.confirmingDelSession === $data.id">
@@ -130,7 +130,7 @@
                 <o-if :value="$host.confirmingDelSession !== $data.id">
                   <n-icon icon="mdi:close"></n-icon>
                 </o-if>
-              </st-button>
+              </button>
             </div>
           </o-fill>
         </div>
@@ -205,10 +205,24 @@
                     <div class="reasoning-body">{{$data.reasoning}}</div>
                   </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
-                  <o-if :value="$host.hasUsage($data)">
-                    <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
-                      <n-icon icon="mdi:counter"></n-icon>
-                      <span>{{$host.usageText($data)}}</span>
+                  <o-if :value="$host.hasUsage($data) || $host.canFork()">
+                    <div class="ai-foot">
+                      <o-if :value="$host.hasUsage($data)">
+                        <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
+                          <n-icon icon="mdi:counter"></n-icon>
+                          <span>{{$host.usageText($data)}}</span>
+                        </div>
+                      </o-if>
+                      <o-if :value="$host.canFork()">
+                        <button
+                          class="fork-btn"
+                          attr:title="'从这条回复处创建分支会话：复制此前全部聊天记录到新会话'"
+                          on:click="$host.forkFrom($data.id)"
+                        >
+                          <n-icon icon="mdi:source-branch"></n-icon>
+                          <span>fork</span>
+                        </button>
+                      </o-if>
                     </div>
                   </o-if>
                 </div>
@@ -260,6 +274,24 @@
                         <pre class="tool-code">{{$data.result}}</pre>
                       </div>
                     </div>
+                  </o-if>
+                </div>
+              </o-if>
+
+              <o-if :value="$data.role === 'compact'">
+                <div class="compact-card" class:open="$data.open">
+                  <button class="compact-head" on:click="$host.toggleTool($data.id)">
+                    <span class="tool-chev">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </span>
+                    <n-icon icon="mdi:archive-arrow-down-outline"></n-icon>
+                    <span class="compact-title">已压缩 {{$data.count}} 条历史记忆</span>
+                    <span class="compact-hint">点击查看摘要</span>
+                  </button>
+                  <o-if :value="$data.open">
+                    <div class="compact-body">{{$data.summary}}</div>
                   </o-if>
                 </div>
               </o-if>
@@ -335,15 +367,91 @@
           on:keydown="handleKeydown($event)"
         ></textarea>
         <div class="composer-row">
-          <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
-          <button
-            class="target-opt"
-            class:active="thinking"
-            attr:title="thinking ? '思考模式已开启：回答前先推理，速度较慢，点击关闭' : '思考模式已关闭：直接回答，点击开启推理'"
-            on:click="toggleThinking()"
-          >
-            🧠 思考模式
-          </button>
+          <div class="composer-left">
+            <!-- 上下文占用：小圆圈进度 + 最大窗口选择（与思考模式并排） -->
+            <o-if :value="ctxUsed > 0">
+              <span class="ctx-anchor">
+                <button
+                  class="ctx-ring"
+                  attr:disabled="compacting"
+                  attr:title="compacting ? '正在压缩上下文…' : ctxTitle + '，点击立即压缩上下文'"
+                  on:click="handleCompress"
+                >
+                  <svg class="ctx-ring-svg" viewBox="0 0 20 20">
+                    <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
+                    <circle
+                      class="ctx-ring-fill"
+                      class:warn="ctxPct >= 80"
+                      cx="10"
+                      cy="10"
+                      r="8"
+                      stroke-dasharray="50.27"
+                      attr:stroke-dashoffset="ctxDash"
+                    ></circle>
+                  </svg>
+                  <span class="ctx-ring-label">{{compacting ? '压缩中…' : ctxPct + '%'}}</span>
+                </button>
+                <!-- 悬停气泡：当前模型 + API Key 切换 -->
+                <span class="ctx-pop">
+                  <span class="ctx-pop-row">
+                    <span class="ctx-pop-label">模型</span>
+                    <select
+                      class="ctx-select key-select model-select"
+                      attr:title="'对话使用的模型（当前：' + (activeModelId || '供应商默认') + '）'"
+                      :value="activeModelId"
+                      attr:disabled="modelOptions.length === 0"
+                      on:change="selectModel($event)"
+                    >
+                      <option value="">自动（供应商默认）</option>
+                      <o-fill :value="modelOptions" fill-key="id">
+                        <option attr:value="$data.id">{{$data.label}}</option>
+                      </o-fill>
+                    </select>
+                  </span>
+                  <span class="ctx-pop-row">
+                    <span class="ctx-pop-label">Key</span>
+                    <o-if :value="apiKeys.length > 0">
+                      <select
+                        class="ctx-select key-select"
+                        attr:title="'对话使用的 API Key（当前：' + activeKeyText + '）'"
+                        :value="activeKeyId"
+                        on:change="selectApiKey($event)"
+                      >
+                        <option value="">自动选择</option>
+                        <o-fill :value="apiKeys" fill-key="id">
+                          <option attr:value="$data.id">{{$data.provider}} · {{$data.maskedKey}}</option>
+                        </o-fill>
+                      </select>
+                    </o-if>
+                    <o-if :value="apiKeys.length === 0">
+                      <span class="ctx-pop-value">未配置（去密钥管理器添加）</span>
+                    </span>
+                  </span>
+                </span>
+              </span>
+            </o-if>
+            <select
+              class="ctx-select"
+              attr:title="'会话最大上下文窗口（当前 ' + ctxWindowText + '）'"
+              :value="ctxWindow"
+              on:change="setCtxWindow($event)"
+            >
+              <option value="131072">128k</option>
+              <option value="262144">256k</option>
+              <option value="524288">512k</option>
+              <option value="786432">768k</option>
+              <option value="1048576">1mb</option>
+            </select>
+            <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
+            <button
+              class="target-opt"
+              class:active="thinking"
+              attr:title="thinking ? '思考模式已开启：回答前先推理，速度较慢，点击关闭' : '思考模式已关闭：直接回答，点击开启推理'"
+              on:click="toggleThinking()"
+            >
+              🧠 思考模式
+            </button>
+          </div>
           <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
           <o-if :value="currentAppName === ''">
             <div class="target-picker">
@@ -585,6 +693,7 @@
       const { renderMarkdown } = await load("../lib/markdown.js");
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
+      const { contextInfo, MODEL_OPTIONS } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
       // 句柄等类实例由仓库闭包持有，不进入响应式数据
@@ -686,8 +795,28 @@
           localDirLabel: "",
           permGrantNeeded: false,
           confirmingDelSession: "",
+          removingSid: "", // 正在播放折叠删除动画的会话 id
           toolDefs,
           skills: [],
+          // 上下文占用圆圈进度（applyMessageEvent 时由 contextInfo 重算）
+          ctxUsed: 0,
+          ctxPct: 0,
+          ctxDash: "50.27",
+          ctxTitle: "",
+          // 会话最大上下文窗口（token 数，select 切换，偏好持久化）
+          ctxWindow: "131072",
+          ctxWindowText: "128k",
+          // 上下文压缩进行中（压缩按钮转圈提示）
+          compacting: false,
+          // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
+          apiKeys: [],
+          activeKeyId: "",
+          activeKeyText: "自动选择",
+          // 当前 Agent 模型标识（仓库 patch，悬停气泡展示）
+          activeModel: "",
+          // 手动选中的对话模型与可选项（跟随选中 Key 的供应商）
+          activeModelId: "",
+          modelOptions: [],
         },
 
         async ready() {
@@ -699,12 +828,35 @@
           } catch {
             /* 忽略 */
           }
+          // 恢复最大上下文窗口偏好
+          try {
+            const win = await selfStore?.getItem("pref:ctx-window");
+            if (win) {
+              this.ctxWindow = String(win);
+              this.ctxWindowText =
+                {
+                  "131072": "128k",
+                  "262144": "256k",
+                  "524288": "512k",
+                  "786432": "768k",
+                  "1048576": "1mb",
+                }[this.ctxWindow] || "128k";
+            }
+          } catch {
+            /* 忽略 */
+          }
+          store.setContextWindow(Number(this.ctxWindow));
+          this.syncActiveKeyText();
           // 订阅仓库事件，把状态同步到页面响应式数据
           store.subscribe((evt) => {
             if (evt.type === "patch") {
               for (const [key, value] of Object.entries(evt.data)) {
                 if (key === "nextId") continue; // 内部计数，页面不需要
                 this[key] = value;
+              }
+              // Key 列表 / 选中项变化：刷新选择器展示文案
+              if ("apiKeys" in evt.data || "activeKeyId" in evt.data) {
+                this.syncActiveKeyText();
               }
               // 当前项目变化时同步 URL 的 p 参数（刷新 / 分享可回到当前项目）
               // 并向其他标签广播本标签的新项目名
@@ -752,6 +904,63 @@
             } else if (op === "splice") {
               const idx = this.messages.findIndex((m) => m.id === evt.id);
               if (idx > -1) this.messages.splice(idx, 1);
+            }
+            // usage 挂在回合末条 AI 消息上，done patch 时刷新进度条
+            this.syncCtx();
+          },
+
+          // API Key 选择器的当前展示文案 + 模型可选项（key 列表或选中项变化时刷新）
+          syncActiveKeyText() {
+            const hit = this.apiKeys.find((k) => k.id === this.activeKeyId);
+            this.activeKeyText = hit ? `${hit.provider} · ${hit.maskedKey}` : "自动选择";
+            // 模型选项跟随选中 Key 的供应商；自动 Key 不提供手动模型
+            const list = hit ? MODEL_OPTIONS[hit.provider] || [] : [];
+            this.modelOptions = list.map((m) => ({ id: m, label: m }));
+            // 选中的模型不属于当前供应商：重置为自动
+            if (this.activeModelId && !list.includes(this.activeModelId)) {
+              this.activeModelId = "";
+              store.selectModel("");
+            }
+          },
+
+          // 切换对话模型
+          selectModel(event) {
+            this.activeModelId = event.target.value;
+            store.selectModel(this.activeModelId);
+          },
+
+          // 重算上下文占用圆圈进度（总量由 select 选定的窗口决定）
+          syncCtx() {
+            const info = contextInfo(this.messages);
+            this.ctxUsed = info.used;
+            if (info.used <= 0) return;
+            const total = Number(this.ctxWindow) || 131072;
+            this.ctxPct = Math.round(Math.min(100, (info.used / total) * 100) * 10) / 10;
+            // r=8 的圆周长 2πr ≈ 50.27，偏移量 = 周长 ×（1 - 进度）
+            this.ctxDash = (50.27 * (1 - this.ctxPct / 100)).toFixed(2);
+            const k = (v) => {
+              if (v >= 1024) return (v / 1024).toFixed(1).replace(/\.0$/, "") + "k";
+              return String(v);
+            };
+            this.ctxTitle =
+              `当前会话上下文占用 ${k(info.used)} / ${k(total)} tok` +
+              (info.model ? `（模型 ${info.model}）` : "");
+          },
+
+          // 切换最大上下文窗口：立即重算进度并持久化偏好
+          setCtxWindow(event) {
+            this.ctxWindow = event.target.value;
+            const opt = event.target.selectedOptions?.[0];
+            this.ctxWindowText = opt ? opt.textContent.trim() : "128k";
+            this.syncCtx();
+            store.setContextWindow(Number(this.ctxWindow));
+          this.syncActiveKeyText();
+            if (selfStore) {
+              try {
+                selfStore.setItem("pref:ctx-window", this.ctxWindow);
+              } catch {
+                /* 存储失败不影响本次会话 */
+              }
             }
           },
 
@@ -811,6 +1020,45 @@
 
           toggleReasoning(id) {
             store.toggleReasoning(id);
+          },
+
+          // fork 按钮可见性：仅已落地的应用会话（草稿没有会话实体）且非发送中
+          canFork() {
+            return this.currentSessionId !== "" && !this.sending;
+          },
+
+          forkFrom(id) {
+            store.forkSession(id);
+          },
+
+          // 切换对话用的 API Key（"" = 自动负载均衡）
+          selectApiKey(event) {
+            const id = event.target.value;
+            store.selectApiKey(id);
+            const hit = this.apiKeys.find((k) => k.id === id);
+            this.activeKeyText = hit ? `${hit.provider} · ${hit.maskedKey}` : "自动选择";
+          },
+
+          // 手动压缩当前会话上下文（点击进度圆圈触发）
+          async handleCompress() {
+            if (this.compacting) return;
+            this.compacting = true;
+            try {
+              const r = await store.compress();
+              if (!r.ok && r.reason) {
+                const { default: alertDlg } = await load(
+                  "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                );
+                await alertDlg({ title: "压缩上下文", message: r.reason });
+              }
+            } catch (err) {
+              const { default: alertDlg } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+              );
+              await alertDlg({ title: "压缩失败", message: err.message });
+            } finally {
+              this.compacting = false;
+            }
           },
 
           toggleThinking() {
@@ -886,6 +1134,15 @@
               return;
             }
             this.confirmingDelSession = "";
+            // 先播折叠动画（高度 + 透明度归零）再真正删除
+            const el = event?.target?.closest?.(".session-item");
+            if (el) {
+              this.removingSid = sid;
+              el.style.height = `${el.offsetHeight}px`; // 锁定当前高度让过渡有起点
+              requestAnimationFrame(() => el.classList.add("removing"));
+              await new Promise((r) => setTimeout(r, 240));
+            }
+            this.removingSid = "";
             await store.deleteSession(sid);
           },
 
@@ -927,11 +1184,22 @@
             this.projDrawerOpen = false;
           },
 
-          openProjectTab(name) {
+          // 点击项目：空白草稿态直接在当前页内切换；已进入项目则新标签打开
+          async openProjectTab(name) {
+            if (this.currentAppName === "") {
+              await store.selectApp(name);
+              this.projDrawerOpen = false;
+              return;
+            }
             window.open(this.projectUrl(name), `ai-builder-${name}`);
           },
 
           newProjectTab() {
+            // 当前已是空白草稿：无需新开，直接收起抽屉留在本页
+            if (this.currentAppName === "") {
+              this.projDrawerOpen = false;
+              return;
+            }
             window.open(this.projectUrl(""), "ai-builder-draft");
           },
 

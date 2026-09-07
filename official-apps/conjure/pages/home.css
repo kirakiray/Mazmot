@@ -370,6 +370,34 @@
   background: var(--md-sys-color-surface-variant);
 }
 
+/* fork 分支按钮（AI 消息底部 usage 旁，样式随 reasoning-toggle） */
+.fork-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.fork-btn:hover {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-primary);
+  opacity: 1;
+}
+
+.fork-btn n-icon {
+  font-size: 14px;
+}
+
 .reasoning-toggle.open .tool-chev {
   transform: rotate(90deg);
 }
@@ -386,12 +414,20 @@
   word-break: break-word;
 }
 
+/* AI 消息底部行：usage 统计 + fork 分支按钮 */
+.ai-foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
 /* 本轮 token 用量统计（回合末条 AI 消息底部） */
 .usage-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 8px;
   padding: 2px 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
@@ -709,6 +745,69 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- 上下文压缩卡片 ---------- */
+
+.compact-card {
+  margin: 6px 0;
+  border: 1px dashed color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+  overflow: hidden;
+}
+
+.compact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compact-head:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.compact-card.open .tool-chev {
+  transform: rotate(90deg);
+}
+
+.compact-head n-icon {
+  font-size: 15px;
+  color: var(--md-sys-color-primary);
+}
+
+.compact-title {
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.compact-hint {
+  flex: 1 1 auto;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.compact-body {
+  margin: 0 10px 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 60%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12.5px;
+  line-height: 20px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1059,6 +1158,176 @@
   opacity: 0.7;
 }
 
+/* ---------- 上下文占用圆圈进度 + 窗口选择（composer-row 内） ---------- */
+
+/* composer-row 是 space-between，左侧控件收进一个分组容器避免被拉开 */
+.composer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+/* 圆圈锚点 + 悬停气泡（模型 / Key 切换）。
+   padding-top 是真实的透明悬停区：气泡底部与圆圈顶部之间隔着它，
+   鼠标从圆圈移进气泡全程不出锚点盒子，hover 链不会断。
+   margin-top 负值抵消 padding 撑高的布局，行高保持不变 */
+.ctx-anchor {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  padding-top: 12px;
+  margin-top: -12px;
+}
+
+.ctx-pop {
+  position: absolute;
+  /* 锚点 padding(12px) - 视觉间隙(8px)：气泡底边悬在透明悬停区内 8px 处，
+     与圆圈之间保留 8px 空隙但全程被锚点盒子覆盖 */
+  bottom: calc(100% - 4px);
+  left: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+  /* 常驻渲染，用透明度 + 位移做淡入上浮动画（display 切换无法过渡） */
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 0s linear 160ms;
+}
+
+/* 悬停锚点或气泡本身时显示（气泡是锚点子元素，移入不断链） */
+.ctx-anchor:hover .ctx-pop {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.ctx-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.ctx-pop-label {
+  flex: none;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.ctx-pop-value {
+  color: var(--md-sys-color-on-surface);
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.ctx-ring {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ctx-ring:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ctx-ring-svg {
+  width: 18px;
+  height: 18px;
+  transform: rotate(-90deg); /* 进度从顶部起 */
+}
+
+.ctx-ring-bg,
+.ctx-ring-fill {
+  fill: none;
+  stroke-width: 3;
+}
+
+.ctx-ring-bg {
+  stroke: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+}
+
+.ctx-ring-fill {
+  stroke: var(--md-sys-color-primary);
+  transition: stroke-dashoffset 300ms ease;
+}
+
+/* 占用接近上限（≥80%）转警示色 */
+.ctx-ring-fill.warn {
+  stroke: var(--md-sys-color-error);
+}
+
+.ctx-ring-label {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ctx-select,
+.key-select,
+.model-select {
+  flex: none;
+  padding: 3px 4px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 18%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  outline: none;
+}
+
+.ctx-select {
+  max-width: 84px;
+}
+
+/* Key / 模型选择器要放得下「provider · 脱敏 key」等文案 */
+.key-select,
+.model-select {
+  max-width: 180px;
+}
+
+.model-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ctx-select:hover,
+.ctx-select:focus,
+.key-select:hover,
+.key-select:focus {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-surface);
+}
+
 /* ---------- 面板 tab（st-tab-bar 轻量适配） ---------- */
 
 .panel-tabs {
@@ -1179,9 +1448,26 @@
   padding: 7px 8px 7px 14px;
   border-radius: 10px;
   cursor: pointer;
+  box-sizing: border-box;
+  overflow: hidden;
   transition:
     background-color 160ms ease,
-    color 160ms ease;
+    color 160ms ease,
+    opacity 220ms ease,
+    height 220ms ease,
+    padding 220ms ease,
+    margin 220ms ease;
+}
+
+/* 折叠删除：高度 / 透明度 / 纵向留白全部归零后再由 JS 真正删除 */
+.session-item.removing {
+  height: 0 !important;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  pointer-events: none;
 }
 
 .session-item::before {
@@ -1239,6 +1525,63 @@
 
 @keyframes session-busy-spin {
   to { transform: rotate(360deg); }
+}
+
+/* 会话删除按钮：平时圆形（仅 × 图标），确认时形变为圆角方形并展开「确认」 */
+.session-del {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.45;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    width 180ms ease,
+    border-radius 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    opacity 160ms ease;
+}
+
+.session-del n-icon {
+  font-size: 13px;
+}
+
+.session-item:hover .session-del,
+.session-item.active .session-del,
+.session-del.confirm {
+  opacity: 1;
+}
+
+.session-del:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface);
+}
+
+.session-del.confirm {
+  width: 46px;
+  border-radius: 8px;
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+  font-weight: 600;
+}
+
+/* 会话对话进行中（loading 图标在位）时隐藏删除按钮，避免与图标抢位 */
+.session-item:has(.session-busy) .session-del {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 两步确认删除按钮（小号 st-button text + n-icon；平时弱化、悬停/确认时清晰） */
@@ -1488,6 +1831,12 @@
   .tool-chev,
   .panel,
   .panel-mask {
+    transition: none;
+  }
+
+  .ctx-pop,
+  .ctx-fill,
+  .ctx-ring-fill {
     transition: none;
   }
 }

@@ -12,7 +12,7 @@ version: "1.3.10"
 - `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
 - 持久化存储 → 查 **noneos-core-docs** 技能的 storage 章节。
 - 测试框架本身 → 查 **sibyl-test** 技能。
-- AI 助手封装（DeepSeek / Kimi 对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
+- AI 助手封装（DeepSeek / Kimi / GLM（含 Coding Plan Key）对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。
 - **AI Agent / 工具循环**（`createAgent` + `tool`：模型自动调用工具、动态工具、流式事件、`MemorySaver` 会话记忆）→ 查 [references/ai-chain.md](./references/ai-chain.md)。
 - **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
 - **系统级证书能力**（`/mz/cert/main.js`：签发/领取/吊销、用户卡片查询验签、签发历史与吊销留痕、`[chain_key:...]` 链式引用语法与链遍历；配对码短码换用户卡片 `/mz/cert/pairing.js`）→ 查 [references/cert.md](./references/cert.md)。

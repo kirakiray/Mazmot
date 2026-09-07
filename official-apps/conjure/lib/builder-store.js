@@ -22,6 +22,11 @@ import {
   unregisterAppRecord,
   deleteVfsApp,
   sanitizeAppName,
+  truncateThread,
+  tailThread,
+  contextInfo,
+  MODEL_OPTIONS,
+  COMPACTION_PROMPT,
 } from "./builder.js";
 import { createTools } from "./tools/index.js";
 import {
@@ -63,6 +68,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     permGrantNeeded: false,
     // 技能知识库索引
     skills: [],
+    // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
+    apiKeys: [],
+    activeKeyId: "",
+    activeModelId: "", // 手动选中的模型（"" = 供应商默认；须属于当前 key 的供应商）
   };
 
   const listeners = new Set();
@@ -174,6 +183,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let checkpointer = null;
   // 当前 Agent 实际使用的模型标识（deepseek 固定模型名，其余用 provider 名兜底）
   let activeModel = "";
+  // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
+  // 0 = 未设置（不做自动压缩）。仅用于发送前的水位判断，非响应式
+  let contextWindow = 0;
 
   /* ---------- 持久化辅助 ---------- */
 
@@ -214,17 +226,34 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   /* ---------- Agent ---------- */
 
   const pickAssistant = async () => {
-    // 代码生成优先用 deepseek-v4-flash，其余随机负载均衡
     const { getAssistant, getApiKeys } = aiModules;
-    try {
-      const deepseekKey = getApiKeys().find((k) => k.provider === "deepseek" && !k.disabled);
-      if (deepseekKey) {
-        return { assistant: getAssistant(deepseekKey.id), model: "deepseek-v4-flash" };
-      }
-    } catch {
-      /* 无 key 时 getAssistant 稍后统一报错 */
+    const keys = getApiKeys().filter((k) => !k.disabled);
+
+    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效）；
+    // 否则自动——deepseek 优先，其余随机负载均衡
+    let key = null;
+    if (state.activeKeyId) {
+      key = keys.find((k) => k.id === state.activeKeyId) || null;
     }
-    return { assistant: getAssistant(), model: undefined };
+    if (!key && keys.length) {
+      key = keys.find((k) => k.provider === "deepseek") || null;
+      if (!key && keys.length > 1) {
+        key = keys[Math.floor(Math.random() * keys.length)];
+      }
+    }
+
+    // 模型选择：手动选中的模型（须属于该 key 的供应商）优先；
+    // 否则 deepseek 走代码生成专属模型名，其余跟随供应商默认
+    const providerModels = key ? MODEL_OPTIONS[key.provider] || [] : [];
+    let model;
+    if (key && state.activeModelId && providerModels.includes(state.activeModelId)) {
+      model = state.activeModelId;
+    } else if (key?.provider === "deepseek") {
+      model = "deepseek-v4-flash";
+    } else {
+      model = undefined;
+    }
+    return { assistant: getAssistant(key?.id), model };
   };
 
   async function ensureAgent() {
@@ -715,6 +744,197 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  /* ---------- 会话 fork（分支） ---------- */
+
+  // 从当前会话的某条消息处 fork：新会话复制截至该消息（含）的聊天记录，
+  // Agent 记忆按完整回合截断复制；成功后切换到新会话。草稿与发送中不支持。
+  async function forkSession(fromMessageId) {
+    if (!selfStore || state.sending) return;
+    const name = state.currentAppName;
+    const srcSid = state.currentSessionId;
+    if (!name || !srcSid) return; // 草稿没有会话实体，fork 无从谈起
+    const srcKey = `chat:${name}:${srcSid}`;
+    const bucket = bucketFor(srcKey);
+    const idx = bucket.findIndex((m) => m.id === fromMessageId);
+    if (idx < 0) return;
+    const kept = bucket.slice(0, idx + 1).map((m) => ({ ...m }));
+
+    // 新会话登记（标题沿用原会话并标注分支）
+    const reg = await loadRegistry();
+    const app = reg.find((a) => a.name === name);
+    if (!app) return;
+    const baseTitle =
+      app.sessions?.find((s) => s.id === srcSid)?.title ||
+      (kept.find((m) => m.role === "user")?.content || "").slice(0, 24) ||
+      "新对话";
+    const sid = `s${Date.now().toString(36)}`;
+    app.sessions = app.sessions || [];
+    app.sessions.push({
+      id: sid,
+      title: `${baseTitle} ⎇`.slice(0, 40),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await saveRegistry(reg);
+
+    // 复制聊天记录（实时桶 + 落盘）
+    const dstKey = `chat:${name}:${sid}`;
+    sessionBuckets.set(dstKey, kept);
+    await selfStore.setItem(dstKey, kept.map((m) => ({ ...m })));
+
+    // 复制 Agent 记忆：按完整回合截断（fork 点所在回合若未闭合则整段舍弃）
+    const userTurns = kept.filter((m) => m.role === "user").length;
+    const srcThread = (await selfStore.getItem(`thread:${name}:${srcSid}`)) || [];
+    await selfStore.setItem(
+      `thread:${name}:${sid}`,
+      truncateThread(srcThread, userTurns),
+    );
+
+    await reloadApps();
+    await loadSessionById(sid, state.apps);
+  }
+
+  /* ---------- 上下文压缩 ---------- */
+
+  // 把 wire 消息拼成摘要请求用的对话稿（超长内容掐头留尾，防止摘要请求本身撑爆窗口）
+  const clip = (t, n) => {
+    const text = String(t ?? "");
+    if (text.length <= n) return text;
+    const half = Math.floor(n / 2);
+    return text.slice(0, half) + "\n…[过长截断]…\n" + text.slice(-half);
+  };
+  const buildTranscript = (thread) =>
+    thread
+      .map((m) => {
+        if (m.role === "user") return `用户：${clip(m.content, 3000)}`;
+        if (m.role === "assistant") {
+          const calls = (m.tool_calls || [])
+            .map(
+              (c) =>
+                `  [调用工具] ${c.function?.name} ${clip(c.function?.arguments, 600)}`,
+            )
+            .join("\n");
+          return `助手：${clip(m.content, 3000)}${calls ? "\n" + calls : ""}`;
+        }
+        if (m.role === "tool") return `工具结果：${clip(m.content, 1200)}`;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+  /**
+   * 压缩指定会话的 Agent 记忆：用摘要替换旧历史 + 保留最近 2 个完整回合原文，
+   * 并在聊天流里插一张 compact 卡片告知用户（显示层聊天记录不动）。
+   * 只应在两回合之间调用（sending = false）。返回 { ok, reason? }。
+   */
+  async function compressThread(chatKey) {
+    const threadId = chatKey === "chat:draft" ? "draft" : chatKey.slice("chat:".length);
+    const threadKey = `thread:${threadId}`;
+    const thread = (await selfStore.getItem(threadKey)) || [];
+    const turns = thread.filter((m) => m.role === "user").length;
+    // 太短不值得压：摘要 + 尾部原文不会比原记忆小多少
+    if (turns < 3) return { ok: false, reason: "对话还很短，暂不需要压缩" };
+
+    if (!aiModules) aiModules = await load("/mz/ai/main.js");
+    const { assistant, model } = await pickAssistant();
+    const res = await assistant.chat({
+      ...(model ? { model } : {}),
+      thinking: false,
+      stream: false,
+      messages: [
+        { role: "system", content: COMPACTION_PROMPT },
+        { role: "user", content: buildTranscript(thread) },
+      ],
+    });
+    const summary = String(res.content || "").trim();
+    if (!summary) return { ok: false, reason: "摘要生成失败，请稍后重试" };
+
+    const newThread = [
+      {
+        role: "user",
+        content: `以下是此前对话的压缩摘要，请基于它继续工作（细节需要时先用 list_files / read_file 核实）：\n\n${summary}`,
+      },
+      { role: "assistant", content: "已了解，我将基于该摘要继续。" },
+      ...tailThread(thread, 2),
+    ];
+    await selfStore.setItem(threadKey, newThread);
+
+    // 聊天流里插卡片（显示层记录不动，仅告知）；pushMessage 路由到 activeKey 桶
+    pushMessage({
+      id: state.nextId++,
+      role: "compact",
+      count: thread.length - tailThread(thread, 2).length,
+      summary,
+      open: false,
+      newGroup: true,
+    });
+    // 卡片随会话落盘
+    await selfStore.setItem(
+      chatKey,
+      bucketFor(chatKey).map((m) => ({ ...m })),
+    );
+    return { ok: true };
+  }
+
+  // 手动压缩：压缩当前正在查看的会话
+  async function compress() {
+    if (!selfStore || state.sending) {
+      return { ok: false, reason: state.sending ? "请等本轮对话结束后再压缩" : "" };
+    }
+    return await compressThread(viewKey());
+  }
+
+  // 设定上下文窗口（token），发送前的自动压缩判断用
+  function setContextWindow(n) {
+    contextWindow = Number(n) || 0;
+  }
+
+  /* ---------- 对话 API Key 切换 ---------- */
+
+  const API_KEY_LIST_KEY = "pref:active-key";
+
+  // 把 /mz/ai 的 key 列表镜像进 state（只留展示所需字段）
+  function syncApiKeyList(keys) {
+    set(
+      "apiKeys",
+      (keys || [])
+        .filter((k) => !k.disabled)
+        .map((k) => ({ id: k.id, provider: k.provider, maskedKey: k.maskedKey })),
+    );
+    // 选中的 key 已被删/禁用：回退自动
+    if (state.activeKeyId && !keys?.some((k) => k.id === state.activeKeyId && !k.disabled)) {
+      selectApiKey("");
+    }
+  }
+
+  // 切换对话模型（"" = 供应商默认）；切换即 invalidateAgent 下一回合生效
+  async function selectModel(id) {
+    if (state.activeModelId === id) return;
+    set("activeModelId", id);
+    invalidateAgent();
+    if (selfStore) {
+      try {
+        await selfStore.setItem("pref:active-model", id);
+      } catch {
+        /* 存储失败不影响本次会话 */
+      }
+    }
+  }
+
+  // 切换对话用的 API Key（"" = 自动）；下一回合经 invalidateAgent 生效
+  async function selectApiKey(id) {
+    if (state.activeKeyId === id) return;
+    set("activeKeyId", id);
+    invalidateAgent();
+    if (selfStore) {
+      try {
+        await selfStore.setItem(API_KEY_LIST_KEY, id);
+      } catch {
+        /* 存储失败不影响本次会话 */
+      }
+    }
+  }
+
   /* ---------- 预览 ---------- */
 
   function openApp(appName, mode) {
@@ -1121,6 +1341,16 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     activeBubble = null;
     currentAbort = { stopped: false };
     const abort = currentAbort;
+    // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
+    try {
+      const info = contextInfo(bucketFor(turnKey));
+      const estimate = info.used + Math.ceil((text.length || 0) / 2) + 64;
+      if (contextWindow > 0 && info.used > 0 && estimate >= contextWindow) {
+        await compressThread(turnKey);
+      }
+    } catch (err) {
+      console.warn("自动压缩上下文失败：", err);
+    }
     try {
       await agent.chat({
         messages: [{ role: "user", content: text }],
@@ -1197,6 +1427,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       } catch {
         /* 忽略 */
       }
+      // 恢复手动选中的 API Key 与模型
+      try {
+        const keyId = await selfStore.getItem(API_KEY_LIST_KEY);
+        if (typeof keyId === "string") set("activeKeyId", keyId);
+        const modelId = await selfStore.getItem("pref:active-model");
+        if (typeof modelId === "string") set("activeModelId", modelId);
+      } catch {
+        /* 忽略 */
+      }
+    }
+    // API Key 列表镜像 + 变化订阅（惰性加载 /mz/ai，失败仅代表宿主未提供）
+    try {
+      const m = await load("/mz/ai/main.js");
+      aiModules = aiModules || m;
+      syncApiKeyList(m.getApiKeys());
+      m.onApiKeysChange(syncApiKeyList);
+    } catch (err) {
+      console.warn("API Key 列表加载失败：", err);
     }
     await reloadApps();
 
@@ -1263,6 +1511,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     deleteApp,
     deleteSession,
     renameSession,
+    forkSession,
+    compress,
+    setContextWindow,
+    selectApiKey,
+    selectModel,
     selectMode,
     chooseLocalDir,
     grantLocalPermission,

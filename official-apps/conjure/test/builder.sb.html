@@ -54,6 +54,53 @@
       </template>
     </sb-test>
 
+    <sb-test name="truncateThread 按回合截断 wire 记忆">
+      <template>
+        <script type="module">
+          import { truncateThread, tailThread } from "../lib/builder.js";
+          {
+            const U = (c) => ({ role: "user", content: c });
+            const A = (c, calls) => ({
+              role: "assistant",
+              content: c,
+              ...(calls ? { tool_calls: calls } : {}),
+            });
+            const T = (id) => ({ role: "tool", tool_call_id: id, content: "r" });
+            const call = (id) => [{ id, type: "function", function: { name: "x", arguments: "{}" } }];
+            // 回合1：user→A(带call)→tool→A(闭合)；回合2：user→A(闭合)；回合3：user→A(带call，未闭合)
+            const thread = [
+              U("q1"), A("t1", call("c1")), T("c1"), A("done1"),
+              U("q2"), A("done2"),
+              U("q3"), A("t3", call("c3")),
+            ];
+            const checks = {
+              // fork 在回合2末：保留回合1+2（回合2闭合）
+              two: JSON.stringify(truncateThread(thread, 2)) === JSON.stringify([thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]]),
+              // fork 在回合3（未闭合）：悬空 tool_calls，回合3 整段丢弃，仍保留前两回合
+              openTurn: JSON.stringify(truncateThread(thread, 3)) === JSON.stringify([thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]]),
+              // 截断到 0 回合
+              zero: truncateThread(thread, 0).length === 0,
+              // 空记忆
+              empty: JSON.stringify(truncateThread([], 2)) === "[]",
+              // 防御性：非 user 开头的记忆开头散段被跳过
+              orphan: JSON.stringify(truncateThread([{ role: "assistant", content: "hi" }, U("q"), A("a")], 1)) === JSON.stringify([U("q"), A("a")]),
+            };
+            const complete = [thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]];
+            const tailChecks = {
+              // 末尾 1 个完整回合（q3 未闭合被丢弃后只剩 q2 回合）
+              tail1: JSON.stringify(tailThread(thread, 1)) === JSON.stringify([thread[4], thread[5]]),
+              tail2: JSON.stringify(tailThread(thread, 2)) === JSON.stringify(complete),
+              tail0: tailThread(thread, 0).length === 0,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean) && Object.values(tailChecks).every(Boolean),
+              content: { checks, tailChecks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="buildRunUrl / buildAppRecord 产物">
       <template>
         <script type="module">

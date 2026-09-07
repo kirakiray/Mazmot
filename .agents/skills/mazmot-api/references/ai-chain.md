@@ -232,7 +232,7 @@ schema 字段定义：
   content: "最终回答",
   reasoningContent: "最后一次模型调用的思考过程",
   model: "使用的模型",
-  usage: { prompt_tokens, completion_tokens, total_tokens }, // 整个循环累计
+  usage: { prompt_tokens, completion_tokens, total_tokens, context_tokens }, // 前三个为整个循环累计；context_tokens 为当前上下文占用估算（末次模型调用的 prompt + completion，覆盖写入）
   toolCalls: [],           // 恒为空数组（最终回答不再发起工具调用）
   messages: [              // 完整轨迹（wire 格式，含 system / tool 消息）
     { role: "user", content: "..." },

@@ -79,9 +79,9 @@ Mazmot/
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi，被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js）
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档

@@ -16,7 +16,7 @@
       <script type="module">
         return (async () => {
           const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { deepseek: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -62,7 +62,7 @@
       <script type="module">
         return (async () => {
           const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { deepseek: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -108,7 +108,7 @@
       <script type="module">
         return (async () => {
           const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { deepseek: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -159,7 +159,7 @@
       <script type="module">
         return (async () => {
           const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { deepseek: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -197,7 +197,7 @@
       <script type="module">
         return (async () => {
           const { DeepseekAssistant } = await import("../supplier/deepseek.js");
-          const { deepseek: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { deepseek: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -234,7 +234,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -279,7 +279,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -324,7 +324,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -370,7 +370,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -424,7 +424,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -495,7 +495,7 @@
       <script type="module">
         return (async () => {
           const { KimiAssistant } = await import("../supplier/kimi.js");
-          const { kimi: apiKey } = await fetch("/ai/test-api-keys.json").then(r => r.json());
+          const { kimi: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
 
           if (!apiKey || apiKey.startsWith("sk-your-")) {
             return {
@@ -1025,6 +1025,366 @@
             assert: Object.values(checks).every(Boolean),
             content: { checks, result },
           };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <!-- 以下四个用例需要按量付费 GLM Key（json 的 "glm" 字段），填好后取消注释启用
+  <sb-test name="GLM: 普通对话 (glm-4.7-flash, 非思考)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmAssistant } = await import("../supplier/glm.js");
+          const { glm: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM API Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmAssistant("test-glm", apiKey);
+            const result = await assistant.chat({
+              model: "glm-4.7-flash",
+              thinking: false,
+              messages: [{ role: "user", content: "请只回复两个字：你好" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasModel = !!result.model;
+
+            return {
+              assert: hasContent && hasModel,
+              content: {
+                content: result.content,
+                model: result.model,
+                usage: result.usage,
+                checks: { hasContent, hasModel },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM: 思考模式 (glm-4.7 + thinking)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmAssistant } = await import("../supplier/glm.js");
+          const { glm: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM API Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmAssistant("test-glm-think", apiKey);
+            const result = await assistant.chat({
+              model: "glm-4.7",
+              thinking: true,
+              messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasReasoning = typeof result.reasoningContent === "string" && result.reasoningContent.length > 0;
+
+            return {
+              assert: hasContent && hasReasoning,
+              content: {
+                content: result.content,
+                reasoningContent: result.reasoningContent,
+                model: result.model,
+                checks: { hasContent, hasReasoning },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM: 流式输出">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmAssistant } = await import("../supplier/glm.js");
+          const { glm: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM API Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmAssistant("test-glm-stream", apiKey);
+            const deltas = [];
+            const result = await assistant.chat({
+              model: "glm-4.7-flash",
+              thinking: false,
+              stream: true,
+              messages: [{ role: "user", content: "从 1 数到 5，用逗号分隔。" }],
+              onStream: (data) => {
+                if (data.delta) deltas.push(data.delta);
+              },
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasDeltas = deltas.length > 0;
+
+            return {
+              assert: hasContent && hasDeltas,
+              content: {
+                content: result.content,
+                deltaCount: deltas.length,
+                checks: { hasContent, hasDeltas },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM: 模型列表与余额查询">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmAssistant } = await import("../supplier/glm.js");
+          const { glm: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM API Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmAssistant("test-glm-meta", apiKey);
+            const models = await assistant.getModels();
+            const remaining = await assistant.getRemaining();
+
+            const hasModels = Array.isArray(models) && models.length > 0;
+            const hasBalances = Array.isArray(remaining.balances);
+
+            return {
+              assert: hasModels && hasBalances,
+              content: {
+                modelCount: models.length,
+                balances: remaining.balances,
+                checks: { hasModels, hasBalances },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test> -->
+
+  <sb-test name="GLM Coding Plan: 普通对话 (glm-4.7)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmCodingAssistant } = await import("../supplier/glm.js");
+          const { glmcodingplan: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM Coding Plan Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmCodingAssistant("test-glm-coding", apiKey);
+            const result = await assistant.chat({
+              model: "glm-4.7",
+              thinking: false,
+              messages: [{ role: "user", content: "请只回复两个字：你好" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+
+            return {
+              assert: hasContent,
+              content: {
+                content: result.content,
+                model: result.model,
+                usage: result.usage,
+                checks: { hasContent },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM Coding Plan: getModels 降级探测与余额空返回">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmCodingAssistant } = await import("../supplier/glm.js");
+          const { glmcodingplan: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM Coding Plan Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmCodingAssistant("test-glm-coding-meta", apiKey);
+            const models = await assistant.getModels();
+            const remaining = await assistant.getRemaining();
+
+            const hasModels = Array.isArray(models) && models.length > 0;
+            const codingBalanceSafe = Array.isArray(remaining.balances);
+
+              return {
+                assert: hasModels && codingBalanceSafe,
+                content: {
+                  models,
+                  balances: remaining.balances,
+                  checks: { hasModels, codingBalanceSafe },
+                },
+              };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM Coding Plan: 思考模式 (glm-4.7 + thinking)">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmCodingAssistant } = await import("../supplier/glm.js");
+          const { glmcodingplan: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM Coding Plan Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmCodingAssistant("test-glm-coding-think", apiKey);
+            const result = await assistant.chat({
+              model: "glm-4.7",
+              thinking: true,
+              messages: [{ role: "user", content: "9.11 和 9.8 哪个大？简短回答。" }],
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasReasoning = typeof result.reasoningContent === "string" && result.reasoningContent.length > 0;
+
+            return {
+              assert: hasContent && hasReasoning,
+              content: {
+                content: result.content,
+                reasoningContent: result.reasoningContent,
+                model: result.model,
+                checks: { hasContent, hasReasoning },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
+        })();
+      </script>
+    </template>
+  </sb-test>
+
+  <sb-test name="GLM Coding Plan: 流式输出">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmCodingAssistant } = await import("../supplier/glm.js");
+          const { glmcodingplan: apiKey } = await fetch("/mz/ai/test-api-keys.json").then(r => r.json());
+
+          if (!apiKey || apiKey.startsWith("your-real-")) {
+            return {
+              assert: false,
+              content: { error: "请先在 ai/test-api-keys.json 填入真实的 GLM Coding Plan Key" }
+            };
+          }
+
+          try {
+            const assistant = new GlmCodingAssistant("test-glm-coding-stream", apiKey);
+            const deltas = [];
+            const result = await assistant.chat({
+              model: "glm-4.7",
+              thinking: false,
+              stream: true,
+              messages: [{ role: "user", content: "从 1 数到 5，用逗号分隔。" }],
+              onStream: (data) => {
+                if (data.delta) deltas.push(data.delta);
+              },
+            });
+
+            const hasContent = typeof result.content === "string" && result.content.length > 0;
+            const hasDeltas = deltas.length > 0;
+
+            return {
+              assert: hasContent && hasDeltas,
+              content: {
+                content: result.content,
+                deltaCount: deltas.length,
+                checks: { hasContent, hasDeltas },
+              },
+            };
+          } catch (error) {
+            return {
+              assert: false,
+              content: { error: error.message, stack: error.stack },
+            };
+          }
         })();
       </script>
     </template>
