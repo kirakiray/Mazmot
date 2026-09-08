@@ -164,39 +164,7 @@ splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远
 - **发布者必须在线**。接收端从发布者 IndexedDB 拉 chunk，发布者标签页关闭后未拉完的 chunk 无法继续。
 - `appId` = `` `${name}-${userId}` ``；`appId.endsWith("-" + currentUserId)` 用于判定"是不是我自己分享的"（自我分享可跳过安装）。
 
-## 5. 应用模板（创建新应用）
-
-Mazmot 提供模板系统，让用户从预置模板创建新应用。模板位于 `apps/main/home/templates/<id>/`，通过 `__template.json` 描述元数据与文件清单。`__template.json` 的 `name` / `desc` **基准值必须为英文**，可选 `i18n` 字段按语言码覆盖（结构同 `__app.json`：`"i18n": { "cn": { "name": "...", "desc": "..." } }`），`loadTemplates` 按 `getLang()` 解析，回退链：`i18n[当前语言]` → 基准英文。
-
-```js
-import {
-  loadTemplates, buildTemplateFiles, writeTemplateFiles,
-} from "/apps/main/home/template-writer.js";
-
-// 加载模板列表（读 templates/manifest.json + 各 __template.json）
-const list = await loadTemplates(); // [{ id, name, desc }]
-
-// 生成文件列表（不写盘）
-const files = await buildTemplateFiles({
-  name: "my-app",
-  desc: "描述",
-  templateId: "base",  // "base" | "share-link" | "ping-pong" | "tic-tac-toe"
-});
-
-// 写入目标目录（自动创建 client/）
-await writeTemplateFiles({
-  dirHandle,           // noneos-core DirHandle
-  name, desc,
-  templateId: "base",
-  onProgress: p => {}, // { index, total, path, status, progress }
-});
-```
-
-`__template.json` 的 `replacements[].to` 支持变量：`APP_NAME` / `APP_NAMESPACE` / `APP_DESC` / `APP_DESC_HTML` / `APP_DESC_JSON` / `CREATED_AT`。
-
-**新增模板必须在 `templates/manifest.json` 登记 id。**
-
-## 6. 官方应用（应用市场）
+## 5. 官方应用（应用市场）
 
 官方应用位于 `official-apps/<id>/`，结构同模板，清单文件名为 `__app.json`。
 
@@ -235,7 +203,7 @@ const result = await installOfficialApp({
 
 官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
 
-## 7. 应用打开状态追踪 —— `/apps/main/home/app-status.js`
+## 6. 应用打开状态追踪 —— `/apps/main/home/app-status.js`
 
 跨标签页追踪"哪些应用窗口还活着"，基于 `BroadcastChannel("mazmot-app-status")`。
 
@@ -259,7 +227,7 @@ clearOpened(app.name);               // 删除时清理
 
 这是 Mazmot 唯一允许直连 `localStorage`（键 `mazmot-opened-apps`）的场景，用于跨刷新恢复 UI 状态。其它持久化请用 `/nos/storage/main.js`。
 
-## 8. run-app 接收端工具函数
+## 7. run-app 接收端工具函数
 
 仅在 `/apps/run-app/` 内使用，写测试时可 import 纯函数：
 
@@ -301,7 +269,7 @@ location.replace(`/$mazmot-apps/${recordName}/client/index.html`);
 
 **不要吞错**：任何步骤抛错都应交给 `fail(title, err)` 进入错误页并 `console.error(err)`，禁止 try/catch 静默。
 
-## 8.5 系统级证书能力 —— `/mz/cert/main.js`
+## 7.5 系统级证书能力 —— `/mz/cert/main.js`
 
 封装 noneos-core `user.cred` + 链式引用 / 签发历史，任何应用需要证书能力时的统一入口。**完整 API 说明、链式引用语法、链视图用法与可抄代码见 [references/cert.md](./references/cert.md)**。速记：
 
@@ -321,7 +289,7 @@ const {
 
 关键语义：证书送达是**拉取模式**（接收方 `claimCert`，需签发者在线）；同 key 重复签发按 signTime 覆盖；链式引用语法 `[chain_key:role-issuer-subject]`（槽位引用，抗更新）。测试见 [mz/cert/test/](mz/cert/test/)。
 
-## 9. 测试（sibyl-test）
+## 8. 测试（sibyl-test）
 
 Mazmot 的每个库模块都配有 `.sb.html` 测试，测试 API 形如：
 
@@ -371,7 +339,7 @@ Mazmot 的每个库模块都配有 `.sb.html` 测试，测试 API 形如：
 - **依赖文件系统的函数**（`readAppFiles`）：在测试内 `await init("mazmot-test-apps")` 建临时目录、写文件、调被测函数、断言结果。
 - **依赖 P2P 网络的函数**（`publishApp`、`fetchSharePayload`）：拆成纯函数 + 注入依赖的形式单测，端到端流程留给手动验证。
 
-## 10. 能力边界（什么不做）
+## 9. 能力边界（什么不做）
 
 - **不重新封装 noneos-core**：`fs` / `user` / `DataPublisher` / `n-icon` 等 API 直接按 noneos-core 文档调用，Mazmot 只在上层（`share-mgr.js` 等）做业务编排。
 - **不支持二进制分享**：当前只支持 UTF-8 文本文件（见 §3 / §4）。

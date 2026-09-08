@@ -3,6 +3,9 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
 
   <div class="app">
@@ -69,6 +72,9 @@
           <st-icon-button title="预览应用" on:click="openApp(currentAppName, currentAppMode)">
             <n-icon icon="mdi:play-circle-outline"></n-icon>
           </st-icon-button>
+          <st-icon-button title="备份管理" on:click="openBackupDrawer">
+            <n-icon icon="mdi:backup-restore"></n-icon>
+          </st-icon-button>
         </o-if>
         <st-icon-button title="工具 / 技能" on:click="openPanel">
           <svg
@@ -112,25 +118,28 @@
               on:click="$host.loadSession($data.id)"
             >
               <span class="session-title">{{$data.title}}</span>
+              <!-- 对话进行中：loading 替代删除按钮的位置；此时不允许删除 -->
               <o-if :value="$data.busy === true">
                 <span class="session-busy" attr:title="'该会话正在对话中'">
                   <n-icon icon="mdi:loading"></n-icon>
                 </span>
               </o-if>
-              <!-- 圆形删除按钮：确认时形变为圆角方形 -->
-              <button
-                class="session-del"
-                class:confirm="$host.confirmingDelSession === $data.id"
-                attr:title="$host.confirmingDelSession === $data.id ? '再点一次确认删除' : '删除对话'"
-                on:click="$host.deleteSession($event, $data.id)"
-              >
-                <o-if :value="$host.confirmingDelSession === $data.id">
-                  <span>确认</span>
-                </o-if>
-                <o-if :value="$host.confirmingDelSession !== $data.id">
-                  <n-icon icon="mdi:close"></n-icon>
-                </o-if>
-              </button>
+              <!-- 圆形删除按钮：确认时形变为圆角方形；对话进行中不渲染 -->
+              <o-if :value="$data.busy !== true">
+                <button
+                  class="session-del"
+                  class:confirm="$host.confirmingDelSession === $data.id"
+                  attr:title="$host.confirmingDelSession === $data.id ? '再点一次确认删除' : '删除对话'"
+                  on:click="$host.deleteSession($event, $data.id)"
+                >
+                  <o-if :value="$host.confirmingDelSession === $data.id">
+                    <span>确认</span>
+                  </o-if>
+                  <o-if :value="$host.confirmingDelSession !== $data.id">
+                    <n-icon icon="mdi:close"></n-icon>
+                  </o-if>
+                </button>
+              </o-if>
             </div>
           </o-fill>
         </div>
@@ -594,6 +603,100 @@
       </div>
     </aside>
 
+    <!-- 备份管理抽屉（右，比普通面板宽）：把当前应用 client/ 打包到同层 backup/ 目录 -->
+    <div class="panel-mask" class:show="backupDrawerOpen" on:click="closeBackupDrawer"></div>
+    <aside class="backup-drawer" class:show="backupDrawerOpen">
+      <div class="panel-head">
+        <span>备份管理</span>
+        <st-icon-button title="关闭" on:click="closeBackupDrawer">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <div class="backup-sub">
+        {{currentAppDisplay || currentAppName}} · 备份存于应用目录的 backup/ 下
+      </div>
+      <div class="backup-actions">
+        <st-button
+          variant="filled"
+          attr:disabled="backupBusy"
+          style="width: 100%"
+          on:click="handleCreateBackup"
+        >
+          <o-if :value="backupBusy">⏳ 正在打包…</o-if>
+          <o-if :value="!backupBusy">＋ 新增备份</o-if>
+        </st-button>
+      </div>
+      <div class="panel-body">
+        <o-if :value="backups.length === 0">
+          <div class="panel-empty">还没有备份，点上方「新增备份」打包当前代码</div>
+        </o-if>
+        <o-fill :value="backups" fill-key="id">
+          <div class="backup-item">
+            <n-icon class="backup-icon" icon="mdi:folder-zip-outline"></n-icon>
+            <div class="backup-item-main">
+              <div class="backup-item-name">
+                {{$host.backupLabel($data)}}
+                <o-if :value="$data.current">
+                  <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
+                </o-if>
+              </div>
+              <div class="backup-item-dir">{{$data.id}}/</div>
+              <o-if :value="$data.note !== ''">
+                <div class="backup-item-note" attr:title="$data.note">{{$data.note}}</div>
+              </o-if>
+            </div>
+            <div class="backup-item-actions">
+              <st-button
+                class="del-btn"
+                variant="text"
+                attr:title="$data.current ? '内容已是该备份状态' : '还原此备份'"
+                on:click="$host.restoreBackupClick($data)"
+              >
+                <o-if :value="!$data.current">
+                  <n-icon icon="mdi:restore"></n-icon>
+                </o-if>
+                <o-if :value="$data.current">
+                  <n-icon icon="mdi:check"></n-icon>
+                </o-if>
+              </st-button>
+              <st-button
+                class="del-btn"
+                variant="text"
+                attr:title="'编辑名称与备注'"
+                on:click="$host.openBackupEdit($data)"
+              >
+                <n-icon icon="mdi:pencil-outline"></n-icon>
+              </st-button>
+              <st-button
+                class="del-btn"
+                variant="text"
+                class:confirm="$host.confirmingDelBackup === $data.id"
+                attr:title="$host.confirmingDelBackup === $data.id ? '再点一次确认删除' : '删除备份'"
+                on:click="$host.deleteBackupClick($event, $data.id)"
+              >
+                <o-if :value="$host.confirmingDelBackup === $data.id">
+                  <span>确认</span>
+                </o-if>
+                <o-if :value="$host.confirmingDelBackup !== $data.id">
+                  <n-icon icon="mdi:delete-outline"></n-icon>
+                </o-if>
+              </st-button>
+            </div>
+          </div>
+        </o-fill>
+      </div>
+    </aside>
+
     <!-- 工具 / 技能面板（右） -->
     <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
     <aside class="panel" class:show="panelOpen">
@@ -684,6 +787,32 @@
         </o-if>
       </div>
     </aside>
+
+    <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
+         避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
+    <st-dialog class="backup-edit" sync:open="backupEditOpen" auto-close>
+      <div class="backup-edit-panel">
+        <div class="backup-edit-title">编辑备份</div>
+        <div class="backup-edit-id">{{editingBackupId}}/</div>
+        <div class="backup-edit-field">
+          <div class="backup-edit-label">名称</div>
+          <st-input sync:value="editForm.label" placeholder="备份显示名称（留空恢复默认时间）"></st-input>
+        </div>
+        <div class="backup-edit-field">
+          <div class="backup-edit-label">备注</div>
+          <st-textarea
+            sync:value="editForm.note"
+            rows="3"
+            autosize
+            placeholder="记录这份备份的内容或用途，留空则清除"
+          ></st-textarea>
+        </div>
+        <div class="backup-edit-actions">
+          <st-button variant="text" on:click="closeBackupEdit">取消</st-button>
+          <st-button variant="filled" on:click="saveBackupEdit">保存</st-button>
+        </div>
+      </div>
+    </st-dialog>
   </div>
 
   <script>
@@ -781,6 +910,13 @@
           panelOpen: false,
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
+          backupDrawerOpen: false, // 右侧备份管理抽屉
+          backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
+          backupBusy: false, // 正在打包备份
+          confirmingDelBackup: "", // 两步确认删除的备份 id
+          backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
+          editingBackupId: "", // 正在编辑的备份 id
+          editForm: { label: "", note: "" }, // 编辑对话框表单
           openTabs: [], // 正在打开中的项目标签（跨标签感知）
           confirmingDelApp: "",
           apps: [],
@@ -1182,6 +1318,121 @@
 
           closeProjectDrawer() {
             this.projDrawerOpen = false;
+          },
+
+          // ---- 备份管理抽屉（业务在仓库：打包 / 列表 / 删除走 backup/ 目录） ----
+
+          async openBackupDrawer() {
+            this.backupDrawerOpen = true;
+            this.confirmingDelBackup = "";
+            await store.refreshBackups();
+          },
+
+          closeBackupDrawer() {
+            this.backupDrawerOpen = false;
+          },
+
+          async handleCreateBackup() {
+            const res = await store.createBackup();
+            if (res?.skipped) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              );
+              toast("内容未变化，已跳过重复备份");
+            }
+          },
+
+          backupTime(id) {
+            // backup-20260908-153012-abcd1234 → 2026-09-08 15:30:12（尾部为内容 hash）
+            const m = /^backup-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-[0-9a-f]{8})?$/.exec(
+              id || "",
+            );
+            if (!m) return id || "";
+            return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
+          },
+
+          // 列表主标题：自定义名称优先，无则回退格式化时间
+          backupLabel(backup) {
+            return backup.label || this.backupTime(backup.id);
+          },
+
+          // ---- 备份编辑对话框：名称 + 备注 一并保存（st-dialog 封装） ----
+
+          openBackupEdit(backup) {
+            this.editingBackupId = backup.id;
+            this.editForm = {
+              label: backup.label || "",
+              note: backup.note || "",
+            };
+            this.backupEditOpen = true;
+          },
+
+          closeBackupEdit() {
+            this.backupEditOpen = false;
+          },
+
+          async saveBackupEdit() {
+            const id = this.editingBackupId;
+            // 名称留空 = 恢复默认时间显示；备注留空 = 清除备注
+            const label = this.editForm.label.trim();
+            const note = this.editForm.note.trim();
+            if (label) {
+              const ok = await store.renameBackup(id, label);
+              if (!ok) return; // 保存失败保持对话框打开，不丢输入
+            }
+            await store.setNote(id, note);
+            this.backupEditOpen = false;
+          },
+
+          async deleteBackupClick(event, id) {
+            event?.stopPropagation?.();
+            if (this.confirmingDelBackup !== id) {
+              this.confirmingDelBackup = id;
+              return;
+            }
+            this.confirmingDelBackup = "";
+            await store.deleteBackup(id);
+          },
+
+          // 还原备份：先确认覆盖风险；当前内容与备份一致时提示无变动
+          async restoreBackupClick(backup) {
+            const { default: confirmDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+            );
+            const { default: toast } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+            );
+            if (this.backups.length === 0) {
+              const ok = await confirmDlg({
+                title: "还没有备份",
+                message: "当前项目还没有任何备份。建议先创建一份备份，否则还原后当前内容会消失且无法恢复。",
+                yes: "立即备份",
+                cancel: "取消",
+              });
+              if (ok) await store.createBackup();
+              return;
+            }
+            if (backup.current) {
+              toast("当前内容与该备份一致，没有变动，无需还原");
+              return;
+            }
+            const ok = await confirmDlg({
+              title: "还原备份",
+              message:
+                `将把应用内容还原为「${this.backupLabel(backup)}」时的状态，` +
+                "还原后当前未备份的修改会消失。确定还原？",
+              yes: "确定还原",
+              cancel: "取消",
+              color: "error",
+            });
+            if (!ok) return;
+            const res = await store.restoreBackup(backup.id);
+            if (!res) return; // 失败已提示
+            if (res.reason === "unchanged") {
+              toast("当前内容与该备份一致，没有变动，无需还原");
+              return;
+            }
+            toast(`已还原 ${res.files} 个文件`);
           },
 
           // 点击项目：空白草稿态直接在当前页内切换；已进入项目则新标签打开

@@ -1372,6 +1372,183 @@
   transform: translateX(0);
 }
 
+/* 备份管理抽屉（右）：比普通面板宽，列表展示 backup/ 目录 */
+.backup-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  width: min(460px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18);
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+}
+
+.backup-drawer.show {
+  transform: translateX(0);
+}
+
+.backup-sub {
+  flex: none;
+  padding: 0 20px 10px;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.backup-actions {
+  flex: none;
+  padding: 0 12px 8px;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  padding: 9px 8px 9px 12px;
+  border-radius: 10px;
+  transition: background-color 160ms ease;
+}
+
+.backup-item:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 5%,
+    transparent
+  );
+}
+
+.backup-icon {
+  flex: none;
+  font-size: 20px;
+  color: var(--md-sys-color-primary);
+}
+
+.backup-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.backup-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+}
+
+/* 「与当前一致」徽标：该备份的内容指纹与当前 client/ 相同 */
+.backup-current-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  vertical-align: 1px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.backup-item-dir {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.backup-item-note {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.backup-item .del-btn {
+  opacity: 0;
+  padding: 3px;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 1;
+}
+
+.backup-item .del-btn n-icon {
+  font-size: 15px;
+}
+
+/* 两个操作按钮成组紧贴 */
+.backup-item-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.backup-item-actions .del-btn + .del-btn {
+  margin-left: 2px;
+}
+
+.backup-item:hover .del-btn,
+.backup-item .del-btn.confirm {
+  opacity: 1;
+}
+
+/* ---------- 备份编辑对话框（名称 + 备注） ---------- */
+
+/* 面板宽度由组件的 ::part(panel) 控制，内容区跟随铺满 */
+.backup-edit::part(panel) {
+  width: min(440px, 86vw);
+}
+
+.backup-edit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box; /* content-box 下 100% + padding 会超出 .body 触发裁切 */
+  padding: 4px 2px;
+}
+
+.backup-edit-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.backup-edit-id {
+  margin-top: -6px;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  word-break: break-all;
+}
+
+.backup-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.backup-edit-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.backup-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 /* 列表项「已打开」徽标：该项目已有标签正打开 */
 .open-tab-badge {
   display: inline-block;
@@ -1510,11 +1687,14 @@
   transition: font-weight 160ms ease;
 }
 
-/* 会话列表项「对话进行中」loading 图标 */
+/* 会话列表项「对话进行中」loading 图标（占据删除按钮的槽位，同尺寸防行高跳动） */
 .session-busy {
   flex: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   color: var(--md-sys-color-primary);
   font-size: 15px;
 }
@@ -1578,12 +1758,6 @@
   font-weight: 600;
 }
 
-/* 会话对话进行中（loading 图标在位）时隐藏删除按钮，避免与图标抢位 */
-.session-item:has(.session-busy) .session-del {
-  opacity: 0;
-  pointer-events: none;
-}
-
 /* 两步确认删除按钮（小号 st-button text + n-icon；平时弱化、悬停/确认时清晰） */
 .del-btn {
   flex: none;
@@ -1605,12 +1779,6 @@
 .panel-item.active .del-btn,
 .del-btn.confirm {
   opacity: 1;
-}
-
-/* 会话对话进行中（loading 图标在位）时隐藏删除按钮，避免与图标抢位 */
-.session-item:has(.session-busy) .del-btn {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .del-btn:hover {

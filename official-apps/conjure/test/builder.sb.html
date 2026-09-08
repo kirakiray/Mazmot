@@ -143,8 +143,15 @@
               icon: "🍅",
               handle: fakeHandle,
             });
+            // 仓库层 onAppCreated 回调传的是 appName 字段（历史 bug：meta.name
+            // 取不到时 name 被写成空串，登记记录回查必失败 → 误报"授权已失效"）
+            const recordByAppName = buildLocalAppRecord({
+              appName: "Todo App",
+              handle: fakeHandle,
+            });
             const checks = {
               name: record.name === "todo-app",
+              appNameAlias: recordByAppName.name === "todo-app",
               source: record.source === "local",
               namespace: record.namespace === "",
               dirName: record.dirName === "todo-app",
@@ -279,6 +286,157 @@
       </template>
     </sb-test>
 
+    <sb-test name="备份打包 / 列表 / 删除（fake fs）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            listAppBackups,
+            deleteAppBackup,
+            renameAppBackup,
+            setBackupNote,
+            restoreAppBackup,
+          } from "../lib/builder.js";
+          {
+            try {
+              // 内存 fake fs：目录树存 Map（父 → 子名集合），文件内容存 Map；
+              // 缺失读取返回 null（模拟真实 Core），create: "file" 只作用于最后一段
+              const fileTree = new Map(); // dir path -> Set(child name)
+              const contents = new Map(); // file path -> text
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+                async remove() {
+                  for (const k of [...fileTree.keys()]) {
+                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
+                  }
+                  for (const k of [...contents.keys()]) {
+                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
+                  }
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
+              await writeAppFile(fsFake, "demo", "index.html", "<html></html>");
+              await writeAppFile(
+                fsFake,
+                "demo",
+                "pages/home.html",
+                "<template page></template>",
+              );
+              // client/ 内混入 node_modules：打包时应被忽略
+              await writeAppFile(fsFake, "demo", "node_modules/pkg/x.js", "junk");
+
+              const res = await createAppBackup(fsFake, "demo");
+              const list = await listAppBackups(fsFake, "demo");
+              const restored = contents.get(`demo/backup/${res.id}/pages/home.html`);
+
+              // 内容无变化再次备份：hash 相同 → 跳过，不产生重复备份
+              const res2 = await createAppBackup(fsFake, "demo");
+              const list2 = await listAppBackups(fsFake, "demo");
+              // 内容变化后备份：hash 不同 → 新备份
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v2</html>");
+              const res3 = await createAppBackup(fsFake, "demo");
+              const list3 = await listAppBackups(fsFake, "demo");
+
+              // 更名：label 写入备份目录 __meta.json，目录名不变
+              await renameAppBackup(fsFake, "demo", res3.id, "稳定版");
+              // 备注：写入同一 __meta.json（保留 label），空串清除
+              await setBackupNote(fsFake, "demo", res3.id, "修复签到后的稳定版");
+              const list4 = await listAppBackups(fsFake, "demo");
+              const renamed = list4.find((b) => b.id === res3.id);
+              // 去重按目录名 hash 命中，更名/备注不影响
+              await writeAppFile(fsFake, "demo", "index.html", "<html></html>");
+              const res5 = await createAppBackup(fsFake, "demo");
+              // 清除备注：note 变空，label 保留
+              await setBackupNote(fsFake, "demo", res3.id, "");
+              const list5 = await listAppBackups(fsFake, "demo");
+              const cleared = list5.find((b) => b.id === res3.id);
+
+              await deleteAppBackup(fsFake, "demo", res.id);
+              const list6 = await listAppBackups(fsFake, "demo");
+
+              let idRejected = false;
+              try {
+                await deleteAppBackup(fsFake, "demo", "../evil");
+              } catch {
+                idRejected = true;
+              }
+
+              const checks = {
+                backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
+                packed: res.files === 3 && res.bytes > 0,
+                listed: list.length === 1 && list[0].id === res.id,
+                noNodeModules: ![...contents.keys()].some(
+                  (k) => k.startsWith("demo/backup/") && k.includes("node_modules"),
+                ),
+                contentCopied: restored === "<template page></template>",
+                dedupeSkipped: res2.skipped && res2.id === res.id,
+                stillOne: list2.length === 1,
+                changedNewBackup: !res3.skipped && res3.id !== res.id,
+                twoBackups: list3.length === 2,
+                newestFirst: list3[0].id > list3[1].id,
+                renamed: renamed && renamed.label === "稳定版",
+                noted: renamed && renamed.note === "修复签到后的稳定版",
+                noteCleared:
+                  cleared &&
+                  cleared.note === "" &&
+                  cleared.label === "稳定版",
+                dedupeAfterRename: res5.skipped && res5.id === res.id,
+                deleted: list6.length === 1 && list6[0].id === res3.id,
+                idRejected,
+              };              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, res, list3, list6 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="buildSystemPrompt 按上下文注入">
       <template>
         <script type="module">
@@ -298,6 +456,10 @@
               draftPlain: !draft.includes("当前上下文"),
               appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
               mustReadFirst: withApp.includes("必须先调用 list_files"),
+              mustReadDocs:
+                withApp.includes("AGENTS.md、CONTEXT.md 和 app.json") &&
+                withApp.includes("严格遵守其中约定") &&
+                withApp.includes("同步更新 CONTEXT.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
             };
@@ -310,7 +472,7 @@
       </template>
     </sb-test>
 
-    <sb-test name="本地渠道以所选目录为项目根（不建子目录）">
+    <sb-test name="本地渠道写入所选目录的 client/ 子目录（与虚拟渠道布局一致）">
       <template>
         <script type="module">
           import {
@@ -350,12 +512,12 @@
               const list = await listAppFiles(fsFake, "my-app", fakeRoot);
 
               const checks = {
-                appJsonAtRoot: files.has("app.json"),
-                pageAtRoot: files.has("pages/home.html"),
-                noNested: !files.has("my-app/client/app.json"),
+                appJsonInClient: files.has("client/app.json"),
+                pageInClient: files.has("client/pages/home.html"),
+                nothingAtRoot: !files.has("app.json") && !files.has("pages/home.html"),
                 listOk:
                   list.includes("app.json") && list.includes("pages/home.html"),
-                metaWritten: (content.get("app.json") || "").includes("my-app"),
+                metaWritten: (content.get("client/app.json") || "").includes("my-app"),
               };
               return {
                 assert: Object.values(checks).every(Boolean),
@@ -533,6 +695,128 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, files },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="备份还原：覆盖写回 / 无变动检测（fake fs）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            readAppFile,
+            createAppBackup,
+            restoreAppBackup,
+            listAppBackups,
+          } from "../lib/builder.js";
+          {
+            try {
+              // 与备份测试相同的内存 fake fs
+              const fileTree = new Map();
+              const contents = new Map();
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+                async remove() {
+                  for (const k of [...fileTree.keys()]) {
+                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
+                  }
+                  for (const k of [...contents.keys()]) {
+                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
+                  }
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v1</html>");
+              await writeAppFile(
+                fsFake,
+                "demo",
+                "pages/home.html",
+                "<template page>v1</template>",
+              );
+              const backup = await createAppBackup(fsFake, "demo");
+
+              // 之后改动：新增文件 + 修改文件
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v2</html>");
+              await writeAppFile(fsFake, "demo", "pages/extra.html", "extra");
+
+              const restored = await restoreAppBackup(fsFake, "demo", backup.id);
+              const v1 = await readAppFile(fsFake, "demo", "index.html");
+              const extraGone = await readAppFile(fsFake, "demo", "pages/extra.html");
+              const page = await readAppFile(fsFake, "demo", "pages/home.html");
+              // __meta.json 不应被还原进 client/
+              const metaLeak = await readAppFile(fsFake, "demo", "__meta.json");
+
+              // 无变动：还原成功后再还原一次应返回 unchanged
+              const unchanged = await restoreAppBackup(fsFake, "demo", backup.id);
+
+              // 非法 id
+              let idRejected = false;
+              try {
+                await restoreAppBackup(fsFake, "demo", "../evil");
+              } catch {
+                idRejected = true;
+              }
+
+              const checks = {
+                restored: restored.restored && restored.files === 3,
+                reverted: v1 === "<html>v1</html>",
+                extraRemoved: extraGone === null,
+                pageBack: page === "<template page>v1</template>",
+                noMetaLeak: metaLeak === null,
+                unchangedDetected:
+                  unchanged.restored === false &&
+                  unchanged.reason === "unchanged",
+                backupStillThere: (await listAppBackups(fsFake, "demo")).length === 1,
+                idRejected,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, restored, unchanged },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

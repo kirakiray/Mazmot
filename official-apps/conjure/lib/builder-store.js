@@ -22,6 +22,13 @@ import {
   unregisterAppRecord,
   deleteVfsApp,
   sanitizeAppName,
+  createAppBackup,
+  listAppBackups,
+  deleteAppBackup,
+  renameAppBackup,
+  setBackupNote,
+  restoreAppBackup,
+  currentAppHash,
   truncateThread,
   tailThread,
   contextInfo,
@@ -68,6 +75,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     permGrantNeeded: false,
     // 技能知识库索引
     skills: [],
+    // 数据备份（当前应用的 backup/ 目录清单；backupBusy 防创建重入）
+    backups: [],
+    backupBusy: false,
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -718,6 +728,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   async function deleteSession(sid) {
     const name = state.currentAppName;
+    // 对话进行中的会话不允许删除（UI 已隐藏删除按钮，这里兜底）
+    if (turnKey === `chat:${name}:${sid}`) return;
     const reg = await loadRegistry();
     const hit = reg.find((a) => a.name === name);
     if (!hit) return;
@@ -947,7 +959,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     window.open(buildRunUrl(name), `mazmot-app-${name}`);
   }
 
-  // 本地目录应用：所选目录即项目根，直接挂载该目录打开
+  // 本地目录应用：应用文件在所选目录的 client/ 子目录（与虚拟渠道布局一致）
   // （app-runner 的 getRunUrl 本地逻辑会挂载 client/，不存在时回退挂载根目录）
   async function openLocalApp(name) {
     if (!localRootHandle) {
@@ -977,6 +989,102 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       window.open(url, `mazmot-app-${name}`);
     } catch (err) {
       set("keyError", `打开应用失败：${err.message}`);
+    }
+  }
+
+  /* ---------- 数据备份管理（client/ 同层 backup/ 目录） ---------- */
+
+  // 当前应用对应的备份根句柄：本地渠道恢复句柄（只读列出 / 写入用），虚拟渠道 null
+  async function backupRootHandle() {
+    if (state.currentAppMode !== "local") return null;
+    if (!localRootHandle) {
+      localRootHandle =
+        (await getLocalHandleFromRecord(state.currentAppName)) || null;
+      if (localRootHandle) set("localDirLabel", localRootHandle?.name || "");
+    }
+    return localRootHandle;
+  }
+
+  async function refreshBackups() {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      // listAppBackups 返回 { id, label, note }；当前内容指纹与 id 尾部 hash
+      // 一致的项标记 current（即「这份备份就是现在的内容」）
+      const currentHash = await currentAppHash(fs, state.currentAppName, rootHandle);
+      const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+      set(
+        "backups",
+        list.map((b) => ({
+          ...b,
+          current: currentHash !== "" && b.id.endsWith(`-${currentHash}`),
+        })),
+      );
+    } catch (err) {
+      console.warn("读取备份列表失败：", err);
+    }
+  }
+
+  async function createBackup() {
+    if (state.backupBusy || state.currentAppName === "" || !fs) return;
+    set("backupBusy", true);
+    try {
+      const rootHandle = await backupRootHandle();
+      const res = await createAppBackup(fs, state.currentAppName, rootHandle);
+      await refreshBackups();
+      return res;
+    } catch (err) {
+      set("keyError", `创建备份失败：${err.message}`);
+    } finally {
+      set("backupBusy", false);
+    }
+  }
+
+  async function deleteBackup(id) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await deleteAppBackup(fs, state.currentAppName, id, rootHandle);
+      await refreshBackups();
+    } catch (err) {
+      set("keyError", `删除备份失败：${err.message}`);
+    }
+  }
+
+  // 备份更名：写入备份目录内 __meta.json 的 label（目录名/内容寻址不变）
+  async function renameBackup(id, label) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await renameAppBackup(fs, state.currentAppName, id, label, rootHandle);
+      await refreshBackups();
+      return true;
+    } catch (err) {
+      set("keyError", `备份更名失败：${err.message}`);
+    }
+  }
+
+  // 设置 / 清除备份备注（空串清除），存 __meta.json 的 note
+  async function setNote(id, note) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await setBackupNote(fs, state.currentAppName, id, note, rootHandle);
+      await refreshBackups();
+      return true;
+    } catch (err) {
+      set("keyError", `设置备注失败：${err.message}`);
+    }
+  }
+
+  // 还原备份：内容无变动返回 { reason: "unchanged" }，失败返回 undefined
+  async function restoreBackup(id) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      return await restoreAppBackup(fs, state.currentAppName, id, rootHandle);
+    } catch (err) {
+      set("keyError", `还原备份失败：${err.message}`);
     }
   }
 
@@ -1521,6 +1629,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     grantLocalPermission,
     installSkillFromSource,
     openApp,
+    refreshBackups,
+    createBackup,
+    deleteBackup,
+    renameBackup,
+    setNote,
+    restoreBackup,
     // 折叠开关作用于「当前查看的会话」桶（可能不是流式回合的桶），
     // 直接改桶内条目并向前端发视图事件，不走 patchMessage 的回合路由
     toggleTool(id) {
