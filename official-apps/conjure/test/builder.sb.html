@@ -54,6 +54,53 @@
       </template>
     </sb-test>
 
+    <sb-test name="truncateThread 按回合截断 wire 记忆">
+      <template>
+        <script type="module">
+          import { truncateThread, tailThread } from "../lib/builder.js";
+          {
+            const U = (c) => ({ role: "user", content: c });
+            const A = (c, calls) => ({
+              role: "assistant",
+              content: c,
+              ...(calls ? { tool_calls: calls } : {}),
+            });
+            const T = (id) => ({ role: "tool", tool_call_id: id, content: "r" });
+            const call = (id) => [{ id, type: "function", function: { name: "x", arguments: "{}" } }];
+            // 回合1：user→A(带call)→tool→A(闭合)；回合2：user→A(闭合)；回合3：user→A(带call，未闭合)
+            const thread = [
+              U("q1"), A("t1", call("c1")), T("c1"), A("done1"),
+              U("q2"), A("done2"),
+              U("q3"), A("t3", call("c3")),
+            ];
+            const checks = {
+              // fork 在回合2末：保留回合1+2（回合2闭合）
+              two: JSON.stringify(truncateThread(thread, 2)) === JSON.stringify([thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]]),
+              // fork 在回合3（未闭合）：悬空 tool_calls，回合3 整段丢弃，仍保留前两回合
+              openTurn: JSON.stringify(truncateThread(thread, 3)) === JSON.stringify([thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]]),
+              // 截断到 0 回合
+              zero: truncateThread(thread, 0).length === 0,
+              // 空记忆
+              empty: JSON.stringify(truncateThread([], 2)) === "[]",
+              // 防御性：非 user 开头的记忆开头散段被跳过
+              orphan: JSON.stringify(truncateThread([{ role: "assistant", content: "hi" }, U("q"), A("a")], 1)) === JSON.stringify([U("q"), A("a")]),
+            };
+            const complete = [thread[0], thread[1], thread[2], thread[3], thread[4], thread[5]];
+            const tailChecks = {
+              // 末尾 1 个完整回合（q3 未闭合被丢弃后只剩 q2 回合）
+              tail1: JSON.stringify(tailThread(thread, 1)) === JSON.stringify([thread[4], thread[5]]),
+              tail2: JSON.stringify(tailThread(thread, 2)) === JSON.stringify(complete),
+              tail0: tailThread(thread, 0).length === 0,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean) && Object.values(tailChecks).every(Boolean),
+              content: { checks, tailChecks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="buildRunUrl / buildAppRecord 产物">
       <template>
         <script type="module">
@@ -96,8 +143,15 @@
               icon: "🍅",
               handle: fakeHandle,
             });
+            // 仓库层 onAppCreated 回调传的是 appName 字段（历史 bug：meta.name
+            // 取不到时 name 被写成空串，登记记录回查必失败 → 误报"授权已失效"）
+            const recordByAppName = buildLocalAppRecord({
+              appName: "Todo App",
+              handle: fakeHandle,
+            });
             const checks = {
               name: record.name === "todo-app",
+              appNameAlias: recordByAppName.name === "todo-app",
               source: record.source === "local",
               namespace: record.namespace === "",
               dirName: record.dirName === "todo-app",
@@ -232,6 +286,157 @@
       </template>
     </sb-test>
 
+    <sb-test name="备份打包 / 列表 / 删除（fake fs）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            listAppBackups,
+            deleteAppBackup,
+            renameAppBackup,
+            setBackupNote,
+            restoreAppBackup,
+          } from "../lib/builder.js";
+          {
+            try {
+              // 内存 fake fs：目录树存 Map（父 → 子名集合），文件内容存 Map；
+              // 缺失读取返回 null（模拟真实 Core），create: "file" 只作用于最后一段
+              const fileTree = new Map(); // dir path -> Set(child name)
+              const contents = new Map(); // file path -> text
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+                async remove() {
+                  for (const k of [...fileTree.keys()]) {
+                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
+                  }
+                  for (const k of [...contents.keys()]) {
+                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
+                  }
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
+              await writeAppFile(fsFake, "demo", "index.html", "<html></html>");
+              await writeAppFile(
+                fsFake,
+                "demo",
+                "pages/home.html",
+                "<template page></template>",
+              );
+              // client/ 内混入 node_modules：打包时应被忽略
+              await writeAppFile(fsFake, "demo", "node_modules/pkg/x.js", "junk");
+
+              const res = await createAppBackup(fsFake, "demo");
+              const list = await listAppBackups(fsFake, "demo");
+              const restored = contents.get(`demo/backup/${res.id}/pages/home.html`);
+
+              // 内容无变化再次备份：hash 相同 → 跳过，不产生重复备份
+              const res2 = await createAppBackup(fsFake, "demo");
+              const list2 = await listAppBackups(fsFake, "demo");
+              // 内容变化后备份：hash 不同 → 新备份
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v2</html>");
+              const res3 = await createAppBackup(fsFake, "demo");
+              const list3 = await listAppBackups(fsFake, "demo");
+
+              // 更名：label 写入备份目录 __meta.json，目录名不变
+              await renameAppBackup(fsFake, "demo", res3.id, "稳定版");
+              // 备注：写入同一 __meta.json（保留 label），空串清除
+              await setBackupNote(fsFake, "demo", res3.id, "修复签到后的稳定版");
+              const list4 = await listAppBackups(fsFake, "demo");
+              const renamed = list4.find((b) => b.id === res3.id);
+              // 去重按目录名 hash 命中，更名/备注不影响
+              await writeAppFile(fsFake, "demo", "index.html", "<html></html>");
+              const res5 = await createAppBackup(fsFake, "demo");
+              // 清除备注：note 变空，label 保留
+              await setBackupNote(fsFake, "demo", res3.id, "");
+              const list5 = await listAppBackups(fsFake, "demo");
+              const cleared = list5.find((b) => b.id === res3.id);
+
+              await deleteAppBackup(fsFake, "demo", res.id);
+              const list6 = await listAppBackups(fsFake, "demo");
+
+              let idRejected = false;
+              try {
+                await deleteAppBackup(fsFake, "demo", "../evil");
+              } catch {
+                idRejected = true;
+              }
+
+              const checks = {
+                backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
+                packed: res.files === 3 && res.bytes > 0,
+                listed: list.length === 1 && list[0].id === res.id,
+                noNodeModules: ![...contents.keys()].some(
+                  (k) => k.startsWith("demo/backup/") && k.includes("node_modules"),
+                ),
+                contentCopied: restored === "<template page></template>",
+                dedupeSkipped: res2.skipped && res2.id === res.id,
+                stillOne: list2.length === 1,
+                changedNewBackup: !res3.skipped && res3.id !== res.id,
+                twoBackups: list3.length === 2,
+                newestFirst: list3[0].id > list3[1].id,
+                renamed: renamed && renamed.label === "稳定版",
+                noted: renamed && renamed.note === "修复签到后的稳定版",
+                noteCleared:
+                  cleared &&
+                  cleared.note === "" &&
+                  cleared.label === "稳定版",
+                dedupeAfterRename: res5.skipped && res5.id === res.id,
+                deleted: list6.length === 1 && list6[0].id === res3.id,
+                idRejected,
+              };              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, res, list3, list6 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="buildSystemPrompt 按上下文注入">
       <template>
         <script type="module">
@@ -251,6 +456,10 @@
               draftPlain: !draft.includes("当前上下文"),
               appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
               mustReadFirst: withApp.includes("必须先调用 list_files"),
+              mustReadDocs:
+                withApp.includes("AGENTS.md、CONTEXT.md 和 app.json") &&
+                withApp.includes("严格遵守其中约定") &&
+                withApp.includes("同步更新 CONTEXT.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
             };
@@ -263,7 +472,7 @@
       </template>
     </sb-test>
 
-    <sb-test name="本地渠道以所选目录为项目根（不建子目录）">
+    <sb-test name="本地渠道写入所选目录的 client/ 子目录（与虚拟渠道布局一致）">
       <template>
         <script type="module">
           import {
@@ -303,12 +512,12 @@
               const list = await listAppFiles(fsFake, "my-app", fakeRoot);
 
               const checks = {
-                appJsonAtRoot: files.has("app.json"),
-                pageAtRoot: files.has("pages/home.html"),
-                noNested: !files.has("my-app/client/app.json"),
+                appJsonInClient: files.has("client/app.json"),
+                pageInClient: files.has("client/pages/home.html"),
+                nothingAtRoot: !files.has("app.json") && !files.has("pages/home.html"),
                 listOk:
                   list.includes("app.json") && list.includes("pages/home.html"),
-                metaWritten: (content.get("app.json") || "").includes("my-app"),
+                metaWritten: (content.get("client/app.json") || "").includes("my-app"),
               };
               return {
                 assert: Object.values(checks).every(Boolean),
@@ -317,6 +526,48 @@
             } catch (error) {
               return { assert: false, content: { error: error.message } };
             }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="readSkillFile 未安装技能回报可用清单（不抛底层异常）">
+      <template>
+        <script type="module">
+          import { readSkillFile } from "../lib/skill-sync.js";
+          {
+            const mkDir = (entries, name = "root") => ({
+              kind: "dir",
+              name,
+              get: (p) => entries[p] ?? null,
+              values: async function* () {
+                for (const v of Object.values(entries)) yield v;
+              },
+            });
+            const fsFake = {
+              init: async () =>
+                mkDir({
+                  "senti-ui-skill": mkDir(
+                    {
+                      "SKILL.md": { kind: "file", text: async () => "# senti-ui" },
+                    },
+                    "senti-ui-skill"
+                  ),
+                }),
+            };
+            const missing = await readSkillFile(fsFake, "senti-ui");
+            const ok = await readSkillFile(fsFake, "senti-ui-skill");
+            const checks = {
+              missingIsHint:
+                missing.includes("技能未安装：senti-ui") &&
+                missing.includes("senti-ui-skill"),
+              missingNoCrash: !missing.includes("读取失败"),
+              installedOk: ok.includes("# senti-ui"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, missing },
+            };
           }
         </script>
       </template>
@@ -486,6 +737,389 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, files },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="备份还原：覆盖写回 / 无变动检测（fake fs）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            readAppFile,
+            createAppBackup,
+            restoreAppBackup,
+            listAppBackups,
+          } from "../lib/builder.js";
+          {
+            try {
+              // 与备份测试相同的内存 fake fs
+              const fileTree = new Map();
+              const contents = new Map();
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+                async remove() {
+                  for (const k of [...fileTree.keys()]) {
+                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
+                  }
+                  for (const k of [...contents.keys()]) {
+                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
+                  }
+                },
+              });
+              const fsFake = { init: async () => makeDir("") };
+
+              await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v1</html>");
+              await writeAppFile(
+                fsFake,
+                "demo",
+                "pages/home.html",
+                "<template page>v1</template>",
+              );
+              const backup = await createAppBackup(fsFake, "demo");
+
+              // 之后改动：新增文件 + 修改文件
+              await writeAppFile(fsFake, "demo", "index.html", "<html>v2</html>");
+              await writeAppFile(fsFake, "demo", "pages/extra.html", "extra");
+
+              const restored = await restoreAppBackup(fsFake, "demo", backup.id);
+              const v1 = await readAppFile(fsFake, "demo", "index.html");
+              const extraGone = await readAppFile(fsFake, "demo", "pages/extra.html");
+              const page = await readAppFile(fsFake, "demo", "pages/home.html");
+              // __meta.json 不应被还原进 client/
+              const metaLeak = await readAppFile(fsFake, "demo", "__meta.json");
+
+              // 无变动：还原成功后再还原一次应返回 unchanged
+              const unchanged = await restoreAppBackup(fsFake, "demo", backup.id);
+
+              // 非法 id
+              let idRejected = false;
+              try {
+                await restoreAppBackup(fsFake, "demo", "../evil");
+              } catch {
+                idRejected = true;
+              }
+
+              const checks = {
+                restored: restored.restored && restored.files === 3,
+                reverted: v1 === "<html>v1</html>",
+                extraRemoved: extraGone === null,
+                pageBack: page === "<template page>v1</template>",
+                noMetaLeak: metaLeak === null,
+                unchangedDetected:
+                  unchanged.restored === false &&
+                  unchanged.reason === "unchanged",
+                backupStillThere: (await listAppBackups(fsFake, "demo")).length === 1,
+                idRejected,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, restored, unchanged },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="会话拖拽排序：reorderSessions 持久化与展示同步">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              // 内存 fake 自存储：registry 初始为一个应用三条会话
+              const kv = new Map();
+              kv.set("apps-registry", [
+                {
+                  name: "demo",
+                  displayName: "Demo",
+                  mode: "vfs",
+                  sessions: [
+                    { id: "s1", title: "A", updatedAt: 1 },
+                    { id: "s2", title: "B", updatedAt: 2 },
+                    { id: "s3", title: "C", updatedAt: 3 },
+                  ],
+                },
+              ]);
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                // /mz/ai 等宿主模块用空实现顶替
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 默认按 updatedAt 倒序：s3, s2, s1
+              const defaultIds = store.state.currentAppSessions.map((s) => s.id);
+
+              // 拖拽：把 s1 移到 s3 前面 → s1, s3, s2
+              await store.reorderSessions("s1", "s3");
+              const afterIds = store.state.currentAppSessions.map((s) => s.id);
+              const persisted = (kv.get("apps-registry")[0].sessionOrder || []).join(",");
+
+              // 新会话（不在 sessionOrder 里）应排最前（按最近更新）
+              const reg = kv.get("apps-registry");
+              reg[0].sessions.push({ id: "s4", title: "D", updatedAt: 9 });
+              await kv.set("apps-registry", reg);
+              await store.reloadApps();
+              const withNewIds = store.state.currentAppSessions.map((s) => s.id);
+
+              // 非法参数不产生变化
+              await store.reorderSessions("s1", "s1");
+              await store.reorderSessions("", "s1");
+              const sameAfter = store.state.currentAppSessions.map((s) => s.id).join(",");
+
+              const checks = {
+                defaultOrder: defaultIds.join(",") === "s3,s2,s1",
+                reordered: afterIds.join(",") === "s1,s3,s2",
+                persisted: persisted === "s1,s3,s2",
+                newSessionFirst: withNewIds[0] === "s4" && withNewIds.slice(1).join(",") === "s1,s3,s2",
+                invalidNoop: sameAfter === withNewIds.join(","),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, defaultIds, afterIds, withNewIds },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="会话计时：duration 字段随会话列表透出">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              const kv = new Map();
+              kv.set("apps-registry", [
+                {
+                  name: "demo",
+                  displayName: "Demo",
+                  mode: "vfs",
+                  sessions: [
+                    { id: "s1", title: "A", updatedAt: 2, createdAt: 1, duration: 65000 },
+                    { id: "s2", title: "B", updatedAt: 1, createdAt: 1 },
+                  ],
+                },
+              ]);
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+              const byId = Object.fromEntries(
+                store.state.currentAppSessions.map((s) => [s.id, s]),
+              );
+              const checks = {
+                // 无 duration 字段的旧会话归一为 0
+                defaultZero: byId.s2.duration === 0,
+                preserved: byId.s1.duration === 65000,
+                idleNotBusy: byId.s1.busy === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, byId },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="本地项目导入：探测 / 对话快照读写 / chooseLocalDir 导入流程">
+      <template>
+        <script type="module">
+          import {
+            detectLocalProject,
+            loadProjectChats,
+            saveProjectChats,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              // 内存 fake fs：目录树 + 文件内容（同前述 fake 实现）
+              const fileTree = new Map();
+              const contents = new Map();
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+              });
+              const root = makeDir("");
+
+              // 空目录：探测返回 null
+              const none = await detectLocalProject(root);
+
+              // 既有项目：client/app.json + 对话快照
+              await root.get("client/app.json", { create: "file" });
+              await (await root.get("client/app.json")).write(
+                JSON.stringify({ name: "my-app", displayName: "我的应用", icon: "🚀" }),
+              );
+              const meta = await detectLocalProject(root);
+              await saveProjectChats(root, {
+                version: 1,
+                sessions: [
+                  { id: "a1", title: "聊天一", createdAt: 1, updatedAt: 1 },
+                  { id: "a2", title: "聊天二", createdAt: 2, updatedAt: 2 },
+                ],
+                messages: { a1: [{ id: 1, role: "user", content: "hi" }] },
+                threads: { a1: [{ role: "user", content: "hi" }] },
+              });
+              const chats = await loadProjectChats(root);
+
+              // ---- store 层：草稿 + 选本地目录 → 自动导入并切换 ----
+              const kv = new Map();
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const mazmotApps = [];
+              const mazmotStore = {
+                getItem: async (k) => (k === "apps" ? mazmotApps : null),
+                setItem: async (k, v) => {
+                  if (k === "apps") mazmotApps.splice(0, mazmotApps.length, ...v);
+                },
+              };
+              const fsFake = {
+                open: async () => root,
+                mount: async (h) => h,
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              store.state.storageMode = "local"; // 草稿选中「本地目录」渠道
+              const ok = await store.chooseLocalDir();
+
+              const st = store.state;
+              const importedMsgs = await fakeStore.getItem("chat:my-app:a1");
+              const importedThread = await fakeStore.getItem("thread:my-app:a1");
+
+              const checks = {
+                emptyNotProject: none === null,
+                detected: meta && meta.name === "my-app" && meta.icon === "🚀",
+                chatsRoundtrip: chats && chats.messages.a1.length === 1,
+                importedSwitched: ok === true && st.currentAppName === "my-app",
+                importedMeta:
+                  st.currentAppDisplay === "我的应用" && st.currentAppMode === "local",
+                importedSessions:
+                  // 无 sessionOrder 时按 updatedAt 倒序
+                  st.currentAppSessions.map((s) => s.id).join(",") === "a2,a1",
+                msgRestored: importedMsgs?.[0]?.content === "hi",
+                threadRestored: Array.isArray(importedThread) && importedThread.length === 1,
+                mazmotRegistered: mazmotApps.some(
+                  (a) => a.name === "my-app" && a.source === "local",
+                ),
+                chatFileWritten: contents.has("conjure-chats.json"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, meta, afterIds: st.currentAppSessions.map((s) => s.id) },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

@@ -15,7 +15,7 @@
 | UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量（`apps/main` 已从 Punch-UI 迁移） |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
-| 多语言 | `locale-text` (`/nos/locale-text/`) | `apps/main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`apps/main/home.html` 头部齿轮按钮打开设置弹窗（左侧「常规」导航 + 右侧语言 `st-select`），切换后 `setLang` + 重载。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
+| 多语言 | `locale-text` (`/nos/locale-text/`) | `apps/main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`apps/main/home.html` 头部齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [apps/main/home/settings-general.html](apps/main/home/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
@@ -31,20 +31,17 @@ Mazmot/
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
 │
 ├── apps/                     # 应用（monorepo 风格）
-│   ├── main/                 # 主应用：应用列表 / 添加 / 分享入口，URL = /apps/main/
+│   ├── main/                 # 主应用：应用列表 / 市场安装 / 分享入口，URL = /apps/main/
 │   │   ├── index.html        # 入口 HTML：校验 Core 模块 → 装载 ./app-config.js；同时挂载 <rdn-network> 浮窗
 │   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间）
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
-│   │   │   ├── add-app.html          # 添加应用 3 步向导（子页面，弹窗内加载）
+│   │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
+│   │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
 │   │   │   ├── settings-user.html   # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
-│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（遍历 default 用户 cred 凭证库，展示个人资料与全部证书）
+│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
-│   │   │   ├── template-writer.js    # 模板加载与写入（从 templates/<id>/ 读取源文件，按 __template.json 的 replacements 清单替换后写入 client/）
 │   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
-│   │   │   ├── templates/            # 应用模板资源目录
-│   │   │   │   ├── manifest.json     # 模板清单（只登记模板 id，name/desc 从各模板目录的 __template.json 读取）
-│   │   │   │   └── <id>/             # 每个模板一个子目录，含 __template.json（元数据 name/desc（基准英文 + i18n 按语言覆盖）+ 文件清单）+ AGENTS.md / CONTEXT.md（供 AI 参考的模板级开发规范与结构说明，随模板一起写入新建应用的 client/）+ .html/.json/.js 源文件；当前有 base（Hello World）、share-link（带参数分享链接）、ping-pong（应用间定时 ping/pong 通信）、tic-tac-toe（应用间井字棋联机对战）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │   │   └── lib/              # 主应用专属工具库
 │   │       ├── official-app-state.js  # 官方应用 stanz 状态（仅主应用使用）
@@ -79,9 +76,9 @@ Mazmot/
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi，被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js）
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
@@ -147,23 +144,13 @@ Mazmot/
 
 ## 应用生命周期
 
-### 1. 添加应用（[apps/main/home/add-app.html](apps/main/home/add-app.html)）
+### 1. 添加 / 安装应用（[apps/main/home/add-app.html](apps/main/home/add-app.html)）
 
-```
-选择应用来源 → 输入应用名 → 校验唯一性
-   ├─ 本地目录：open() 选择目录
-   │    └─ probeExistingApp(handle)：读 client/app.json（回退根 app.json）
-   │         ├─ 命中且用户点「直接导入」→ importExistingLocalApp：直接 push 到 apps 列表并关闭弹窗（不写模板）
-   │         ├─ 命中且用户点「取消」→ 用 manifest.name / description 预填 step2 表单继续
-   │         └─ 未命中 → 进入 step2 让用户填名称
-   └─ 虚拟目录：确认名称后 (await init(namespace)).get(name, {create:"dir"}) 建立子目录
-   ↓
-存入 `getStorage("mazmot")` 的 `apps` 键（本地：存原生 handle；虚拟：namespace 按来源（ai-builder 生成应用为 ai-apps），handle=null）
-   ↓
-writeTemplateFiles 写入 4 个模板文件到目标目录的 client/ 子目录（仅新建流程走到这里）
-   ↓
-完成
-```
+「添加应用」弹窗不再内置创建向导，只做引导：
+
+- **应用市场**：[apps/main/home/market.html](apps/main/home/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
+- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，不进主系统应用列表（`home.html` 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）。
+- **外源下载**：URL / ZIP 安装的禁用占位 UI（功能未实现）。
 
 ### 2. 启动应用（[apps/main/home.html](apps/main/home.html)）
 
@@ -270,29 +257,20 @@ clearOpened → 关闭窗口
 
 ### 应用数据模型约束（强约定）
 
-以下约束散落在 [add-app.html](apps/main/home/add-app.html) / [home.html](apps/main/home.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+以下约束散落在 [home.html](apps/main/home.html) / [market.html](apps/main/home/market.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `${namespace}/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
-- **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；由 [add-app.html](apps/main/home/add-app.html) 的 `validateName` 与 `importExistingLocalApp` 双重校验。
+- **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；官方应用安装时以市场 id 即目录名落地（天然合规）。
 - **`appId` 生成规则**：固定为 `` `${name}-${LocalUser.userId}` ``，由 [share-mgr.js](mz/share-mgr.js) 的 `generateAppId` 产生。`userId` = 公钥的 SHA-256 十六进制，跨设备稳定。`appId.endsWith("-" + currentUserId)` 用来判定"自己开发的应用"（`isMine`）。**仅自建应用可拥有 `appId`**：官方应用（`source === "official"`，含 `?app=` 链接与市场安装）不写 `appId`，以 `officialId` 标识来源，`isMine` 判定会显式排除 official 应用。
 - **虚拟目录路径推导**：`virtualDirName = dirName.replace(/^mazmot-apps\//, "")`（若 `dirName` 不带前缀则直接用 `dirName`，再兜底到 `name`）；`getRunUrl` 优先用 `virtualDirName`，老数据回退到 `app.name`。
 - **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（自建应用；官方应用以 `officialId` 替代 `appId`，经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`（官方应用的 `displayName`/`description` 基准值须为英文，可用 `i18n` 字段按语言覆盖，如 `"i18n": { "cn": { "displayName": "...", "description": "..." } }`）；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示（有 `i18n[当前语言]` 覆盖时优先）。
 
-### 应用模板文件（[template-writer.js](apps/main/home/template-writer.js)）
-
-生成 4 个文件，存放在目标目录的 `client/` 子目录下（给用户新建的子应用用的模板）：
-
-- `app.json` — 应用元数据（name / displayName / version / icon / entry / permissions / capabilities）
-- `index.html` — 入口 HTML，加载 ofa.js + router + 自带 M3 深浅色配色 + `./app-config.js`
-- `app-config.js` — 定义 `home` 页面路径和过渡动画
-- `pages/home.html` — Hello World 页面模块
-
 ## UI 关键组件（[apps/main/home.html](apps/main/home.html)）
 
 ### 主界面
 
-- `<p-dialog>` 承载 `<o-page src="./home/add-app.html">` 弹窗
+- `<p-dialog>` 承载 `<o-page src="./home/add-app.html">` 添加应用弹窗（妙造引导 / 市场入口）与 `<st-dialog>` 内嵌 `<o-page src="./home/market.html">` 应用市场弹窗
 - `<p-list>` + `<o-fill :value="appList">` 渲染应用列表
 - 每个 `<p-list-item>` 是 **可折叠**（`collapsible`）：
   - **主行 suffix**：`已打开` 徽章 + `新标签打开`(mdi:tab-plus) + `小窗口打开`(mdi:open-in-new) 两个 icon 按钮
@@ -344,12 +322,11 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 
 **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵。
 
-### 添加并运行第一个应用
+### 安装并运行第一个应用
 
-1. 点击"添加应用" → 选择本地目录（Chrome 才支持）或虚拟目录
-2. 输入名称 → 写入 4 个模板文件到目标目录的 `client/` 子目录
-3. 应用列表出现新项
-4. 点击应用行或 `tab-plus` / `open-in-new` 按钮启动
+1. 点击"添加应用" → 安装市场应用（或打开 / 安装「妙造」用 AI 创建应用）
+2. 应用列表出现新项
+3. 点击应用行或 `tab-plus` / `open-in-new` 按钮启动
 
 ## 应用分享（基于 DataPublisher）
 
@@ -421,11 +398,11 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 需求 | 打开文件 |
 | ---- | -------- |
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
-| 修改添加应用流程 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
+| 修改添加应用引导 / 市场入口 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
 | 设置弹窗用户信息（default 用户查看 / 改用户名） | [apps/main/home/settings-user.html](apps/main/home/settings-user.html) |
-| 设置弹窗凭证管理（default 用户全部凭证） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
+| 设置弹窗凭证管理引导（跳转/打开凭证管理器） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
+| 设置弹窗常规（语言 / 主题） | [apps/main/home/settings-general.html](apps/main/home/settings-general.html) |
 | 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |
-| 应用模板内容 | [apps/main/home/template-writer.js](apps/main/home/template-writer.js) + [apps/main/home/templates/](apps/main/home/templates/) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |

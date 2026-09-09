@@ -1,0 +1,128 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .settings-field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 8px;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="settings-field-label">
+    <locale-text><span lang="cn">语言</span><span lang="en">Language</span></locale-text>
+  </div>
+  <st-select
+    attr:default-value="lang"
+    style="width: 200px"
+    on:change="handleLangChange"
+  >
+    <option value="cn">简体中文</option>
+    <option value="tw">繁体中文</option>
+    <option value="ja">日本語</option>
+    <option value="en">English</option>
+  </st-select>
+  <div class="settings-field-label" style="margin-top: 16px">
+    <locale-text><span lang="cn">主题</span><span lang="en">Theme</span></locale-text>
+  </div>
+  <st-select
+    id="theme-select"
+    attr:default-value="themeMode"
+    style="width: 200px"
+    on:change="handleThemeChange"
+  ></st-select>
+
+  <script>
+    import {
+      getThemeMode,
+      setThemeMode,
+    } from "/gh/ofajs/senti-ui@latest/packages/color/st-theme-mode.js";
+    import {
+      getLang,
+      setLang,
+      getLocaleText,
+      ensureLocaleTextJson,
+    } from "/nos/locale-text/get-locale-text.js";
+
+    // 先构建 locale-text.json 反向索引再求值 THEME_MODES，扩展语种才能命中
+    await ensureLocaleTextJson();
+
+    // 主题模式清单（设置弹窗下拉用）：label 为当前语言的纯文本，
+    // n-icon 图标在 attached() 里作为 option 子元素注入
+    const THEME_MODES = [
+      {
+        value: "auto",
+        icon: "mdi:theme-light-dark",
+        label: getLocaleText({ cn: "跟随系统", en: "Follow system" }),
+      },
+      {
+        value: "light",
+        icon: "mdi:weather-sunny",
+        label: getLocaleText({ cn: "浅色模式", en: "Light" }),
+      },
+      {
+        value: "dark",
+        icon: "mdi:weather-night",
+        label: getLocaleText({ cn: "深色模式", en: "Dark" }),
+      },
+    ];
+
+    export default async () => {
+      return {
+        data: {
+          lang: getLang(),
+          themeMode: getThemeMode(),
+        },
+        attached() {
+          // 本子页面被外层 <o-if :value="settingsTab === 'general'"> 包裹：
+          // 每次切回常规 tab 都会重建实例并重新执行 attached，
+          // 因此主题下拉选项必须在每次挂载时重新注入
+          // 主题下拉选项：动态创建 <option>（n-icon 图标元素 + 已翻译文本）。
+          // 图标是元素节点不产生 textContent，st-select 闭合态 label 取
+          // option.textContent 仍是纯文本；下拉列表克隆子节点渲染则带出图标
+          const themeSelect = this.shadow.$("#theme-select").ele;
+          THEME_MODES.forEach(({ value, icon, label }) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            const iconEle = document.createElement("n-icon");
+            iconEle.setAttribute("icon", icon);
+            iconEle.setAttribute(
+              "style",
+              "margin-right: 8px; vertical-align: -0.2em",
+            );
+            opt.appendChild(iconEle);
+            opt.appendChild(document.createTextNode(label));
+            themeSelect.appendChild(opt);
+          });
+        },
+        proto: {
+          // 语言下拉切换；setLang 会让 <locale-text> 立即刷新，
+          // 重载页面让 attr:title 与运行时生成的状态文案同步更新
+          handleLangChange(event) {
+            const next = event.target.value;
+            if (!next || next === getLang()) return;
+            setLang(next);
+            localStorage.setItem("lang", next);
+            location.reload();
+          },
+
+          // 主题下拉切换：senti-ui 持久化 + 立即挂类；
+          // 同源所有已打开窗口经 storage 事件实时跟随
+          handleThemeChange(event) {
+            const mode = event.target.value || "auto";
+            if (mode === this.themeMode) return;
+            this.themeMode = mode;
+            setThemeMode(mode);
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -68,11 +68,17 @@ export const createAgent = ({
       prompt_tokens: 0,
       completion_tokens: 0,
       total_tokens: 0,
+      // 当前上下文占用估算：取「最后一次模型调用」的 prompt + completion
+      // （每次调用的 prompt_tokens 即当时的完整上下文，末次调用最贴近现状；
+      // 覆盖式写入而非累计，与上面的累计字段不同）
+      context_tokens: 0,
     };
     const addUsage = (u) => {
       if (!u) return;
       usage.prompt_tokens += u.prompt_tokens ?? 0;
       usage.completion_tokens += u.completion_tokens ?? 0;
+      usage.context_tokens =
+        (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
       usage.total_tokens +=
         u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
       if (u.prompt_cache_hit_tokens !== undefined) {

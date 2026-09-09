@@ -26,7 +26,7 @@ export default {
         displayName: app.displayName,
         icon: icon || "📦",
       });
-      return `应用已创建：${app.name}（后续文件用 write_file 写入，路径相对项目根目录）`;
+      return `应用已创建：${app.name}（后续文件用 write_file 写入，路径相对 client/ 目录）`;
     } catch (err) {
       return `创建失败：${err.message}`;
     }

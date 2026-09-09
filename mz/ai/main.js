@@ -1,5 +1,6 @@
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
+import { GlmAssistant, GlmCodingAssistant } from "./supplier/glm.js";
 
 // /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
 // 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
@@ -38,6 +39,10 @@ const _createAssistant = (provider, id, apiKey) => {
       return new DeepseekAssistant(id, apiKey);
     case "kimi":
       return new KimiAssistant(id, apiKey);
+    case "glm":
+      return new GlmAssistant(id, apiKey);
+    case "glm-coding":
+      return new GlmCodingAssistant(id, apiKey);
     default:
       throw new Error(`provider not supported: ${provider}`);
   }
@@ -146,17 +151,16 @@ export const setKeyDisabled = (id, disabled) => {
  * 同步函数（无 IO），调用方可省略 await。
  */
 export const getAssistant = (id) => {
-  const enabledItems = _apiKeys.filter((item) => !item.disabled);
-
-  if (enabledItems.length === 0) {
-    throw new Error("no api key available");
-  }
-
   let item;
 
   if (!id) {
+    const enabledItems = _apiKeys.filter((item) => !item.disabled);
+    if (enabledItems.length === 0) {
+      throw new Error("no api key available");
+    }
     item = enabledItems[Math.floor(Math.random() * enabledItems.length)];
   } else {
+    // 按 id 的错误信息精确到具体原因，不受"全部禁用/空列表"守卫影响
     item = _apiKeys.find((item) => item.id === id);
     if (!item) {
       throw new Error("key not found");

@@ -8,6 +8,8 @@
 |--------|------|----------|----------|
 | DeepSeek | deepseek-v4-flash, deepseek-v4-pro | ✅ | ✅ |
 | Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
+| GLM | glm-4.7, glm-4.7-flash 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
+| GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
 
 > 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
 
@@ -29,7 +31,7 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey, setKeyDi
 
 保存 API Key 并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
 
-- `provider` 取值：`"deepseek"` / `"kimi"`
+- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）
 
 ```javascript
 const assistant = await saveKey("sk-xxx", "deepseek");
@@ -78,7 +80,7 @@ console.log(keys.length, keys.map(k => k.maskedKey));
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | string | 内部生成的唯一 id（用于 `getAssistant` / `removeKey`） |
-| `provider` | string | `"deepseek"` / `"kimi"` |
+| `provider` | string | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` |
 | `apiKey` | string | 原始 key（敏感，UI 展示请用 `maskedKey`） |
 | `maskedKey` | string | 脱敏后的展示串，如 `sk-abcd...wxyz` |
 | `disabled` | boolean | 是否被临时禁用（禁用后 `getAssistant` 不可用，可随时恢复） |
@@ -144,11 +146,11 @@ removeKey("某条 id");
 
 ### providerName
 
-只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"`（与 key 对象的 `provider` 一致）。用 `getAssistant()` 随机取实例时，可读取它判断拿到的是哪家。
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"`（与 key 对象的 `provider` 一致）。用 `getAssistant()` 随机取实例时，可读取它判断拿到的是哪家。
 
 ```javascript
 const assistant = getAssistant();
-console.log(assistant.providerName); // "deepseek" 或 "kimi"
+console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding"
 ```
 
 ### chat(options)
@@ -189,7 +191,7 @@ const response = await assistant.chat({
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | messages | array | - | 消息数组，包含 role 和 content |
-| thinking | boolean | false | 是否启用思考模式（DeepSeek / Kimi k2.6 / k2.5 生效） |
+| thinking | boolean | false | 是否启用思考模式（DeepSeek / GLM / Kimi k2.6 / k2.5 生效） |
 | stream | boolean | false | 是否启用流式输出 |
 | model | string | - | 模型名称 |
 | onStream | function | null | 流式输出回调 |
@@ -236,7 +238,7 @@ const remaining = await assistant.getRemaining();
 
 ## 思考模式
 
-DeepSeek 和 Kimi 都支持思考模式，会返回 `reasoningContent` 字段包含推理过程。
+DeepSeek、Kimi 和 GLM 都支持思考模式，会返回 `reasoningContent` 字段包含推理过程。
 
 ### DeepSeek
 
@@ -287,6 +289,21 @@ await assistant.chat({
 //   ...
 // });
 ```
+
+### GLM
+
+GLM（智谱 bigmodel.cn）通过 `thinking: { type: "enabled" | "disabled" }` 控制思考，`glm-4.7` 系列默认开启思考，需要非思考响应时显式传 `thinking: false`。GLM 不支持 `reasoningEffort`，该参数会被忽略。
+
+```javascript
+// GLM 常规 Key（provider "glm"）或 Coding Plan Key（provider "glm-coding"）
+await assistant.chat({
+  model: "glm-4.7",
+  messages: [{ role: "user", content: "解释相对论" }],
+  thinking: true,
+});
+```
+
+> Coding Plan Key（`glm-coding`）走订阅端点 `https://open.bigmodel.cn/api/coding/paas/v4`，无余额概念，`getRemaining()` 返回空列表；该端点若不提供 `/models`，`getModels()` 会降级为最小对话探测（兼作 Key 校验）。
 
 ## 流式输出
 
@@ -355,7 +372,9 @@ import { createAgent, tool, MemorySaver } from "/mz/ai/chain/main.js";
    ```json
    {
      "deepseek": "sk-your-real-deepseek-key",
-     "kimi": "sk-your-real-kimi-key"
+     "kimi": "sk-your-real-kimi-key",
+     "glmcodingplan": "your-real-coding-plan-key",
+     "glm": "your-real-pay-as-you-go-key（可选，按量付费用例）"
    }
    ```
 
@@ -410,7 +429,8 @@ mz/ai/
 ├── supplier/                # AI 提供商实现
 │   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）
 │   ├── deepseek.js          # DeepSeek 实现
-│   └── kimi.js              # Kimi 实现
+│   ├── kimi.js              # Kimi 实现
+│   └── glm.js               # GLM 实现（含 GlmAssistant / GlmCodingAssistant）
 └── chain/                   # Agent 封装（基于 supplier 层，纯函数库）
     ├── README.md            # Chain 教程与 API 参考
     ├── main.js              # chain 入口（统一 re-export）

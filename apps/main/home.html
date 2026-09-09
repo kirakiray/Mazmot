@@ -325,7 +325,6 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/switch/switch.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/mz/comps/ercode/ercode.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
@@ -415,25 +414,17 @@
       </div>
       <div class="settings-content">
         <o-if :value="settingsTab === 'general'">
-          <div class="settings-field-label">
-            <locale-text><span lang="cn">语言</span><span lang="en">Language</span></locale-text>
-          </div>
-          <st-select
-            attr:default-value="lang"
-            style="width: 200px"
-            on:change="handleLangChange"
-          >
-            <option value="cn">简体中文</option>
-            <option value="tw">繁体中文</option>
-            <option value="ja">日本語</option>
-            <option value="en">English</option>
-          </st-select>
+          <o-page src="./home/settings-general.html" style="width: 100%"></o-page>
         </o-if>
         <o-if :value="settingsTab === 'user'">
           <o-page src="./home/settings-user.html" style="width: 100%"></o-page>
         </o-if>
         <o-if :value="settingsTab === 'certs'">
-          <o-page src="./home/settings-certs.html" style="width: 100%"></o-page>
+          <o-page
+            src="./home/settings-certs.html"
+            style="width: 100%"
+            on:open-market="handleCertsOpenMarket"
+          ></o-page>
         </o-if>
       </div>
     </div>
@@ -460,7 +451,10 @@
     <div class="list-wrapper">
       <o-if :value="appList.length > 0">
         <st-list>
-          <o-fill :value="appList" fill-key="appId">
+          <!-- key 不能用 appId：官方应用不带 appId（空值互相冲突，导致
+               新装应用顶替旧列表项、删除后渲染错乱）；_recordName 即 apps
+               记录的 name，写入时保证唯一 -->
+          <o-fill :value="appList" fill-key="_recordName">
             <st-list-item class="app-item" collapsible button>
               <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
               <div class="item-title">
@@ -690,8 +684,8 @@
       <o-if :value="appList.length === 0">
         <div class="empty">
           <locale-text>
-            <span lang="cn">还没有应用，点击右上角「添加应用」开始创建吧。</span>
-            <span lang="en">No apps yet. Click "Add App" in the top right to create one.</span>
+            <span lang="cn">还没有应用。点击右上角「应用市场」安装应用；想自己创建应用，推荐在市场中安装「妙造」，与 AI 对话即可生成。</span>
+            <span lang="en">No apps yet. Click "App Market" in the top right to install apps. To build your own, install "Conjure" from the market and create apps by chatting with AI.</span>
           </locale-text>
         </div>
       </o-if>
@@ -700,7 +694,7 @@
 
   <script>
     import { getStorage } from "/nos/storage/main.js";
-    import { get, init } from "/nos/fs/main.js";
+    import { init } from "/nos/fs/main.js";
     import { DirHandle } from "/nos/fs/handle/dir.js";
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
     import confirm from "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js";
@@ -730,7 +724,6 @@
     import {
       getLocaleText,
       getLang,
-      setLang,
       ensureLocaleTextJson,
     } from "/nos/locale-text/get-locale-text.js";
 
@@ -906,7 +899,6 @@
             { id: "user", icon: "mdi:account-circle-outline", titleKey: "navUser" },
             { id: "certs", icon: "mdi:shield-key-outline", titleKey: "navCerts" },
           ],
-          lang: getLang(),
         },
         async attached() {
           // 不能把含 _handle 的应用列表放进 data 默认值：ofa.js 注册时会
@@ -957,16 +949,6 @@
           // 设置弹窗左侧导航切换
           switchSettingsTab(tab) {
             this.settingsTab = tab;
-          },
-
-          // 设置里的语言下拉切换；setLang 会让 <locale-text> 立即刷新，
-          // 重载页面让 attr:title 与运行时生成的状态文案同步更新
-          handleLangChange(event) {
-            const next = event.target.value;
-            if (!next || next === getLang()) return;
-            setLang(next);
-            localStorage.setItem("lang", next);
-            location.reload();
           },
 
           t(key) {
@@ -1112,6 +1094,12 @@
           // 从添加应用弹窗切换到应用市场弹窗
           handleOpenMarket() {
             this.dialogOpen = false;
+            this.marketDialogOpen = true;
+          },
+
+          // 从设置「凭证管理」跳转到应用市场安装凭证管理器
+          handleCertsOpenMarket() {
+            this.settingsOpen = false;
             this.marketDialogOpen = true;
           },
 

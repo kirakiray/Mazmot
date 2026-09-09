@@ -159,6 +159,16 @@
       color: var(--md-sys-color-on-tertiary-container);
     }
 
+    .provider-badge.glm {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+
+    .provider-badge.glm-coding {
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
     .key-info {
       display: flex;
       flex-direction: column;
@@ -388,7 +398,7 @@
         </div>
         <div class="brand-text">
           <h1><locale-text><span lang="cn">AI 密钥管理器</span><span lang="en">AI Key Manager</span></locale-text></h1>
-          <p><locale-text><span lang="cn">集中管理 DeepSeek / Kimi 的 API Key</span><span lang="en">Manage DeepSeek / Kimi API Keys in one place</span></locale-text></p>
+          <p><locale-text><span lang="cn">集中管理 DeepSeek / Kimi / GLM 的 API Key</span><span lang="en">Manage DeepSeek / Kimi / GLM API Keys in one place</span></locale-text></p>
         </div>
       </div>
     </header>
@@ -412,6 +422,8 @@
           <st-select sync:value="provider">
             <option value="deepseek">DeepSeek</option>
             <option value="kimi">Kimi</option>
+            <option value="glm">GLM</option>
+            <option value="glm-coding">GLM Coding Plan</option>
           </st-select>
         </div>
         <div class="key-field">
@@ -482,6 +494,8 @@
                   class="provider-badge"
                   class:deepseek="$data.provider === 'deepseek'"
                   class:kimi="$data.provider === 'kimi'"
+                  class:glm="$data.provider === 'glm'"
+                  class:glm-coding="$data.provider === 'glm-coding'"
                 >
                   <n-icon
                     attr:icon="$host.providerIcon($data.provider)"
@@ -607,7 +621,7 @@
         <div>
           <strong><locale-text><span lang="cn">直连官方 API</span><span lang="en">Direct official API access</span></locale-text></strong>
           <p>
-            <locale-text><span lang="cn">使用密钥时（如验证、查询余额/模型），浏览器直接向 DeepSeek / Kimi 官方接口发请求，不经过任何第三方中转。</span><span lang="en">When a key is used (e.g. validation, balance/model queries), the browser sends requests directly to the official DeepSeek / Kimi endpoints, with no third-party relay in between.</span></locale-text>
+            <locale-text><span lang="cn">使用密钥时（如验证、查询余额/模型），浏览器直接向 DeepSeek / Kimi / GLM 官方接口发请求，不经过任何第三方中转。</span><span lang="en">When a key is used (e.g. validation, balance/model queries), the browser sends requests directly to the official DeepSeek / Kimi / GLM endpoints, with no third-party relay in between.</span></locale-text>
           </p>
         </div>
       </div>
@@ -696,13 +710,21 @@
           },
 
           providerLabel(provider) {
-            return provider === "kimi" ? "Kimi" : "DeepSeek";
+            const labels = {
+              kimi: "Kimi",
+              glm: "GLM",
+              "glm-coding": "GLM Coding Plan",
+            };
+            return labels[provider] || "DeepSeek";
           },
 
           providerIcon(provider) {
-            return provider === "kimi"
-              ? "simple-icons:moonshotai"
-              : "simple-icons:deepseek";
+            const icons = {
+              kimi: "simple-icons:moonshotai",
+              glm: "simple-icons:zai",
+              "glm-coding": "simple-icons:zai",
+            };
+            return icons[provider] || "simple-icons:deepseek";
           },
 
           togglePassword() {

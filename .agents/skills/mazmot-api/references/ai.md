@@ -1,6 +1,6 @@
 # AI Assistant 模块（`/mz/ai/`）
 
-Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/mz/ai/` 目录，统一封装 DeepSeek 和 Kimi 两家提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
+Mazmot 自带的轻量 AI 助手封装库，位于仓库 `/mz/ai/` 目录，统一封装 DeepSeek、Kimi、GLM 提供商，提供 API Key 管理、对话、思考模式、流式输出、请求取消等能力。
 
 > **应用侧快速上手**：如果你的应用只需要调用 AI 对话能力，**基本不用关心 key 管理 API**（`saveKey` / `removeKey` / `setKeyDisabled` / `getApiKeys` / `onApiKeysChange` / `testApiKey`）——那些是 AI Key 管理器应用自己用的。应用侧只需用 `getAssistant()` 拿到 Assistant 实例，然后调 `chat()` / `getModels()` / `getRemaining()` 即可：
 
@@ -20,15 +20,15 @@ const { content } = await assistant.chat({
 
 ## 应用侧常用 API
 
-由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js`。
+由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` / `new GlmAssistant(id, apiKey)` / `new GlmCodingAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js` / `glm.js`。
 
 ### assistant.providerName
 
-只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
 
 ```js
 const assistant = getAssistant();
-console.log(assistant.providerName); // "deepseek" 或 "kimi"
+console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding"
 ```
 
 ### chat(options)
@@ -50,7 +50,7 @@ const response = await assistant.chat({
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `messages` | array | - | 消息数组，含 role/content |
-| `thinking` | boolean | false | 是否启用思考模式（DeepSeek / Kimi k2.6 / k2.5 生效） |
+| `thinking` | boolean | false | 是否启用思考模式（DeepSeek / GLM / Kimi k2.6 / k2.5 生效） |
 | `stream` | boolean | false | 是否启用流式输出 |
 | `model` | string | - | 模型名称 |
 | `onStream` | function | null | 流式输出回调 |
@@ -101,6 +101,8 @@ import {
 |--------|------|----------|----------|
 | DeepSeek | `deepseek-v4-flash`, `deepseek-v4-pro` | ✅ | ✅ |
 | Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.6`, `kimi-k2.5` | ✅ | ✅ |
+| GLM | `glm-4.7`, `glm-4.7-flash` 等（按量付费 Key） | ✅ | ✅ |
+| GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
 
 > `kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已下线。`deepseek-chat` / `deepseek-reasoner` 旧名已于 2026/07/24 弃用。
 
@@ -114,7 +116,7 @@ import {
 
 保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到本地存储（nos storage）并通知订阅者。
 
-- `provider`：`"deepseek"` / `"kimi"`
+- `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"`
 
 ```js
 const keyObj = saveKey("sk-xxx", "deepseek");
@@ -298,7 +300,8 @@ ai/
 ├── supplier/
 │   ├── assistant.js              # Assistant 基类（handleStreamResponse / _buildError）
 │   ├── deepseek.js               # DeepSeek 实现
-│   └── kimi.js                   # Kimi 实现
+│   ├── kimi.js                   # Kimi 实现
+│   └── glm.js                    # GLM 实现（含 Coding Plan 子类）
 ├── chain/                        # Agent 封装（见 ai-chain.md）
 ├── test/
 │   ├── ai-supplier-sb.html       # supplier 层测试（sibyl-test）

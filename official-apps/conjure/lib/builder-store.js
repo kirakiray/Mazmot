@@ -22,6 +22,21 @@ import {
   unregisterAppRecord,
   deleteVfsApp,
   sanitizeAppName,
+  createAppBackup,
+  listAppBackups,
+  deleteAppBackup,
+  renameAppBackup,
+  setBackupNote,
+  restoreAppBackup,
+  currentAppHash,
+  detectLocalProject,
+  loadProjectChats,
+  saveProjectChats,
+  truncateThread,
+  tailThread,
+  contextInfo,
+  MODEL_OPTIONS,
+  COMPACTION_PROMPT,
 } from "./builder.js";
 import { createTools } from "./tools/index.js";
 import {
@@ -44,6 +59,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     messages: [],
     sending: false,
     nextId: 1,
+    turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
     coreError: "",
     thinking: true, // 思考模式开关（传给 Agent 的 thinking 参数）
@@ -63,6 +79,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     permGrantNeeded: false,
     // 技能知识库索引
     skills: [],
+    // 数据备份（当前应用的 backup/ 目录清单；backupBusy 防创建重入）
+    backups: [],
+    backupBusy: false,
+    // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
+    apiKeys: [],
+    activeKeyId: "",
+    activeModelId: "", // 手动选中的模型（"" = 供应商默认；须属于当前 key 的供应商）
   };
 
   const listeners = new Set();
@@ -90,6 +113,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   const sessionBuckets = new Map();
   // 进行中回合所属的 chatKey；null = 无进行中回合（消息操作落在当前视图桶）
   let turnKey = null;
+  // 当前回合开始时刻（毫秒时间戳）：用于会话对话时长统计与列表实时计时
+  let turnStartAt = 0;
 
   const viewKey = () =>
     state.currentAppName === ""
@@ -109,6 +134,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   function pushMessage(item) {
     const key = activeKey();
+    // 消息落盘时间：所有角色（含用户消息）统一在这里补时间戳，hover 展示
+    if (item.ts == null) item.ts = Date.now();
     bucketFor(key).push(item);
     if (key === viewKey()) {
       state.messages.push(item);
@@ -174,6 +201,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let checkpointer = null;
   // 当前 Agent 实际使用的模型标识（deepseek 固定模型名，其余用 provider 名兜底）
   let activeModel = "";
+  // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
+  // 0 = 未设置（不做自动压缩）。仅用于发送前的水位判断，非响应式
+  let contextWindow = 0;
 
   /* ---------- 持久化辅助 ---------- */
 
@@ -214,17 +244,34 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   /* ---------- Agent ---------- */
 
   const pickAssistant = async () => {
-    // 代码生成优先用 deepseek-v4-flash，其余随机负载均衡
     const { getAssistant, getApiKeys } = aiModules;
-    try {
-      const deepseekKey = getApiKeys().find((k) => k.provider === "deepseek" && !k.disabled);
-      if (deepseekKey) {
-        return { assistant: getAssistant(deepseekKey.id), model: "deepseek-v4-flash" };
-      }
-    } catch {
-      /* 无 key 时 getAssistant 稍后统一报错 */
+    const keys = getApiKeys().filter((k) => !k.disabled);
+
+    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效）；
+    // 否则自动——deepseek 优先，其余随机负载均衡
+    let key = null;
+    if (state.activeKeyId) {
+      key = keys.find((k) => k.id === state.activeKeyId) || null;
     }
-    return { assistant: getAssistant(), model: undefined };
+    if (!key && keys.length) {
+      key = keys.find((k) => k.provider === "deepseek") || null;
+      if (!key && keys.length > 1) {
+        key = keys[Math.floor(Math.random() * keys.length)];
+      }
+    }
+
+    // 模型选择：手动选中的模型（须属于该 key 的供应商）优先；
+    // 否则 deepseek 走代码生成专属模型名，其余跟随供应商默认
+    const providerModels = key ? MODEL_OPTIONS[key.provider] || [] : [];
+    let model;
+    if (key && state.activeModelId && providerModels.includes(state.activeModelId)) {
+      model = state.activeModelId;
+    } else if (key?.provider === "deepseek") {
+      model = "deepseek-v4-flash";
+    } else {
+      model = undefined;
+    }
+    return { assistant: getAssistant(key?.id), model };
   };
 
   async function ensureAgent() {
@@ -357,18 +404,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   function syncCurrentFromRegistry(reg) {
     const hit = reg.find((a) => a.name === state.currentAppName);
     if (state.currentAppName === "" || !hit) return;
+    const sessions = [...(hit.sessions || [])]
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    // 手动拖拽排序：sessionOrder 里的 id 按登记顺序排；未登记（新建）的
+    // 会话索引按 -1 处理，稳定排序下保持在最前、彼此按最近更新排列
+    const order = hit.sessionOrder;
+    if (Array.isArray(order) && order.length) {
+      const idx = (s) => {
+        const i = order.indexOf(s.id);
+        return i === -1 ? -1 : i;
+      };
+      sessions.sort((a, b) => idx(a) - idx(b));
+    }
     setMany({
       apps: reg,
       currentAppDisplay: hit.displayName || hit.name,
       currentAppIcon: hit.icon || "📦",
       currentAppMode: hit.mode || "vfs",
-      // busy：该会话正处于流式回合中（左侧列表项 loading 图标）
-      currentAppSessions: [...(hit.sessions || [])]
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-        .map((s) => ({
-          ...s,
-          busy: turnKey === `chat:${state.currentAppName}:${s.id}`,
-        })),
+      // busy：该会话正处于流式回合中（左侧列表项 loading 图标）；
+      // duration 为累计对话耗时（会话级统计，随快照持久化）
+      currentAppSessions: sessions.map((s) => ({
+        ...s,
+        busy: turnKey === `chat:${state.currentAppName}:${s.id}`,
+        duration: s.duration || 0,
+      })),
     });
   }
 
@@ -506,6 +565,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     invalidateAgent();
   }
 
+  // 拖拽排序：把 fromId 的会话移到 toId 当前位置；顺序持久化到
+  // registry 的 sessionOrder 字段（未登记的新会话按最近更新排在最前）
+  async function reorderSessions(fromId, toId) {
+    const name = state.currentAppName;
+    if (!name || !fromId || fromId === toId) return;
+    const ids = state.currentAppSessions.map((s) => s.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    const reg = await loadRegistry();
+    const hit = reg.find((a) => a.name === name);
+    if (!hit) return;
+    hit.sessionOrder = ids;
+    await saveRegistry(reg);
+    syncCurrentFromRegistry(reg);
+  }
+
   /* ---------- 思考模式 ---------- */
 
   // 切换思考模式并持久化偏好；Agent 随开关重建（thinking 参数在创建时注入）
@@ -600,6 +677,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         keyError: "",
         permGrantNeeded: false,
       });
+      // 草稿阶段选中的目录已是既有项目（client/app.json 存在）：
+      // 走导入流程恢复项目与对话数据，而不是当作新项目
+      if (state.currentAppName === "") {
+        try {
+          const meta = await detectLocalProject(handle);
+          if (meta && meta.name) {
+            await importLocalProject(meta, handle);
+            return true;
+          }
+        } catch (err) {
+          console.warn("导入本地项目失败：", err);
+          set("keyError", `导入本地项目失败：${err.message}`);
+        }
+      }
       // 旧应用补救：已登记的本地应用记录可能缺失句柄（mount 修复前
       // 入库失败），重选目录后把新挂载句柄写回登记记录
       if (
@@ -662,6 +753,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       return;
     }
     const next = await reloadApps();
+    if (state.currentAppName === name) {
+      // 删除的是当前项目：项目标签由 window.open 打开，随项目一起关闭
+      //（beforeunload 会广播 bye，其他标签立即撤掉「已打开」徽标）；
+      // 关闭失败（入口直开 / 浏览器拦截）回退常规切换逻辑
+      window.close();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (window.closed) return;
+    }
     if (next.length === 0) {
       // 所有应用已删光：回草稿并清空残留对话（含历史草稿消息与记忆）
       await startDraft(true);
@@ -689,6 +788,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   async function deleteSession(sid) {
     const name = state.currentAppName;
+    // 对话进行中的会话不允许删除（UI 已隐藏删除按钮，这里兜底）
+    if (turnKey === `chat:${name}:${sid}`) return;
     const reg = await loadRegistry();
     const hit = reg.find((a) => a.name === name);
     if (!hit) return;
@@ -715,6 +816,197 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  /* ---------- 会话 fork（分支） ---------- */
+
+  // 从当前会话的某条消息处 fork：新会话复制截至该消息（含）的聊天记录，
+  // Agent 记忆按完整回合截断复制；成功后切换到新会话。草稿与发送中不支持。
+  async function forkSession(fromMessageId) {
+    if (!selfStore || state.sending) return;
+    const name = state.currentAppName;
+    const srcSid = state.currentSessionId;
+    if (!name || !srcSid) return; // 草稿没有会话实体，fork 无从谈起
+    const srcKey = `chat:${name}:${srcSid}`;
+    const bucket = bucketFor(srcKey);
+    const idx = bucket.findIndex((m) => m.id === fromMessageId);
+    if (idx < 0) return;
+    const kept = bucket.slice(0, idx + 1).map((m) => ({ ...m }));
+
+    // 新会话登记（标题沿用原会话并标注分支）
+    const reg = await loadRegistry();
+    const app = reg.find((a) => a.name === name);
+    if (!app) return;
+    const baseTitle =
+      app.sessions?.find((s) => s.id === srcSid)?.title ||
+      (kept.find((m) => m.role === "user")?.content || "").slice(0, 24) ||
+      "新对话";
+    const sid = `s${Date.now().toString(36)}`;
+    app.sessions = app.sessions || [];
+    app.sessions.push({
+      id: sid,
+      title: `${baseTitle} ⎇`.slice(0, 40),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await saveRegistry(reg);
+
+    // 复制聊天记录（实时桶 + 落盘）
+    const dstKey = `chat:${name}:${sid}`;
+    sessionBuckets.set(dstKey, kept);
+    await selfStore.setItem(dstKey, kept.map((m) => ({ ...m })));
+
+    // 复制 Agent 记忆：按完整回合截断（fork 点所在回合若未闭合则整段舍弃）
+    const userTurns = kept.filter((m) => m.role === "user").length;
+    const srcThread = (await selfStore.getItem(`thread:${name}:${srcSid}`)) || [];
+    await selfStore.setItem(
+      `thread:${name}:${sid}`,
+      truncateThread(srcThread, userTurns),
+    );
+
+    await reloadApps();
+    await loadSessionById(sid, state.apps);
+  }
+
+  /* ---------- 上下文压缩 ---------- */
+
+  // 把 wire 消息拼成摘要请求用的对话稿（超长内容掐头留尾，防止摘要请求本身撑爆窗口）
+  const clip = (t, n) => {
+    const text = String(t ?? "");
+    if (text.length <= n) return text;
+    const half = Math.floor(n / 2);
+    return text.slice(0, half) + "\n…[过长截断]…\n" + text.slice(-half);
+  };
+  const buildTranscript = (thread) =>
+    thread
+      .map((m) => {
+        if (m.role === "user") return `用户：${clip(m.content, 3000)}`;
+        if (m.role === "assistant") {
+          const calls = (m.tool_calls || [])
+            .map(
+              (c) =>
+                `  [调用工具] ${c.function?.name} ${clip(c.function?.arguments, 600)}`,
+            )
+            .join("\n");
+          return `助手：${clip(m.content, 3000)}${calls ? "\n" + calls : ""}`;
+        }
+        if (m.role === "tool") return `工具结果：${clip(m.content, 1200)}`;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+  /**
+   * 压缩指定会话的 Agent 记忆：用摘要替换旧历史 + 保留最近 2 个完整回合原文，
+   * 并在聊天流里插一张 compact 卡片告知用户（显示层聊天记录不动）。
+   * 只应在两回合之间调用（sending = false）。返回 { ok, reason? }。
+   */
+  async function compressThread(chatKey) {
+    const threadId = chatKey === "chat:draft" ? "draft" : chatKey.slice("chat:".length);
+    const threadKey = `thread:${threadId}`;
+    const thread = (await selfStore.getItem(threadKey)) || [];
+    const turns = thread.filter((m) => m.role === "user").length;
+    // 太短不值得压：摘要 + 尾部原文不会比原记忆小多少
+    if (turns < 3) return { ok: false, reason: "对话还很短，暂不需要压缩" };
+
+    if (!aiModules) aiModules = await load("/mz/ai/main.js");
+    const { assistant, model } = await pickAssistant();
+    const res = await assistant.chat({
+      ...(model ? { model } : {}),
+      thinking: false,
+      stream: false,
+      messages: [
+        { role: "system", content: COMPACTION_PROMPT },
+        { role: "user", content: buildTranscript(thread) },
+      ],
+    });
+    const summary = String(res.content || "").trim();
+    if (!summary) return { ok: false, reason: "摘要生成失败，请稍后重试" };
+
+    const newThread = [
+      {
+        role: "user",
+        content: `以下是此前对话的压缩摘要，请基于它继续工作（细节需要时先用 list_files / read_file 核实）：\n\n${summary}`,
+      },
+      { role: "assistant", content: "已了解，我将基于该摘要继续。" },
+      ...tailThread(thread, 2),
+    ];
+    await selfStore.setItem(threadKey, newThread);
+
+    // 聊天流里插卡片（显示层记录不动，仅告知）；pushMessage 路由到 activeKey 桶
+    pushMessage({
+      id: state.nextId++,
+      role: "compact",
+      count: thread.length - tailThread(thread, 2).length,
+      summary,
+      open: false,
+      newGroup: true,
+    });
+    // 卡片随会话落盘
+    await selfStore.setItem(
+      chatKey,
+      bucketFor(chatKey).map((m) => ({ ...m })),
+    );
+    return { ok: true };
+  }
+
+  // 手动压缩：压缩当前正在查看的会话
+  async function compress() {
+    if (!selfStore || state.sending) {
+      return { ok: false, reason: state.sending ? "请等本轮对话结束后再压缩" : "" };
+    }
+    return await compressThread(viewKey());
+  }
+
+  // 设定上下文窗口（token），发送前的自动压缩判断用
+  function setContextWindow(n) {
+    contextWindow = Number(n) || 0;
+  }
+
+  /* ---------- 对话 API Key 切换 ---------- */
+
+  const API_KEY_LIST_KEY = "pref:active-key";
+
+  // 把 /mz/ai 的 key 列表镜像进 state（只留展示所需字段）
+  function syncApiKeyList(keys) {
+    set(
+      "apiKeys",
+      (keys || [])
+        .filter((k) => !k.disabled)
+        .map((k) => ({ id: k.id, provider: k.provider, maskedKey: k.maskedKey })),
+    );
+    // 选中的 key 已被删/禁用：回退自动
+    if (state.activeKeyId && !keys?.some((k) => k.id === state.activeKeyId && !k.disabled)) {
+      selectApiKey("");
+    }
+  }
+
+  // 切换对话模型（"" = 供应商默认）；切换即 invalidateAgent 下一回合生效
+  async function selectModel(id) {
+    if (state.activeModelId === id) return;
+    set("activeModelId", id);
+    invalidateAgent();
+    if (selfStore) {
+      try {
+        await selfStore.setItem("pref:active-model", id);
+      } catch {
+        /* 存储失败不影响本次会话 */
+      }
+    }
+  }
+
+  // 切换对话用的 API Key（"" = 自动）；下一回合经 invalidateAgent 生效
+  async function selectApiKey(id) {
+    if (state.activeKeyId === id) return;
+    set("activeKeyId", id);
+    invalidateAgent();
+    if (selfStore) {
+      try {
+        await selfStore.setItem(API_KEY_LIST_KEY, id);
+      } catch {
+        /* 存储失败不影响本次会话 */
+      }
+    }
+  }
+
   /* ---------- 预览 ---------- */
 
   function openApp(appName, mode) {
@@ -727,7 +1019,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     window.open(buildRunUrl(name), `mazmot-app-${name}`);
   }
 
-  // 本地目录应用：所选目录即项目根，直接挂载该目录打开
+  // 本地目录应用：应用文件在所选目录的 client/ 子目录（与虚拟渠道布局一致）
   // （app-runner 的 getRunUrl 本地逻辑会挂载 client/，不存在时回退挂载根目录）
   async function openLocalApp(name) {
     if (!localRootHandle) {
@@ -757,6 +1049,102 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       window.open(url, `mazmot-app-${name}`);
     } catch (err) {
       set("keyError", `打开应用失败：${err.message}`);
+    }
+  }
+
+  /* ---------- 数据备份管理（client/ 同层 backup/ 目录） ---------- */
+
+  // 当前应用对应的备份根句柄：本地渠道恢复句柄（只读列出 / 写入用），虚拟渠道 null
+  async function backupRootHandle() {
+    if (state.currentAppMode !== "local") return null;
+    if (!localRootHandle) {
+      localRootHandle =
+        (await getLocalHandleFromRecord(state.currentAppName)) || null;
+      if (localRootHandle) set("localDirLabel", localRootHandle?.name || "");
+    }
+    return localRootHandle;
+  }
+
+  async function refreshBackups() {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      // listAppBackups 返回 { id, label, note }；当前内容指纹与 id 尾部 hash
+      // 一致的项标记 current（即「这份备份就是现在的内容」）
+      const currentHash = await currentAppHash(fs, state.currentAppName, rootHandle);
+      const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+      set(
+        "backups",
+        list.map((b) => ({
+          ...b,
+          current: currentHash !== "" && b.id.endsWith(`-${currentHash}`),
+        })),
+      );
+    } catch (err) {
+      console.warn("读取备份列表失败：", err);
+    }
+  }
+
+  async function createBackup() {
+    if (state.backupBusy || state.currentAppName === "" || !fs) return;
+    set("backupBusy", true);
+    try {
+      const rootHandle = await backupRootHandle();
+      const res = await createAppBackup(fs, state.currentAppName, rootHandle);
+      await refreshBackups();
+      return res;
+    } catch (err) {
+      set("keyError", `创建备份失败：${err.message}`);
+    } finally {
+      set("backupBusy", false);
+    }
+  }
+
+  async function deleteBackup(id) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await deleteAppBackup(fs, state.currentAppName, id, rootHandle);
+      await refreshBackups();
+    } catch (err) {
+      set("keyError", `删除备份失败：${err.message}`);
+    }
+  }
+
+  // 备份更名：写入备份目录内 __meta.json 的 label（目录名/内容寻址不变）
+  async function renameBackup(id, label) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await renameAppBackup(fs, state.currentAppName, id, label, rootHandle);
+      await refreshBackups();
+      return true;
+    } catch (err) {
+      set("keyError", `备份更名失败：${err.message}`);
+    }
+  }
+
+  // 设置 / 清除备份备注（空串清除），存 __meta.json 的 note
+  async function setNote(id, note) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      await setBackupNote(fs, state.currentAppName, id, note, rootHandle);
+      await refreshBackups();
+      return true;
+    } catch (err) {
+      set("keyError", `设置备注失败：${err.message}`);
+    }
+  }
+
+  // 还原备份：内容无变动返回 { reason: "unchanged" }，失败返回 undefined
+  async function restoreBackup(id) {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      return await restoreAppBackup(fs, state.currentAppName, id, rootHandle);
+    } catch (err) {
+      set("keyError", `还原备份失败：${err.message}`);
     }
   }
 
@@ -860,7 +1248,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           invalidateAgent();
         }
       }
-      return "draft";
+      // 选中的目录是既有项目：chooseLocalDir 已自动导入并切换应用，
+      // 不返回草稿，继续走下方既有应用的会话准备流程
+      if (state.currentAppName === "") return "draft";
     }
     if (state.currentSessionId === "") {
       const reg = await loadRegistry();
@@ -907,7 +1297,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 回合收尾：落盘会话、（若本轮创建了应用）迁移草稿 → 注册 → 出预览卡片
   // 全程以回合所属 chatKey（发送时固定）为准，与用户当前正查看哪个会话无关
-  async function finishTurn(firstUserText, threadId) {
+  async function finishTurn(firstUserText, threadId, elapsedMs = 0) {
     if (!selfStore) return;
     const chatKey = threadId === "draft" ? "chat:draft" : `chat:${threadId}`;
     // 会话桶已在中途被删除（删除会话/应用时丢弃实时桶）：跳过落盘
@@ -918,7 +1308,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingNewApp) {
       const info = pendingNewApp;
       pendingNewApp = null;
-      await adoptNewApp(info, firstUserText, chatKey);
+      await adoptNewApp(info, firstUserText, chatKey, elapsedMs);
+      await syncLocalProjectChats(info.appName);
       return;
     }
 
@@ -935,6 +1326,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           ses.title = firstUserText.slice(0, 24) || "新对话";
         }
         ses.updatedAt = Date.now();
+        // 累计本回合对话耗时（会话从创建到现在的所有回合时长之和）
+        ses.duration = (ses.duration || 0) + (elapsedMs || 0);
         await saveRegistry(reg);
         await reloadApps();
         if (
@@ -946,6 +1339,123 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       // 兜底：记录缺失（历史会话/旧版本创建）时补登记，保证句柄可恢复
       await ensureAppRegistered(appName);
+    }
+    // 本地渠道：回合结束把对话快照写入项目目录（conjure-chats.json），
+    // 供下次选择该目录时走导入流程恢复对话数据
+    if (appName) await syncLocalProjectChats(appName);
+  }
+
+  // 导入本地既有项目：按 client/app.json 元数据登记应用，并从项目目录的
+  // conjure-chats.json 恢复会话列表、消息与 Agent 记忆；同名已登记时合并
+  // （句柄更新 + 只补缺失的会话），然后切换到该项目
+  async function importLocalProject(meta, handle) {
+    const clean = sanitizeAppName(meta.name);
+    if (!clean) throw new Error(`项目 app.json 的 name 不合法：${meta.name}`);
+    const chats = await loadProjectChats(handle);
+
+    const reg = await loadRegistry();
+    let hit = reg.find((a) => a.name === clean);
+    const importedSessions = (chats?.sessions || []).filter(
+      (s) => s && s.id && !hit?.sessions?.some((x) => x.id === s.id),
+    );
+    if (!hit) {
+      hit = {
+        name: clean,
+        displayName: meta.displayName || clean,
+        icon: meta.icon || "📦",
+        mode: "local",
+        createdAt: Date.now(),
+        sessions: importedSessions.map(({ busy, ...s }) => s),
+      };
+      if (chats?.sessionOrder) hit.sessionOrder = chats.sessionOrder;
+      reg.push(hit);
+    } else {
+      hit.mode = "local";
+      hit.sessions = hit.sessions || [];
+      hit.sessions.push(...importedSessions.map(({ busy, ...s }) => s));
+    }
+    await saveRegistry(reg);
+
+    // mazmet apps[] 登记（携带句柄，刷新后可恢复授权）
+    if (mazmotStore) {
+      try {
+        await registerAppRecord(
+          mazmotStore,
+          buildLocalAppRecord({
+            name: clean,
+            displayName: hit.displayName,
+            icon: hit.icon,
+            handle,
+          }),
+        );
+      } catch (err) {
+        console.warn("导入登记 mazmot apps 失败：", err);
+      }
+    }
+
+    // 恢复对话数据：只导入本机缺失的会话（不覆盖本地已有记录）
+    if (chats && importedSessions.length) {
+      for (const s of importedSessions) {
+        const msgs = chats.messages?.[s.id];
+        if (Array.isArray(msgs)) {
+          await selfStore.setItem(`chat:${clean}:${s.id}`, msgs);
+        }
+        const thread = chats.threads?.[s.id];
+        if (Array.isArray(thread)) {
+          await selfStore.setItem(`thread:${clean}:${s.id}`, thread);
+        }
+      }
+    }
+
+    set("keyError", "");
+    await selectApp(clean);
+    await reloadApps();
+  }
+
+  // 把当前本地项目的对话数据写快照到项目目录（conjure-chats.json）。
+  // 每次对话回合结束后调用；appName 可与当前视图不同（回合归属优先）
+  async function syncLocalProjectChats(appName = state.currentAppName) {
+    if (!selfStore || appName === "") return;
+    try {
+      const reg = await loadRegistry();
+      const app = reg.find((a) => a.name === appName);
+      if (!app || app.mode !== "local") return;
+      // 句柄：当前应用用闭包句柄；其它应用从登记记录恢复
+      let handle = localRootHandle;
+      if (appName !== state.currentAppName || !handle) {
+        handle = await getLocalHandleFromRecord(appName);
+      }
+      if (!handle) return;
+
+      const sessions = [];
+      const messages = {};
+      const threads = {};
+      for (const s of app.sessions || []) {
+        sessions.push({
+          id: s.id,
+          title: s.title,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+          duration: s.duration || 0,
+        });
+        const key = `chat:${appName}:${s.id}`;
+        // 进行中的回合在内存桶里，优先取桶（与落盘内容一致）
+        messages[s.id] = sessionBuckets.has(key)
+          ? bucketFor(key).map((m) => ({ ...m }))
+          : (await selfStore.getItem(key)) || [];
+        threads[s.id] = (await selfStore.getItem(`thread:${appName}:${s.id}`)) || [];
+      }
+      await saveProjectChats(handle, {
+        version: 1,
+        app: { name: appName, displayName: app.displayName, icon: app.icon },
+        sessionOrder: app.sessionOrder || null,
+        sessions,
+        messages,
+        threads,
+        savedAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn("写入项目对话快照失败：", err);
     }
   }
 
@@ -980,7 +1490,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 新应用落地：注册（mazmot apps[] + 本应用 registry）、迁移草稿会话、出预览卡片
   // draftKey：本轮回合所属的草稿 chatKey，消息从其实时桶迁移（不读盘）
-  async function adoptNewApp(info, firstUserText, draftKey) {
+  async function adoptNewApp(info, firstUserText, draftKey, elapsedMs = 0) {
     const isLocal = info.mode === "local" && !!localRootHandle;
     const check = await validateApp(
       fs,
@@ -1012,6 +1522,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       title: firstUserText.slice(0, 24) || "新对话",
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      duration: elapsedMs || 0,
     };
     if (existed) {
       existed.sessions = existed.sessions || [];
@@ -1095,25 +1606,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (!sessionBuckets.has(turnKey)) {
       sessionBuckets.set(turnKey, [...state.messages]);
     }
+    turnStartAt = Date.now();
     markBusy(turnKey, true);
 
     setMany({ keyError: "" });
+    // 用户消息记录发送时间 ts（聊天区 hover 展示）
     pushMessage({
       id: state.nextId++,
       role: "user",
       content: text,
       newGroup: true,
+      ts: turnStartAt,
     });
+    setMany({ turnStartTs: turnStartAt });
 
     try {
       await ensureAgent();
     } catch {
       turnKey = null; // 回合未真正开始，回退到视图内联模式
+      turnStartAt = 0;
       markBusy(null);
-      set(
-        "keyError",
-        "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
-      );
+      setMany({
+        keyError: "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
+        turnStartTs: 0,
+      });
       return;
     }
 
@@ -1121,6 +1637,16 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     activeBubble = null;
     currentAbort = { stopped: false };
     const abort = currentAbort;
+    // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
+    try {
+      const info = contextInfo(bucketFor(turnKey));
+      const estimate = info.used + Math.ceil((text.length || 0) / 2) + 64;
+      if (contextWindow > 0 && info.used > 0 && estimate >= contextWindow) {
+        await compressThread(turnKey);
+      }
+    } catch (err) {
+      console.warn("自动压缩上下文失败：", err);
+    }
     try {
       await agent.chat({
         messages: [{ role: "user", content: text }],
@@ -1142,10 +1668,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       activeBubble = null;
       currentAbort = null;
       set("sending", false);
-      await finishTurn(text, threadId);
+      // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
+      // 落盘前 patch，随会话桶一起持久化）
+      if (turnStartAt) {
+        const lastAi = [...bucketFor(turnKey)]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
+      }
+      await finishTurn(text, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
       turnKey = null;
+      turnStartAt = 0;
+      setMany({ turnStartTs: 0 });
     }
   }
 
@@ -1197,6 +1733,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       } catch {
         /* 忽略 */
       }
+      // 恢复手动选中的 API Key 与模型
+      try {
+        const keyId = await selfStore.getItem(API_KEY_LIST_KEY);
+        if (typeof keyId === "string") set("activeKeyId", keyId);
+        const modelId = await selfStore.getItem("pref:active-model");
+        if (typeof modelId === "string") set("activeModelId", modelId);
+      } catch {
+        /* 忽略 */
+      }
+    }
+    // API Key 列表镜像 + 变化订阅（惰性加载 /mz/ai，失败仅代表宿主未提供）
+    try {
+      const m = await load("/mz/ai/main.js");
+      aiModules = aiModules || m;
+      syncApiKeyList(m.getApiKeys());
+      m.onApiKeysChange(syncApiKeyList);
+    } catch (err) {
+      console.warn("API Key 列表加载失败：", err);
     }
     await reloadApps();
 
@@ -1259,15 +1813,27 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     selectApp,
     startDraft,
     newSessionFor,
+    reorderSessions,
     loadSession: loadSessionById,
     deleteApp,
     deleteSession,
     renameSession,
+    forkSession,
+    compress,
+    setContextWindow,
+    selectApiKey,
+    selectModel,
     selectMode,
     chooseLocalDir,
     grantLocalPermission,
     installSkillFromSource,
     openApp,
+    refreshBackups,
+    createBackup,
+    deleteBackup,
+    renameBackup,
+    setNote,
+    restoreBackup,
     // 折叠开关作用于「当前查看的会话」桶（可能不是流式回合的桶），
     // 直接改桶内条目并向前端发视图事件，不走 patchMessage 的回合路由
     toggleTool(id) {

@@ -1,5 +1,5 @@
 // 工具插件：write_file
-// 把一个 UTF-8 文本文件写入指定应用的项目根目录，路径如 pages/home.html。
+// 把一个 UTF-8 文本文件写入指定应用的 client/ 目录，路径如 pages/home.html。
 // 依赖注入：ctx = { fs, rootHandle, onFileWrite }
 import { writeAppFile } from "../builder.js";
 
@@ -7,7 +7,7 @@ export default {
   key: "writeFile",
   name: "write_file",
   description:
-    "把一个 UTF-8 文本文件写入指定应用的项目根目录，路径如 pages/home.html。可覆盖重写以迭代修改。若目标应用尚未初始化（没有 app.json），写入时会自动补建最小 app.json 完成初始化。",
+    "把一个 UTF-8 文本文件写入指定应用的 client/ 目录，路径如 pages/home.html。可覆盖重写以迭代修改。若目标应用尚未初始化（没有 app.json），写入时会自动补建最小 app.json 完成初始化。",
   schema: {
     appName: { type: "string", description: "create_app 时确定的应用名" },
     path: { type: "string", description: "相对 client/ 的文件路径" },

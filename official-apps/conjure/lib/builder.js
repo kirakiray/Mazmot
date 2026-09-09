@@ -14,6 +14,89 @@ export const LEGACY_NAMESPACE = "mazmot-apps";
 // 一个可运行应用在 client/ 下必须存在的文件
 export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 
+// 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
+// 模型可选项依赖当前选中的 API Key 所属供应商
+export const MODEL_OPTIONS = {
+  deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  glm: ["glm-5.3-flash", "glm-5.3"],
+  "glm-coding": ["glm-5.3-flash", "glm-5.3"],
+  kimi: ["kimi-k3", "kimi-k2.7-code"],
+};
+
+/**
+ * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留
+ * 回合若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整体丢弃
+ * 该回合——悬空的 tool_calls 会让下一次模型请求报错。
+ * @param {Array} thread wire 格式消息数组（user / assistant(+tool_calls) / tool）
+ * @param {number} turns 保留的回合数
+ * @returns {Array}
+ */
+export function truncateThread(thread, turns) {
+  const kept = splitThreadSegments(thread).slice(0, turns);
+  return dropDanglingTurn(kept).flat();
+}
+
+/**
+ * 取 wire 记忆末尾的 k 个完整回合（悬空的 tool_calls 回合同样整段丢弃），
+ * 供上下文压缩后保留「最近原文」。
+ * @param {Array} thread wire 格式消息数组
+ * @param {number} keepTurns 保留的末尾回合数
+ * @returns {Array}
+ */
+export function tailThread(thread, keepTurns) {
+  if (!(keepTurns > 0)) return [];
+  const segments = splitThreadSegments(thread);
+  return dropDanglingTurn(segments)
+    .slice(-keepTurns)
+    .flat();
+}
+
+// 把 wire 记忆切成「回合」段（每个 user 消息开头一段；开头散段防御性丢弃）
+function splitThreadSegments(thread) {
+  const segments = [];
+  for (const m of thread || []) {
+    if (m.role === "user") segments.push([]);
+    if (!segments.length) continue;
+    segments[segments.length - 1].push(m);
+  }
+  return segments;
+}
+
+// 末段若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整段丢弃——
+// 悬空的 tool_calls 会让下一次模型请求报错
+function dropDanglingTurn(segments) {
+  const kept = [...segments];
+  const last = kept[kept.length - 1];
+  if (
+    last &&
+    last[last.length - 1]?.role === "assistant" &&
+    last[last.length - 1].tool_calls?.length
+  ) {
+    kept.pop();
+  }
+  return kept;
+}
+
+/**
+ * 读取会话当前的上下文占用（基于回合末条 AI 消息上挂的 usage）。
+ * usage.context_tokens 由 Agent 用「末次模型调用的 prompt + completion」覆盖写入，
+ * 即最接近当前对话真实上下文大小的估算值；总量（窗口大小）由页面 select 选定。
+ * @param {Array} messages 会话消息数组（含历史消息）
+ * @returns {{ used: number, model: string }}
+ *          used 为 0 表示会话还没有任何模型调用记录
+ */
+export function contextInfo(messages) {
+  let used = 0;
+  let model = "";
+  for (const m of messages || []) {
+    if (m?.role === "assistant" && m.usage?.context_tokens > 0) {
+      used = m.usage.context_tokens;
+      model = m.model || model;
+    }
+  }
+  return { used, model };
+}
+
 // 允许写入的文本文件扩展名（P2P 分享只支持 UTF-8 文本，二进制不可写入）
 const TEXT_EXT = [
   ".html", ".js", ".mjs", ".css", ".json", ".md", ".txt", ".svg",
@@ -70,11 +153,12 @@ export function buildRunUrl(name) {
 
 /**
  * 构造「本地目录」渠道的应用记录（source: local，句柄随记录持久化）。
- * @param {{ name: string, desc?: string, icon?: string, displayName?: string, handle: Object }} meta
+ * @param {{ name?: string, appName?: string, desc?: string, icon?: string, displayName?: string, handle: Object }} meta
+ *        name / appName 二选一（仓库层回调传的是 appName）
  * @returns {Object}
  */
 export function buildLocalAppRecord(meta) {
-  const name = sanitizeAppName(meta.name);
+  const name = sanitizeAppName(meta.appName ?? meta.name);
   return {
     name,
     desc: String(meta.desc || meta.displayName || name),
@@ -90,11 +174,12 @@ export function buildLocalAppRecord(meta) {
 
 /**
  * 构造写入 mazmot 空间 apps[] 的应用记录（虚拟目录应用）。
- * @param {{ name: string, desc?: string, icon?: string, displayName?: string }} meta
+ * @param {{ name?: string, appName?: string, desc?: string, icon?: string, displayName?: string }} meta
+ *        name / appName 二选一（仓库层回调传的是 appName）
  * @returns {Object}
  */
 export function buildAppRecord(meta) {
-  const name = sanitizeAppName(meta.name);
+  const name = sanitizeAppName(meta.appName ?? meta.name);
   return {
     name,
     desc: String(meta.desc || meta.displayName || name),
@@ -216,11 +301,11 @@ export async function migrateVfsNamespace(fs, mazmotStore) {
 }
 
 // 写入落点解析：
-// - 本地目录渠道（rootHandle = fs.open() 选定的目录）：该目录即项目根，
-//   文件直接写在根上，不建 <name>/client/ 子目录（预览走 getRunUrl 的本地回退：挂载根目录）
+// - 本地目录渠道（rootHandle = fs.open() 选定的目录）：应用文件统一写入
+//   所选目录的 client/ 子目录（与虚拟渠道布局一致；预览走 getRunUrl 挂载 client/）
 // - 虚拟系统渠道：ai-apps/<name>/client/
 const resolveBaseDir = async (fs, appName, rootHandle) => {
-  if (rootHandle) return { base: rootHandle, rel: "" };
+  if (rootHandle) return { base: rootHandle, rel: "client/" };
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   const rootDir = await ensureAppRoot(fs);
@@ -401,6 +486,297 @@ export async function deleteVfsApp(fs, appName) {
   if (dir && dir.kind === "dir") await dir.remove();
 }
 
+/* ---------- 数据备份管理 ----------
+ * 备份落点：client/ 同层的 backup/<id>/ 目录（id 形如 backup-20260908-153012），
+ * 把当前 client/ 全部文本文件按原相对路径复制进去；node_modules 等目录整体忽略。
+ */
+
+// 打包备份时忽略的目录名（路径任一层级命中即整段跳过）
+const BACKUP_IGNORE_DIRS = ["node_modules"];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const backupId = (hash8) => {
+  const d = new Date();
+  return `backup-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${hash8}`;
+};
+// 备份 id = 时间戳 + 内容 hash 前 8 位（内容相同 → hash 相同 → 判重跳过）
+const isBackupId = (id) => /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(id);
+
+// 扁平化文件清单（排序后 路径+内容 拼接）的 SHA-256 前 8 位 hex
+const backupHash = async (files) => {
+  const enc = new TextEncoder();
+  const parts = [];
+  for (const f of files) {
+    parts.push(enc.encode(f.path + "\n"), enc.encode(f.text + "\n"));
+  }
+  const digest = await crypto.subtle.digest("SHA-256", concatBytes(parts));
+  return [...new Uint8Array(digest)]
+    .slice(0, 4)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
+const concatBytes = (list) => {
+  const total = list.reduce((n, b) => n + b.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const b of list) {
+    out.set(b, off);
+    off += b.length;
+  }
+  return out;
+};
+
+// 备份根目录定位：本地渠道为所选目录下的 backup/，虚拟渠道为 ai-apps/<name>/backup/
+const resolveBackupBase = async (fs, appName, rootHandle) => {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  if (rootHandle) return { base: rootHandle, prefix: "backup/" };
+  const rootDir = await ensureAppRoot(fs);
+  return { base: rootDir, prefix: `${clean}/backup/` };
+};
+
+// 递归收集 client/ 下全部文件（返回 { path: 相对 client/ 路径, item }），忽略 IGNORE 目录
+const collectClientFiles = async (base, rel) => {
+  const clientDir = await base.get(rel.replace(/\/+$/, "")).catch(() => null);
+  if (!clientDir || clientDir.kind !== "dir") return [];
+  const ignored = (p) =>
+    p.split("/").some((seg) => BACKUP_IGNORE_DIRS.includes(seg));
+  const out = [];
+  const walk = async (dir, prefix) => {
+    for await (const key of dir.keys()) {
+      const item = await dir.get(key);
+      if (!item) continue;
+      const p = prefix ? `${prefix}/${key}` : key;
+      if (ignored(p)) continue;
+      if (item.kind === "dir") await walk(item, p);
+      else out.push({ path: p, item });
+    }
+  };
+  await walk(clientDir, "");
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+};
+
+/**
+ * 计算当前 client/ 内容指纹（与备份 id 尾部 hash 同算法）；client/ 为空返回空串。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function currentAppHash(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) return "";
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const collected = await collectClientFiles(base, rel);
+  if (collected.length === 0) return "";
+  const files = [];
+  for (const f of collected) files.push({ path: f.path, text: await f.item.text() });
+  return backupHash(files);
+}
+
+/**
+ * 创建备份：把当前 client/ 打包复制到同层 backup/<id>/ 目录。
+ * id 含内容 hash（对排序后的 路径+内容 清单算 SHA-256）；已存在相同内容
+ * 的备份时跳过写入（幂等，无改动反复点备份不会产生重复备份）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{ id: string, files: number, bytes: number, skipped: boolean }>}
+ */
+export async function createAppBackup(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const collected = await collectClientFiles(base, rel);
+  // 先读出内容参与 hash：路径 + 内容 扁平化排序后指纹
+  const files = [];
+  for (const f of collected) files.push({ path: f.path, text: await f.item.text() });
+  const hash8 = await backupHash(files);
+  const { base: bBase, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const existing = await listAppBackups(fs, clean, rootHandle);
+  const hit = existing.find((b) => b.id.endsWith(`-${hash8}`));
+  if (hit) return { id: hit.id, files: files.length, bytes: 0, skipped: true };
+
+  const id = backupId(hash8);
+  let bytes = 0;
+  for (const f of files) {
+    const dest = await bBase.get(`${prefix}${id}/${f.path}`, { create: "file" });
+    await dest.write(f.text);
+    bytes += new Blob([f.text]).size;
+  }
+  return { id, files: files.length, bytes, skipped: false };
+}
+
+// 读备份目录的 __meta.json（缺失/损坏返回空对象）
+const readBackupMeta = async (dir) => {
+  try {
+    const meta = await dir.get("__meta.json");
+    if (meta && meta.kind === "file") return JSON.parse(await meta.text()) || {};
+  } catch {
+    /* meta 缺失/损坏按空处理 */
+  }
+  return {};
+};
+
+/**
+ * 列出已有备份（backup/ 下的目录，新的在前）。
+ * 每项带 label（自定义名称）与 note（备注），均存目录内 __meta.json。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{ id: string, label: string, note: string }[]>}
+ */
+export async function listAppBackups(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) return [];
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const dir = await base.get(prefix.replace(/\/+$/, "")).catch(() => null);
+  if (!dir || dir.kind !== "dir") return [];
+  const out = [];
+  for await (const key of dir.keys()) {
+    const item = await dir.get(key);
+    if (!item || item.kind !== "dir" || !isBackupId(key)) continue;
+    const meta = await readBackupMeta(item);
+    out.push({ id: key, label: meta.label || "", note: meta.note || "" });
+  }
+  return out.sort((a, b) => (a.id < b.id ? 1 : -1));
+}
+
+// 写备份 meta 的单个字段（保留其它字段）；校验备份 id 与存在性
+const writeBackupMetaField = async (
+  fs,
+  appName,
+  backupId,
+  field,
+  value,
+  rootHandle,
+) => {
+  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
+  if (!dir || dir.kind !== "dir") throw new Error("备份不存在");
+  const meta = await readBackupMeta(dir);
+  meta[field] = value;
+  const file = await dir.get("__meta.json", { create: "file" });
+  await file.write(JSON.stringify(meta));
+};
+
+/**
+ * 给备份更名（写入备份目录内 __meta.json 的 label；目录名不变，
+ * 内容寻址与去重逻辑不受影响）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function renameAppBackup(fs, appName, backupId, label, rootHandle) {
+  const name = String(label ?? "").trim();
+  if (!name) throw new Error("名称不能为空");
+  if (name.length > 50) throw new Error("名称过长（最多 50 字）");
+  await writeBackupMetaField(fs, appName, backupId, "label", name, rootHandle);
+}
+
+/**
+ * 设置备份备注（写入 __meta.json 的 note；空串清除备注）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function setBackupNote(fs, appName, backupId, note, rootHandle) {
+  const text = String(note ?? "").trim();
+  if (text.length > 200) throw new Error("备注过长（最多 200 字）");
+  await writeBackupMetaField(fs, appName, backupId, "note", text, rootHandle);
+}
+
+/**
+ * 还原备份：把 backup/<id>/ 的内容写回 client/（先清空 client/，__meta.json 不参与还原）。
+ * 当前 client/ 内容与该备份一致（hash 相同）时不做任何写入，返回 unchanged。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{ restored: boolean, reason?: "unchanged", files: number, bytes?: number }>}
+ */
+export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
+  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  // 无变动检测：当前内容指纹与备份 id 尾部的 hash 一致即无需还原
+  const collected = await collectClientFiles(base, rel);
+  const current = [];
+  for (const f of collected) current.push({ path: f.path, text: await f.item.text() });
+  const currentHash = await backupHash(current);
+  if (backupId.endsWith(`-${currentHash}`)) {
+    return { restored: false, reason: "unchanged", files: current.length };
+  }
+
+  const { base: bBase, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const bDir = await bBase.get(`${prefix}${backupId}`).catch(() => null);
+  if (!bDir || bDir.kind !== "dir") throw new Error("备份不存在");
+
+  // 覆盖还原：清空 client/ 后按备份目录结构写回
+  const clientDir = await base.get(rel.replace(/\/+$/, "")).catch(() => null);
+  if (clientDir && clientDir.kind === "dir") await clientDir.remove();
+  let files = 0;
+  let bytes = 0;
+  const walk = async (dir, pfx) => {
+    for await (const key of dir.keys()) {
+      const item = await dir.get(key);
+      if (!item) continue;
+      const p = pfx ? `${pfx}/${key}` : key;
+      if (item.kind === "dir") {
+        await walk(item, p);
+      } else if (key !== "__meta.json") {
+        const text = await item.text();
+        const dest = await base.get(`${rel}${p}`, { create: "file" });
+        await dest.write(text);
+        files++;
+        bytes += new Blob([text]).size;
+      }
+    }
+  };
+  await walk(bDir, "");
+  return { restored: true, files, bytes };
+}
+
+/**
+ * 删除一份备份（递归删除 backup/<id>/ 目录）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function deleteAppBackup(fs, appName, backupId, rootHandle) {
+  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
+  if (dir && dir.kind === "dir") await dir.remove();
+}
+
+/* ---------- 本地项目导入与对话快照 ----------
+ * 本地目录渠道的项目根目录（client/ 同层）放一份 conjure-chats.json，
+ * 每次对话回合结束写入全量快照（会话列表 + 各会话消息 + Agent 记忆），
+ * 下次选择该目录时据此走「导入项目」流程恢复对话数据。
+ */
+
+export const PROJECT_CHAT_FILE = "conjure-chats.json";
+
+/** 探测目录是否为既有项目：存在 client/app.json 即是，返回其元数据（否则 null） */
+export async function detectLocalProject(rootHandle) {
+  try {
+    const f = await rootHandle.get("client/app.json");
+    if (!f || f.kind !== "file") return null;
+    const meta = JSON.parse(await f.text());
+    return meta && meta.name ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 把对话快照写入项目目录（JSON 文本，放 client/ 同层） */
+export async function saveProjectChats(rootHandle, data) {
+  const f = await rootHandle.get(PROJECT_CHAT_FILE, { create: "file" });
+  await f.write(JSON.stringify(data, null, 2));
+}
+
+/** 读取项目目录的对话快照，缺失 / 损坏返回 null */
+export async function loadProjectChats(rootHandle) {
+  try {
+    const f = await rootHandle.get(PROJECT_CHAT_FILE);
+    if (!f || f.kind !== "file") return null;
+    return JSON.parse(await f.text());
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
@@ -408,13 +784,13 @@ export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 妙造，通过�
 
 ## 工作流程
 1. 理解用户需求，必要时先简短澄清；然后调用 create_app（name 用小写英文短横线，如 todo-app；displayName 可用中文）。
-2. 依次用 write_file 写入下列文件（路径相对项目根目录）：
+2. 依次用 write_file 写入下列文件（路径相对 client/ 目录，本地目录渠道与虚拟渠道一致）：
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
 3. 功能文件完成后，再补两份项目文档（内容基于你实际写的代码，不要写空话）：
-   - AGENTS.md —— 给 AI 代理的开发规范：技术栈（ofa.js + senti-ui + /nos/storage）、硬性规则（改模板前先读 ofa.js 文档、页面模块禁止顶层 import /nos/*、禁止 localStorage、M3 颜色变量）、修改代码后须同步更新 CONTEXT.md
-   - CONTEXT.md —— 项目说明：功能概述、目录结构、数据模型（存储空间与键）、关键文件职责、页面要点
+   - AGENTS.md —— 给 AI 代理的开发规范：这个项目继续开发时需要遵守的约定（围绕你实际用到的技术栈与结构，规则具体、可执行）
+   - CONTEXT.md —— 项目说明：后续开发 AI 接手时需要了解的项目事实（架构、数据、流程，以实际代码为准）
 4. 全部文件写完后，用一段简短的话告诉用户可以点「预览」了，并说明应用功能与用法。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
@@ -474,6 +850,15 @@ await store.setItem("key", value);
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
 /**
+ * 上下文压缩摘要的系统提示词：把对话记录压成一份短摘要，作为后续对话
+ * 的记忆主体。保留工作必需的骨架信息，丢弃可随时用 read_file 找回的细节。
+ */
+export const COMPACTION_PROMPT = `你是对话压缩器。把提供的 AI 应用开发对话记录压缩成一份简明摘要，这份摘要将作为后续对话的唯一上下文。要求：
+1. 必须保留：用户的应用需求与目标；已创建的应用名与文件清单（路径级别）；重要决策与用户偏好；当前进行中的任务与未完成事项；出现过的错误与教训。
+2. 可以丢弃：文件内容的代码细节、工具返回的原始输出、寒暄与重复内容（需要细节时 Agent 可用 read_file / list_files 自行找回）。
+3. 用中文条目化输出，总长度控制在 800 字以内。直接输出摘要正文，不要任何前后缀或评论。`;
+
+/**
  * 按当前上下文构建系统提示词：在基础规范上注入「正在开发哪个应用」，
  * 并强制回答项目相关问题前先读文件（防模型凭空猜测项目内容）。
  * @param {{ appName?: string, displayName?: string, mode?: "vfs"|"local", skills?: Array<{id:string,name:string,description:string}> }} [ctx]
@@ -484,14 +869,14 @@ export function buildSystemPrompt(ctx = {}) {
   if (ctx.appName) {
     const where =
       ctx.mode === "local"
-        ? `用户本地磁盘的项目根目录（用户选定的目录即项目根，文件直接在其中，没有子目录嵌套）`
+        ? `用户本地磁盘所选目录的 client/ 子目录（路径相对 client/，多级路径会自动建目录）`
         : `虚拟文件系统 /$${NAMESPACE}/${ctx.appName}/client/`;
     prompt += `
 
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
-- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 app.json 和 pages/home.html）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
-- 用户要求修改时同样先读后写（read_file → write_file 覆盖）。
+- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 AGENTS.md、CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
+- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须先读项目内的 AGENTS.md 与 CONTEXT.md，修改代码严格遵守其中约定**；改动完成后同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
   }
   if (Array.isArray(ctx.skills) && ctx.skills.length) {
@@ -503,7 +888,12 @@ export function buildSystemPrompt(ctx = {}) {
 ## 可用知识库（read_skill 工具）
 ${lines}
 
-用法：read_skill(skill, path?)，默认读该技能的 SKILL.md，再按文中引用的 references/xxx.md 精读。`;
+用法：read_skill(skill, path?)，skill 只能用上面列出的 id，默认读该技能的 SKILL.md，再按文中引用的 references/xxx.md 精读。`;
+  } else if (Array.isArray(ctx.skills)) {
+    prompt += `
+
+## 可用知识库（read_skill 工具）
+当前没有已安装的知识库（同步可能失败或仍在进行），不要调用 read_skill，直接按下方技术规范编写。`;
   }
   return prompt;
 }

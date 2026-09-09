@@ -10,7 +10,8 @@ export default {
   schema: {
     skill: {
       type: "string",
-      description: "技能 id，如 ofajs-docs / senti-ui",
+      description:
+        "技能 id，必须是系统提示「可用知识库」清单里列出的 id（未列出的 id 视为不存在）",
     },
     path: {
       type: "string",

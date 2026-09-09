@@ -6,7 +6,7 @@ import { readdirSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
-const TEST_DIR = join(ROOT, "ai", "test");
+const TEST_DIR = join(ROOT, "mz", "ai", "test");
 
 const files = existsSync(TEST_DIR)
   ? readdirSync(TEST_DIR)
@@ -18,6 +18,7 @@ if (files.length === 0) {
   console.error(`未在 ${TEST_DIR} 找到 *-sb.html 测试文件`);
   process.exit(1);
 }
+
 
 console.log(`运行本地测试：${files.join(", ")}`);
 
