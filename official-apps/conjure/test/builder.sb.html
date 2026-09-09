@@ -536,9 +536,9 @@
         <script type="module">
           import { readSkillFile } from "../lib/skill-sync.js";
           {
-            const mkDir = (entries) => ({
+            const mkDir = (entries, name = "root") => ({
               kind: "dir",
-              name: "root",
+              name,
               get: (p) => entries[p] ?? null,
               values: async function* () {
                 for (const v of Object.values(entries)) yield v;
@@ -547,9 +547,12 @@
             const fsFake = {
               init: async () =>
                 mkDir({
-                  "senti-ui-skill": mkDir({
-                    "SKILL.md": { kind: "file", text: async () => "# senti-ui" },
-                  }),
+                  "senti-ui-skill": mkDir(
+                    {
+                      "SKILL.md": { kind: "file", text: async () => "# senti-ui" },
+                    },
+                    "senti-ui-skill"
+                  ),
                 }),
             };
             const missing = await readSkillFile(fsFake, "senti-ui");
