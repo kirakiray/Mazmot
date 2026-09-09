@@ -740,6 +740,43 @@ export async function deleteAppBackup(fs, appName, backupId, rootHandle) {
   if (dir && dir.kind === "dir") await dir.remove();
 }
 
+/* ---------- 本地项目导入与对话快照 ----------
+ * 本地目录渠道的项目根目录（client/ 同层）放一份 conjure-chats.json，
+ * 每次对话回合结束写入全量快照（会话列表 + 各会话消息 + Agent 记忆），
+ * 下次选择该目录时据此走「导入项目」流程恢复对话数据。
+ */
+
+export const PROJECT_CHAT_FILE = "conjure-chats.json";
+
+/** 探测目录是否为既有项目：存在 client/app.json 即是，返回其元数据（否则 null） */
+export async function detectLocalProject(rootHandle) {
+  try {
+    const f = await rootHandle.get("client/app.json");
+    if (!f || f.kind !== "file") return null;
+    const meta = JSON.parse(await f.text());
+    return meta && meta.name ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 把对话快照写入项目目录（JSON 文本，放 client/ 同层） */
+export async function saveProjectChats(rootHandle, data) {
+  const f = await rootHandle.get(PROJECT_CHAT_FILE, { create: "file" });
+  await f.write(JSON.stringify(data, null, 2));
+}
+
+/** 读取项目目录的对话快照，缺失 / 损坏返回 null */
+export async function loadProjectChats(rootHandle) {
+  try {
+    const f = await rootHandle.get(PROJECT_CHAT_FILE);
+    if (!f || f.kind !== "file") return null;
+    return JSON.parse(await f.text());
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
@@ -851,7 +888,12 @@ export function buildSystemPrompt(ctx = {}) {
 ## 可用知识库（read_skill 工具）
 ${lines}
 
-用法：read_skill(skill, path?)，默认读该技能的 SKILL.md，再按文中引用的 references/xxx.md 精读。`;
+用法：read_skill(skill, path?)，skill 只能用上面列出的 id，默认读该技能的 SKILL.md，再按文中引用的 references/xxx.md 精读。`;
+  } else if (Array.isArray(ctx.skills)) {
+    prompt += `
+
+## 可用知识库（read_skill 工具）
+当前没有已安装的知识库（同步可能失败或仍在进行），不要调用 read_skill，直接按下方技术规范编写。`;
   }
   return prompt;
 }

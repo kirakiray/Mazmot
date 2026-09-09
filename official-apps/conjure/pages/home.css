@@ -299,6 +299,8 @@
 /* ---------- 消息条目 ---------- */
 
 .msg {
+  display: flex;
+  flex-direction: column;
   margin-top: 4px;
 }
 
@@ -322,6 +324,28 @@
   line-height: 24px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* hover 才显示的消息落盘时间（用户消息含本轮耗时）；order 排到消息内容底部 */
+.msg-ts {
+  order: 99;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0;
+  transition: opacity 140ms ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.msg:hover .msg-ts {
+  opacity: 1;
+}
+
+.msg[role="user"] .msg-ts {
+  text-align: right;
+  margin-right: 10px;
 }
 
 .ai-block {
@@ -421,6 +445,15 @@
   gap: 6px;
   margin-top: 8px;
   align-self: flex-start;
+}
+
+/* ai-foot 右侧：本条回复时间 + 本轮耗时 */
+.ai-time {
+  margin-left: 4px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+  user-select: none;
 }
 
 /* 本轮 token 用量统计（回合末条 AI 消息底部） */
@@ -1645,6 +1678,11 @@
   margin-top: 0;
   margin-bottom: 0;
   pointer-events: none;
+}
+
+/* 拖拽排序：悬停目标项上缘指示线 */
+.session-item.drag-over {
+  box-shadow: 0 -2px 0 0 var(--md-sys-color-primary);
 }
 
 .session-item::before {

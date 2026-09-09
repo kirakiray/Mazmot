@@ -15,7 +15,7 @@
 | UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量（`apps/main` 已从 Punch-UI 迁移） |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
-| 多语言 | `locale-text` (`/nos/locale-text/`) | `apps/main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`apps/main/home.html` 头部齿轮按钮打开设置弹窗（左侧「常规」导航 + 右侧语言 `st-select`），切换后 `setLang` + 重载。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
+| 多语言 | `locale-text` (`/nos/locale-text/`) | `apps/main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`apps/main/home.html` 头部齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [apps/main/home/settings-general.html](apps/main/home/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
@@ -37,8 +37,9 @@ Mazmot/
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
+│   │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
 │   │   │   ├── settings-user.html   # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
-│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（遍历 default 用户 cred 凭证库，展示个人资料与全部证书）
+│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
@@ -399,7 +400,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
 | 修改添加应用引导 / 市场入口 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
 | 设置弹窗用户信息（default 用户查看 / 改用户名） | [apps/main/home/settings-user.html](apps/main/home/settings-user.html) |
-| 设置弹窗凭证管理（default 用户全部凭证） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
+| 设置弹窗凭证管理引导（跳转/打开凭证管理器） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
+| 设置弹窗常规（语言 / 主题） | [apps/main/home/settings-general.html](apps/main/home/settings-general.html) |
 | 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |
 | 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |

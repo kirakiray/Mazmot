@@ -115,7 +115,14 @@
               class="session-item"
               class:active="$data.id === $host.currentSessionId"
               class:removing="$host.removingSid === $data.id"
+              class:drag-over="$host.dragOverSid === $data.id"
+              attr:draggable="'true'"
               on:click="$host.loadSession($data.id)"
+              on:dragstart="$host.sessionDragStart($event, $data.id)"
+              on:dragover="$host.sessionDragOver($event, $data.id)"
+              on:dragleave="$host.sessionDragLeave($event, $data.id)"
+              on:drop="$host.sessionDrop($event, $data.id)"
+              on:dragend="$host.sessionDragEnd()"
             >
               <span class="session-title">{{$data.title}}</span>
               <!-- 对话进行中：loading 替代删除按钮的位置；此时不允许删除 -->
@@ -178,6 +185,10 @@
               class:new-group="$data.newGroup"
               attr:role="$data.role"
             >
+              <!-- hover 显示的落盘时间（AI 消息的时间在 ai-foot 右侧展示） -->
+              <o-if :value="$data.role !== 'assistant'">
+                <span class="msg-ts" attr:data-role="$data.role">{{ $host.msgTs($data) }}</span>
+              </o-if>
               <o-if :value="$data.role === 'user'">
                 <div class="user-bubble">{{$data.content}}</div>
               </o-if>
@@ -214,7 +225,7 @@
                     <div class="reasoning-body">{{$data.reasoning}}</div>
                   </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
-                  <o-if :value="$host.hasUsage($data) || $host.canFork()">
+                  <o-if :value="$host.hasUsage($data) || $host.canFork() || $host.aiTime($data) !== ''">
                     <div class="ai-foot">
                       <o-if :value="$host.hasUsage($data)">
                         <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
@@ -232,6 +243,8 @@
                           <span>fork</span>
                         </button>
                       </o-if>
+                      <!-- 右侧：本条回复落盘时间 + 本轮耗时 -->
+                      <span class="ai-time" attr:title="'回复时间与本轮耗时'">{{$host.aiTime($data)}}</span>
                     </div>
                   </o-if>
                 </div>
@@ -334,7 +347,8 @@
           </o-fill>
 
           <o-if :value="sending">
-            <div class="turn-status">生成中…</div>
+            <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新） -->
+            <div class="turn-status">生成中… {{ turnLiveText(clock) }}</div>
           </o-if>
         </div>
       </section>
@@ -925,6 +939,8 @@
           currentAppIcon: "📦",
           currentAppMode: "vfs",
           currentAppSessions: [],
+          clock: 0, // 计时心跳：AI 回复进行中每秒更新，驱动「生成中」实时用时
+          turnStartTs: 0, // 进行中回合开始时间戳（仓库同步）
           currentSessionId: "",
           currentSessionTitle: "",
           storageMode: "vfs",
@@ -932,6 +948,8 @@
           permGrantNeeded: false,
           confirmingDelSession: "",
           removingSid: "", // 正在播放折叠删除动画的会话 id
+          dragSid: "", // 拖拽排序：被拖起的会话 id
+          dragOverSid: "", // 拖拽排序：悬停目标会话 id（高亮）
           toolDefs,
           skills: [],
           // 上下文占用圆圈进度（applyMessageEvent 时由 contextInfo 重算）
@@ -998,14 +1016,14 @@
               // 并向其他标签广播本标签的新项目名
               if ("currentAppName" in evt.data) {
                 this.syncUrlParam();
+                this.syncTabName();
                 announce(this.currentAppName);
               }
               return;
             }
             if (evt.type === "messages") {
               this.applyMessageEvent(evt);
-            }
-            if (evt.type === "messages" && evt.op !== "patch") {
+              // 流式增量（patch）同样跟随滚动：生成中手动拉回底部后恢复自动跟随
               this.followScroll();
             }
           });
@@ -1015,6 +1033,7 @@
             initialApp: new URLSearchParams(location.search).get("p") || "",
           });
           this.syncUrlParam();
+          this.syncTabName();
           announce(this.currentAppName); // 本标签项目就位，向其他标签广播
           this.followScroll(true);
         },
@@ -1163,6 +1182,51 @@
             return this.currentSessionId !== "" && !this.sending;
           },
 
+          // ---- 对话计时展示 ----
+          // AI 回复进行中每秒心跳一次，驱动用户气泡下「用时」实时刷新
+          attached() {
+            this._durTimer = setInterval(() => {
+              if (this.sending) this.clock = Date.now();
+            }, 1000);
+          },
+          detached() {
+            clearInterval(this._durTimer);
+          },
+          fmtClock(ts) {
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, "0");
+            return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+          },
+          fmtDurMs(ms) {
+            if (!(ms > 0)) return "";
+            if (ms < 1000) return "<1秒";
+            const sec = Math.floor(ms / 1000);
+            if (sec < 60) return `${sec}秒`;
+            const min = Math.floor(sec / 60);
+            if (min < 60) return `${min}分${String(sec % 60).padStart(2, "0")}秒`;
+            const hr = Math.floor(min / 60);
+            return `${hr}时${String(min % 60).padStart(2, "0")}分`;
+          },
+          // hover 显示的消息落盘时间（AI 消息不用，时间在 ai-foot）
+          msgTs(m) {
+            if (!(m.ts > 0)) return "";
+            return this.fmtClock(m.ts);
+          },
+          // ai-foot 右侧：本条回复时间 + 本轮耗时（turnMs 由收尾 patch 到末条 AI 消息）
+          aiTime(m) {
+            if (!(m.ts > 0)) return "";
+            let text = this.fmtClock(m.ts);
+            if (m.turnMs > 0) {
+              text += ` · ${this.fmtDurMs(m.turnMs)}`;
+            }
+            return text;
+          },
+          // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖
+          turnLiveText() {
+            if (!(this.turnStartTs > 0)) return "";
+            return "· " + this.fmtDurMs(Math.max(0, Date.now() - this.turnStartTs));
+          },
+
           forkFrom(id) {
             store.forkSession(id);
           },
@@ -1291,6 +1355,22 @@
             return u.href;
           },
 
+          // 聚焦已开标签（不重载）：window.open(url, name) 命中已存在同名标签时
+          // 仍会执行同 URL 导航（= 整页刷新）；先 window.open("") 拿引用——同名
+          // 标签已存在时仅聚焦不导航；不存在时拿到的是空白新标签，再补导航
+          focusOrOpenTab(url, name) {
+            const w = window.open("", name);
+            if (!w) {
+              window.open(url, name); // 弹窗拦截等异常兜底
+              return;
+            }
+            try {
+              if (w.location.href === "about:blank") w.location.href = url;
+            } catch {
+              /* 读不到 location 视为已存在标签，仅聚焦 */
+            }
+          },
+
           // URL 的 p 参数跟随 currentAppName（草稿移除），刷新后能回到当前项目
           syncUrlParam() {
             const u = new URL(location.href);
@@ -1303,6 +1383,18 @@
               u.searchParams.delete("p");
               history.replaceState(null, "", u.href);
             }
+          },
+
+          // window.name 跟随 currentAppName：草稿 = "ai-builder-draft"，项目 =
+          // "ai-builder-<name>"。标签复用靠 window.open(url, name) 命中同名标签；
+          // 原地切换（草稿里生成落地 / 草稿里点项目）后若不同步名字，项目标签会
+          // 顶着 draft 旧名，再点「新建项目」就会把这个项目标签本身导航回草稿
+          syncTabName() {
+            const target =
+              this.currentAppName === ""
+                ? "ai-builder-draft"
+                : `ai-builder-${this.currentAppName}`;
+            if (window.name !== target) window.name = target;
           },
 
           isTabOpen(name) {
@@ -1384,6 +1476,43 @@
             this.backupEditOpen = false;
           },
 
+          // ---- 会话拖拽排序（顺序持久化到 registry 的 sessionOrder） ----
+
+          sessionDragStart(event, id) {
+            this.dragSid = id;
+            event.dataTransfer.effectAllowed = "move";
+            try {
+              event.dataTransfer.setData("text/plain", id);
+            } catch {
+              /* Firefox 需要 setData 才允许拖拽，隐私模式失败可忽略 */
+            }
+          },
+
+          sessionDragOver(event, id) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            if (this.dragSid && this.dragOverSid !== id) {
+              this.dragOverSid = id;
+            }
+          },
+
+          sessionDragLeave(event, id) {
+            if (this.dragOverSid === id) this.dragOverSid = "";
+          },
+
+          async sessionDrop(event, id) {
+            event.preventDefault();
+            const from = this.dragSid;
+            this.dragSid = "";
+            this.dragOverSid = "";
+            if (from && from !== id) await store.reorderSessions(from, id);
+          },
+
+          sessionDragEnd() {
+            this.dragSid = "";
+            this.dragOverSid = "";
+          },
+
           async deleteBackupClick(event, id) {
             event?.stopPropagation?.();
             if (this.confirmingDelBackup !== id) {
@@ -1435,14 +1564,16 @@
             toast(`已还原 ${res.files} 个文件`);
           },
 
-          // 点击项目：空白草稿态直接在当前页内切换；已进入项目则新标签打开
+          // 点击项目：已进入项目则新标签/聚焦打开；空白草稿态在当前页内切换，
+          // 但目标项目已在别的标签打开（「已打开」徽标）时聚焦那个标签，
+          // 不在草稿标签里原地接管同一个项目
           async openProjectTab(name) {
-            if (this.currentAppName === "") {
+            if (this.currentAppName === "" && !this.isTabOpen(name)) {
               await store.selectApp(name);
               this.projDrawerOpen = false;
               return;
             }
-            window.open(this.projectUrl(name), `ai-builder-${name}`);
+            this.focusOrOpenTab(this.projectUrl(name), `ai-builder-${name}`);
           },
 
           newProjectTab() {
@@ -1451,7 +1582,8 @@
               this.projDrawerOpen = false;
               return;
             }
-            window.open(this.projectUrl(""), "ai-builder-draft");
+            // 已有草稿标签（可能在生成中）：仅聚焦不刷新；没有才开新标签
+            this.focusOrOpenTab(this.projectUrl(""), "ai-builder-draft");
           },
 
           async deleteProjectFrom(event, name) {

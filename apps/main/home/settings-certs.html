@@ -4,197 +4,170 @@
       display: block;
       text-align: start;
     }
-    .settings-field-label {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--md-sys-color-on-surface-variant);
-      margin-bottom: 8px;
-    }
-    .cert-list {
+    .manager-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
       max-width: 560px;
+      padding: 14px 16px;
+      border: 1px solid var(--md-sys-color-surface-variant);
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface);
     }
-    .cert-title {
+    .manager-icon {
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .cert-role {
-      font-weight: 500;
-    }
-    .cert-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      padding: 1px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 500;
-      line-height: 1.4;
+      justify-content: center;
+      font-size: 28px;
+      border-radius: 12px;
       background-color: var(--md-sys-color-surface-variant);
-      color: var(--md-sys-color-on-surface-variant);
-      vertical-align: middle;
     }
-    .cert-badge[data-kind="profile"] {
-      background-color: var(--md-sys-color-tertiary-container);
-      color: var(--md-sys-color-on-tertiary-container);
+    .manager-info {
+      flex: 1;
+      min-width: 0;
     }
-    .cert-badge[data-kind="expired"] {
-      background-color: var(--md-sys-color-error-container);
-      color: var(--md-sys-color-on-error-container);
+    .manager-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      margin-bottom: 2px;
     }
-    .cert-info {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 4px 0;
+    .manager-desc {
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.4;
     }
-    .cert-info-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .cert-info-label {
-      opacity: 0.7;
-      min-width: 72px;
-    }
-    .cert-info-value {
-      font-family: monospace;
-      color: var(--md-sys-color-on-surface);
-      word-break: break-all;
-    }
-    .empty {
-      padding: 24px 8px;
-      text-align: center;
+    .manager-hint {
+      max-width: 560px;
+      margin-top: 12px;
+      font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
       opacity: 0.7;
-      font-size: 13px;
+      line-height: 1.5;
     }
   </style>
 
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
   <div class="settings-field-label">
     <locale-text>
-      <span lang="cn">当前用户持有的全部凭证（含个人资料与证书）</span>
-      <span lang="en">All credentials held by the current user (profile &amp; certificates)</span>
+      <span lang="cn">凭证管理</span>
+      <span lang="en">Credentials</span>
     </locale-text>
   </div>
-  <st-list class="cert-list">
-    <o-fill :value="certList" fill-key="id">
-      <st-list-item>
-        <div class="cert-title">
-          <span class="cert-role">{{$data.role}}</span>
-          <o-if :value="$data.isProfile">
-            <span class="cert-badge" data-kind="profile">
-              <n-icon icon="mdi:account-circle-outline"></n-icon>
-              <locale-text><span lang="cn">个人资料</span><span lang="en">Profile</span></locale-text>
-            </span>
-          </o-if>
-          <o-if :value="$data.expired">
-            <span class="cert-badge" data-kind="expired">
-              <n-icon icon="mdi:clock-alert-outline"></n-icon>
-              <locale-text><span lang="cn">已过期</span><span lang="en">Expired</span></locale-text>
-            </span>
-          </o-if>
-        </div>
-        <div secondary>
-          <div class="cert-info">
-            <div class="cert-info-row">
-              <span class="cert-info-label"><locale-text><span lang="cn">签发者：</span><span lang="en">Issuer:</span></locale-text></span>
-              <span class="cert-info-value">{{$data.issuer}}</span>
-            </div>
-            <div class="cert-info-row">
-              <span class="cert-info-label"><locale-text><span lang="cn">主体：</span><span lang="en">Subject:</span></locale-text></span>
-              <span class="cert-info-value">{{$data.subject}}</span>
-            </div>
-            <div class="cert-info-row">
-              <span class="cert-info-label"><locale-text><span lang="cn">签发时间：</span><span lang="en">Issued at:</span></locale-text></span>
-              <span class="cert-info-value">{{$data.signTimeText}}</span>
-            </div>
-            <o-if :value="$data.expireText">
-              <div class="cert-info-row">
-                <span class="cert-info-label"><locale-text><span lang="cn">过期时间：</span><span lang="en">Expires:</span></locale-text></span>
-                <span class="cert-info-value">{{$data.expireText}}</span>
-              </div>
-            </o-if>
-            <div class="cert-info-row">
-              <span class="cert-info-label"><locale-text><span lang="cn">凭证 ID：</span><span lang="en">Credential ID:</span></locale-text></span>
-              <span class="cert-info-value">{{$data.id}}</span>
-            </div>
-          </div>
-        </div>
-      </st-list-item>
-    </o-fill>
-  </st-list>
-  <o-if :value="certList.length === 0">
-    <div class="empty">
-      <locale-text><span lang="cn">暂无凭证</span><span lang="en">No credentials</span></locale-text>
+  <div class="manager-card">
+    <div class="manager-icon">🔐</div>
+    <div class="manager-info">
+      <div class="manager-name">
+        <locale-text><span lang="cn">凭证管理器</span><span lang="en">Credential Manager</span></locale-text>
+        <o-if :value="installed">
+          <span style="font-size: 11px; font-weight: 500; color: var(--md-sys-color-primary); margin-left: 6px">
+            <locale-text><span lang="cn">已安装</span><span lang="en">Installed</span></locale-text>
+          </span>
+        </o-if>
+      </div>
+      <div class="manager-desc">
+        <locale-text>
+          <span lang="cn">管理你的全部凭证：用户卡片、带自定义字段与链式引用的证书、组织账户等。</span>
+          <span lang="en">Manage all your credentials: user cards, certificates with custom fields and chains, organizations, and more.</span>
+        </locale-text>
+      </div>
     </div>
-  </o-if>
+    <o-if :value="installed">
+      <st-button color="primary" on:click="openManager">
+        <n-icon icon="mdi:open-in-new" slot="prefix"></n-icon>
+        <locale-text><span lang="cn">打开</span><span lang="en">Open</span></locale-text>
+      </st-button>
+    </o-if>
+    <o-if :value="!installed">
+      <st-button color="primary" on:click="installManager">
+        <n-icon icon="mdi:download-outline" slot="prefix"></n-icon>
+        <locale-text><span lang="cn">去市场安装</span><span lang="en">Install from Market</span></locale-text>
+      </st-button>
+    </o-if>
+  </div>
+  <div class="manager-hint">
+    <locale-text>
+      <span lang="cn">凭证（个人资料与证书）的查看、签发、互授等完整能力已移至独立的「凭证管理器」官方应用，请安装后使用。</span>
+      <span lang="en">Full credential management (viewing, issuing, sharing profiles and certificates) has moved to the standalone "Credential Manager" official app. Install it to get started.</span>
+    </locale-text>
+  </div>
 
   <script>
+    import { init } from "/nos/fs/main.js";
     import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
-    import { ensureUser } from "/mz/share-mgr.js";
+    import {
+      officialAppState,
+      syncOfficialAppState,
+    } from "../lib/official-app-state.js";
+    import { getRunUrl } from "/mz/app-runner.js";
     import { getLocaleText } from "/nos/locale-text/get-locale-text.js";
 
-    const formatTime = (ts) => {
-      if (!ts) return "";
-      try {
-        return new Date(ts).toLocaleString();
-      } catch (err) {
-        return String(ts);
-      }
-    };
+    const MANAGER_ID = "cred-manager";
 
     export default async () => {
       return {
         data: {
-          certList: [],
+          installed: false,
         },
-        async attached() {
-          await this.loadCerts();
+        async ready() {
+          await syncOfficialAppState();
+          this.updateState();
+        },
+        attached() {
+          // detached 期间共享状态可能已变化，重新刷新安装状态
+          this.updateState();
         },
         proto: {
-          // 遍历 default 用户凭证库的全部记录（含已过期，逐条标记过期态）
-          async loadCerts() {
+          updateState() {
+            this.installed = officialAppState.installedApps.some(
+              (app) => app.officialId === MANAGER_ID,
+            );
+          },
+
+          // 从已安装记录重建句柄并打开凭证管理器（与 market.html 的 _openInstalled 一致）
+          async openManager() {
+            const installed = officialAppState.installedApps.find(
+              (app) => app.officialId === MANAGER_ID,
+            );
+            if (!installed) return;
             try {
-              const user = await ensureUser();
-              const now = Date.now();
-              const list = [];
-              for await (const cert of user.cred.values(
-                {},
-                { includeExpired: true },
-              )) {
-                list.push({
-                  id: cert.id || "",
-                  role: cert.role || "",
-                  issuer: cert.issuer || "",
-                  subject: cert.subject || "",
-                  signTimeText: formatTime(cert.signTime),
-                  expireText: cert.expire ? formatTime(cert.expire) : "",
-                  expired: !!cert.expire && cert.expire < now,
-                  isProfile: cert.role === "profile",
-                });
-              }
-              this.certList = list;
+              const namespace = installed.namespace || "mazmot-apps";
+              const nsPrefix = namespace + "/";
+              const virtualDirName = installed.dirName?.startsWith(nsPrefix)
+                ? installed.dirName.slice(nsPrefix.length)
+                : installed.dirName || installed.name;
+              const rootDir = await init(namespace);
+              const handle = await rootDir.get(virtualDirName, { create: "dir" });
+              const url = await getRunUrl({
+                source: "official",
+                namespace,
+                virtualDirName,
+                dirName: installed.dirName,
+                name: installed.name,
+                _handle: handle,
+              });
+              window.open(url, `mazmot-app-${installed.name}`);
             } catch (err) {
-              console.error("读取凭证失败：", err);
+              console.error("打开凭证管理器失败：", err);
               toast({
                 message: getLocaleText(
-                  {
-                    cn: "读取凭证失败：{msg}",
-                    en: "Failed to load credentials: {msg}",
-                  },
+                  { cn: "打开应用失败：{msg}", en: "Failed to open app: {msg}" },
                   { msg: err.message || err },
                 ),
                 color: "error",
               });
             }
+          },
+
+          // 未安装：通知外层（home.html）打开应用市场
+          installManager() {
+            this.emit("open-market", { bubbles: true, composed: true });
           },
         },
       };

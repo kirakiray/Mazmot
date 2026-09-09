@@ -531,6 +531,45 @@
       </template>
     </sb-test>
 
+    <sb-test name="readSkillFile 未安装技能回报可用清单（不抛底层异常）">
+      <template>
+        <script type="module">
+          import { readSkillFile } from "../lib/skill-sync.js";
+          {
+            const mkDir = (entries) => ({
+              kind: "dir",
+              name: "root",
+              get: (p) => entries[p] ?? null,
+              values: async function* () {
+                for (const v of Object.values(entries)) yield v;
+              },
+            });
+            const fsFake = {
+              init: async () =>
+                mkDir({
+                  "senti-ui-skill": mkDir({
+                    "SKILL.md": { kind: "file", text: async () => "# senti-ui" },
+                  }),
+                }),
+            };
+            const missing = await readSkillFile(fsFake, "senti-ui");
+            const ok = await readSkillFile(fsFake, "senti-ui-skill");
+            const checks = {
+              missingIsHint:
+                missing.includes("技能未安装：senti-ui") &&
+                missing.includes("senti-ui-skill"),
+              missingNoCrash: !missing.includes("读取失败"),
+              installedOk: ok.includes("# senti-ui"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, missing },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="unzipText 解析 zip + stripCommonRoot 剥根目录">
       <template>
         <script type="module">
@@ -817,6 +856,267 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, restored, unchanged },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="会话拖拽排序：reorderSessions 持久化与展示同步">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              // 内存 fake 自存储：registry 初始为一个应用三条会话
+              const kv = new Map();
+              kv.set("apps-registry", [
+                {
+                  name: "demo",
+                  displayName: "Demo",
+                  mode: "vfs",
+                  sessions: [
+                    { id: "s1", title: "A", updatedAt: 1 },
+                    { id: "s2", title: "B", updatedAt: 2 },
+                    { id: "s3", title: "C", updatedAt: 3 },
+                  ],
+                },
+              ]);
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                // /mz/ai 等宿主模块用空实现顶替
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 默认按 updatedAt 倒序：s3, s2, s1
+              const defaultIds = store.state.currentAppSessions.map((s) => s.id);
+
+              // 拖拽：把 s1 移到 s3 前面 → s1, s3, s2
+              await store.reorderSessions("s1", "s3");
+              const afterIds = store.state.currentAppSessions.map((s) => s.id);
+              const persisted = (kv.get("apps-registry")[0].sessionOrder || []).join(",");
+
+              // 新会话（不在 sessionOrder 里）应排最前（按最近更新）
+              const reg = kv.get("apps-registry");
+              reg[0].sessions.push({ id: "s4", title: "D", updatedAt: 9 });
+              await kv.set("apps-registry", reg);
+              await store.reloadApps();
+              const withNewIds = store.state.currentAppSessions.map((s) => s.id);
+
+              // 非法参数不产生变化
+              await store.reorderSessions("s1", "s1");
+              await store.reorderSessions("", "s1");
+              const sameAfter = store.state.currentAppSessions.map((s) => s.id).join(",");
+
+              const checks = {
+                defaultOrder: defaultIds.join(",") === "s3,s2,s1",
+                reordered: afterIds.join(",") === "s1,s3,s2",
+                persisted: persisted === "s1,s3,s2",
+                newSessionFirst: withNewIds[0] === "s4" && withNewIds.slice(1).join(",") === "s1,s3,s2",
+                invalidNoop: sameAfter === withNewIds.join(","),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, defaultIds, afterIds, withNewIds },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="会话计时：duration 字段随会话列表透出">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              const kv = new Map();
+              kv.set("apps-registry", [
+                {
+                  name: "demo",
+                  displayName: "Demo",
+                  mode: "vfs",
+                  sessions: [
+                    { id: "s1", title: "A", updatedAt: 2, createdAt: 1, duration: 65000 },
+                    { id: "s2", title: "B", updatedAt: 1, createdAt: 1 },
+                  ],
+                },
+              ]);
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+              const byId = Object.fromEntries(
+                store.state.currentAppSessions.map((s) => [s.id, s]),
+              );
+              const checks = {
+                // 无 duration 字段的旧会话归一为 0
+                defaultZero: byId.s2.duration === 0,
+                preserved: byId.s1.duration === 65000,
+                idleNotBusy: byId.s1.busy === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, byId },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="本地项目导入：探测 / 对话快照读写 / chooseLocalDir 导入流程">
+      <template>
+        <script type="module">
+          import {
+            detectLocalProject,
+            loadProjectChats,
+            saveProjectChats,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          {
+            try {
+              // 内存 fake fs：目录树 + 文件内容（同前述 fake 实现）
+              const fileTree = new Map();
+              const contents = new Map();
+              const ensureDir = (p) => {
+                if (!fileTree.has(p)) fileTree.set(p, new Set());
+              };
+              const makeFile = (p) => ({
+                kind: "file",
+                path: p,
+                text: async () => contents.get(p),
+                write: async (c) => contents.set(p, c),
+              });
+              const makeDir = (prefix) => ({
+                kind: "dir",
+                path: prefix,
+                async get(name, opts = {}) {
+                  const segs = String(name).split("/").filter(Boolean);
+                  let cur = prefix;
+                  ensureDir(cur);
+                  for (let i = 0; i < segs.length; i++) {
+                    const last = i === segs.length - 1;
+                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
+                    const exists = fileTree.has(next) || contents.has(next);
+                    if (!exists) {
+                      if (last && opts.create === "file") {
+                        contents.set(next, "");
+                        fileTree.get(cur).add(segs[i]);
+                        return makeFile(next);
+                      }
+                      if (!opts.create) return null;
+                      ensureDir(next);
+                    }
+                    if (!last || !contents.has(next)) {
+                      fileTree.get(cur).add(segs[i]);
+                    }
+                    cur = next;
+                  }
+                  if (contents.has(cur)) return makeFile(cur);
+                  return makeDir(cur);
+                },
+                async *keys() {
+                  for (const name of fileTree.get(prefix) || []) yield name;
+                },
+              });
+              const root = makeDir("");
+
+              // 空目录：探测返回 null
+              const none = await detectLocalProject(root);
+
+              // 既有项目：client/app.json + 对话快照
+              await root.get("client/app.json", { create: "file" });
+              await (await root.get("client/app.json")).write(
+                JSON.stringify({ name: "my-app", displayName: "我的应用", icon: "🚀" }),
+              );
+              const meta = await detectLocalProject(root);
+              await saveProjectChats(root, {
+                version: 1,
+                sessions: [
+                  { id: "a1", title: "聊天一", createdAt: 1, updatedAt: 1 },
+                  { id: "a2", title: "聊天二", createdAt: 2, updatedAt: 2 },
+                ],
+                messages: { a1: [{ id: 1, role: "user", content: "hi" }] },
+                threads: { a1: [{ role: "user", content: "hi" }] },
+              });
+              const chats = await loadProjectChats(root);
+
+              // ---- store 层：草稿 + 选本地目录 → 自动导入并切换 ----
+              const kv = new Map();
+              const fakeStore = {
+                getItem: async (k) => kv.get(k) ?? null,
+                setItem: async (k, v) => kv.set(k, v),
+                removeItem: async (k) => kv.delete(k),
+              };
+              const mazmotApps = [];
+              const mazmotStore = {
+                getItem: async (k) => (k === "apps" ? mazmotApps : null),
+                setItem: async (k, v) => {
+                  if (k === "apps") mazmotApps.splice(0, mazmotApps.length, ...v);
+                },
+              };
+              const fsFake = {
+                open: async () => root,
+                mount: async (h) => h,
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              store.state.storageMode = "local"; // 草稿选中「本地目录」渠道
+              const ok = await store.chooseLocalDir();
+
+              const st = store.state;
+              const importedMsgs = await fakeStore.getItem("chat:my-app:a1");
+              const importedThread = await fakeStore.getItem("thread:my-app:a1");
+
+              const checks = {
+                emptyNotProject: none === null,
+                detected: meta && meta.name === "my-app" && meta.icon === "🚀",
+                chatsRoundtrip: chats && chats.messages.a1.length === 1,
+                importedSwitched: ok === true && st.currentAppName === "my-app",
+                importedMeta:
+                  st.currentAppDisplay === "我的应用" && st.currentAppMode === "local",
+                importedSessions:
+                  // 无 sessionOrder 时按 updatedAt 倒序
+                  st.currentAppSessions.map((s) => s.id).join(",") === "a2,a1",
+                msgRestored: importedMsgs?.[0]?.content === "hi",
+                threadRestored: Array.isArray(importedThread) && importedThread.length === 1,
+                mazmotRegistered: mazmotApps.some(
+                  (a) => a.name === "my-app" && a.source === "local",
+                ),
+                chatFileWritten: contents.has("conjure-chats.json"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, meta, afterIds: st.currentAppSessions.map((s) => s.id) },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

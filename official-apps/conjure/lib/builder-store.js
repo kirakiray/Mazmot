@@ -29,6 +29,9 @@ import {
   setBackupNote,
   restoreAppBackup,
   currentAppHash,
+  detectLocalProject,
+  loadProjectChats,
+  saveProjectChats,
   truncateThread,
   tailThread,
   contextInfo,
@@ -56,6 +59,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     messages: [],
     sending: false,
     nextId: 1,
+    turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
     coreError: "",
     thinking: true, // 思考模式开关（传给 Agent 的 thinking 参数）
@@ -109,6 +113,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   const sessionBuckets = new Map();
   // 进行中回合所属的 chatKey；null = 无进行中回合（消息操作落在当前视图桶）
   let turnKey = null;
+  // 当前回合开始时刻（毫秒时间戳）：用于会话对话时长统计与列表实时计时
+  let turnStartAt = 0;
 
   const viewKey = () =>
     state.currentAppName === ""
@@ -128,6 +134,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   function pushMessage(item) {
     const key = activeKey();
+    // 消息落盘时间：所有角色（含用户消息）统一在这里补时间戳，hover 展示
+    if (item.ts == null) item.ts = Date.now();
     bucketFor(key).push(item);
     if (key === viewKey()) {
       state.messages.push(item);
@@ -396,18 +404,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   function syncCurrentFromRegistry(reg) {
     const hit = reg.find((a) => a.name === state.currentAppName);
     if (state.currentAppName === "" || !hit) return;
+    const sessions = [...(hit.sessions || [])]
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    // 手动拖拽排序：sessionOrder 里的 id 按登记顺序排；未登记（新建）的
+    // 会话索引按 -1 处理，稳定排序下保持在最前、彼此按最近更新排列
+    const order = hit.sessionOrder;
+    if (Array.isArray(order) && order.length) {
+      const idx = (s) => {
+        const i = order.indexOf(s.id);
+        return i === -1 ? -1 : i;
+      };
+      sessions.sort((a, b) => idx(a) - idx(b));
+    }
     setMany({
       apps: reg,
       currentAppDisplay: hit.displayName || hit.name,
       currentAppIcon: hit.icon || "📦",
       currentAppMode: hit.mode || "vfs",
-      // busy：该会话正处于流式回合中（左侧列表项 loading 图标）
-      currentAppSessions: [...(hit.sessions || [])]
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-        .map((s) => ({
-          ...s,
-          busy: turnKey === `chat:${state.currentAppName}:${s.id}`,
-        })),
+      // busy：该会话正处于流式回合中（左侧列表项 loading 图标）；
+      // duration 为累计对话耗时（会话级统计，随快照持久化）
+      currentAppSessions: sessions.map((s) => ({
+        ...s,
+        busy: turnKey === `chat:${state.currentAppName}:${s.id}`,
+        duration: s.duration || 0,
+      })),
     });
   }
 
@@ -545,6 +565,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     invalidateAgent();
   }
 
+  // 拖拽排序：把 fromId 的会话移到 toId 当前位置；顺序持久化到
+  // registry 的 sessionOrder 字段（未登记的新会话按最近更新排在最前）
+  async function reorderSessions(fromId, toId) {
+    const name = state.currentAppName;
+    if (!name || !fromId || fromId === toId) return;
+    const ids = state.currentAppSessions.map((s) => s.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    const reg = await loadRegistry();
+    const hit = reg.find((a) => a.name === name);
+    if (!hit) return;
+    hit.sessionOrder = ids;
+    await saveRegistry(reg);
+    syncCurrentFromRegistry(reg);
+  }
+
   /* ---------- 思考模式 ---------- */
 
   // 切换思考模式并持久化偏好；Agent 随开关重建（thinking 参数在创建时注入）
@@ -639,6 +677,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         keyError: "",
         permGrantNeeded: false,
       });
+      // 草稿阶段选中的目录已是既有项目（client/app.json 存在）：
+      // 走导入流程恢复项目与对话数据，而不是当作新项目
+      if (state.currentAppName === "") {
+        try {
+          const meta = await detectLocalProject(handle);
+          if (meta && meta.name) {
+            await importLocalProject(meta, handle);
+            return true;
+          }
+        } catch (err) {
+          console.warn("导入本地项目失败：", err);
+          set("keyError", `导入本地项目失败：${err.message}`);
+        }
+      }
       // 旧应用补救：已登记的本地应用记录可能缺失句柄（mount 修复前
       // 入库失败），重选目录后把新挂载句柄写回登记记录
       if (
@@ -701,6 +753,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       return;
     }
     const next = await reloadApps();
+    if (state.currentAppName === name) {
+      // 删除的是当前项目：项目标签由 window.open 打开，随项目一起关闭
+      //（beforeunload 会广播 bye，其他标签立即撤掉「已打开」徽标）；
+      // 关闭失败（入口直开 / 浏览器拦截）回退常规切换逻辑
+      window.close();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (window.closed) return;
+    }
     if (next.length === 0) {
       // 所有应用已删光：回草稿并清空残留对话（含历史草稿消息与记忆）
       await startDraft(true);
@@ -1188,7 +1248,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           invalidateAgent();
         }
       }
-      return "draft";
+      // 选中的目录是既有项目：chooseLocalDir 已自动导入并切换应用，
+      // 不返回草稿，继续走下方既有应用的会话准备流程
+      if (state.currentAppName === "") return "draft";
     }
     if (state.currentSessionId === "") {
       const reg = await loadRegistry();
@@ -1235,7 +1297,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 回合收尾：落盘会话、（若本轮创建了应用）迁移草稿 → 注册 → 出预览卡片
   // 全程以回合所属 chatKey（发送时固定）为准，与用户当前正查看哪个会话无关
-  async function finishTurn(firstUserText, threadId) {
+  async function finishTurn(firstUserText, threadId, elapsedMs = 0) {
     if (!selfStore) return;
     const chatKey = threadId === "draft" ? "chat:draft" : `chat:${threadId}`;
     // 会话桶已在中途被删除（删除会话/应用时丢弃实时桶）：跳过落盘
@@ -1246,7 +1308,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingNewApp) {
       const info = pendingNewApp;
       pendingNewApp = null;
-      await adoptNewApp(info, firstUserText, chatKey);
+      await adoptNewApp(info, firstUserText, chatKey, elapsedMs);
+      await syncLocalProjectChats(info.appName);
       return;
     }
 
@@ -1263,6 +1326,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           ses.title = firstUserText.slice(0, 24) || "新对话";
         }
         ses.updatedAt = Date.now();
+        // 累计本回合对话耗时（会话从创建到现在的所有回合时长之和）
+        ses.duration = (ses.duration || 0) + (elapsedMs || 0);
         await saveRegistry(reg);
         await reloadApps();
         if (
@@ -1274,6 +1339,123 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       // 兜底：记录缺失（历史会话/旧版本创建）时补登记，保证句柄可恢复
       await ensureAppRegistered(appName);
+    }
+    // 本地渠道：回合结束把对话快照写入项目目录（conjure-chats.json），
+    // 供下次选择该目录时走导入流程恢复对话数据
+    if (appName) await syncLocalProjectChats(appName);
+  }
+
+  // 导入本地既有项目：按 client/app.json 元数据登记应用，并从项目目录的
+  // conjure-chats.json 恢复会话列表、消息与 Agent 记忆；同名已登记时合并
+  // （句柄更新 + 只补缺失的会话），然后切换到该项目
+  async function importLocalProject(meta, handle) {
+    const clean = sanitizeAppName(meta.name);
+    if (!clean) throw new Error(`项目 app.json 的 name 不合法：${meta.name}`);
+    const chats = await loadProjectChats(handle);
+
+    const reg = await loadRegistry();
+    let hit = reg.find((a) => a.name === clean);
+    const importedSessions = (chats?.sessions || []).filter(
+      (s) => s && s.id && !hit?.sessions?.some((x) => x.id === s.id),
+    );
+    if (!hit) {
+      hit = {
+        name: clean,
+        displayName: meta.displayName || clean,
+        icon: meta.icon || "📦",
+        mode: "local",
+        createdAt: Date.now(),
+        sessions: importedSessions.map(({ busy, ...s }) => s),
+      };
+      if (chats?.sessionOrder) hit.sessionOrder = chats.sessionOrder;
+      reg.push(hit);
+    } else {
+      hit.mode = "local";
+      hit.sessions = hit.sessions || [];
+      hit.sessions.push(...importedSessions.map(({ busy, ...s }) => s));
+    }
+    await saveRegistry(reg);
+
+    // mazmet apps[] 登记（携带句柄，刷新后可恢复授权）
+    if (mazmotStore) {
+      try {
+        await registerAppRecord(
+          mazmotStore,
+          buildLocalAppRecord({
+            name: clean,
+            displayName: hit.displayName,
+            icon: hit.icon,
+            handle,
+          }),
+        );
+      } catch (err) {
+        console.warn("导入登记 mazmot apps 失败：", err);
+      }
+    }
+
+    // 恢复对话数据：只导入本机缺失的会话（不覆盖本地已有记录）
+    if (chats && importedSessions.length) {
+      for (const s of importedSessions) {
+        const msgs = chats.messages?.[s.id];
+        if (Array.isArray(msgs)) {
+          await selfStore.setItem(`chat:${clean}:${s.id}`, msgs);
+        }
+        const thread = chats.threads?.[s.id];
+        if (Array.isArray(thread)) {
+          await selfStore.setItem(`thread:${clean}:${s.id}`, thread);
+        }
+      }
+    }
+
+    set("keyError", "");
+    await selectApp(clean);
+    await reloadApps();
+  }
+
+  // 把当前本地项目的对话数据写快照到项目目录（conjure-chats.json）。
+  // 每次对话回合结束后调用；appName 可与当前视图不同（回合归属优先）
+  async function syncLocalProjectChats(appName = state.currentAppName) {
+    if (!selfStore || appName === "") return;
+    try {
+      const reg = await loadRegistry();
+      const app = reg.find((a) => a.name === appName);
+      if (!app || app.mode !== "local") return;
+      // 句柄：当前应用用闭包句柄；其它应用从登记记录恢复
+      let handle = localRootHandle;
+      if (appName !== state.currentAppName || !handle) {
+        handle = await getLocalHandleFromRecord(appName);
+      }
+      if (!handle) return;
+
+      const sessions = [];
+      const messages = {};
+      const threads = {};
+      for (const s of app.sessions || []) {
+        sessions.push({
+          id: s.id,
+          title: s.title,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+          duration: s.duration || 0,
+        });
+        const key = `chat:${appName}:${s.id}`;
+        // 进行中的回合在内存桶里，优先取桶（与落盘内容一致）
+        messages[s.id] = sessionBuckets.has(key)
+          ? bucketFor(key).map((m) => ({ ...m }))
+          : (await selfStore.getItem(key)) || [];
+        threads[s.id] = (await selfStore.getItem(`thread:${appName}:${s.id}`)) || [];
+      }
+      await saveProjectChats(handle, {
+        version: 1,
+        app: { name: appName, displayName: app.displayName, icon: app.icon },
+        sessionOrder: app.sessionOrder || null,
+        sessions,
+        messages,
+        threads,
+        savedAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn("写入项目对话快照失败：", err);
     }
   }
 
@@ -1308,7 +1490,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 新应用落地：注册（mazmot apps[] + 本应用 registry）、迁移草稿会话、出预览卡片
   // draftKey：本轮回合所属的草稿 chatKey，消息从其实时桶迁移（不读盘）
-  async function adoptNewApp(info, firstUserText, draftKey) {
+  async function adoptNewApp(info, firstUserText, draftKey, elapsedMs = 0) {
     const isLocal = info.mode === "local" && !!localRootHandle;
     const check = await validateApp(
       fs,
@@ -1340,6 +1522,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       title: firstUserText.slice(0, 24) || "新对话",
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      duration: elapsedMs || 0,
     };
     if (existed) {
       existed.sessions = existed.sessions || [];
@@ -1423,25 +1606,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (!sessionBuckets.has(turnKey)) {
       sessionBuckets.set(turnKey, [...state.messages]);
     }
+    turnStartAt = Date.now();
     markBusy(turnKey, true);
 
     setMany({ keyError: "" });
+    // 用户消息记录发送时间 ts（聊天区 hover 展示）
     pushMessage({
       id: state.nextId++,
       role: "user",
       content: text,
       newGroup: true,
+      ts: turnStartAt,
     });
+    setMany({ turnStartTs: turnStartAt });
 
     try {
       await ensureAgent();
     } catch {
       turnKey = null; // 回合未真正开始，回退到视图内联模式
+      turnStartAt = 0;
       markBusy(null);
-      set(
-        "keyError",
-        "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
-      );
+      setMany({
+        keyError: "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
+        turnStartTs: 0,
+      });
       return;
     }
 
@@ -1480,10 +1668,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       activeBubble = null;
       currentAbort = null;
       set("sending", false);
-      await finishTurn(text, threadId);
+      // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
+      // 落盘前 patch，随会话桶一起持久化）
+      if (turnStartAt) {
+        const lastAi = [...bucketFor(turnKey)]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
+      }
+      await finishTurn(text, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
       turnKey = null;
+      turnStartAt = 0;
+      setMany({ turnStartTs: 0 });
     }
   }
 
@@ -1615,6 +1813,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     selectApp,
     startDraft,
     newSessionFor,
+    reorderSessions,
     loadSession: loadSessionById,
     deleteApp,
     deleteSession,

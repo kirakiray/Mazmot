@@ -290,6 +290,22 @@ export async function loadSkillIndex(fs) {
   return out;
 }
 
+// 列出已安装技能 id（read_skill 报错提示用；root 不可用时返回空数组）
+async function installedIds(fs) {
+  try {
+    const root = await skillsRoot(fs);
+    const ids = [];
+    for await (const handle of root.values()) {
+      if (handle.kind === "dir" && SKILL_ID_RE.test(handle.name)) {
+        ids.push(handle.name);
+      }
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * 读取 VFS skills 空间内一篇文档（read_skill 工具的底层）。
  * @returns {Promise<string>} 文档文本（缺失 / 非法路径返回可读提示）
@@ -300,7 +316,14 @@ export async function readSkillFile(fs, id, path = "SKILL.md") {
   if (!validDocPath(path)) return `非法文档路径：${path}`;
   try {
     const root = await skillsRoot(fs);
-    const f = await root.get(`${id}/${path}`);
+    if (!root) return "知识库尚未初始化（技能还没同步完成），请稍后重试";
+    // 技能未安装时回报可用清单，让模型一步改对 id（而不是抛底层异常）
+    const dir = await root.get(id);
+    if (!dir || dir.kind !== "dir") {
+      const ids = await installedIds(fs);
+      return `技能未安装：${id}。当前已安装：${ids.length ? ids.join("、") : "（无）"}。请改用清单内的技能 id。`;
+    }
+    const f = await dir.get(path);
     if (!f || f.kind !== "file") return `文档不存在：${id}/${path}`;
     const text = await f.text();
     const MAX = 60000;
