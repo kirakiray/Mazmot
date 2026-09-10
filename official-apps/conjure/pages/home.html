@@ -1049,6 +1049,36 @@
           },
         },
 
+        // ---- 生命周期（根级，proto 内的 attached 不会被调用）----
+        attached() {
+          // AI 回复进行中每秒心跳，驱动「生成中」右侧实时用时
+          this._durTimer = setInterval(() => {
+            if (this.sending) this.clock = Date.now();
+          }, 1000);
+          // 代码块复制：事件委托挂在聊天容器上，:html 重渲后依然有效
+          this.shadow.$("#chatScroll")?.on("click", async (event) => {
+            const btn = event.target?.closest?.(".md-copy");
+            if (!btn) return;
+            const label = btn.querySelector(".md-copy-label");
+            try {
+              await navigator.clipboard.writeText(btn.dataset.code || "");
+              if (!label) return;
+              btn.classList.add("copied");
+              label.textContent = "已复制";
+              clearTimeout(btn._copyTimer);
+              btn._copyTimer = setTimeout(() => {
+                btn.classList.remove("copied");
+                label.textContent = "复制";
+              }, 1500);
+            } catch {
+              if (label) label.textContent = "复制失败";
+            }
+          });
+        },
+        detached() {
+          clearInterval(this._durTimer);
+        },
+
         proto: {
           // ---- 仓库事件 → 页面消息列表 ----
 
@@ -1187,16 +1217,6 @@
             return this.currentSessionId !== "" && !this.sending;
           },
 
-          // ---- 对话计时展示 ----
-          // AI 回复进行中每秒心跳一次，驱动用户气泡下「用时」实时刷新
-          attached() {
-            this._durTimer = setInterval(() => {
-              if (this.sending) this.clock = Date.now();
-            }, 1000);
-          },
-          detached() {
-            clearInterval(this._durTimer);
-          },
           fmtClock(ts) {
             const d = new Date(ts);
             const p = (n) => String(n).padStart(2, "0");
