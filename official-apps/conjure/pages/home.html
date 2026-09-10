@@ -1034,6 +1034,7 @@
           });
           this.syncUrlParam();
           this.syncTabName();
+          this.syncDocTitle();
           announce(this.currentAppName); // 本标签项目就位，向其他标签广播
           this.followScroll(true);
         },
@@ -1041,6 +1042,10 @@
         watch: {
           input() {
             this.autoGrow();
+          },
+          // 标签页标题跟随项目切换
+          currentAppName() {
+            this.syncDocTitle();
           },
         },
 
@@ -1389,6 +1394,14 @@
           // "ai-builder-<name>"。标签复用靠 window.open(url, name) 命中同名标签；
           // 原地切换（草稿里生成落地 / 草稿里点项目）后若不同步名字，项目标签会
           // 顶着 draft 旧名，再点「新建项目」就会把这个项目标签本身导航回草稿
+          // 网页 title 跟随项目切换：草稿 =「新项目 - 妙造 Conjure」，
+          // 项目 =「项目名 - 妙造 Conjure」（会话不体现在 title 上）
+          syncDocTitle() {
+            const head =
+              this.currentAppName === "" ? "新项目" : this.currentAppDisplay;
+            document.title = `${head} - 妙造 Conjure`;
+          },
+
           syncTabName() {
             const target =
               this.currentAppName === ""
