@@ -196,13 +196,13 @@
               displayName: "X",
             });
             const checks = {
-              fiveDefs: TOOL_DEFS.length === 5,
-              names: ["create_app", "write_file", "read_file", "list_files", "read_skill"]
+              sixDefs: TOOL_DEFS.length === 6,
+              names: ["create_app", "write_file", "read_file", "list_files", "read_skill", "show_form"]
                 .every((n) => names.includes(n)),
               defShape: TOOL_DEFS.every(
                 (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
               ),
-              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill"].every(
+              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill", "showForm"].every(
                 (k) => tools[k],
               ),
               ctxEvents: seen.length === 1 && seen[0].appName === "x",
@@ -211,6 +211,76 @@
               assert: Object.values(checks).every(Boolean),
               content: { checks, names, okCreate },
             };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="show_form 视觉交互表单（提交 / 取消 / 参数清洗）">
+      <template>
+        <script type="module">
+          import { createTools } from "../lib/tools/index.js";
+          {
+            try {
+              const formSpec = {
+                title: "选择方案",
+                description: "请确认",
+                fields: [
+                  { key: "name", label: "名称", type: "text", required: true },
+                  { key: "prio", label: "优先级", type: "radio", options: ["高", "低"] },
+                  { key: "junk", label: "", type: "text" }, // 不合法：label 为空，应被清洗掉
+                  { key: "opt", label: "选项", type: "select", options: [] }, // options 空被剥掉
+                ],
+              };
+              // fake requestForm：记录 spec，用户「提交」返回数据
+              let received = null;
+              const tools = createTools({
+                tool: (fn, cfg) => ({ fn, cfg }),
+                requestForm: async (spec) => {
+                  received = spec;
+                  return { data: { name: "张三", prio: "高" } };
+                },
+              });
+              const res = await tools.showForm.fn(formSpec);
+              const cleaned =
+                received.fields.length === 2 &&
+                received.fields[0].required === true &&
+                received.fields[1].options === undefined;
+
+              // 用户取消场景
+              let received2 = false;
+              const tools2 = createTools({
+                tool: (fn, cfg) => ({ fn, cfg }),
+                requestForm: async () => {
+                  received2 = true;
+                  return { cancelled: true, reason: "用户停止了生成" };
+                },
+              });
+              const res2 = await tools2.showForm.fn(formSpec);
+
+              // 环境不支持（无 requestForm）
+              const tools3 = createTools({ tool: (fn, cfg) => ({ fn, cfg }) });
+              const res3 = await tools3.showForm.fn(formSpec);
+
+              // 全部字段不合法
+              const res4 = await tools.showForm.fn({ title: "t", fields: [{ key: "x" }] });
+
+              const checks = {
+                submittedJson:
+                  res.includes('"data"') && res.includes("张三"),
+                specCleaned: cleaned,
+                specTitle: received.title === "选择方案",
+                cancelled: res2.includes("cancelled") && received2,
+                unsupported: res3.includes("不支持"),
+                invalidFields: res4.includes("不合法"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, res, res2, received },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
           }
         </script>
       </template>
@@ -298,6 +368,8 @@
             renameAppBackup,
             setBackupNote,
             restoreAppBackup,
+            currentAppFiles,
+            readBackupFiles,
           } from "../lib/builder.js";
           {
             try {
@@ -425,7 +497,38 @@
                 dedupeAfterRename: res5.skipped && res5.id === res.id,
                 deleted: list6.length === 1 && list6[0].id === res3.id,
                 idRejected,
-              };              return {
+              };
+
+              // 智能备份数据源：currentAppFiles 读当前 client/，readBackupFiles
+              // 读指定备份（忽略 __meta.json）；非法 id 报错
+              const curFiles = await currentAppFiles(fsFake, "demo");
+              const bFiles = await readBackupFiles(fsFake, "demo", res3.id);
+              let badIdRejected = false;
+              try {
+                await readBackupFiles(fsFake, "demo", "../evil");
+              } catch {
+                badIdRejected = true;
+              }
+              checks.curFiles =
+                curFiles.length === res.files &&
+                curFiles.some(
+                  (f) => f.path === "index.html" && f.text === "<html></html>",
+                );
+              checks.curFilesSorted =
+                curFiles[0].path === "index.html" &&
+                curFiles[1].path === "pages/home.html";
+              checks.backupFiles =
+                bFiles.length === res3.files &&
+                bFiles.some(
+                  (f) =>
+                    f.path === "index.html" && f.text === "<html>v2</html>",
+                );
+              checks.backupNoMeta = !bFiles.some(
+                (f) => f.path === "__meta.json",
+              );
+              checks.readBackupBadId = badIdRejected;
+
+              return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, res, list3, list6 },
               };

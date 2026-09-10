@@ -572,6 +572,45 @@ export async function currentAppHash(fs, appName, rootHandle) {
 }
 
 /**
+ * 读取当前 client/ 全部文件（排序后的 { path, text } 清单），供智能备份做版本对比。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function currentAppFiles(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) return [];
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const collected = await collectClientFiles(base, rel);
+  const files = [];
+  for (const f of collected) files.push({ path: f.path, text: await f.item.text() });
+  return files;
+}
+
+/**
+ * 读取一份备份目录内的全部文件（忽略 __meta.json，排序后的 { path, text } 清单）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function readBackupFiles(fs, appName, backupId, rootHandle) {
+  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
+  if (!dir || dir.kind !== "dir") throw new Error("备份不存在");
+  const out = [];
+  const walk = async (d, pfx) => {
+    for await (const key of d.keys()) {
+      const item = await d.get(key);
+      if (!item) continue;
+      const p = pfx ? `${pfx}/${key}` : key;
+      if (item.kind === "dir") await walk(item, p);
+      else if (key !== "__meta.json") out.push({ path: p, text: await item.text() });
+    }
+  };
+  await walk(dir, "");
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+/**
  * 创建备份：把当前 client/ 打包复制到同层 backup/<id>/ 目录。
  * id 含内容 hash（对排序后的 路径+内容 清单算 SHA-256）；已存在相同内容
  * 的备份时跳过写入（幂等，无改动反复点备份不会产生重复备份）。

@@ -29,6 +29,8 @@ import {
   setBackupNote,
   restoreAppBackup,
   currentAppHash,
+  currentAppFiles,
+  readBackupFiles,
   detectLocalProject,
   loadProjectChats,
   saveProjectChats,
@@ -82,6 +84,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 数据备份（当前应用的 backup/ 目录清单；backupBusy 防创建重入）
     backups: [],
     backupBusy: false,
+    smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -162,12 +165,19 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 整组替换某个会话桶并（若是当前视图）刷新镜像；nextId 全局单调递增，
   // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上
   function replaceMessages(list, key = viewKey()) {
-    const norm = (list || []).map((m) => ({
-      ...m,
-      pending: false,
-      open: false,
-      reasoningOpen: false, // 历史消息的思考过程默认收起
-    }));
+    const norm = (list || []).map((m) => {
+      const base = {
+        ...m,
+        pending: false,
+        open: false,
+        reasoningOpen: false, // 历史消息的思考过程默认收起
+      };
+      // 历史里仍处 pending 的表单（页面关闭于用户提交前）标记过期：只读展示
+      if (base.type === "form" && base.form?.status === "pending") {
+        base.form = { ...base.form, status: "expired" };
+      }
+      return base;
+    });
     sessionBuckets.set(key, norm);
     state.nextId = Math.max(
       state.nextId,
@@ -316,6 +326,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         pendingNewApp = { ...info, mode: lockedMode };
       },
       readSkill: (id, path) => readSkillFile(fs, id, path),
+      requestForm,
     });
     agent = chainModules.createAgent({
       assistant,
@@ -1100,6 +1111,94 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  // 智能备份的 AI 阶段：对比当前与上一版备份，生成备份标题与变更备注
+  async function generateBackupMeta(currentFiles, prevFiles) {
+    if (!aiModules) aiModules = await load("/mz/ai/main.js");
+    const { assistant, model } = await pickAssistant();
+    const clip = (t) =>
+      t.length > 2500 ? `${t.slice(0, 2500)}\n…（过长截断）` : t;
+    const prevMap = new Map(prevFiles.map((f) => [f.path, f.text]));
+    const curMap = new Map(currentFiles.map((f) => [f.path, f.text]));
+    const parts = [];
+    for (const f of currentFiles) {
+      if (!prevMap.has(f.path)) {
+        parts.push(`[新增文件] ${f.path}\n${clip(f.text)}`);
+      } else if (prevMap.get(f.path) !== f.text) {
+        parts.push(
+          `[修改文件] ${f.path}\n--- 新版 ---\n${clip(f.text)}\n--- 旧版 ---\n${clip(prevMap.get(f.path))}`,
+        );
+      }
+    }
+    for (const f of prevFiles) {
+      if (!curMap.has(f.path)) parts.push(`[删除文件] ${f.path}`);
+    }
+    const hasPrev = prevFiles.length > 0;
+    const diffText =
+      parts.join("\n\n") || "（两个版本内容没有文件级差异）";
+
+    const system = `你是软件版本发布助手。根据用户提供的应用文件差异，输出备份的标题与备注。
+要求：
+1. 只输出一个 JSON 对象，格式：{"label":"...","note":"..."}，不要输出任何其他内容或代码块标记。
+2. label：备份标题，不超过 16 字，概括这个版本的主题（如「任务清单页」）；首个备份则概括应用功能。
+3. note：不超过 120 字的中文备注${hasPrev ? "，说明相比上一版新增了什么功能、少了/移除了什么功能" : "，简要介绍应用包含的功能"}；用「新增：…；移除：…」结构化表述，无对应项可省略。`;
+    const res = await assistant.chat({
+      ...(model ? { model } : {}),
+      thinking: false,
+      stream: false,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: `文件差异：\n\n${diffText}` },
+      ],
+    });
+    const raw = String(res.content || "").trim();
+    const m = /\{[\s\S]*\}/.exec(raw);
+    let out = {};
+    try {
+      out = JSON.parse(m ? m[0] : raw) || {};
+    } catch {
+      // 解析失败退化为把整段回复当备注
+      out = { note: raw.slice(0, 200) };
+    }
+    return {
+      label: String(out.label || "").trim().slice(0, 50),
+      note: String(out.note || "").trim().slice(0, 200),
+    };
+  }
+
+  // 智能备份：打包当前版本后，用 AI 对比上一版生成标题与备注并写入备份 meta。
+  // 返回 { id, label, note }；内容无变化时返回 { skipped: true }
+  async function smartBackup() {
+    if (state.backupBusy || state.currentAppName === "" || !fs) return;
+    set("backupBusy", true);
+    set("smartBackupBusy", true);
+    try {
+      const rootHandle = await backupRootHandle();
+      const res = await createAppBackup(fs, state.currentAppName, rootHandle);
+      await refreshBackups();
+      if (res?.skipped) return { skipped: true };
+      // 上一版 = 备份列表（新的在前）里除新备份外的第一份；首个备份则无对比基准
+      const prev = state.backups.find((b) => b.id !== res.id);
+      const currentFiles = await currentAppFiles(fs, state.currentAppName, rootHandle);
+      const prevFiles = prev
+        ? await readBackupFiles(fs, state.currentAppName, prev.id, rootHandle)
+        : [];
+      const { label, note } = await generateBackupMeta(currentFiles, prevFiles);
+      if (label) {
+        await renameAppBackup(fs, state.currentAppName, res.id, label, rootHandle);
+      }
+      if (note) {
+        await setBackupNote(fs, state.currentAppName, res.id, note, rootHandle);
+      }
+      await refreshBackups();
+      return { id: res.id, label, note };
+    } catch (err) {
+      set("keyError", `智能备份失败：${err.message}`);
+    } finally {
+      set("backupBusy", false);
+      set("smartBackupBusy", false);
+    }
+  }
+
   async function deleteBackup(id) {
     if (state.currentAppName === "" || !fs) return;
     try {
@@ -1667,6 +1766,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } finally {
       activeBubble = null;
       currentAbort = null;
+      cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
       // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
       // 落盘前 patch，随会话桶一起持久化）
@@ -1685,9 +1785,56 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘
+  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘。
+  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回
   function stop() {
     if (currentAbort) currentAbort.stopped = true;
+    cancelPendingForm("用户停止了生成");
+  }
+
+  /* ---------- 视觉交互表单（show_form 工具） ---------- */
+
+  // 当前挂起的表单等待器：{ msgId, resolve }；同一时刻最多一张
+  let formWaiter = null;
+
+  // show_form 工具入口：把表单卡片作为一条 assistant 消息推入当前回合，
+  // 返回的 Promise 在用户提交（submitForm）或取消（cancelPendingForm）时落定
+  function requestForm(spec) {
+    const item = pushMessage({
+      id: state.nextId++,
+      role: "assistant",
+      type: "form",
+      content: "",
+      form: { ...spec, status: "pending", data: null },
+      newGroup: false,
+    });
+    return new Promise((resolve) => {
+      formWaiter = { msgId: item.id, resolve };
+    });
+  }
+
+  // 用户在卡片上点「提交」：数据写回消息（随会话桶持久化，历史只读回填），
+  // 并把数据交回 Agent 工具调用
+  function submitForm(msgId, values) {
+    if (!formWaiter || formWaiter.msgId !== msgId) return false;
+    const { resolve } = formWaiter;
+    formWaiter = null;
+    const item = bucketFor(activeKey()).find((m) => m.id === msgId);
+    const form = { ...(item?.form || {}), status: "submitted", data: values };
+    patchMessage(msgId, { form });
+    resolve({ data: values });
+    return true;
+  }
+
+  // 取消挂起的表单（用户停止 / 回合兜底结束）：卡片置 cancelled 只读
+  function cancelPendingForm(reason = "") {
+    if (!formWaiter) return;
+    const { msgId, resolve } = formWaiter;
+    formWaiter = null;
+    const item = bucketFor(activeKey()).find((m) => m.id === msgId);
+    const form = { ...(item?.form || {}), status: "cancelled" };
+    patchMessage(msgId, { form });
+    resolve({ cancelled: true, reason });
   }
 
   /* ---------- 初始化 ---------- */
@@ -1828,8 +1975,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     grantLocalPermission,
     installSkillFromSource,
     openApp,
+    submitForm,
     refreshBackups,
     createBackup,
+    smartBackup,
     deleteBackup,
     renameBackup,
     setNote,

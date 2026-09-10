@@ -11,8 +11,13 @@ import writeFile from "./write-file.js";
 import readFile from "./read-file.js";
 import listFiles from "./list-files.js";
 import readSkill from "./read-skill.js";
+import showForm from "./show-form/index.js";
 
-export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill];
+export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill, showForm];
+
+// 视觉交互工具包的组件模块清单（目录式包各自由插件导出 visual 属性）；
+// 宿主页面预载后，对应的自定义元素（如 <show-form-card>）才可用
+export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
 
 /**
  * 用 chain 层的 `tool` 工厂把插件定义包装成 Agent 可用工具。
@@ -23,6 +28,7 @@ export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill];
  * @param {Function} [opts.onAppCreated] create_app 成功回调
  * @param {Function} [opts.onFileWrite] write_file 成功回调
  * @param {Function} [opts.readSkill] 技能文档读取函数 (id, path) => Promise<string>
+ * @param {Function} [opts.requestForm] 视觉交互表单（show_form）：渲染表单卡片并等待用户提交，resolve 用户数据
  * @returns {Object<string, Object>} 按 key 索引的工具映射
  */
 export function createTools({
@@ -32,8 +38,9 @@ export function createTools({
   onAppCreated,
   onFileWrite,
   readSkill,
+  requestForm,
 }) {
-  const ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill };
+  const ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm };
   const tools = {};
   for (const def of TOOL_DEFS) {
     tools[def.key] = tool(

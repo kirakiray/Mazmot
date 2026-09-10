@@ -7,6 +7,8 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
+  <l-m src="../lib/tools/show-form/form-card.html"></l-m>
 
   <div class="app">
     <header class="topbar">
@@ -159,24 +161,40 @@
       <section class="chat-scroll" id="chatScroll" on:scroll="onChatScroll">
         <div class="column">
           <o-if :value="messages.length === 0 && !sending">
-            <div class="hero">
-              <div class="hero-icon">🪄</div>
-              <h2>描述你想要的应用</h2>
-              <p class="hero-sub">
-                AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
-              </p>
-              <div class="chips">
-                <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
-                  🍅 番茄钟
-                </button>
-                <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
-                  💰 记账本
-                </button>
-                <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
-                  🎯 随机点名
-                </button>
+            <!-- 草稿态：引导描述要生成的应用 -->
+            <o-if :value="currentAppName === ''">
+              <div class="hero">
+                <div class="hero-icon">🪄</div>
+                <h2>描述你想要的应用</h2>
+                <p class="hero-sub">
+                  AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
+                </p>
+                <div class="chips">
+                  <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
+                    🍅 番茄钟
+                  </button>
+                  <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
+                    💰 记账本
+                  </button>
+                  <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
+                    🎯 随机点名
+                  </button>
+                </div>
               </div>
-            </div>
+            </o-if>
+            <!-- 已在应用内：新会话给出贴合当前应用的迭代话题 -->
+            <o-if :value="currentAppName !== ''">
+              <div class="hero">
+                <div class="hero-icon">{{currentAppIcon}}</div>
+                <h2>{{currentAppDisplay || currentAppName}}</h2>
+                <p class="hero-sub">继续迭代这个应用，可以试试下面的话题</p>
+                <div class="chips">
+                  <button class="chip" on:click="useChip('帮我检查当前应用还有哪些问题或可以优化的地方，发现后直接修复')">🔍 检查优化</button>
+                  <button class="chip" on:click="useChip('在现有基础上帮我增加一个实用的新功能，先给出方案再实现')">✨ 新增功能</button>
+                  <button class="chip" on:click="useChip('帮我优化应用的界面视觉与交互细节，让它更美观易用')">🎨 美化界面</button>
+                </div>
+              </div>
+            </o-if>
           </o-if>
 
           <o-fill :value="messages" fill-key="id">
@@ -193,7 +211,15 @@
                 <div class="user-bubble">{{$data.content}}</div>
               </o-if>
 
-              <o-if :value="$data.role === 'assistant'">
+              <!-- 视觉交互表单卡片（show-form 包的组件，ready 预载） -->
+              <o-if :value="$host.isFormMsg($data)">
+                <show-form-card
+                  :spec="$data.form"
+                  on:form-submit="$host.onFormSubmit($event, $data.id)"
+                ></show-form-card>
+              </o-if>
+
+              <o-if :value="$host.isAiMsg($data)">
                 <div class="ai-block">
                   <div class="ai-head">
                     <o-if :value="$host.aiModel($data) !== ''">
@@ -385,7 +411,7 @@
           id="inputer"
           sync:value="input"
           rows="1"
-          placeholder="描述你想生成的应用…"
+          attr:placeholder="inputPlaceholder"
           attr:disabled="sending"
           on:keydown="handleKeydown($event)"
         ></textarea>
@@ -643,11 +669,18 @@
         <st-button
           variant="filled"
           attr:disabled="backupBusy"
-          style="width: 100%"
           on:click="handleCreateBackup"
         >
-          <o-if :value="backupBusy">⏳ 正在打包…</o-if>
-          <o-if :value="!backupBusy">＋ 新增备份</o-if>
+          <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
+          <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
+        </st-button>
+        <st-button
+          variant="outlined"
+          attr:disabled="backupBusy"
+          on:click="handleSmartBackup"
+        >
+          <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
+          <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
         </st-button>
       </div>
       <div class="panel-body">
@@ -747,7 +780,14 @@
             </div>
             <o-fill :value="toolDefs" fill-key="name">
               <div class="tool-def">
-                <span class="tool-def-name">{{$data.name}}</span>
+                <div class="tool-def-row">
+                  <span class="tool-def-name">{{$data.name}}</span>
+                  <o-if :value="$data.tags.includes('视觉')">
+                    <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                      <n-icon icon="mdi:eye"></n-icon>视觉
+                    </span>
+                  </o-if>
+                </div>
                 <span class="tool-def-desc">{{$data.desc}}</span>
               </div>
             </o-fill>
@@ -855,10 +895,15 @@
       const store = createBuilderStore({ fs, mazmotStore, selfStore, load });
 
       // 面板展示用的工具清单（取每个插件描述的第一句）
-      const toolDefs = TOOL_DEFS.map((d) => ({
-        name: d.name,
-        desc: (d.description || "").split("。")[0] + "。",
-      }));
+      const toolDefs = TOOL_DEFS.map((d) => {
+        let desc = (d.description || "").split(/。|；/)[0];
+        if (desc.length > 42) desc = desc.slice(0, 42) + "…";
+        return {
+          name: d.name,
+          desc: desc + "。",
+          tags: d.tags || [],
+        };
+      });
 
       // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
       // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
@@ -927,6 +972,7 @@
           backupDrawerOpen: false, // 右侧备份管理抽屉
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           backupBusy: false, // 正在打包备份
+          smartBackupBusy: false, // 智能备份的 AI 分析阶段
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
@@ -937,6 +983,7 @@
           currentAppName: "", // "" = 新应用草稿
           currentAppDisplay: "",
           currentAppIcon: "📦",
+          inputPlaceholder: "", // 输入框占位文案（草稿 = 生成应用；应用内 = 迭代修改）
           currentAppMode: "vfs",
           currentAppSessions: [],
           clock: 0, // 计时心跳：AI 回复进行中每秒更新，驱动「生成中」实时用时
@@ -1035,6 +1082,7 @@
           this.syncUrlParam();
           this.syncTabName();
           this.syncDocTitle();
+          this.syncInputPlaceholder();
           announce(this.currentAppName); // 本标签项目就位，向其他标签广播
           this.followScroll(true);
         },
@@ -1046,6 +1094,7 @@
           // 标签页标题跟随项目切换
           currentAppName() {
             this.syncDocTitle();
+            this.syncInputPlaceholder();
           },
         },
 
@@ -1252,6 +1301,19 @@
             return "· " + this.fmtDurMs(Math.max(0, Date.now() - this.turnStartTs));
           },
 
+          // ---- 视觉交互表单卡片（show-form 包组件的宿主接线） ----
+
+          isFormMsg(m) {
+            return m.role === "assistant" && m.type === "form" && !!m.form;
+          },
+          isAiMsg(m) {
+            return m.role === "assistant" && m.type !== "form";
+          },
+          // 组件提交冒泡：数据交回仓库（落盘 + resolve 工具 Promise）
+          onFormSubmit(event, mid) {
+            store.submitForm(mid, event.data?.data ?? {});
+          },
+
           forkFrom(id) {
             store.forkSession(id);
           },
@@ -1422,6 +1484,14 @@
             document.title = `${head} - 妙造 Conjure`;
           },
 
+          // 输入框占位跟随场景：草稿引导生成，应用内引导迭代
+          syncInputPlaceholder() {
+            this.inputPlaceholder =
+              this.currentAppName === ""
+                ? "描述你想生成的应用…"
+                : "向 AI 描述要如何迭代这个应用…";
+          },
+
           syncTabName() {
             const target =
               this.currentAppName === ""
@@ -1459,6 +1529,17 @@
 
           async handleCreateBackup() {
             const res = await store.createBackup();
+            if (res?.skipped) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              );
+              toast("内容未变化，已跳过重复备份");
+            }
+          },
+
+          // 智能备份：打包 + AI 对比上一版自动生成标题与备注
+          async handleSmartBackup() {
+            const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
                 "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
