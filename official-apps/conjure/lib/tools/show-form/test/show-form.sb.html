@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>show-form 视觉交互工具包测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="runSelfTest 内置测试模组（插件层断言）">
+      <template>
+        <script type="module">
+          import { runSelfTest } from "../self-test.js";
+          {
+            try {
+              const res = await runSelfTest();
+              // 纯模块环境（无 ofa / Core / senti-ui）：组件层断言被跳过，
+              // 插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）必须全过
+              const skipped = res.cases.find((c) => c.info.startsWith("跳过"));
+              const pluginCases = res.cases.filter((c) => !skipped || c !== skipped);
+              const checks = {
+                ok: res.ok === true,
+                hasCases: res.cases.length >= 6,
+                pluginAllPass: pluginCases.every((c) => c.pass),
+                skippedComponent: !!skipped,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, cases: res.cases },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="视觉组件渲染 / 提交 / 只读回填（预载组件后完整内置测试）">
+      <template>
+        <script type="module">
+          {
+            try {
+              // sb-test 环境无 NoneOS Core SW，/gh/ 前缀不可用，
+              // 测试基建按约定走 jsdelivr 完整 URL 加载 ofa 与组件模块
+              await import(
+                "https://cdn.jsdelivr.net/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
+              );
+              await import("../../form-card.html");
+              const { runSelfTest } = await import("../self-test.js");
+              const res = await runSelfTest();
+              const componentCases = res.cases.filter(
+                (c) => !c.info.startsWith("跳过"),
+              );
+              const checks = {
+                ok: res.ok === true,
+                allPass: res.cases.every((c) => c.pass),
+                componentRan: componentCases.length >= 3,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, cases: res.cases },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="包导出约定（visual / selfTest 地址）">
+      <template>
+        <script type="module">
+          import plugin, { visual, selfTest } from "../index.js";
+          {
+            const checks = {
+              visualUrl: /form-card\.html$/.test(visual) && visual.startsWith("file") === false,
+              selfTestUrl: /self-test\.js$/.test(selfTest),
+              exportedOnDef: plugin.visual === visual && plugin.selfTest === selfTest,
+              tags: plugin.tags.includes("视觉"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, visual, selfTest },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -8,12 +8,15 @@
 
 // 配套视觉组件模块地址（宿主页面 load 后 <show-form-card> 自定义元素才可用）
 export const visual = new URL("./form-card.html", import.meta.url).href;
+// 内置测试模组地址（工具详情对话框「运行内置测试」按需加载并展示断言结果）
+export const selfTest = new URL("./self-test.js", import.meta.url).href;
 
 export default {
   key: "showForm",
   name: "show_form",
   tags: ["视觉"], // 面板列表标注：带视觉交互界面
   visual, // 配套视觉组件模块地址（宿主页面经 visualModules 预载）
+  selfTest, // 内置测试模组地址（视觉工具详情对话框的「运行内置测试」）
   description: [
     "向用户展示一张可交互的表单卡片，用户在界面上填写并点击「提交」后，你会收到用户交互产生的数据：",
     'JSON 对象 {"data": {<字段key>: <用户输入值>}}；用户取消/中断时返回 {"cancelled": true}。',
@@ -61,16 +64,22 @@ export default {
     if (!ctx.requestForm) return "当前环境不支持表单交互";
     const fields = (Array.isArray(args.fields) ? args.fields : [])
       .filter((f) => f && f.key && f.label && f.type)
-      .map((f) => ({
-        key: String(f.key),
-        label: String(f.label),
-        type: String(f.type),
-        ...(Array.isArray(f.options) && f.options.length
-          ? { options: f.options.map(String) }
-          : {}),
-        ...(f.placeholder ? { placeholder: String(f.placeholder) } : {}),
-        required: !!f.required,
-      }));
+      .map((f) => {
+        // options 归一：剔除 null / 空值后转字符串，空数组整个剥掉
+        const options = Array.isArray(f.options)
+          ? f.options
+              .filter((o) => o !== null && o !== undefined && o !== "")
+              .map(String)
+          : [];
+        return {
+          key: String(f.key),
+          label: String(f.label),
+          type: String(f.type),
+          ...(options.length ? { options } : {}),
+          ...(f.placeholder ? { placeholder: String(f.placeholder) } : {}),
+          required: !!f.required,
+        };
+      });
     if (!fields.length) return "表单字段不合法：至少需要一个 key/label/type 齐全的字段";
     const res = await ctx.requestForm({
       title: String(args.title || "请填写表单"),

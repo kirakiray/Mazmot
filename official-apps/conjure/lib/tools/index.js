@@ -15,7 +15,9 @@ import showForm from "./show-form/index.js";
 
 export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill, showForm];
 
-// 视觉交互工具包的组件模块清单（目录式包各自由插件导出 visual 属性）；
+// 视觉交互工具包（目录式包）的约定：包内 index.js 导出
+//   visual   —— 配套视觉组件模块地址（下方聚合为 visualModules，宿主页面预载）
+//   selfTest —— 内置测试模组地址（工具详情对话框「运行内置测试」加载执行）
 // 宿主页面预载后，对应的自定义元素（如 <show-form-card>）才可用
 export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
 

@@ -779,7 +779,7 @@
               <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
             </div>
             <o-fill :value="toolDefs" fill-key="name">
-              <div class="tool-def">
+              <div class="tool-def" title="查看工具详情" on:click="$host.openToolDetail($data.name)">
                 <div class="tool-def-row">
                   <span class="tool-def-name">{{$data.name}}</span>
                   <o-if :value="$data.tags.includes('视觉')">
@@ -866,6 +866,64 @@
           <st-button variant="filled" on:click="saveBackupEdit">保存</st-button>
         </div>
       </div>
+    </st-dialog>
+
+    <!-- 工具详情对话框：点工具列表项弹出；视觉工具可运行包内置测试模组 -->
+    <st-dialog class="tool-detail" sync:open="toolDetailOpen" auto-close>
+      <o-if :value="toolDetail">
+        <div class="tool-detail-panel">
+          <div class="tool-detail-title">
+            <span>{{toolDetail.name}}</span>
+            <o-if :value="toolDetail.isVisual">
+              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                <n-icon icon="mdi:eye"></n-icon>视觉
+              </span>
+            </o-if>
+          </div>
+          <div class="tool-detail-desc">{{toolDetail.desc}}</div>
+          <div class="tool-detail-label">参数 Schema</div>
+          <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+          <o-if :value="toolDetail.isVisual">
+            <div class="tool-test-bar">
+              <st-button
+                variant="outlined"
+                attr:disabled="toolTestRunning"
+                on:click="runToolSelfTest"
+              >
+                <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                <o-if :value="!toolTestRunning">▶ 运行内置测试</o-if>
+              </st-button>
+              <o-if :value="toolTestDone">
+                <span
+                  class="tool-test-verdict"
+                  class:pass="toolTestAllPass"
+                  class:fail="!toolTestAllPass"
+                >
+                  {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                </span>
+              </o-if>
+            </div>
+            <o-if :value="toolTestCases.length > 0">
+              <div class="tool-test-cases">
+                <o-fill :value="toolTestCases" fill-key="name">
+                  <div class="tool-test-case">
+                    <n-icon
+                      class:pass="$data.pass"
+                      class:fail="!$data.pass"
+                      :icon="$data.pass ? 'mdi:check-circle' : 'mdi:close-circle'"
+                    ></n-icon>
+                    <span class="tool-test-case-name">{{$data.name}}</span>
+                    <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
+                  </div>
+                </o-fill>
+              </div>
+            </o-if>
+          </o-if>
+          <div class="backup-edit-actions">
+            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
+          </div>
+        </div>
+      </o-if>
     </st-dialog>
   </div>
 
@@ -977,6 +1035,12 @@
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
+          toolDetailOpen: false, // 工具详情对话框
+          toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual）
+          toolTestRunning: false, // 内置测试运行中
+          toolTestDone: false, // 内置测试已出结果
+          toolTestAllPass: false,
+          toolTestCases: [], // 内置测试断言明细 [{ name, pass, info }]
           openTabs: [], // 正在打开中的项目标签（跨标签感知）
           confirmingDelApp: "",
           apps: [],
@@ -1309,9 +1373,10 @@
           isAiMsg(m) {
             return m.role === "assistant" && m.type !== "form";
           },
-          // 组件提交冒泡：数据交回仓库（落盘 + resolve 工具 Promise）
+          // 组件提交冒泡：ofa emit 的载荷在 event.data（即表单值），交回仓库
+          // （落盘 + resolve 工具 Promise）
           onFormSubmit(event, mid) {
-            store.submitForm(mid, event.data?.data ?? {});
+            store.submitForm(mid, event.data ?? {});
           },
 
           forkFrom(id) {
@@ -1588,6 +1653,49 @@
             }
             await store.setNote(id, note);
             this.backupEditOpen = false;
+          },
+
+          // ---- 工具详情对话框（视觉工具含「运行内置测试」） ----
+
+          openToolDetail(name) {
+            const def = TOOL_DEFS.find((d) => d.name === name);
+            if (!def) return;
+            this.toolDetail = {
+              name: def.name,
+              desc: def.description || "",
+              schemaText: JSON.stringify(def.schema || {}, null, 2),
+              isVisual: !!def.visual,
+            };
+            this.toolTestCases = [];
+            this.toolTestDone = false;
+            this.toolDetailOpen = true;
+          },
+
+          closeToolDetail() {
+            this.toolDetailOpen = false;
+          },
+
+          // 运行视觉工具包的内置测试模组（约定：包目录下 self-test.js 导出 runSelfTest）
+          async runToolSelfTest() {
+            if (this.toolTestRunning) return;
+            const def = TOOL_DEFS.find((d) => d.name === this.toolDetail?.name);
+            if (!def?.selfTest) return;
+            this.toolTestRunning = true;
+            this.toolTestCases = [];
+            try {
+              const { runSelfTest } = await import(def.selfTest);
+              const res = await runSelfTest();
+              this.toolTestCases = res.cases || [];
+              this.toolTestAllPass = !!res.ok;
+            } catch (err) {
+              this.toolTestCases = [
+                { name: "内置测试模组加载 / 运行失败", pass: false, info: err.message },
+              ];
+              this.toolTestAllPass = false;
+            } finally {
+              this.toolTestRunning = false;
+              this.toolTestDone = true;
+            }
           },
 
           // ---- 会话拖拽排序（顺序持久化到 registry 的 sessionOrder） ----

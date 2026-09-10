@@ -201,14 +201,6 @@
           },
         },
         proto: {
-          applySpecJson(json) {
-            try {
-              this.spec = JSON.parse(json || "{}");
-            } catch {
-              this.spec = {};
-            }
-            this.bodyHtml = this.renderFields(this.spec || {});
-          },
           esc(text) {
             return String(text ?? "").replace(/[&<>"']/g, (c) => ({
               "&": "&amp;",
@@ -288,7 +280,9 @@
           // 「提交」：收集控件值 → required 校验 → form-submit 事件冒泡
           async submitClick() {
             const values = {};
-            for (const el of this.shadow.querySelectorAll("[name]")) {
+            // ofa 的 this.shadow 只有 $ 查询；拿原生卡片节点后用原生 API 收集
+            const cardEle = this.shadow.$(".form-card")?.ele;
+            for (const el of cardEle?.querySelectorAll("[name]") || []) {
               if (el.type === "checkbox") values[el.name] = el.checked;
               else if (el.type === "radio") {
                 if (el.checked) values[el.name] = el.value;
