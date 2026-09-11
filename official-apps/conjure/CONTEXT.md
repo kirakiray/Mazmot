@@ -74,7 +74,7 @@ conjure/
 
 ## 工具详情对话框与包内置测试
 
-资源面板工具列表项可点击 → `st-dialog.tool-detail` 展示工具全量描述、参数 Schema（JSON）与视觉徽标。视觉工具（带 `visual`）额外有「运行内置测试」：按包约定加载 `selfTest` 指向的 `self-test.js`（导出 `runSelfTest()` 返回 `{ ok, cases: [{ name, pass, info }] }`），逐条展示断言结果与通过 / 失败结论。show-form 包的 `self-test.js` 覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；`<show-form-card>` 未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归。新增视觉工具包照此约定导出 `visual` + `selfTest` 即自动获得详情对话框与测试入口。
+资源面板工具列表项可点击 → `st-dialog.tool-detail`（82vw / max-width 1280 双栏布局）展示工具全量描述、参数 Schema（JSON）与视觉徽标。视觉工具（带 `visual`）左列额外有「运行内置测试」：按包约定加载 `selfTest` 指向的 `self-test.js`（导出 `runSelfTest()` 返回 `{ ok, cases: [{ name, pass, info }] }`），逐条展示断言结果与通过 / 失败结论；右列为 iframe 实时演示（srcdoc 由 `buildToolDemoDoc` 生成：`<base>` 指向站点根 + 加载包内组件模块，渲染一张 pending 可交互的示例表单卡片；srcdoc 里 script 开闭标签必须拆开拼、l-m src 必须完整绝对地址，否则模板解析 / 模块解析失败）。show-form 包的 `self-test.js` 覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；`<show-form-card>` 未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归。新增视觉工具包照此约定导出 `visual` + `selfTest` 即自动获得详情对话框、测试入口与运行效果预览。
 
 ## 技能知识库（运行时下载到 VFS）
 

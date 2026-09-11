@@ -872,56 +872,70 @@
     <st-dialog class="tool-detail" sync:open="toolDetailOpen" auto-close>
       <o-if :value="toolDetail">
         <div class="tool-detail-panel">
-          <div class="tool-detail-title">
-            <span>{{toolDetail.name}}</span>
-            <o-if :value="toolDetail.isVisual">
-              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
-                <n-icon icon="mdi:eye"></n-icon>视觉
-              </span>
-            </o-if>
-          </div>
-          <div class="tool-detail-desc">{{toolDetail.desc}}</div>
-          <div class="tool-detail-label">参数 Schema</div>
-          <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
-          <o-if :value="toolDetail.isVisual">
-            <div class="tool-test-bar">
-              <st-button
-                variant="outlined"
-                attr:disabled="toolTestRunning"
-                on:click="runToolSelfTest"
-              >
-                <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
-                <o-if :value="!toolTestRunning">▶ 运行内置测试</o-if>
-              </st-button>
-              <o-if :value="toolTestDone">
-                <span
-                  class="tool-test-verdict"
-                  class:pass="toolTestAllPass"
-                  class:fail="!toolTestAllPass"
-                >
-                  {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+          <!-- 左列：工具信息 + 内置测试断言列表 -->
+          <div class="tool-detail-main">
+            <div class="tool-detail-title">
+              <span>{{toolDetail.name}}</span>
+              <o-if :value="toolDetail.isVisual">
+                <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                  <n-icon icon="mdi:eye"></n-icon>视觉
                 </span>
               </o-if>
             </div>
-            <o-if :value="toolTestCases.length > 0">
-              <div class="tool-test-cases">
-                <o-fill :value="toolTestCases" fill-key="name">
-                  <div class="tool-test-case">
-                    <n-icon
-                      class:pass="$data.pass"
-                      class:fail="!$data.pass"
-                      :icon="$data.pass ? 'mdi:check-circle' : 'mdi:close-circle'"
-                    ></n-icon>
-                    <span class="tool-test-case-name">{{$data.name}}</span>
-                    <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
-                  </div>
-                </o-fill>
+            <div class="tool-detail-desc">{{toolDetail.desc}}</div>
+            <div class="tool-detail-label">参数 Schema</div>
+            <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+            <o-if :value="toolDetail.isVisual">
+              <div class="tool-test-bar">
+                <st-button
+                  variant="outlined"
+                  attr:disabled="toolTestRunning"
+                  on:click="runToolSelfTest"
+                >
+                  <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                  <o-if :value="!toolTestRunning">▶ 运行内置测试</o-if>
+                </st-button>
+                <o-if :value="toolTestDone">
+                  <span
+                    class="tool-test-verdict"
+                    class:pass="toolTestAllPass"
+                    class:fail="!toolTestAllPass"
+                  >
+                    {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                  </span>
+                </o-if>
               </div>
+              <o-if :value="toolTestCases.length > 0">
+                <div class="tool-test-cases">
+                  <o-fill :value="toolTestCases" fill-key="name">
+                    <div class="tool-test-case">
+                      <n-icon
+                        class:pass="$data.pass"
+                        class:fail="!$data.pass"
+                        :icon="$data.pass ? 'mdi:check-circle' : 'mdi:close-circle'"
+                      ></n-icon>
+                      <span class="tool-test-case-name">{{$data.name}}</span>
+                      <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
+                    </div>
+                  </o-fill>
+                </div>
+              </o-if>
             </o-if>
-          </o-if>
-          <div class="backup-edit-actions">
-            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
+            <div class="backup-edit-actions">
+              <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
+            </div>
           </div>
+          <!-- 右列：视觉工具 iframe 实时演示组件运行效果（pending 可交互） -->
+          <o-if :value="toolDetail.isVisual">
+            <div class="tool-demo-side">
+              <div class="tool-demo-label">运行效果预览 · 可交互</div>
+              <iframe
+                class="tool-demo-frame"
+                title="视觉工具组件演示"
+                attr:srcdoc="toolDemoDoc"
+              ></iframe>
+            </div>
+          </o-if>
         </div>
       </o-if>
     </st-dialog>
@@ -962,6 +976,61 @@
           tags: d.tags || [],
         };
       });
+
+      // 视觉工具演示 iframe 的 srcdoc：加载包内配套组件，渲染一张可交互的
+      // 示例卡片，让用户直观看到工具在对话中的实际运行效果
+      // （注意：script 闭标签必须拆开拼，避免提前终止页面脚本块）
+      const buildToolDemoDoc = (def) => {
+        const spec = {
+          title: "示例表单：选择部署方案",
+          description: "这张卡片就是该工具在对话中的实际渲染效果，可以填写体验。",
+          status: "pending",
+          data: null,
+          fields: [
+            { key: "appName", label: "应用名称", type: "text", placeholder: "todo-app", required: true },
+            { key: "plan", label: "部署方案", type: "radio", options: ["本地目录", "虚拟系统"] },
+            { key: "region", label: "区域", type: "select", options: ["华东", "华北", "海外"] },
+            { key: "notes", label: "备注", type: "textarea", placeholder: "补充说明（选填）" },
+            { key: "confirm", label: "我已确认以上配置", type: "checkbox", required: true },
+          ],
+        };
+        return [
+          '<!doctype html><html><head><meta charset="utf-8">',
+          // srcdoc 文档的地址是 about:srcdoc，无法解析 / 开头路径，补 base 指向站点根
+          '<base href="' + location.origin + '/">',
+          "<style>",
+          "body{margin:0;padding:14px;color-scheme:light dark;",
+          "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;",
+          "background:light-dark(#fdfcff,#111318);color:light-dark(#1b1b1f,#e3e2e6)}",
+          ".demo-note{font-size:12px;color:light-dark(#5f5f66,#c8c5d0);margin-bottom:10px}",
+          ".demo-note b{color:light-dark(#5256a1,#bac3ff)}",
+          ".show-form-card,.form-card{max-width:100% !important}",
+          "</style>",
+          // script 标签首尾都拆开拼：字面量 script 开标签会让模板解析器提前断开页面脚本
+          "<" + 'script type="module" src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug">' + "</scr" + "ipt>",
+          "</head><body>",
+          '<div class="demo-note"><b>演示</b> · 源码 ' +
+            def.visual.split("/").slice(-2).join("/") +
+            "</div>",
+          // l-m 的 src 会被 ofa 以文档地址（about:srcdoc）为 base 解析，
+          // 必须用完整绝对地址；ofa.mjs 由浏览器按 document base 解析，/ 开头即可
+          '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
+          '<l-m src="' + def.visual + '"></l-m>',
+          '<div id="mount"></div>',
+          "<" + "script>",
+          "(async () => {",
+          "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
+          "  const card = document.createElement('show-form-card');",
+          "  document.getElementById('mount').appendChild(card);",
+          "  await wait(400);",
+          "  const p = window.$(card);",
+          "  p.spec = " + JSON.stringify(spec) + ";",
+          "  p.bodyHtml = p.renderFields(p.spec);",
+          "})();",
+          "</scr" + "ipt>",
+          "</body></html>",
+        ].join("");
+      };
 
       // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
       // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
@@ -1037,6 +1106,7 @@
           editForm: { label: "", note: "" }, // 编辑对话框表单
           toolDetailOpen: false, // 工具详情对话框
           toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual）
+          toolDemoDoc: "", // 视觉工具演示 iframe 的 srcdoc
           toolTestRunning: false, // 内置测试运行中
           toolTestDone: false, // 内置测试已出结果
           toolTestAllPass: false,
@@ -1666,6 +1736,7 @@
               schemaText: JSON.stringify(def.schema || {}, null, 2),
               isVisual: !!def.visual,
             };
+            this.toolDemoDoc = def.visual ? buildToolDemoDoc(def) : "";
             this.toolTestCases = [];
             this.toolTestDone = false;
             this.toolDetailOpen = true;
