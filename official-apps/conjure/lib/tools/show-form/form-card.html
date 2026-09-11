@@ -191,6 +191,18 @@
           },
         },
         proto: {
+          // 命令式设置表单规范并渲染：生产路径是 :spec 声明式绑定触发 watch，
+          // 外部属性赋值不触发 watch，测试 / 演示脚本走这个入口
+          applySpec(spec) {
+            this.spec = spec || {
+              title: "",
+              description: "",
+              status: "",
+              fields: [],
+              data: null,
+            };
+            this.bodyHtml = this.renderFields(this.spec);
+          },
           esc(text) {
             return String(text ?? "").replace(/[&<>"']/g, (c) => ({
               "&": "&amp;",
