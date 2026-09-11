@@ -74,7 +74,11 @@ conjure/
 
 ## 工具详情对话框与包内置测试
 
-资源面板工具列表项可点击 → `st-dialog.tool-detail` 展示工具全量描述、参数 Schema（JSON）与视觉徽标；宽度分两档——非视觉工具窄单栏（`class:narrow`，min(560px, 92vw)），视觉工具 82vw / max-width 1280 双栏。视觉工具（带 `visual`）左列有「运行内置测试」：按包约定加载 `selfTest` 指向的 `self-test.js`（导出 `runSelfTest()` 返回 `{ ok, cases: [{ name, pass, info }] }`），逐条展示断言结果与通过 / 失败结论；右列为 iframe 实时演示（srcdoc 由 `buildToolDemoDoc` 生成：`<base>` 指向站点根 + 加载包内组件与 senti 控件模块，渲染一张 pending 可交互的示例表单卡片；srcdoc 里 script 开闭标签必须拆开拼、注释必须用块注释（整段脚本单行）、l-m src 必须完整绝对地址，否则模板解析 / 模块解析失败）。show-form 包的 `self-test.js` 覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；`<show-form-card>` 未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归。新增视觉工具包照此约定导出 `visual` + `selfTest` 即自动获得详情对话框、测试入口与运行效果预览。
+资源面板工具列表项可点击 → `st-dialog.tool-detail`；宽度分两档——非视觉工具窄单栏（`class:narrow`，min(560px, 92vw)，无 Tab），视觉工具 82vw / max-width 1280、带「工具信息 / 内置测试」双 Tab（`toolTab`）。
+- **工具信息 Tab**：描述、参数 Schema、「▶ 前往测试」入口（只切 Tab 不执行）；视觉工具右侧保留 iframe 演示（srcdoc 由 `buildToolDemoDoc` 生成，渲染一张 pending 可交互的示例表单卡片）。
+- **内置测试 Tab**：左列为测试计划 list（打开对话框时加载 `self-test.js` 导出的 `testPlan` 用例名，全部为 pending 空心圆），右列为测试运行 iframe；**点「▶ 运行测试」才实际执行**——点击时清空旧 srcdoc 再挂新文档（同值属性不触发 iframe 重载，先归空才能保证每次点击都真正重跑），加载包内组件 + senti 控件 + `selfTest` 模组跑 `runSelfTest(onCase)`，被测组件实时挂载在画面上、结束保留画面；断言经 `postMessage`（`conjure-tool-test-case/done/error`）逐条同步回左列，按用例名把该项从 pending 打勾为 pass / fail。测试区 `.tool-test-grid` 常驻不卸载（仅 display 显隐）——若用 o-if 卸载，切 Tab 会让保留的 srcdoc 重挂载而自动重跑。
+- 两个 iframe 的 srcdoc 公共骨架在 `toolDocPre` / `toolDocSenti`：`<base>` 指向站点根、l-m src 必须完整绝对地址、script 开闭标签拆开拼、内嵌脚本单行且只能用块注释——违反任一条会导致模板解析失败或脚本截断 / 吞闭合括号。
+show-form 包的 `self-test.js` 覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；组件或 senti 控件未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归。新增视觉工具包照此约定导出 `visual` + `selfTest`（self-test.js 再导出 `testPlan` 用例名清单）即自动获得 Tab、测试计划 list、测试运行 iframe 与演示预览。
 
 ## 技能知识库（运行时下载到 VFS）
 

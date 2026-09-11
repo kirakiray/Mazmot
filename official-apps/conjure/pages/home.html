@@ -872,8 +872,8 @@
       </div>
     </st-dialog>
 
-    <!-- 工具详情对话框：点工具列表项弹出；视觉工具可运行包内置测试模组。
-         非视觉工具信息少，用窄面板；视觉工具双栏（信息+测试 | 运行效果预览） -->
+    <!-- 工具详情对话框：点工具列表项弹出；视觉工具用「工具信息 / 内置测试」双 Tab。
+         非视觉工具信息少，用窄面板、无 Tab。测试 Tab：左断言 list，右 iframe 实跑测试 -->
     <st-dialog
       class="tool-detail"
       class:narrow="toolDetail && !toolDetail.isVisual"
@@ -882,70 +882,107 @@
     >
       <o-if :value="toolDetail">
         <div class="tool-detail-panel">
-          <!-- 左列：工具信息 + 内置测试断言列表 -->
-          <div class="tool-detail-main">
-            <div class="tool-detail-title">
-              <span>{{toolDetail.name}}</span>
+          <div class="tool-detail-title">
+            <span>{{toolDetail.name}}</span>
+            <o-if :value="toolDetail.isVisual">
+              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                <n-icon icon="mdi:eye"></n-icon>视觉
+              </span>
+            </o-if>
+          </div>
+
+          <!-- 视觉工具：Tab 切换（信息 / 测试） -->
+          <o-if :value="toolDetail.isVisual">
+            <st-tab-bar class="tool-detail-tabs">
+              <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
+                <span class="tab-label">工具信息</span>
+              </st-tab-item>
+              <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
+                <span class="tab-label">内置测试</span>
+              </st-tab-item>
+            </st-tab-bar>
+          </o-if>
+
+          <!-- Tab 1：工具信息（描述 + Schema；视觉工具右侧保留运行效果演示） -->
+          <o-if :value="toolTab === 'info' || !toolDetail.isVisual">
+            <div class="tool-info-row">
+              <div class="tool-detail-main">
+                <div class="tool-detail-desc">{{toolDetail.desc}}</div>
+                <div class="tool-detail-label">参数 Schema</div>
+                <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+              </div>
+              <!-- 视觉工具：iframe 实时演示组件运行效果（pending 可交互） -->
               <o-if :value="toolDetail.isVisual">
-                <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
-                  <n-icon icon="mdi:eye"></n-icon>视觉
-                </span>
+                <div class="tool-demo-side">
+                  <div class="tool-demo-label">运行效果预览 · 可交互</div>
+                  <iframe
+                    class="tool-demo-frame"
+                    title="视觉工具组件演示"
+                    attr:srcdoc="toolDemoDoc"
+                  ></iframe>
+                </div>
               </o-if>
             </div>
-            <div class="tool-detail-desc">{{toolDetail.desc}}</div>
-            <div class="tool-detail-label">参数 Schema</div>
-            <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
-            <o-if :value="toolDetail.isVisual">
-              <div class="tool-test-bar">
-                <st-button
-                  variant="outlined"
-                  attr:disabled="toolTestRunning"
-                  on:click="runToolSelfTest"
-                >
-                  <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
-                  <o-if :value="!toolTestRunning">▶ 运行内置测试</o-if>
-                </st-button>
-                <o-if :value="toolTestDone">
-                  <span
-                    class="tool-test-verdict"
-                    class:pass="toolTestAllPass"
-                    class:fail="!toolTestAllPass"
+          </o-if>
+
+          <!-- Tab 2：内置测试（左断言 list | 右测试运行 iframe）。
+               不用 o-if 卸载：切 Tab 销毁 iframe 会让保留的 srcdoc 重挂载时
+               自动重跑；改为常驻 + display 切换，跑完的画面得以保留 -->
+          <o-if :value="toolDetail.isVisual">
+            <div class="tool-test-grid" class:show="toolTab === 'test'">
+              <div class="tool-test-left">
+                <div class="tool-test-bar">
+                  <st-button
+                    variant="outlined"
+                    attr:disabled="toolTestRunning"
+                    on:click="runToolSelfTest"
                   >
-                    {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
-                  </span>
-                </o-if>
-              </div>
-              <o-if :value="toolTestCases.length > 0">
+                    <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                    <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
+                  </st-button>
+                  <o-if :value="toolTestDone">
+                    <span
+                      class="tool-test-verdict"
+                      class:pass="toolTestAllPass"
+                      class:fail="!toolTestAllPass"
+                    >
+                      {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                    </span>
+                  </o-if>
+                </div>
                 <div class="tool-test-cases">
-                  <o-fill :value="toolTestCases" fill-key="name">
+                  <!-- 测试计划（self-test.js 导出 testPlan）：进 Tab 即见待测清单，
+                       运行后逐条由 pending → pass / fail -->
+                  <o-fill :value="toolTestPlan" fill-key="name">
                     <div class="tool-test-case">
-                      <n-icon
-                        class:pass="$data.pass"
-                        class:fail="!$data.pass"
-                        :icon="$data.pass ? 'mdi:check-circle' : 'mdi:close-circle'"
-                      ></n-icon>
+                      <o-if :value="$data.status === 'pending'">
+                        <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
+                      </o-if>
+                      <o-if :value="$data.status === 'pass'">
+                        <n-icon class="pass" icon="mdi:check-circle"></n-icon>
+                      </o-if>
+                      <o-if :value="$data.status === 'fail'">
+                        <n-icon class="fail" icon="mdi:close-circle"></n-icon>
+                      </o-if>
                       <span class="tool-test-case-name">{{$data.name}}</span>
                       <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
                     </div>
                   </o-fill>
                 </div>
-              </o-if>
-            </o-if>
-            <div class="backup-edit-actions">
-              <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
-            </div>
-          </div>
-          <!-- 右列：视觉工具 iframe 实时演示组件运行效果（pending 可交互） -->
-          <o-if :value="toolDetail.isVisual">
-            <div class="tool-demo-side">
-              <div class="tool-demo-label">运行效果预览 · 可交互</div>
-              <iframe
-                class="tool-demo-frame"
-                title="视觉工具组件演示"
-                attr:srcdoc="toolDemoDoc"
-              ></iframe>
+              </div>
+              <div class="tool-test-right">
+                <iframe
+                  class="tool-test-frame"
+                  title="内置测试运行画面"
+                  attr:srcdoc="toolTestDoc"
+                ></iframe>
+              </div>
             </div>
           </o-if>
+
+          <div class="backup-edit-actions">
+            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
+          </div>
         </div>
       </o-if>
     </st-dialog>
@@ -987,9 +1024,38 @@
         };
       });
 
-      // 视觉工具演示 iframe 的 srcdoc：加载包内配套组件，渲染一张可交互的
+      // 视觉工具 iframe 的 srcdoc 公共骨架：srcdoc 文档地址是 about:srcdoc，
+      // 无法解析 / 开头路径 → base 指向站点根；l-m 的 src 会被 ofa 以文档地址
+      // 为 base 解析，必须用完整绝对地址。script 标签首尾都拆开拼（字面量
+      // script 开闭标签都会让模板解析器提前断开页面脚本），内嵌脚本为单行、
+      // 注释只能用块注释（// 会吞掉行尾的闭合括号）
+      const toolDocPre = (note) =>
+        [
+          '<!doctype html><html><head><meta charset="utf-8">',
+          '<base href="' + location.origin + '/">',
+          "<style>",
+          "body{margin:0;padding:14px;color-scheme:light dark;",
+          "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;",
+          "background:light-dark(#fdfcff,#111318);color:light-dark(#1b1b1f,#e3e2e6)}",
+          ".bench-note{font-size:12px;color:light-dark(#5f5f66,#c8c5d0);margin-bottom:10px}",
+          ".bench-note b{color:light-dark(#5256a1,#bac3ff)}",
+          ".show-form-card,.form-card{max-width:100% !important}",
+          "</style>",
+          "<" + 'script type="module" src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug">' + "</scr" + "ipt>",
+          "</head><body>",
+          '<div class="bench-note"><b>' + note[0] + "</b> · " + note[1] + "</div>",
+          '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
+        ].join("");
+      const toolDocSenti = () =>
+        ["input", "textarea", "select", "checkbox", "radio"]
+          .map(
+            (n) =>
+              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
+          )
+          .join("");
+
+      // 工具信息 Tab 的演示 iframe：加载包内配套组件，渲染一张可交互的
       // 示例卡片，让用户直观看到工具在对话中的实际运行效果
-      // （注意：script 闭标签必须拆开拼，避免提前终止页面脚本块）
       const buildToolDemoDoc = (def) => {
         const spec = {
           title: "示例表单：选择部署方案",
@@ -1004,55 +1070,53 @@
             { key: "confirm", label: "我已确认以上配置", type: "checkbox", required: true },
           ],
         };
-        return [
-          '<!doctype html><html><head><meta charset="utf-8">',
-          // srcdoc 文档的地址是 about:srcdoc，无法解析 / 开头路径，补 base 指向站点根
-          '<base href="' + location.origin + '/">',
-          "<style>",
-          "body{margin:0;padding:14px;color-scheme:light dark;",
-          "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;",
-          "background:light-dark(#fdfcff,#111318);color:light-dark(#1b1b1f,#e3e2e6)}",
-          ".demo-note{font-size:12px;color:light-dark(#5f5f66,#c8c5d0);margin-bottom:10px}",
-          ".demo-note b{color:light-dark(#5256a1,#bac3ff)}",
-          ".show-form-card,.form-card{max-width:100% !important}",
-          "</style>",
-          // script 标签首尾都拆开拼：字面量 script 开标签会让模板解析器提前断开页面脚本
-          "<" + 'script type="module" src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug">' + "</scr" + "ipt>",
-          "</head><body>",
-          '<div class="demo-note"><b>演示</b> · 源码 ' +
-            def.visual.split("/").slice(-2).join("/") +
-            "</div>",
-          // l-m 的 src 会被 ofa 以文档地址（about:srcdoc）为 base 解析，
-          // 必须用完整绝对地址；ofa.mjs 由浏览器按 document base 解析，/ 开头即可
-          '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
-          '<l-m src="' + def.visual + '"></l-m>',
-          // 表单卡片的 senti 控件依赖（l-m 的 src 会被 ofa 以 about:srcdoc
-          // 为 base 解析，必须用完整绝对地址）
-          ["input", "textarea", "select", "checkbox", "radio"]
-            .map(
-              (n) =>
-                '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
-            )
-            .join(""),
+        return (
+          toolDocPre(["演示", "源码 " + def.visual.split("/").slice(-2).join("/")]) +
+          '<l-m src="' + def.visual + '"></l-m>' +
+          toolDocSenti() +
+          [
+            '<div id="mount"></div>',
+            "<" + "script>",
+            "(async () => {",
+            "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
+            "  const card = document.createElement('show-form-card');",
+            "  document.getElementById('mount').appendChild(card);",
+            "  await wait(300);",
+            "  const p = window.$(card);",
+            "  p.spec = " + JSON.stringify(spec) + ";",
+            "  p.bodyHtml = p.renderFields(p.spec);",
+            "})();",
+            "</scr" + "ipt>",
+            "</body></html>",
+          ].join("")
+        );
+      };
+
+      // 内置测试 Tab 的运行 iframe：加载组件 + self-test 模组实际执行测试
+      // （被测组件实时挂载在画面上），断言经 postMessage 逐条同步回左列 list
+      const buildToolTestDoc = (def) =>
+        toolDocPre(["内置测试", "右侧实时挂载被测组件"]) +
+        '<l-m src="' + def.visual + '"></l-m>' +
+        toolDocSenti() +
+        [
           '<div id="mount"></div>',
           "<" + "script>",
           "(async () => {",
           "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
-          "  const card = document.createElement('show-form-card');",
-          "  document.getElementById('mount').appendChild(card);",
-          "  await wait(300);",
-          "  const p = window.$(card);",
-          "  p.spec = " + JSON.stringify(spec) + ";",
-          "  p.bodyHtml = p.renderFields(p.spec);",
-          // 整段脚本是单行，注释必须用块注释（// 会吞掉行尾的闭合括号）
-          "  /* 等 senti 控件注册完成（l-m 异步加载） */",
+          "  /* 等 senti 控件与视觉组件注册完成（l-m 异步加载） */",
           "  const t0 = Date.now();",
-          "  while (Date.now() - t0 < 8000 && !customElements.get('st-radio')) await wait(100);",
+          "  while (Date.now() - t0 < 8000 && !(customElements.get('st-radio') && customElements.get('show-form-card'))) await wait(100);",
+          "  try {",
+          "    const mod = await import('" + def.selfTest + "');",
+          "    const res = await mod.runSelfTest((c) => parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*'));",
+          "    parent.postMessage({ type: 'conjure-tool-test-done', ok: res.ok }, '*');",
+          "  } catch (err) {",
+          "    parent.postMessage({ type: 'conjure-tool-test-error', info: String((err && err.message) || err) }, '*');",
+          "  }",
           "})();",
           "</scr" + "ipt>",
           "</body></html>",
         ].join("");
-      };
 
       // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
       // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
@@ -1128,11 +1192,13 @@
           editForm: { label: "", note: "" }, // 编辑对话框表单
           toolDetailOpen: false, // 工具详情对话框
           toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual）
-          toolDemoDoc: "", // 视觉工具演示 iframe 的 srcdoc
+          toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
+          toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
+          toolTestDoc: "", // 内置测试运行 iframe 的 srcdoc
           toolTestRunning: false, // 内置测试运行中
           toolTestDone: false, // 内置测试已出结果
           toolTestAllPass: false,
-          toolTestCases: [], // 内置测试断言明细 [{ name, pass, info }]
+          toolTestPlan: [], // 测试计划 [{ name, status: "pending"|"pass"|"fail", info }]
           openTabs: [], // 正在打开中的项目标签（跨标签感知）
           confirmingDelApp: "",
           apps: [],
@@ -1178,6 +1244,39 @@
 
         async ready() {
           page = this; // 供 BroadcastChannel 闭包回写 openTabs
+          // 测试 iframe → 左列 list 的断言进度（同源 srcdoc postMessage）
+          window.addEventListener("message", (e) => {
+            const d = e.data || {};
+            const p = page;
+            if (!p) return;
+            if (d.type === "conjure-tool-test-case") {
+              // 逐条打勾：按用例名回填状态（runSelfTest 完成一条回调一条）
+              const idx = p.toolTestPlan.findIndex((i) => i.name === d.item.name);
+              if (idx > -1) {
+                const plan = [...p.toolTestPlan];
+                plan[idx] = {
+                  ...plan[idx],
+                  status: d.item.pass ? "pass" : "fail",
+                  info: d.item.info || "",
+                };
+                p.toolTestPlan = plan;
+              }
+            } else if (d.type === "conjure-tool-test-done") {
+              p.toolTestAllPass = !!d.ok;
+              p.toolTestRunning = false;
+              p.toolTestDone = true;
+            } else if (d.type === "conjure-tool-test-error") {
+              p.toolTestPlan = [
+                ...p.toolTestPlan,
+                { name: "内置测试模组加载 / 运行失败", status: "fail", info: d.info || "" },
+              ];
+              p.toolTestAllPass = false;
+              p.toolTestRunning = false;
+              p.toolTestDone = true;
+            }
+          });
+          // 窗口尺寸变化：重算工具对话框内容区高度
+          window.addEventListener("resize", () => page?.syncToolDialogHeight?.());
           // 恢复会话栏宽度（150–400）
           try {
             const w = parseInt(sessionStorage.getItem("aib:side-width"), 10);
@@ -1758,37 +1857,88 @@
               schemaText: JSON.stringify(def.schema || {}, null, 2),
               isVisual: !!def.visual,
             };
+            this.toolTab = "info";
             this.toolDemoDoc = def.visual ? buildToolDemoDoc(def) : "";
-            this.toolTestCases = [];
+            this.toolTestDoc = "";
+            this.toolTestRunning = false; // 关闭对话框可能发生在运行中，重开时复位
             this.toolTestDone = false;
+            this.toolTestPlan = [];
             this.toolDetailOpen = true;
+            // 复位上个工具遗留的内容区高度（视觉工具会在 sync 里重新设置）
+            const panelEle = this.shadow
+              .$("st-dialog.tool-detail")
+              ?.ele?.querySelector(".tool-detail-panel");
+            if (panelEle) panelEle.style.height = "";
+            this.syncToolDialogHeight();
+            // 预载测试计划：进「内置测试」Tab 前就能看到待测清单
+            if (def.selfTest) {
+              import(def.selfTest)
+                .then((m) => {
+                  // 异步回填时可能已切到别的工具，校验一下
+                  if (this.toolDetail?.name !== def.name) return;
+                  this.toolTestPlan = (m.testPlan || []).map((n) => ({
+                    name: n,
+                    status: "pending",
+                    info: "",
+                  }));
+                  this.syncToolDialogHeight();
+                })
+                .catch(() => {});
+            }
           },
 
           closeToolDetail() {
             this.toolDetailOpen = false;
           },
 
-          // 运行视觉工具包的内置测试模组（约定：包目录下 self-test.js 导出 runSelfTest）
+          // st-dialog 的 body 包裹层不会自动伸展（flex: 0 1 auto），CSS 够不到
+          // shadow 内部；视觉工具面板是定高的（90vh / max 1040），直接把内容区
+          // 高度同步为「面板 clientHeight − 上下 padding」，让「关闭」固定在
+          // 底部、中间区域撑满（超出滚动）。窄面板高度随内容，不处理
+          syncToolDialogHeight() {
+            if (!this.toolDetail?.isVisual) return;
+            requestAnimationFrame(() => {
+              const dlg = this.shadow.$("st-dialog.tool-detail")?.ele;
+              const mine = dlg?.querySelector(".tool-detail-panel");
+              const panel = dlg?.shadowRoot?.querySelector('[part="panel"]');
+              if (!dlg || !mine || !panel) return;
+              const cs = getComputedStyle(panel);
+              const avail =
+                panel.clientHeight -
+                (parseFloat(cs.paddingTop) || 0) -
+                (parseFloat(cs.paddingBottom) || 0);
+              if (avail > 100) mine.style.height = `${Math.floor(avail)}px`;
+            });
+          },
+
+          setToolTab(tab) {
+            // 测试 iframe 常驻不卸载，切 Tab 不影响进行中的运行；
+            // 中途切走再回来，运行继续、结果照常同步
+            this.toolTab = tab;
+            this.syncToolDialogHeight();
+          },
+
+          // 运行视觉工具包的内置测试模组（约定：包目录下 self-test.js 导出
+          // runSelfTest）。仅在测试 Tab 点击「运行测试」时才执行：测试在右侧
+          // iframe 里实际运行（被测组件实时挂载可见），断言经 postMessage
+          // 逐条同步回左列 list
           async runToolSelfTest() {
             if (this.toolTestRunning) return;
             const def = TOOL_DEFS.find((d) => d.name === this.toolDetail?.name);
             if (!def?.selfTest) return;
             this.toolTestRunning = true;
-            this.toolTestCases = [];
-            try {
-              const { runSelfTest } = await import(def.selfTest);
-              const res = await runSelfTest();
-              this.toolTestCases = res.cases || [];
-              this.toolTestAllPass = !!res.ok;
-            } catch (err) {
-              this.toolTestCases = [
-                { name: "内置测试模组加载 / 运行失败", pass: false, info: err.message },
-              ];
-              this.toolTestAllPass = false;
-            } finally {
-              this.toolTestRunning = false;
-              this.toolTestDone = true;
-            }
+            // 全部回到待测态，运行中逐条打勾
+            this.toolTestPlan = this.toolTestPlan.map((i) => ({
+              ...i,
+              status: "pending",
+              info: "",
+            }));
+            this.toolTestDone = false;
+            // 先归空再加载：两次运行的 srcdoc 内容相同，若上一次文档还挂着，
+            // 同值属性不会触发 iframe 重新导航，测试会「点了没反应」
+            this.toolTestDoc = "";
+            await new Promise((r) => setTimeout(r, 60));
+            this.toolTestDoc = buildToolTestDoc(def);
           },
 
           // ---- 会话拖拽排序（顺序持久化到 registry 的 sessionOrder） ----

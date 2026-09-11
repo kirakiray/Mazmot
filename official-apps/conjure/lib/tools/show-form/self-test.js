@@ -1,8 +1,10 @@
 // show-form 包的内置测试模组
-// 约定：视觉工具包目录下的 self-test.js 导出 runSelfTest()，
-// 返回 { ok, cases: [{ name, pass, info }] }；
+// 约定：视觉工具包目录下的 self-test.js 导出
+//   testPlan     —— 完整环境下的用例名清单（对话框运行前渲染「待测 list」）
+//   runSelfTest(onCase) —— onCase 可选，每完成一条断言即回调（测试 iframe 用它
+//                   实时同步进度），返回 { ok, cases: [{ name, pass, info }] }
 // 两个消费方：
-//   1. 宿主页工具详情对话框「运行内置测试」（组件已预载，含组件渲染断言）
+//   1. 宿主页工具详情对话框「内置测试」Tab（组件已预载，含组件渲染断言）
 //   2. 本包 test/show-form.sb.html（无 Core / senti-ui 环境也可跑，组件未预载时跳过组件断言）
 
 const MIN_SPEC = {
@@ -10,21 +12,53 @@ const MIN_SPEC = {
   fields: [{ key: "a", label: "A", type: "text" }],
 };
 
-export async function runSelfTest() {
+// 用例名与下方 add() 一一对应，避免两处漂移
+const N_STRUCT = "包结构完整（插件 / 视觉组件地址 / 视觉标签）";
+const N_NO_CTX = "无 requestForm 环境返回可读提示";
+const N_CLEAN = "参数清洗：非法字段剔除 / 类型归一";
+const N_INVALID = "全部字段不合法时拒绝渲染";
+const N_SUBMIT = '用户提交后返回 {"data":{...}}';
+const N_CANCEL = '用户取消 / 停止返回 {"cancelled":true}';
+const N_RENDER = "待填表单渲染控件并经 form-submit 冒泡数据";
+const N_REQUIRED = "required 未填写时提交被拦截";
+const N_READONLY = "历史提交只读回填（无控件、值正确、只读徽标）";
+const N_XSS = "字段文本 HTML 转义（防注入）";
+
+export const testPlan = [
+  N_STRUCT,
+  N_NO_CTX,
+  N_CLEAN,
+  N_INVALID,
+  N_SUBMIT,
+  N_CANCEL,
+  N_RENDER,
+  N_REQUIRED,
+  N_READONLY,
+  N_XSS,
+];
+
+export async function runSelfTest(onCase) {
   const cases = [];
-  const add = (name, pass, info) =>
-    cases.push({
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 每条断言完成后停 100ms 再放行下一条：给「逐条打勾」的节奏留出可感知间隔
+  const add = async (name, pass, info) => {
+    const item = {
       name,
       pass: !!pass,
       info: info === undefined ? (pass ? "通过" : "断言未通过") : String(info),
-    });
+    };
+    cases.push(item);
+    onCase?.(item);
+    await wait(100);
+    return item;
+  };
 
   // ---- 插件层（纯 JS，任何环境可跑） ----
   const plugin = (await import(new URL("./index.js", import.meta.url).href))
     .default;
 
-  add(
-    "包结构完整（插件 / 视觉组件地址 / 视觉标签）",
+  await add(
+    N_STRUCT,
     plugin.name === "show_form" &&
       typeof plugin.exec === "function" &&
       plugin.tags?.includes("视觉") &&
@@ -33,7 +67,7 @@ export async function runSelfTest() {
   );
 
   const noCtx = await plugin.exec(MIN_SPEC, {});
-  add("无 requestForm 环境返回可读提示", noCtx.includes("不支持"), noCtx);
+  await add(N_NO_CTX, noCtx.includes("不支持"), noCtx);
 
   // 参数清洗：非法字段剔除、options 归一、required 转 boolean
   let cleaned = null;
@@ -50,8 +84,8 @@ export async function runSelfTest() {
     { requestForm: async (s) => ((cleaned = s), { data: {} }) },
   );
   const byKey = Object.fromEntries((cleaned?.fields || []).map((f) => [f.key, f]));
-  add(
-    "参数清洗：非法字段剔除 / 类型归一",
+  await add(
+    N_CLEAN,
     cleaned?.title === "T" &&
       cleaned.description === "D" &&
       cleaned.fields.length === 2 &&
@@ -65,15 +99,15 @@ export async function runSelfTest() {
     { title: "t", fields: [{ key: "x" }] },
     { requestForm: async () => ({ data: {} }) },
   );
-  add("全部字段不合法时拒绝渲染", bad.includes("不合法"), bad);
+  await add(N_INVALID, bad.includes("不合法"), bad);
 
   const okRes = JSON.parse(
     await plugin.exec(MIN_SPEC, {
       requestForm: async () => ({ data: { a: "1" } }),
     }),
   );
-  add(
-    '用户提交后返回 {"data":{...}}',
+  await add(
+    N_SUBMIT,
     okRes.data?.a === "1" && okRes.cancelled === undefined,
     JSON.stringify(okRes),
   );
@@ -83,8 +117,8 @@ export async function runSelfTest() {
       requestForm: async () => ({ cancelled: true, reason: "用户停止了生成" }),
     }),
   );
-  add(
-    '用户取消 / 停止返回 {"cancelled":true}',
+  await add(
+    N_CANCEL,
     cancelRes.cancelled === true && cancelRes.reason === "用户停止了生成",
     JSON.stringify(cancelRes),
   );
@@ -93,11 +127,12 @@ export async function runSelfTest() {
   const sentiReady = ["st-input", "st-textarea", "st-select", "st-checkbox", "st-radio"]
     .every((t) => typeof customElements !== "undefined" && customElements.get(t));
   if (typeof customElements === "undefined" || !customElements.get("show-form-card") || !sentiReady) {
-    cases.push({
-      name: "组件渲染 / 提交事件 / 只读回填",
-      pass: true,
-      info: "跳过：宿主页面未预载视觉组件或 senti 表单控件（sb-test 纯模块环境）",
-    });
+    // sb-test 纯模块环境：组件层整段跳过，占位一条与计划对齐
+    await add(
+      N_RENDER,
+      true,
+      "跳过：宿主页面未预载视觉组件或 senti 表单控件（sb-test 纯模块环境）",
+    );
     return { ok: cases.every((c) => c.pass), cases };
   }
 
@@ -145,8 +180,8 @@ export async function runSelfTest() {
     if (chk) chk.setAttribute("checked", "");
     submitBtn?.click();
     await wait(150);
-    add(
-      "待填表单渲染控件并经 form-submit 冒泡数据",
+    await add(
+      N_RENDER,
       !!input &&
         !!chk &&
         !!submitBtn &&
@@ -154,7 +189,9 @@ export async function runSelfTest() {
         fired?.agree === true,
       JSON.stringify(fired),
     );
-    add("required 未填写时提交被拦截", requiredBlocked);
+    await add(N_REQUIRED, requiredBlocked);
+    card.remove(); // 一项一项来：当前用例的卡片移除后再挂下一个
+    await wait(250);
 
     // 只读回填（submitted 历史）：无任何可编辑控件
     const ro = document.createElement("show-form-card");
@@ -169,16 +206,19 @@ export async function runSelfTest() {
     });
     await wait(100);
     const roSr = ro.shadowRoot;
+    // 只读视图不应有任何 senti 控件 / 提交按钮
     const noEditable = !roSr?.querySelector(
-      "input,textarea,select,.form-submit",
+      "st-input,st-textarea,st-select,st-checkbox,st-radio,.form-submit",
     );
     const reviewText = roSr?.querySelector(".form-review-value")?.textContent;
     const badge = roSr?.querySelector(".form-badge")?.textContent || "";
-    add(
-      "历史提交只读回填（无控件、值正确、只读徽标）",
+    await add(
+      N_READONLY,
       noEditable && reviewText === "张三" && badge.includes("只读"),
       `value=${reviewText} badge=${badge}`,
     );
+    ro.remove();
+    await wait(250);
 
     // XSS 转义：label / placeholder 中的 HTML 不应被注入
     const xss = document.createElement("show-form-card");
@@ -193,8 +233,8 @@ export async function runSelfTest() {
       data: null,
     });
     await wait(100);
-    add(
-      "字段文本 HTML 转义（防注入）",
+    await add(
+      N_XSS,
       !xss.shadowRoot?.querySelector("img") &&
         !window.__xss &&
         xss.shadowRoot

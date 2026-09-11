@@ -1687,6 +1687,7 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+  flex: none; /* 工具对话框里固定在底部，不参与伸缩 */
 }
 
 /* 列表项「已打开」徽标：该项目已有标签正打开 */
@@ -2186,17 +2187,25 @@
 .tool-detail::part(panel) {
   width: 82vw;
   max-width: 1280px;
+  /* 视觉工具（演示 / 测试 iframe）给足高度；max-height 兜底超大屏 */
+  height: 90vh;
+  max-height: 1040px;
+}
+
+/* 非视觉工具信息少：窄单栏、高度随内容 */
+.tool-detail.narrow::part(panel) {
+  width: min(560px, 92vw);
+  height: auto;
   max-height: 84vh;
 }
 
-/* 非视觉工具信息少：窄单栏面板 */
-.tool-detail.narrow::part(panel) {
-  width: min(560px, 92vw);
-}
-
 .tool-detail-panel {
+  /* 撑满对话框面板：标题 / Tab / 内容 / 底部按钮四段，中间弹性伸缩 */
+  height: 100%;
+  box-sizing: border-box;
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  gap: 10px;
   padding: 4px 2px;
   min-width: 0;
   min-height: 0;
@@ -2210,6 +2219,54 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 内容超出时自身滚动，底部按钮固定 */
+  overflow: auto;
+}
+
+/* Tab 1 信息行：单栏（非视觉）或 信息 | 演示 iframe 双栏（视觉） */
+.tool-info-row {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+
+/* Tab 2 测试行：左断言 list | 右测试运行 iframe（常驻不卸载，仅显隐切换，
+   避免切 Tab 销毁 iframe 导致保留的 srcdoc 重挂载时自动重跑） */
+.tool-test-grid {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 16px;
+}
+
+.tool-test-grid.show {
+  display: flex;
+}
+
+.tool-test-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-test-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.tool-test-frame {
+  flex: 1;
+  min-height: 320px;
+  width: 100%;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-low);
 }
 
 /* 右列：视觉工具运行效果 iframe */
@@ -2237,13 +2294,20 @@
 }
 
 @media (max-width: 860px) {
-  .tool-detail-panel {
+  .tool-info-row,
+  .tool-test-grid {
     flex-direction: column;
   }
 
-  .tool-demo-frame {
+  .tool-demo-frame,
+  .tool-test-frame {
     min-height: 240px;
   }
+}
+
+.tool-detail-tabs {
+  flex: none;
+  font-size: 13px;
 }
 
 .tool-detail-title {
@@ -2307,10 +2371,11 @@
 }
 
 .tool-test-cases {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
   overflow: auto;
   padding: 2px;
 }
@@ -2329,6 +2394,10 @@
   flex: none;
   font-size: 15px;
   color: var(--md-sys-color-outline);
+}
+
+.tool-test-case n-icon.pending {
+  color: var(--md-sys-color-outline-variant);
 }
 
 .tool-test-case n-icon.pass {
