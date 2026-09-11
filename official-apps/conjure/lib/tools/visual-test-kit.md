@@ -36,18 +36,25 @@ export default defineVisualSelfTest({
 |-----|------|
 | `await kit.check(name, pass, info?)` | 记录一条断言：推入结果、回调 `onCase`、停 100ms。`pass` 为真打 ✓，否则 ✗（info 展示在断言行上） |
 | `kit.componentReady` | 布尔。`false` 表示被测组件或依赖控件未注册（纯模块环境），组件类用例应跳过并 `check(name, true, "跳过：...")` 占位一条 |
-| `await kit.mount()` | 挂载一个被测组件实例（`<tag>` 元素挂到隐藏容器），等 200ms 初始化后返回句柄 `b` |
+| `await kit.mount()` | 挂载一个被测组件实例（`<tag>` 元素挂到隐藏容器），等 200ms 初始化后**直接返回它的 ofa.js 实例**，用例随意操作 |
 | `await kit.wait(ms)` | 等待 |
-| `b.$` | 组件的 ofa 代理：读写 data、调 proto 方法 |
-| `b.q(sel)` / `b.qa(sel)` | shadow DOM 内查询单个 / 全部元素（原生句柄） |
-| `b.on(event, fn)` | 监听从组件冒泡出来的事件（要求组件 emit 时 `bubbles + composed`） |
-| `b.call(method, ...args)` | 调用组件 proto 方法（**数据必须走参数**，原因见下） |
-| `b.remove()` | 卸载该实例（一个用例一组实例，用完即卸） |
 
-### 必须知道的两个 ofa.js 坑（基座的 API 就是为此设计的）
+### mount() 返回的 ofa 实例怎么用
 
-1. **外部属性赋值不触发组件 `watch`**。生产路径是声明式绑定（`:spec="xxx"`）触发；测试 / 演示脚本是命令式喂值。约定：组件 proto 提供一个 `applyXxx(data)` 方法（设 data + 按 watch 同款逻辑补渲染），测试通过 `b.call("applyXxx", data)` 走它。
-2. **通过 ofa 代理调用 proto 方法时，方法内的 `this` 读不到刚通过代理赋值的 data**（读到的是默认值）。所以数据一律走参数传递：`b.call("applySpec", spec)`，不要依赖 `this.xxx` 读刚赋的值。
+基座不再封装查询 / 事件 / 卸载方法——返回的就是 ofa.js 实例，用 ofa 自带能力随意操作：
+
+```js
+const b = await kit.mount();
+b.applySpec({ title: "示例", status: "pending", fields: [...] }); // 调 proto 方法（数据走参数！）
+const input = b.shadow.$('st-input[name="who"]')?.ele;            // shadow 内查询（.ele 拿原生节点）
+b.on("form-submit", (e) => (fired = e.data));                     // 监听冒泡出来的事件
+b.remove();                                                       // 该用例结束，卸载实例
+```
+
+### 必须知道的两个 ofa.js 坑（写用例前必读）
+
+1. **外部属性赋值不触发组件 `watch`**。生产路径是声明式绑定（`:spec="xxx"`）触发；测试 / 演示脚本是命令式喂值。约定：组件 proto 提供一个 `applyXxx(data)` 方法（设 data + 按 watch 同款逻辑补渲染），测试直接 `b.applyXxx(data)` 调它。
+2. **proto 方法要带参调用：方法内的 `this` 读不到刚通过实例赋值的 data**（读到的是默认值）。所以 `applyXxx(spec)` 的数据必须走参数，不要在方法里读 `this.xxx` 当输入。
 
 ## 包内 self-test.js 的标准写法（完整示例）
 
@@ -75,9 +82,9 @@ const myCardTest = defineVisualSelfTest({
       return;
     }
     const b = await kit.mount();
-    b.call("applySpec", { title: "示例", status: "pending", fields: [] });
+    b.applySpec({ title: "示例", status: "pending", fields: [] });
     await kit.wait(100);
-    await kit.check(N_RENDER, !!b.q(".form-submit"));
+    await kit.check(N_RENDER, !!b.shadow.$(".form-submit"));
     b.remove();
   },
 });

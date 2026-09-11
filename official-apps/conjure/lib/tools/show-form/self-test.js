@@ -137,7 +137,7 @@ const showFormTest = defineVisualSelfTest({
 
     // 待填渲染 + required 拦截 + 提交事件
     const card = await mount();
-    card.call("applySpec", {
+    card.applySpec({
           title: "自测表单",
           description: "",
           status: "pending",
@@ -148,9 +148,9 @@ const showFormTest = defineVisualSelfTest({
           data: null,
         });
     await wait(100);
-    const input = card.q('st-input[name="who"]');
-    const chk = card.q('st-checkbox[name="agree"]');
-    const submitBtn = card.q(".form-submit");
+    const input = card.shadow.$('st-input[name="who"]')?.ele;
+    const chk = card.shadow.$('st-checkbox[name="agree"]')?.ele;
+    const submitBtn = card.shadow.$(".form-submit")?.ele;
 
     let fired = null;
     card.on("form-submit", (e) => (fired = e.data ?? null));
@@ -174,7 +174,7 @@ const showFormTest = defineVisualSelfTest({
 
     // 只读回填（submitted 历史）：无任何可编辑控件
     const ro = await mount();
-    ro.call("applySpec", {
+    ro.applySpec({
           title: "历史表单",
           description: "",
           status: "submitted",
@@ -182,11 +182,9 @@ const showFormTest = defineVisualSelfTest({
           data: { who: "张三" },
         });
     await wait(100);
-    const noEditable = !ro.q(
-      "st-input,st-textarea,st-select,st-checkbox,st-radio,.form-submit",
-    );
-    const reviewText = ro.q(".form-review-value")?.textContent;
-    const badge = ro.q(".form-badge")?.textContent || "";
+    const noEditable = !ro.shadow.$("st-input,st-textarea,st-select,st-checkbox,st-radio,.form-submit");
+    const reviewText = ro.shadow.$(".form-review-value")?.ele?.textContent;
+    const badge = ro.shadow.$(".form-badge")?.ele?.textContent || "";
     await check(
       N_READONLY,
       noEditable && reviewText === "张三" && badge.includes("只读"),
@@ -198,7 +196,7 @@ const showFormTest = defineVisualSelfTest({
     // XSS 转义：label / placeholder 中的 HTML 不应被注入
     const xss = await mount();
     const payload = '<img src=x onerror="window.__xss=1">';
-    xss.call("applySpec", {
+    xss.applySpec({
           title: payload,
           description: "",
           status: "pending",
@@ -210,9 +208,9 @@ const showFormTest = defineVisualSelfTest({
     await wait(100);
     await check(
       N_XSS,
-      !xss.q("img") &&
+      !xss.shadow.$("img") &&
         !window.__xss &&
-        xss.q(".form-label")?.textContent?.includes("onerror"),
+        xss.shadow.$(".form-label")?.ele?.textContent?.includes("onerror"),
     );
   },
 });
