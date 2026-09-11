@@ -907,7 +907,7 @@
           <o-if :value="toolTab === 'info' || !toolDetail.isVisual">
             <div class="tool-info-row">
               <div class="tool-detail-main">
-                <div class="tool-detail-desc">{{toolDetail.desc}}</div>
+                <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
                 <div class="tool-detail-label">参数 Schema</div>
                 <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
               </div>
@@ -1851,9 +1851,24 @@
           openToolDetail(name) {
             const def = TOOL_DEFS.find((d) => d.name === name);
             if (!def) return;
+            // 描述按句拆行展示（工具描述是给模型看的连排长文本，直接渲染很乱）；
+            // 先转义再包 div，内容里的 <字段key> 等不会被当标签解析
+            const esc = (t) =>
+              String(t).replace(/[&<>"]/g, (c) => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+              })[c]);
+            const descHtml = (def.description || "")
+              // 先按句号分句，再在 "- " 条目边界处拆开（工具描述是连排文本，
+              // 条目之间没有句号），最后逐条转义成圆点行
+              .split(/。/)
+              .flatMap((s) => s.split(/(?=- )|(?=注意：)/))
+              .map((s) => s.trim().replace(/^- /, ""))
+              .filter(Boolean)
+              .map((s) => `<div class="tool-desc-line">• ${esc(s)}。</div>`)
+              .join("");
             this.toolDetail = {
               name: def.name,
-              desc: def.description || "",
+              descHtml,
               schemaText: JSON.stringify(def.schema || {}, null, 2),
               isVisual: !!def.visual,
             };
