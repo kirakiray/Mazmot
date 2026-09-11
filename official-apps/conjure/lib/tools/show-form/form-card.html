@@ -68,29 +68,19 @@
       font-style: normal;
       margin-left: 2px;
     }
-    .form-field input[type="text"],
-    .form-field input[type="number"],
-    .form-field textarea,
-    .form-field select {
-      border: 1px solid var(--md-sys-color-outline-variant);
-      border-radius: 10px;
-      padding: 8px 10px;
-      font: inherit;
+    /* 待填控件用 senti-ui 表单组件（st-input / st-textarea / st-select /
+       st-radio / st-checkbox，宿主页面预载），这里只管布局 */
+    .form-field st-input,
+    .form-field st-textarea,
+    .form-field st-select {
+      width: 100%;
       font-size: 13px;
-      color: var(--md-sys-color-on-surface);
-      background: var(--md-sys-color-surface);
-      outline: none;
-      resize: vertical;
-    }
-    .form-field input:focus,
-    .form-field textarea:focus,
-    .form-field select:focus {
-      border-color: var(--md-sys-color-primary);
     }
     .form-options {
       display: flex;
       flex-wrap: wrap;
       gap: 6px 14px;
+      padding: 2px 0;
     }
     .form-opt {
       display: inline-flex;
@@ -237,27 +227,28 @@
                 "</div>"
               );
             }
+            // pending 生成 senti-ui 表单控件（name 属性用于提交时收集值；
+            // st-radio 以 name 为同组互斥键，value 为该选项提交值）
             return fields
               .map((f) => {
                 const name = esc(f.key);
-                const ph = f.placeholder
-                  ? ` placeholder="${esc(f.placeholder)}"`
-                  : "";
                 const label = `<span class="form-label">${esc(f.label)}${
                   f.required ? '<i class="form-req">*</i>' : ""
                 }</span>`;
                 if (f.type === "textarea")
-                  return `<label class="form-field">${label}<textarea name="${name}" rows="3"${ph}></textarea></label>`;
+                  return `<label class="form-field">${label}<st-textarea name="${name}" rows="3" autosize${
+                    f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""
+                  }></st-textarea></label>`;
                 if (f.type === "select")
                   return (
-                    `<label class="form-field">${label}<select name="${name}">` +
+                    `<label class="form-field">${label}<st-select name="${name}">` +
                     (f.options || [])
                       .map(
                         (o) =>
                           `<option value="${esc(o)}">${esc(o)}</option>`,
                       )
                       .join("") +
-                    "</select></label>"
+                    "</st-select></label>"
                   );
                 if (f.type === "radio")
                   return (
@@ -265,28 +256,41 @@
                     (f.options || [])
                       .map(
                         (o) =>
-                          `<label class="form-opt"><input type="radio" name="${name}" value="${esc(o)}">${esc(o)}</label>`,
+                          `<label class="form-opt"><st-radio name="${name}" value="${esc(o)}">${esc(o)}</st-radio></label>`,
                       )
                       .join("") +
                     "</div></div>"
                   );
                 if (f.type === "checkbox")
-                  return `<label class="form-field form-opt"><input type="checkbox" name="${name}"><span class="form-label">${esc(f.label)}</span></label>`;
+                  return `<st-checkbox class="form-opt" name="${name}">${esc(f.label)}${
+                    f.required ? '<i class="form-req">*</i>' : ""
+                  }</st-checkbox>`;
                 const type = f.type === "number" ? "number" : "text";
-                return `<label class="form-field">${label}<input name="${name}" type="${type}"${ph}></label>`;
+                return `<label class="form-field">${label}<st-input name="${name}" type="${type}"${
+                  f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""
+                }></st-input></label>`;
               })
               .join("");
           },
-          // 「提交」：收集控件值 → required 校验 → form-submit 事件冒泡
+          // 「提交」：收集 senti 控件值 → required 校验 → form-submit 事件冒泡
           async submitClick() {
             const values = {};
             // ofa 的 this.shadow 只有 $ 查询；拿原生卡片节点后用原生 API 收集
             const cardEle = this.shadow.$(".form-card")?.ele;
-            for (const el of cardEle?.querySelectorAll("[name]") || []) {
-              if (el.type === "checkbox") values[el.name] = el.checked;
-              else if (el.type === "radio") {
-                if (el.checked) values[el.name] = el.value;
-              } else values[el.name] = el.value.trim();
+            for (const el of cardEle?.querySelectorAll(
+              "st-input, st-textarea, st-select, st-checkbox, st-radio",
+            ) || []) {
+              const name = el.getAttribute("name");
+              if (!name) continue;
+              if (el.tagName === "ST-CHECKBOX") {
+                values[name] = el.hasAttribute("checked");
+              } else if (el.tagName === "ST-RADIO") {
+                // 未选中的 radio 不产生值；选中项取其 value 属性
+                if (el.hasAttribute("checked")) values[name] = el.getAttribute("value");
+              } else {
+                const v = el.value ?? "";
+                values[name] = typeof v === "string" ? v.trim() : v;
+              }
             }
             const missing = (this.spec?.fields || []).filter(
               (f) =>

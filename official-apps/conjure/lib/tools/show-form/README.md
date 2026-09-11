@@ -5,7 +5,7 @@
 ## 文件
 
 - `index.js` — 工具插件（默认导出 `{ key, name, tags, description, schema, exec }`）；`exec` 做参数清洗，经 `ctx.requestForm(spec)` 挂起等待用户提交，返回 `{"data":{...}}` 或 `{"cancelled":true}`。
-- `form-card.html` — ofa.js 视觉组件模块（`<show-form-card>`）。渲染表单卡片（pending 可编辑；submitted / cancelled / expired 只读回填），收集输入、required 校验，提交数据经 `form-submit` 事件（bubbles + composed）冒泡给宿主页面。
+- `form-card.html` — ofa.js 视觉组件模块（`<show-form-card>`）。渲染表单卡片（pending 可编辑；submitted / cancelled / expired 只读回填），pending 控件用 senti-ui 表单组件（st-input / st-textarea / st-select / st-radio / st-checkbox，宿主页面须 l-m 预载），收集输入、required 校验，提交数据经 `form-submit` 事件（bubbles + composed）冒泡给宿主页面。
 - `self-test.js` — 内置测试模组，导出 `runSelfTest()` 返回 `{ ok, cases: [{ name, pass, info }] }`。覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；组件未预载的环境自动跳过）。
 - `test/show-form.sb.html` — 包的 sibyl-test 测试：直接跑 `runSelfTest()` 断言（纯模块环境 + 预载组件环境各一轮）。
 

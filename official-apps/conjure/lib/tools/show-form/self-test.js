@@ -89,12 +89,14 @@ export async function runSelfTest() {
     JSON.stringify(cancelRes),
   );
 
-  // ---- 组件层（仅在 <show-form-card> 已注册的宿主环境执行） ----
-  if (typeof customElements === "undefined" || !customElements.get("show-form-card")) {
+  // ---- 组件层（仅在 <show-form-card> 与 senti 表单控件已注册的宿主执行） ----
+  const sentiReady = ["st-input", "st-textarea", "st-select", "st-checkbox", "st-radio"]
+    .every((t) => typeof customElements !== "undefined" && customElements.get(t));
+  if (typeof customElements === "undefined" || !customElements.get("show-form-card") || !sentiReady) {
     cases.push({
       name: "组件渲染 / 提交事件 / 只读回填",
       pass: true,
-      info: "跳过：宿主页面未预载视觉组件（sb-test 纯模块环境）",
+      info: "跳过：宿主页面未预载视觉组件或 senti 表单控件（sb-test 纯模块环境）",
     });
     return { ok: cases.every((c) => c.pass), cases };
   }
@@ -128,8 +130,8 @@ export async function runSelfTest() {
     });
     await wait(100);
     const sr = card.shadowRoot;
-    const input = sr?.querySelector('input[name="who"]');
-    const chk = sr?.querySelector('input[name="agree"]');
+    const input = sr?.querySelector('st-input[name="who"]');
+    const chk = sr?.querySelector('st-checkbox[name="agree"]');
     const submitBtn = sr?.querySelector(".form-submit");
 
     let fired = null;
@@ -138,8 +140,9 @@ export async function runSelfTest() {
     await wait(300);
     const requiredBlocked = fired === null;
 
+    // senti 控件：value 走 property，勾选态走 checked 属性
     if (input) input.value = "李四";
-    if (chk) chk.checked = true;
+    if (chk) chk.setAttribute("checked", "");
     submitBtn?.click();
     await wait(150);
     add(

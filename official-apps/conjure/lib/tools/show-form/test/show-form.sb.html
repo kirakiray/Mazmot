@@ -44,10 +44,15 @@
           {
             try {
               // sb-test 环境无 NoneOS Core SW，/gh/ 前缀不可用，
-              // 测试基建按约定走 jsdelivr 完整 URL 加载 ofa 与组件模块
+              // 测试基建按约定走 jsdelivr 完整 URL 加载 ofa、senti 控件与组件模块
               await import(
                 "https://cdn.jsdelivr.net/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
               );
+              const sentiBase =
+                "https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/";
+              for (const n of ["input", "textarea", "select", "checkbox", "radio"]) {
+                await import(sentiBase + n + "/" + n + ".html");
+              }
               await import("../../form-card.html");
               const { runSelfTest } = await import("../self-test.js");
               const res = await runSelfTest();

@@ -6,6 +6,10 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <!-- show-form 表单卡片的控件依赖（组件模板经 :html 生成，须全局预载） -->
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/radio/radio.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
   <l-m src="../lib/tools/show-form/form-card.html"></l-m>
@@ -868,8 +872,14 @@
       </div>
     </st-dialog>
 
-    <!-- 工具详情对话框：点工具列表项弹出；视觉工具可运行包内置测试模组 -->
-    <st-dialog class="tool-detail" sync:open="toolDetailOpen" auto-close>
+    <!-- 工具详情对话框：点工具列表项弹出；视觉工具可运行包内置测试模组。
+         非视觉工具信息少，用窄面板；视觉工具双栏（信息+测试 | 运行效果预览） -->
+    <st-dialog
+      class="tool-detail"
+      class:narrow="toolDetail && !toolDetail.isVisual"
+      sync:open="toolDetailOpen"
+      auto-close
+    >
       <o-if :value="toolDetail">
         <div class="tool-detail-panel">
           <!-- 左列：工具信息 + 内置测试断言列表 -->
@@ -1016,16 +1026,28 @@
           // 必须用完整绝对地址；ofa.mjs 由浏览器按 document base 解析，/ 开头即可
           '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
           '<l-m src="' + def.visual + '"></l-m>',
+          // 表单卡片的 senti 控件依赖（l-m 的 src 会被 ofa 以 about:srcdoc
+          // 为 base 解析，必须用完整绝对地址）
+          ["input", "textarea", "select", "checkbox", "radio"]
+            .map(
+              (n) =>
+                '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
+            )
+            .join(""),
           '<div id="mount"></div>',
           "<" + "script>",
           "(async () => {",
           "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
           "  const card = document.createElement('show-form-card');",
           "  document.getElementById('mount').appendChild(card);",
-          "  await wait(400);",
+          "  await wait(300);",
           "  const p = window.$(card);",
           "  p.spec = " + JSON.stringify(spec) + ";",
           "  p.bodyHtml = p.renderFields(p.spec);",
+          // 整段脚本是单行，注释必须用块注释（// 会吞掉行尾的闭合括号）
+          "  /* 等 senti 控件注册完成（l-m 异步加载） */",
+          "  const t0 = Date.now();",
+          "  while (Date.now() - t0 < 8000 && !customElements.get('st-radio')) await wait(100);",
           "})();",
           "</scr" + "ipt>",
           "</body></html>",
