@@ -378,7 +378,7 @@
 
           <o-if :value="sending">
             <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新） -->
-            <div class="turn-status">生成中… {{ turnLiveText(clock) }}</div>
+            <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
         </div>
       </section>
@@ -1550,10 +1550,42 @@
             }
             return text;
           },
-          // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖
+          // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖。
+          // 表单挂起期间计时暂停：累计挂起时长并在恢复后扣除
           turnLiveText() {
             if (!(this.turnStartTs > 0)) return "";
-            return "· " + this.fmtDurMs(Math.max(0, Date.now() - this.turnStartTs));
+            const now = Date.now();
+            if (this.formWaiting()) {
+              if (!this._formPauseStart) this._formPauseStart = now;
+            } else if (this._formPauseStart) {
+              this._formPauseMs =
+                (this._formPauseMs || 0) + (now - this._formPauseStart);
+              this._formPauseStart = 0;
+            }
+            const paused =
+              (this._formPauseMs || 0) +
+              (this._formPauseStart ? now - this._formPauseStart : 0);
+            return (
+              "· " + this.fmtDurMs(Math.max(0, now - this.turnStartTs - paused))
+            );
+          },
+
+          // 本轮是否有挂起中的表单（等待用户提交）：是则状态栏不显示倒计时
+          formWaiting() {
+            return this.messages.some(
+              (m) =>
+                m.role === "assistant" &&
+                m.type === "form" &&
+                m.form?.status === "pending",
+            );
+          },
+
+          // 回合状态文案：表单挂起 = 等待提交（倒计时暂停）；否则生成中 + 用时
+          turnStatusText() {
+            if (this.formWaiting()) {
+              return "⏸ 已展示表单，等待你提交后继续（计时已暂停）";
+            }
+            return "生成中… " + this.turnLiveText();
           },
 
           // ---- 视觉交互表单卡片（show-form 包组件的宿主接线） ----
@@ -2170,6 +2202,9 @@
             this.autoGrow();
             this.atBottom = true;
             this.followScroll(true);
+            // 新回合：清零表单挂起的计时暂停累计
+            this._formPauseMs = 0;
+            this._formPauseStart = 0;
             await store.send(text);
           },
 
