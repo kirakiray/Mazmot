@@ -135,11 +135,26 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 消息操作的目标桶：回合进行中固定写回合桶，否则写当前视图桶
   const activeKey = () => turnKey || viewKey();
 
+  // 增量落盘（防抖 400ms）：回合中途（表单挂起、流式输出等）也把消息写进
+  // IndexedDB，刷新 / 意外关闭不再丢失整轮对话。捕获当下的 key，避免防抖
+  // 触发时回合已收尾、activeKey 变化而写错桶
+  function scheduleSave(key) {
+    if (!selfStore || !sessionBuckets.has(key)) return;
+    clearTimeout(scheduleSave._timer);
+    scheduleSave._timer = setTimeout(() => {
+      if (!sessionBuckets.has(key)) return;
+      selfStore
+        .setItem(key, bucketFor(key).map((m) => ({ ...m })))
+        .catch(() => {});
+    }, 400);
+  }
+
   function pushMessage(item) {
     const key = activeKey();
     // 消息落盘时间：所有角色（含用户消息）统一在这里补时间戳，hover 展示
     if (item.ts == null) item.ts = Date.now();
     bucketFor(key).push(item);
+    scheduleSave(key);
     if (key === viewKey()) {
       state.messages.push(item);
       msgEvent({ op: "push", item });
@@ -151,6 +166,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const item = bucketFor(key).find((m) => m.id === id);
     if (!item) return;
     Object.assign(item, patch);
+    scheduleSave(key);
     if (key === viewKey()) msgEvent({ op: "patch", id, patch });
   }
   function removeMessage(id) {
@@ -159,24 +175,21 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const idx = list.findIndex((m) => m.id === id);
     if (idx > -1) {
       list.splice(idx, 1);
+      scheduleSave(key);
       if (key === viewKey()) msgEvent({ op: "splice", id });
     }
   }
   // 整组替换某个会话桶并（若是当前视图）刷新镜像；nextId 全局单调递增，
-  // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上
+  // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上。
+  // 注意：pending 表单原样保留——刷新后仍可填写提交（submitForm 走恢复回合）
   function replaceMessages(list, key = viewKey()) {
     const norm = (list || []).map((m) => {
-      const base = {
+      return {
         ...m,
         pending: false,
         open: false,
         reasoningOpen: false, // 历史消息的思考过程默认收起
       };
-      // 历史里仍处 pending 的表单（页面关闭于用户提交前）标记过期：只读展示
-      if (base.type === "form" && base.form?.status === "pending") {
-        base.form = { ...base.form, status: "expired" };
-      }
-      return base;
     });
     sessionBuckets.set(key, norm);
     state.nextId = Math.max(
@@ -1733,9 +1746,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
 
     set("sending", true);
-    activeBubble = null;
-    currentAbort = { stopped: false };
-    const abort = currentAbort;
     // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
     try {
       const info = contextInfo(bucketFor(turnKey));
@@ -1746,9 +1756,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } catch (err) {
       console.warn("自动压缩上下文失败：", err);
     }
+    await driveTurn(threadId, text, [{ role: "user", content: text }]);
+  }
+
+  // 驱动一轮 agent 对话循环：流式转发、错误入气泡、收尾（取消挂起表单、
+  // 落盘、迁移草稿、清忙）。send 与表单恢复回合共用
+  async function driveTurn(threadId, firstUserText, inputMessages) {
+    activeBubble = null;
+    currentAbort = { stopped: false };
+    const abort = currentAbort;
     try {
       await agent.chat({
-        messages: [{ role: "user", content: text }],
+        messages: inputMessages,
         threadId,
         stream: true,
         onStream: (ev) => {
@@ -1776,7 +1795,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           .find((m) => m.role === "assistant");
         if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
       }
-      await finishTurn(text, threadId, Date.now() - turnStartAt);
+      await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
       turnKey = null;
@@ -1796,6 +1815,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 当前挂起的表单等待器：{ msgId, resolve }；同一时刻最多一张
   let formWaiter = null;
+  let formResuming = false; // 恢复回合防重入
 
   // show_form 工具入口：把表单卡片作为一条 assistant 消息推入当前回合，
   // 返回的 Promise 在用户提交（submitForm）或取消（cancelPendingForm）时落定
@@ -1814,16 +1834,125 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 用户在卡片上点「提交」：数据写回消息（随会话桶持久化，历史只读回填），
-  // 并把数据交回 Agent 工具调用
+  // 并把数据交回 Agent 工具调用。
+  // 无活动等待器（页面刷新后恢复的挂起表单）→ 走恢复回合
   function submitForm(msgId, values) {
-    if (!formWaiter || formWaiter.msgId !== msgId) return false;
-    const { resolve } = formWaiter;
-    formWaiter = null;
-    const item = bucketFor(activeKey()).find((m) => m.id === msgId);
-    const form = { ...(item?.form || {}), status: "submitted", data: values };
-    patchMessage(msgId, { form });
-    resolve({ data: values });
-    return true;
+    if (formWaiter && formWaiter.msgId === msgId) {
+      const { resolve } = formWaiter;
+      formWaiter = null;
+      const item = bucketFor(activeKey()).find((m) => m.id === msgId);
+      const form = { ...(item?.form || {}), status: "submitted", data: values };
+      patchMessage(msgId, { form });
+      resolve({ data: values });
+      return true;
+    }
+    const item = bucketFor(viewKey()).find((m) => m.id === msgId);
+    if (item?.type === "form" && item.form?.status === "pending") {
+      resumeFormTurn(item, values); // 异步恢复回合
+      return true;
+    }
+    return false;
+  }
+
+  // 恢复回合：页面刷新后用户提交恢复的挂起表单时，原回合的工具等待已随页面
+  // 消失、且本轮对话从未写入模型记忆（检查点只在回合收尾落盘）。
+  // 做法：把「用户请求 → assistant 调 show_form → 工具结果（用户提交的数据）」
+  // 合成进记忆线程，再以空输入重新驱动 agent 循环，模型即可接上上下文继续。
+  async function resumeFormTurn(item, values) {
+    if (state.sending || formResuming || !fs) return;
+    formResuming = true;
+    try {
+      await doResumeFormTurn(item, values);
+    } finally {
+      formResuming = false;
+    }
+  }
+
+  async function doResumeFormTurn(item, values) {
+    if (!fs) return;
+    const viewKeyNow = viewKey();
+
+    // 找本轮的用户请求文本（表单消息之前最近一条 user 消息）
+    const list = bucketFor(viewKeyNow);
+    let firstUserText = "（继续表单）";
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].role === "user") {
+        firstUserText = list[i].content;
+        break;
+      }
+    }
+
+    const threadId =
+      viewKeyNow === "chat:draft" ? "draft" : viewKeyNow.slice("chat:".length);
+    turnKey = viewKeyNow;
+    if (!sessionBuckets.has(turnKey)) {
+      sessionBuckets.set(turnKey, [...state.messages]);
+    }
+    turnStartAt = Date.now();
+    markBusy(turnKey, true);
+    setMany({ keyError: "", turnStartTs: turnStartAt });
+
+    try {
+      await ensureAgent();
+    } catch {
+      turnKey = null;
+      turnStartAt = 0;
+      markBusy(null);
+      setMany({
+        keyError: "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
+        turnStartTs: 0,
+      });
+      return; // 表单保持 pending，修复环境后仍可提交
+    }
+
+    set("sending", true);
+    // 表单落「已提交」（随会话桶持久化，历史只读回填）
+    const form = { ...(item.form || {}), status: "submitted", data: values };
+    patchMessage(item.id, { form });
+
+    // 合成记忆：user 请求 → assistant 的 show_form 调用 → 工具结果（提交的数据）
+    try {
+      const threadKey = `thread:${threadId}`;
+      const history = (await selfStore.getItem(threadKey)) ?? [];
+      const toolCallId = `call_resume_${Date.now().toString(36)}`;
+      const wire = [
+        { role: "user", content: firstUserText },
+        {
+          role: "assistant",
+          content: "",
+          // DeepSeek 思考模式要求带 tool_calls 的 assistant 消息必须回传
+          // reasoning_content（合成消息没有真实思考内容，传空字符串）
+          reasoning_content: "",
+          tool_calls: [
+            {
+              id: toolCallId,
+              type: "function",
+              function: {
+                name: "show_form",
+                arguments: JSON.stringify({
+                  title: form.title,
+                  description: form.description,
+                  fields: form.fields,
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: toolCallId,
+          name: "show_form",
+          content: JSON.stringify({ data: values }),
+        },
+      ];
+      await selfStore.setItem(threadKey, [...history, ...wire]);
+      await driveTurn(threadId, firstUserText, []);
+    } catch (err) {
+      turnKey = null;
+      turnStartAt = 0;
+      markBusy(null);
+      setMany({ sending: false, turnStartTs: 0, keyError: err.message });
+    }
   }
 
   // 取消挂起的表单（用户停止 / 回合兜底结束）：卡片置 cancelled 只读
