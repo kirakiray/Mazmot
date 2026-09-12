@@ -277,6 +277,182 @@
       </template>
     </sb-test>
 
+    <sb-test name="增量同步 - hash 比对只传差异文件，未变文件保持原样">
+      <template>
+        <script type="module">
+          import {
+            createReliableLink,
+            buildFileMessages,
+            buildManifest,
+          } from "../proto.js";
+          import { createPreviewReceiver } from "../receiver.js";
+          // 本用例独立的服务 ID，避免与用例 1 在同一页面重复注册同名服务
+          const SERVICE_ID_CONJURE = "conjure-preview-t2";
+          const SERVICE_ID_BRIDGE = "conjure-bridge-t2";
+          const { getUser } = await import("/nos/user/main.js");
+
+          const ensureServer = async (user) => {
+            const urls = () =>
+              Array.isArray(user.server?.connectedUrls)
+                ? user.server.connectedUrls
+                : [];
+            let servers = [];
+            try {
+              servers = (await user.server.getServers()) || [];
+            } catch (_) {}
+            await Promise.all(
+              servers.map((s) => user.server.connect(s).catch(() => {})),
+            );
+            const deadline = Date.now() + 10000;
+            while (urls().length === 0 && Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            if (urls().length === 0) throw new Error("信令服务器未连接");
+          };
+
+          const sender = await getUser("conjure-preview");
+          const receiverUser = await getUser("conjure-bridge");
+          await Promise.all([ensureServer(sender), ensureServer(receiverUser)]);
+
+          const receiver = createPreviewReceiver({});
+          let receiverRemote = null;
+          const receiverLink = createReliableLink({
+            sendTo: (env) =>
+              receiverRemote
+                ? receiverRemote.sendToService("conjure-preview-t2", env, {
+                    waitForService: 3000,
+                  })
+                : Promise.resolve([{ status: "error" }]),
+          });
+          // 接收端对 sync-check 的 reply（sync-diff）经链路回传给发送端
+          receiverUser.registerService("conjure-bridge-t2", {
+            onMessage: (data, ctx) => {
+              const payload = receiverLink.receive(data, (env) => {
+                ctx.remoteUser
+                  .sendToService("conjure-preview-t2", env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .catch(() => {});
+              });
+              if (!payload) return;
+              receiver.handle(payload).then((result) => {
+                if (result && result.reply) receiverLink.send(result.reply);
+              }).catch(() => {});
+            },
+          });
+
+          let senderRemote = null;
+          let senderLink = createReliableLink({
+            sendTo: (env) =>
+              senderRemote
+                ? senderRemote.sendToService("conjure-bridge-t2", env, {
+                    waitForService: 3000,
+                  })
+                : Promise.resolve([{ status: "error" }]),
+          });
+          const diffs = []; // 按到达顺序收集 sync-diff（两次 sync-check 各一条）
+          sender.registerService("conjure-preview-t2", {
+            onMessage: (data, ctx) => {
+              const payload = senderLink.receive(data, (env) => {
+                ctx.remoteUser
+                  .sendToService("conjure-bridge-t2", env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .catch(() => {});
+              });
+              if (payload && payload.type === "sync-diff") diffs.push(payload);
+            },
+          });
+          // 等到第 n 条 sync-diff（轮询，带超时）
+          const waitDiff = async (n, ms = 15000) => {
+            const deadline = Date.now() + ms;
+            while (diffs.length < n && Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            if (diffs.length < n) throw new Error(`等待第 ${n} 条 sync-diff 超时`);
+            return diffs[n - 1];
+          };
+
+          senderRemote = await sender.connectUser(receiverUser.userId);
+          receiverRemote = await receiverUser.connectUser(sender.userId);
+
+          // 随机后缀保证用例幂等（上一轮运行可能已把文件写入 VFS）
+          const appName = `it-incr-app-${Date.now() % 100000}`;
+          const v1 = [
+            { path: "index.html", text: "<p>v1</p>" },
+            { path: "style.css", text: "body{color:red}" },
+            { path: "app.json", text: '{"v":1}' },
+          ];
+          // 第一次：全量推送（receiver 无既有文件 → diff 应全缺失）
+          await senderLink.send({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest(v1),
+          });
+          const diff1 = await waitDiff(1);
+          const pushFiles = async (list, wipe) => {
+            await senderLink.send({
+              type: "app-begin",
+              appName,
+              fileCount: list.length,
+              wipe,
+            });
+            for (const f of list) {
+              for (const msg of buildFileMessages(appName, f.path, f.text)) {
+                await senderLink.send(msg);
+              }
+            }
+            await senderLink.send({ type: "app-end", appName });
+          };
+          await pushFiles(
+            v1.filter((f) => diff1.missing.includes(f.path)),
+            diff1.missing.length === v1.length,
+          );
+
+          // 第二次：只改 index.html 与新增 note.md
+          const v2 = [
+            { path: "index.html", text: "<p>v2</p>" },
+            { path: "style.css", text: "body{color:red}" },
+            { path: "app.json", text: '{"v":1}' },
+            { path: "note.md", text: "新增" },
+          ];
+          await senderLink.send({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest(v2),
+          });
+          const diff2 = await waitDiff(2);
+          const missing2 = [...diff2.missing].sort();
+          await pushFiles(
+            v2.filter((f) => diff2.missing.includes(f.path)),
+            diff2.missing.length === v2.length,
+          );
+
+          const get = async (p) => {
+            const res = await fetch(`/$conjure-apps/${appName}/client/${p}`);
+            return res.status === 200 ? await res.text() : null;
+          };
+          return {
+            assert:
+              // 全量：首轮全缺失
+              diff1.missing.length === 3 &&
+              // 增量：只回报 index.html（变更）+ note.md（新增），style.css/app.json 命中跳过
+              missing2.length === 2 &&
+              missing2[0] === "index.html" &&
+              missing2[1] === "note.md" &&
+              (await get("index.html")) === "<p>v2</p>" &&
+              (await get("style.css")) === "body{color:red}" &&
+              (await get("app.json")) === '{"v":1}' &&
+              (await get("note.md")) === "新增",
+            content: {
+              diff1: diff1.missing,
+              diff2: missing2,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="waitUrlReady - 就绪 URL 立即返回 true，未挂载 URL 超时 false">
       <template>
         <script type="module">

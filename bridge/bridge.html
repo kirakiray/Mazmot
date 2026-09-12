@@ -312,7 +312,15 @@
           async handlePayload(payload) {
             try {
               const result = await this._receiver.handle(payload);
-              if (result) await this.launchApp(result);
+              if (payload.type === "sync-check" && result && result.reply) {
+                // 增量比对：回报差异清单；已最新（missing 空）直接进入启动流程
+                await this._link.send(result.reply);
+                if (!result.reply.missing.length) {
+                  await this.launchApp(result);
+                }
+                return;
+              }
+              if (result && result.url) await this.launchApp(result);
             } catch (err) {
               this.fail("接收应用文件失败", err);
             }

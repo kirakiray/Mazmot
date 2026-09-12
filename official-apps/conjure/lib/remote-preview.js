@@ -11,6 +11,7 @@ import {
   SERVICE_ID_BRIDGE,
   USER_NAMESPACE,
   buildFileMessages,
+  buildManifest,
   createReliableLink,
 } from "/bridge/proto.js";
 
@@ -20,6 +21,8 @@ export const BRIDGE_ORIGIN = "http://localhost:30032";
 // 等待 bridge hello / done 的兜底超时（bridge 首次访问需安装 Core，给足时间）
 const HELLO_TIMEOUT = 120_000;
 const DONE_TIMEOUT = 120_000;
+// 差异比对是纯本地计算，超时说明 bridge 侧异常（旧版本协议等），直接回退全量
+const DIFF_TIMEOUT = 30_000;
 
 // 等待本地用户连上至少一台信令服务器（connectUser 的前置条件）
 async function ensureServerConnected(user) {
@@ -79,11 +82,15 @@ export async function openRemotePreview({
   const userMod = await load("/nos/user/main.js");
   const user = await userMod.getUser(USER_NAMESPACE);
 
-  // bridge hello / done 的等待器（服务 handler 里 resolve）
+  // bridge hello / sync-diff / done 的等待器（服务 handler 里 resolve）
   let helloResolve;
+  let diffResolve;
   let doneResolve;
   const helloPromise = new Promise((r) => {
     helloResolve = r;
+  });
+  const diffPromise = new Promise((r) => {
+    diffResolve = r;
   });
   const donePromise = new Promise((r) => {
     doneResolve = r;
@@ -114,6 +121,8 @@ export async function openRemotePreview({
       if (payload.type === "hello" && payload.userId) {
         helloResolve();
         bridgeUserId = payload.userId;
+      } else if (payload.type === "sync-diff") {
+        diffResolve(payload);
       } else if (payload.type === "done") {
         doneResolve(payload);
       }
@@ -137,17 +146,52 @@ export async function openRemotePreview({
   status("连接 bridge...");
   remote = await user.connectUser(bridgeUserId);
 
-  status("推送应用文件...");
-  await link.send({ type: "app-begin", appName, fileCount: files.length });
-  let sent = 0;
-  for (const file of files) {
-    for (const msg of buildFileMessages(appName, file.path, file.text)) {
-      await link.send(msg);
+  // 增量同步：先发「路径 + sha256」清单，bridge 比对本域 VFS，只回报需要（重）传的文件；
+  // 比对超时 / 异常时回退全量推送
+  let toSend = files;
+  let wipe = true;
+  try {
+    status("对比文件差异...");
+    const manifest = await buildManifest(files);
+    await link.send({ type: "sync-check", appName, manifest });
+    const diff = await withTimeout(
+      diffPromise,
+      DIFF_TIMEOUT,
+      "等待差异比对超时",
+    );
+    const missing = new Set(
+      Array.isArray(diff.missing) ? diff.missing : [],
+    );
+    toSend = files.filter((f) => missing.has(f.path));
+    // 部分命中走增量覆盖（不清目录）；一个都没命中视为全量（清目录重建）
+    wipe = toSend.length === files.length;
+    if (!toSend.length) {
+      status("内容无变化，bridge 已是最新");
     }
-    sent++;
-    status(`推送文件 ${sent}/${files.length}：${file.path}`);
+  } catch (err) {
+    console.warn("[remote-preview] 增量比对失败，回退全量推送：", err);
+    toSend = files;
+    wipe = true;
   }
-  await link.send({ type: "app-end", appName });
+
+  if (toSend.length) {
+    status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    await link.send({
+      type: "app-begin",
+      appName,
+      fileCount: toSend.length,
+      wipe,
+    });
+    let sent = 0;
+    for (const file of toSend) {
+      for (const msg of buildFileMessages(appName, file.path, file.text)) {
+        await link.send(msg);
+      }
+      sent++;
+      status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+    }
+    await link.send({ type: "app-end", appName });
+  }
 
   const done = await withTimeout(
     donePromise,

@@ -241,5 +241,29 @@
         </script>
       </template>
     </sb-test>
+
+    <sb-test name="sha256Hex / buildManifest - 指纹与清单构造">
+      <template>
+        <script type="module">
+          import { sha256Hex, buildManifest } from "../proto.js";
+          // "abc" 的 SHA-256 标准测试向量
+          const abc = await sha256Hex("abc");
+          const manifest = await buildManifest([
+            { path: "a.txt", text: "hello" },
+            { path: "b/c.js", text: "中文🎉" },
+          ]);
+          return {
+            assert:
+              abc ===
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" &&
+              manifest.length === 2 &&
+              manifest[0].path === "a.txt" &&
+              /^[0-9a-f]{64}$/.test(manifest[0].hash) &&
+              manifest[1].hash !== manifest[0].hash,
+            content: { abc: abc.slice(0, 12), manifest },
+          };
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

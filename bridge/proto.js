@@ -10,11 +10,12 @@
 // 消息流（payload.type）：
 //   bridge → conjure（服务 conjure-preview）：
 //     { type: "hello", userId }                 —— bridge 就绪，告知自己的 userId
-//     { type: "done", appName, url }            —— 文件落盘完成，回传运行 URL
+//     { type: "sync-diff", appName, missing }   —— 增量比对结果：需要（重）传的 path 列表
+//     { type: "done", appName, url }            —— 文件落盘完成（或已最新），回传运行 URL
 //   conjure → bridge（服务 conjure-bridge）：
-//     { type: "ready" }                         —— 对 hello 的应答（复用 ACK 通道即可，
-//                                                  此消息仅作业务层状态展示）
-//     { type: "app-begin", appName, fileCount }
+//     { type: "sync-check", appName, manifest } —— 增量同步：[{path, hash}] 清单，bridge 比对本地
+//     { type: "app-begin", appName, fileCount, wipe? }  —— wipe 缺省 true（全量，清目录重建）；
+//                                                  增量推送时 false（只覆盖写入差异文件）
 //     { type: "file", appName, path, seq, total, text }  —— 大文件按 seq/total 分片
 //     { type: "app-end", appName }
 
@@ -133,6 +134,29 @@ export function assertSendable(payload) {
     );
   }
   return size;
+}
+
+/** 计算文本内容的 SHA-256 hex（增量同步的文件指纹） */
+export async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * 构造文件清单（path + sha256），供增量同步比对。
+ * 清单本身远小于文件内容（每条约 80 字节），可单条发送。
+ * @param {Array<{path: string, text: string}>} files
+ * @returns {Promise<Array<{path: string, hash: string}>>}
+ */
+export async function buildManifest(files) {
+  return Promise.all(
+    files.map(async (f) => ({ path: f.path, hash: await sha256Hex(f.text) })),
+  );
 }
 
 const SEEN_TTL = 5 * 60 * 1000;

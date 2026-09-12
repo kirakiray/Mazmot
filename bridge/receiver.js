@@ -8,6 +8,7 @@ import {
   sanitizeAppName,
   validateRelPath,
   createFileAssembler,
+  sha256Hex,
 } from "./proto.js";
 
 /**
@@ -26,6 +27,40 @@ export function createPreviewReceiver({ init, onProgress = () => {} } = {}) {
 
   const process = async (payload) => {
     if (!payload || typeof payload !== "object") return null;
+    if (payload.type === "sync-check") {
+      const name = sanitizeAppName(payload.appName);
+      if (!name) throw new Error("应用名不合法");
+      const manifest = Array.isArray(payload.manifest) ? payload.manifest : [];
+      const initFn =
+        init ||
+        (await import("/nos/fs/main.js")).init;
+      const rootDir = await initFn(BRIDGE_NAMESPACE);
+      const appDir = await rootDir.get(name);
+      const localClient =
+        appDir && appDir.kind === "dir" ? await appDir.get("client") : null;
+      const missing = [];
+      for (const item of manifest) {
+        const check = validateRelPath(item.path);
+        if (!check.ok || typeof item.hash !== "string") {
+          missing.push(item.path); // 清单项非法按缺失处理（后续写入校验兜底）
+          continue;
+        }
+        let text = null;
+        try {
+          const file = localClient ? await localClient.get(item.path) : null;
+          if (file && file.kind === "file") text = await file.text();
+        } catch (_) {}
+        if (text == null || (await sha256Hex(text)) !== item.hash) {
+          missing.push(item.path);
+        }
+      }
+      // caller 应把 reply 经可靠链路发回 conjure；missing 为空表示已最新
+      return {
+        appName: name,
+        url: `/$${BRIDGE_NAMESPACE}/${name}/client/index.html`,
+        reply: { type: "sync-diff", appName: name, missing },
+      };
+    }
     if (payload.type === "app-begin") {
       const name = sanitizeAppName(payload.appName);
       if (!name) throw new Error("应用名不合法");
@@ -33,9 +68,11 @@ export function createPreviewReceiver({ init, onProgress = () => {} } = {}) {
         init ||
         (await import("/nos/fs/main.js")).init;
       const rootDir = await initFn(BRIDGE_NAMESPACE);
-      // 覆盖语义：清掉旧版本再重建（remove 为递归删除）
-      const old = await rootDir.get(name);
-      if (old && old.kind === "dir") await old.remove();
+      // 全量推送（wipe 缺省 true）清目录重建；增量推送（wipe:false）只覆盖写入差异文件
+      if (payload.wipe !== false) {
+        const old = await rootDir.get(name);
+        if (old && old.kind === "dir") await old.remove();
+      }
       const appDir = await rootDir.get(name, { create: "dir" });
       clientDir = await appDir.get("client", { create: "dir" });
       assembler = createFileAssembler();
