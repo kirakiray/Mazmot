@@ -22,6 +22,8 @@ import {
   unregisterAppRecord,
   deleteVfsApp,
   sanitizeAppName,
+  listAppFiles,
+  readAppFile,
   createAppBackup,
   listAppBackups,
   deleteAppBackup,
@@ -85,6 +87,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     backups: [],
     backupBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
+    // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示
+    previewBusy: false,
+    previewStatus: "",
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -1041,6 +1046,62 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       return;
     }
     window.open(buildRunUrl(name), `mazmot-app-${name}`);
+  }
+
+  /* ---------- 隔离预览（bridge 跨域推送） ---------- */
+
+  // 收集指定应用的全部文件（VFS 渠道读 ai-apps/<name>/client/，
+  // 本地渠道恢复句柄后复用 app-runner 的 readAppFiles，优先 client/ 子目录）
+  async function collectAppFiles(name, mode) {
+    if (mode === "local") {
+      let handle = localRootHandle;
+      if (!handle) {
+        handle = await getLocalHandleFromRecord(name);
+        if (handle) {
+          localRootHandle = handle;
+          set("localDirLabel", handle?.name || "");
+        }
+      }
+      if (!handle) throw new Error("本地目录句柄已丢失，请重新选择目录");
+      const granted = await ensureLocalPermission(handle);
+      if (!granted) throw new Error("本地目录权限未授予，无法读取应用文件");
+      const { readAppFiles } = await load("/mz/app-runner.js");
+      const raw = await readAppFiles(handle);
+      return raw.map((f) => ({ path: f.path, text: f.content }));
+    }
+    const paths = await listAppFiles(fs, name);
+    const files = [];
+    for (const p of paths) {
+      const text = await readAppFile(fs, name, p);
+      if (text != null) files.push({ path: p, text });
+    }
+    return files;
+  }
+
+  // 隔离预览：把应用文件推送到 bridge 隔离域运行（AI 代码不接触主域数据）
+  async function openAppRemote(appName, mode) {
+    const name = sanitizeAppName(appName);
+    if (!name || state.previewBusy) return;
+    set("previewBusy", true);
+    set("previewStatus", "准备推送...");
+    try {
+      const files = await collectAppFiles(name, mode);
+      if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
+      const { openRemotePreview } = await load(
+        "/official-apps/conjure/lib/remote-preview.js",
+      );
+      await openRemotePreview({
+        load,
+        appName: name,
+        files,
+        onStatus: (text) => set("previewStatus", text),
+      });
+    } catch (err) {
+      set("keyError", `隔离预览失败：${err.message}`);
+    } finally {
+      set("previewBusy", false);
+      set("previewStatus", "");
+    }
   }
 
   // 本地目录应用：应用文件在所选目录的 client/ 子目录（与虚拟渠道布局一致）
@@ -2104,6 +2165,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     grantLocalPermission,
     installSkillFromSource,
     openApp,
+    openAppRemote,
     submitForm,
     refreshBackups,
     createBackup,

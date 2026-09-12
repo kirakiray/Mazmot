@@ -75,7 +75,14 @@
       </div>
       <div class="topbar-actions">
         <o-if :value="currentAppName !== ''">
-          <st-icon-button title="预览应用" on:click="openApp(currentAppName, currentAppMode)">
+          <o-if :value="previewStatus">
+            <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
+          </o-if>
+          <st-icon-button
+            title="预览应用（隔离域运行）"
+            attr:disabled="previewBusy"
+            on:click="openAppRemote(currentAppName, currentAppMode)"
+          >
             <n-icon icon="mdi:play-circle-outline"></n-icon>
           </st-icon-button>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
@@ -360,7 +367,7 @@
                   <o-if :value="$data.ready">
                     <div class="app-card-actions">
                       <st-button
-                        on:click="$host.openApp($data.appName, $data.mode)"
+                        on:click="$host.openAppRemote($data.appName, $data.mode)"
                       >
                         ▶ 预览应用
                       </st-button>
@@ -1186,6 +1193,8 @@
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           backupBusy: false, // 正在打包备份
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
+          previewBusy: false, // 隔离预览推送中
+          previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
@@ -1700,6 +1709,10 @@
 
           openApp(appName, mode) {
             store.openApp(appName, mode);
+          },
+
+          openAppRemote(appName, mode) {
+            store.openAppRemote(appName, mode);
           },
 
           async deleteSession(event, sid) {

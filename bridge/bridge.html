@@ -1,0 +1,344 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      padding: 28px 24px;
+      border-radius: 16px;
+      background: var(--md-sys-color-surface-container-low);
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .icon {
+      font-size: 56px;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      word-break: break-word;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 20px;
+      word-break: break-word;
+    }
+    .bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--md-sys-color-surface-variant);
+    }
+    .fill {
+      height: 100%;
+      background: var(--md-sys-color-primary);
+      transition: width 0.2s;
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      min-height: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .error-text {
+      color: var(--md-sys-color-error);
+      font-size: 13px;
+      word-break: break-word;
+    }
+    /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
+    nos-version {
+      display: none !important;
+    }
+  </style>
+
+  <!-- 本页可能在 Core SW 注册前渲染，/gh/、/nos/ 本地前缀不可用，
+       资源统一使用完整 CDN URL（同 apps/run-app 例外规则） -->
+  <l-m src="https://core.noneos.com/nos-tool/comps/nos-version.html"></l-m>
+
+  <!--
+    隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core。
+    通过 on:xxx 声明式绑定事件（同 run-app：ofa.js 在元素挂载时立刻装上监听器，
+    组件定义稍后加载也能收到升级元素时同步触发的事件）。
+  -->
+  <nos-version
+    auto-install
+    on:check-start="onCoreCheckStart"
+    on:uninstalled="onCoreUninstalled"
+    on:install-progress="onCoreInstallProgress"
+    on:installed="onCoreInstalled"
+    on:error="onCoreError($event)"
+  ></nos-version>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="icon">{{iconText}}</div>
+      <h1 class="title">{{titleText}}</h1>
+      <div class="subtitle">{{subtitleText}}</div>
+
+      <o-if :value="step !== 'error'">
+        <div class="bar">
+          <div class="fill" :style.width="progress + '%'"></div>
+        </div>
+        <div class="status">{{statusText}}</div>
+      </o-if>
+
+      <o-if :value="step === 'error'">
+        <div class="error-text">{{errorText}}</div>
+        <div class="status">{{statusDetail}}</div>
+      </o-if>
+    </div>
+  </div>
+
+  <script>
+    // 进度分段：0-40% 给 Core 检测/安装，40-100% 给通信与文件接收
+    const CORE_END = 40;
+
+    export default async ({ load }) => {
+      // 协议模块与本页同源，Core SW 就绪前也能加载（纯静态文件）；
+      // receiver 为接收端核心逻辑（写 VFS + URL 就绪等待），与集成测试共用
+      const proto = await load("./proto.js");
+      const {
+        SERVICE_ID_CONJURE,
+        SERVICE_ID_BRIDGE,
+        USER_NAMESPACE,
+        createReliableLink,
+      } = proto;
+      const receiverMod = await load("./receiver.js");
+      const { createPreviewReceiver, waitUrlReady } = receiverMod;
+
+      // Core 就绪的 Promise 由 onCoreInstalled / onCoreError 兑现
+      let coreResolve;
+      let coreReject;
+      const coreReady = new Promise((resolve, reject) => {
+        coreResolve = resolve;
+        coreReject = reject;
+      });
+      let coreDone = false;
+
+      return {
+        data: {
+          step: "core", // core | connecting | receiving | error
+          iconText: "🌉",
+          titleText: "Mazmot 隔离预览",
+          subtitleText: "校验运行环境",
+          statusText: "正在检测 NoneOS Core...",
+          progress: 0,
+          errorText: "",
+          statusDetail: "",
+          _conjureUserId: "", // URL ?u= 带来的 conjure 侧 userId
+          _user: null, // LocalUser（非响应式约定下划线开头）
+          _remote: null, // 与 conjure 建立的 RemoteUser
+          _link: null, // 可靠链路
+          _receiver: null, // 接收端核心逻辑（receiver.js）
+        },
+        attached() {
+          const sp = new URLSearchParams(window.location.search || "");
+          this._conjureUserId = sp.get("u") || "";
+          this.startFlow();
+        },
+        proto: {
+          setProgress(p, text) {
+            this.progress = Math.max(0, Math.min(100, p));
+            if (text != null) this.statusText = text;
+          },
+          fail(title, err) {
+            this.iconText = "⚠️";
+            this.titleText = title;
+            this.subtitleText = "";
+            this.errorText = (err && err.message) || String(err || "");
+            this.statusDetail = "";
+            this.progress = 0;
+            this.step = "error";
+            console.error(`[bridge] ${title}`, err);
+          },
+
+          // ============ nos-version 事件处理（模板 on: 声明式绑定） ============
+          onCoreCheckStart() {
+            this.setProgress(2, "正在检测 NoneOS Core...");
+          },
+          onCoreUninstalled() {
+            this.setProgress(5, "首次运行，正在安装 NoneOS Core...");
+          },
+          onCoreInstallProgress(e) {
+            const d = e.detail || {};
+            const unit = (CORE_END - 6) / Math.max(1, d.total || 1);
+            this.setProgress(
+              6 + (d.step || 0) * unit,
+              `NoneOS Core：${d.desc || "安装中"}`,
+            );
+          },
+          onCoreInstalled() {
+            if (coreDone) return;
+            coreDone = true;
+            this.setProgress(CORE_END, "NoneOS Core 就绪");
+            coreResolve();
+          },
+          onCoreError(event) {
+            if (coreDone) return;
+            coreDone = true;
+            const d = (event && event.detail) || {};
+            coreReject(
+              new Error(
+                `NoneOS Core ${d.phase || "初始化"}失败：${d.message || "未知错误"}`,
+              ),
+            );
+          },
+
+          // ============ 主流程 ============
+          async startFlow() {
+            if (!this._conjureUserId) {
+              this.fail(
+                "链接无效",
+                new Error("URL 中缺少 conjure 侧用户参数（?u=...）"),
+              );
+              return;
+            }
+            try {
+              await coreReady;
+            } catch (err) {
+              this.fail("运行环境初始化失败", err);
+              return;
+            }
+
+            // Core 就绪后 SW 必定已注册，/nos/* 可正常加载
+            this.step = "connecting";
+            try {
+              this.setProgress(CORE_END + 5, "创建本地用户...");
+              const userMod = await load("/nos/user/main.js");
+              this._user = await userMod.getUser(USER_NAMESPACE);
+              this.setupReceiver();
+
+              this.setProgress(CORE_END + 10, "连接信令服务器...");
+              await this.ensureServerConnected();
+
+              this.setProgress(CORE_END + 20, "连接妙造（conjure）...");
+              this._remote = await this._user.connectUser(this._conjureUserId);
+
+              // 可靠链路：sendTo 定向投递到 conjure 的 conjure-preview 服务
+              const link = createReliableLink({
+                sendTo: (env) =>
+                  this._remote.sendToService(SERVICE_ID_CONJURE, env, {
+                    waitForService: 3000,
+                  }),
+              });
+              this._link = link;
+
+              this.setProgress(CORE_END + 30, "等待妙造发送应用文件...");
+              await link.send({ type: "hello", userId: this._user.userId });
+            } catch (err) {
+              this.fail("与妙造建立连接失败", err);
+            }
+          },
+
+          // 等待本地用户连上至少一台信令服务器（connectUser 的前置条件）
+          async ensureServerConnected() {
+            const user = this._user;
+            if (!user || !user.server) return;
+            const connectedUrls = () =>
+              Array.isArray(user.server.connectedUrls)
+                ? user.server.connectedUrls
+                : [];
+            if (connectedUrls().length > 0) return;
+            let servers = [];
+            try {
+              servers = (await user.server.getServers()) || [];
+            } catch (_) {
+              return; // 取列表失败时仍尝试连接（可能已在连接中）
+            }
+            await Promise.all(
+              servers.map((url) =>
+                user.server.connect(url).catch(() => {}),
+              ),
+            );
+            const deadline = Date.now() + 5000;
+            while (connectedUrls().length === 0 && Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            if (connectedUrls().length === 0) {
+              throw new Error("无法连接到任何信令服务器，请检查网络后重试");
+            }
+          },
+
+          // 注册 conjure-bridge 服务：接收 conjure 推来的应用文件并写入本域 VFS
+          // （核心写盘逻辑在 receiver.js 的 createPreviewReceiver，与集成测试共用）
+          setupReceiver() {
+            this._receiver = createPreviewReceiver({
+              onProgress: (total, done, path) => {
+                if (path == null) {
+                  this.step = "receiving";
+                  this.titleText = `接收应用`;
+                  this.subtitleText = "正在写入隔离虚拟系统";
+                  this.setProgress(CORE_END + 35, "准备目录...");
+                  return;
+                }
+                const pct = CORE_END + 35 + Math.floor((done / total) * 55);
+                this.setProgress(pct, `写入文件 ${done}/${total}：${path}`);
+              },
+            });
+            this._user.registerService(SERVICE_ID_BRIDGE, {
+              onMessage: (data, ctx) => {
+                const payload = this._link
+                  ? this._link.receive(data, (env) => {
+                      // ACK 定向回复到 conjure 监听的 conjure-preview 服务，
+                      // 且带 sessionId 不广播到对端其它标签页
+                      ctx.remoteUser
+                        .sendToService(SERVICE_ID_CONJURE, env, {
+                          sessionId: ctx.fromSessionId,
+                        })
+                        .catch(() => {});
+                    })
+                  : null;
+                if (payload) this.handlePayload(payload);
+              },
+            });
+          },
+
+          async handlePayload(payload) {
+            try {
+              const result = await this._receiver.handle(payload);
+              if (result) await this.launchApp(result);
+            } catch (err) {
+              this.fail("接收应用文件失败", err);
+            }
+          },
+
+          async launchApp({ appName, url }) {
+            this.setProgress(98, "等待运行环境就绪...");
+            // 首次安装 Core 后 SW 激活存在窗口期，立即跳转 /$namespace/...
+            // 会漏到静态服务器返回 404——先轮询确认 URL 可访问再跳
+            const ready = await waitUrlReady(url);
+            if (!ready) {
+              this.fail(
+                "启动应用失败",
+                new Error(`运行地址未就绪：${url}（请稍后手动刷新）`),
+              );
+              return;
+            }
+            this.setProgress(100, "启动应用...");
+            // 通知 conjure 侧完成（尽力投递即可，失败不影响本端跳转）
+            try {
+              await this._link.send({ type: "done", appName, url });
+            } catch (_) {}
+            window.location.replace(url);
+          },
+        },
+      };
+    };
+  </script>
+</template page>

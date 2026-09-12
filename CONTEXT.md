@@ -113,6 +113,19 @@ Mazmot/
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
 │
+├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外）
+│   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app
+│   ├── app-config.js         # 应用配置（home 指向 bridge.html）
+│   ├── bridge.html           # 隔离预览页（页面模块）：nos-version 装 Core → 创建本地用户并注册 conjure-bridge 服务 →
+│   │                         #   连接 URL ?u= 指定的 conjure 用户 → 接收推送的应用文件写入本域 VFS（conjure-apps/<name>/client/）→ 跳转 /$conjure-apps/... 运行
+│   ├── proto.js              # 双端共享协议：服务 ID / 消息类型 / sanitizeAppName+validateRelPath 守卫 / chunkText 字节分片 /
+│   │                         #   createReliableLink（ACK+重发+去重+串行队列）/ createFileAssembler（分片拼装，迟到重复分片忽略）
+│   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：app-begin 清目录重建 → file 写
+│   │                         #   conjure-apps/<name>/client/ → app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可访问，
+│   │                         #   防 Core SW 首装激活窗口期漏到静态服务器 404）
+│   └── test/                 # proto.sb.html（协议纯逻辑 10 用例）+ preview-flow.sb.html（双真实 LocalUser 全链路集成 4 用例，
+                               #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady）
+│
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）

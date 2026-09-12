@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge/proto.js 协议模块测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：不依赖 NoneOS Core SW，直接以静态路径导入被测模块 -->
+    <sb-test name="chunkText - 小文本单片且原样返回">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          const parts = chunkText("hello 妙造");
+          return {
+            assert:
+              parts.length === 1 &&
+              parts[0] === "hello 妙造" &&
+              byteSize(parts[0]) === byteSize("hello 妙造"),
+            content: { parts },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chunkText - 超大文本按字节预算分片且可无损还原">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          // 混合 ASCII / 中文 / emoji，构造超过单片预算（96KB）的文本
+          const unit = "a字🎉";
+          const text = unit.repeat(40000);
+          const parts = chunkText(text);
+          const rejoined = parts.join("");
+          const eachWithinBudget = parts.every((p) => byteSize(p) <= 96 * 1024);
+          return {
+            assert:
+              parts.length > 1 && eachWithinBudget && rejoined === text,
+            content: {
+              parts: parts.length,
+              totalBytes: byteSize(text),
+              maxChunkBytes: Math.max(...parts.map(byteSize)),
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildFileMessages - 分片消息带 seq/total 且拼回原文">
+      <template>
+        <script type="module">
+          import { buildFileMessages } from "../proto.js";
+          const big = "x".repeat(200 * 1024) + "尾部";
+          const msgs = buildFileMessages("demo-app", "big.js", big);
+          const rebuilt = msgs.map((m) => m.text).join("");
+          const seqOk =
+            msgs.every((m, i) => m.seq === i) &&
+            msgs.every((m) => m.total === msgs.length && m.type === "file" && m.appName === "demo-app" && m.path === "big.js");
+          const smallMsgs = buildFileMessages("demo-app", "s.html", "<p>hi</p>");
+          return {
+            assert:
+              seqOk &&
+              rebuilt === big &&
+              smallMsgs.length === 1 &&
+              smallMsgs[0].seq === 0 &&
+              smallMsgs[0].total === 1,
+            content: { chunks: msgs.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createFileAssembler - 乱序分片收齐返回完整文件">
+      <template>
+        <script type="module">
+          import { createFileAssembler } from "../proto.js";
+          const asm = createFileAssembler();
+          const r1 = asm.push({ path: "a.js", seq: 1, total: 2, text: "BB" });
+          const r2 = asm.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          // 收齐后的迟到重复分片：静默忽略（entry 已删，不得新建僵尸 entry）
+          const late = asm.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          // 未收齐时的重复 seq：非法分片，抛错
+          let dupThrows = false;
+          try {
+            asm.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+            asm.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+          } catch (_) {
+            dupThrows = true;
+          }
+          return {
+            assert:
+              r1 === null &&
+              r2 &&
+              r2.text === "AABB" &&
+              r2.path === "a.js" &&
+              late === null &&
+              dupThrows &&
+              asm.pendingCount() === 1,
+            content: { r2, late: late === null, dupThrows },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createFileAssembler - 非法 seq 抛错">
+      <template>
+        <script type="module">
+          import { createFileAssembler } from "../proto.js";
+          const asm = createFileAssembler();
+          try {
+            asm.push({ path: "a.js", seq: 5, total: 2, text: "X" });
+            return { assert: false, content: "未抛错" };
+          } catch (err) {
+            return { assert: /非法文件分片/.test(err.message), content: err.message };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - ACK 后 send resolve，串行保序">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          // 模拟对端：收到 data 信封立即回 ACK
+          const sent = [];
+          const peer = createReliableLink({
+            sendTo: async (env) => {
+              sent.push(env);
+              link.receive(env, (ackEnv) => {
+                queueMicrotask(() => link.receive(ackEnv));
+              });
+              return [{ status: "ok" }];
+            },
+          });
+          const link = peer;
+          const order = [];
+          await link.send({ type: "app-begin", n: 1 }, "k");
+          order.push(1);
+          await link.send({ type: "app-end", n: 2 }, "k");
+          order.push(2);
+          return {
+            assert:
+              order[0] === 1 &&
+              order[1] === 2 &&
+              sent.length === 2 &&
+              sent.every((e) => e.kind === "data" && typeof e.msgId === "string"),
+            content: { sent: sent.length, order },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 重复消息去重且先回 ACK">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          const link = createReliableLink({ sendTo: async () => [{ status: "ok" }] });
+          const acks = [];
+          const reply = (env) => acks.push(env);
+          const env = { msgId: "m-test-dup", kind: "data", payload: { type: "file" } };
+          const first = link.receive(env, reply);
+          const second = link.receive(env, reply); // 重发产生的重复
+          return {
+            assert:
+              first &&
+              first.type === "file" &&
+              second === null &&
+              acks.length === 2 &&
+              acks.every((a) => a.kind === "ack" && a.msgId === "m-test-dup"),
+            content: { acks: acks.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 发送失败重发直至 ACK">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          let attempts = 0;
+          const link = createReliableLink({
+            sendTo: async (env) => {
+              attempts++;
+              // 第一次通道失败（no_receiver），重发成功并回 ACK
+              if (attempts === 1) return [{ status: "no_receiver" }];
+              queueMicrotask(() =>
+                link.receive({ msgId: env.msgId, kind: "ack" }),
+              );
+              return [{ status: "ok" }];
+            },
+            ackTimeout: 20,
+            maxRetry: 5,
+          });
+          await link.send({ type: "hello", userId: "u1" });
+          return {
+            assert: attempts === 2,
+            content: { attempts },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="assertSendable - 超限 payload 抛错">
+      <template>
+        <script type="module">
+          import { assertSendable } from "../proto.js";
+          try {
+            assertSendable({ type: "file", text: "x".repeat(200 * 1024) });
+            return { assert: false, content: "未抛错" };
+          } catch (err) {
+            return {
+              assert: /payload too large/.test(err.message),
+              content: err.message,
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="sanitizeAppName / validateRelPath - 规范与逃逸拦截">
+      <template>
+        <script type="module">
+          import { sanitizeAppName, validateRelPath } from "../proto.js";
+          const nameOk = sanitizeAppName("  My Cool.App! ") === "my-cool-app";
+          const relOk = validateRelPath("pages/home.html").ok;
+          const abs = validateRelPath("/etc/passwd");
+          const escape = validateRelPath("../secret.txt");
+          const bin = validateRelPath("logo.png");
+          return {
+            assert:
+              nameOk &&
+              relOk &&
+              !abs.ok &&
+              !escape.ok &&
+              !bin.ok,
+            content: { abs: abs.reason, escape: escape.reason, bin: bin.reason },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

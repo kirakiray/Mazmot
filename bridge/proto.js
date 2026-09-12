@@ -1,0 +1,299 @@
+// Conjure 隔离预览 —— 双端共享协议模块
+//
+// conjure（主域 30031）与 bridge（隔离域 30032）之间的应用文件传输协议。
+// 双端同仓库同源，经绝对路径 /bridge/proto.js 引用（各自域内均由静态服务器提供）。
+//
+// 通信基于 noneos-core 的 registerService / sendToService（尽力投递），
+// 本模块按「应用层可靠消息投递」规范实现信封 + ACK + 重发 + 去重 + 串行队列；
+// 不直接 import /nos/*（Core 加载时机约束），传输句柄由调用方注入。
+//
+// 消息流（payload.type）：
+//   bridge → conjure（服务 conjure-preview）：
+//     { type: "hello", userId }                 —— bridge 就绪，告知自己的 userId
+//     { type: "done", appName, url }            —— 文件落盘完成，回传运行 URL
+//   conjure → bridge（服务 conjure-bridge）：
+//     { type: "ready" }                         —— 对 hello 的应答（复用 ACK 通道即可，
+//                                                  此消息仅作业务层状态展示）
+//     { type: "app-begin", appName, fileCount }
+//     { type: "file", appName, path, seq, total, text }  —— 大文件按 seq/total 分片
+//     { type: "app-end", appName }
+
+export const SERVICE_ID_CONJURE = "conjure-preview";
+export const SERVICE_ID_BRIDGE = "conjure-bridge";
+
+// 双端共用的本地用户命名空间（各自 origin 独立存储，同串即可）
+export const USER_NAMESPACE = "conjure-preview";
+
+// 隔离域写入的 VFS 命名空间与应用运行 URL 前缀
+export const BRIDGE_NAMESPACE = "conjure-apps";
+
+// 文本文件扩展名白名单（与 conjure 的写入白名单一致，bridge 侧防御性复检）
+const TEXT_EXT = [
+  ".html", ".js", ".mjs", ".css", ".json", ".md", ".txt", ".svg",
+  ".csv", ".xml", ".map",
+];
+
+/** 规范化应用名（与 conjure builder.sanitizeAppName 同规则） */
+export function sanitizeAppName(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "")
+    .slice(0, 40);
+}
+
+/** 校验相对路径（拒绝绝对路径 / .. 逃逸 / 非白名单扩展名），返回 { ok, reason } */
+export function validateRelPath(path) {
+  const p = String(path || "").trim();
+  if (!p) return { ok: false, reason: "路径为空" };
+  if (p.startsWith("/") || /^[a-zA-Z]:/.test(p))
+    return { ok: false, reason: "不允许绝对路径" };
+  const parts = p.split("/");
+  if (parts.some((s) => s === "" || s === "." || s === ".."))
+    return { ok: false, reason: "路径中包含非法片段（.. 或空段）" };
+  if (!TEXT_EXT.some((ext) => p.toLowerCase().endsWith(ext)))
+    return {
+      ok: false,
+      reason: `只支持文本文件（${TEXT_EXT.join(" ")}）`,
+    };
+  return { ok: true };
+}
+
+// 单条消息业务 payload 的安全上限（服务端硬限制 256KB，
+// 为加密与 JSON 序列化开销留余量，同 nos/publish 的 CHUNK_SIZE 取 128KB）
+export const MAX_PAYLOAD_BYTES = 128 * 1024;
+
+// 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
+// 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）
+const CHUNK_BYTE_BUDGET = 96 * 1024;
+
+/** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
+export function byteSize(text) {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.codePointAt(i);
+    if (c > 0xffff) i++; // 代理对占 2 个 code unit
+    bytes += c <= 0x7f ? 1 : c <= 0x7ff ? 2 : c <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+/**
+ * 把文本按字节预算切成若干片，保证每片 UTF-8 字节数不超限。
+ * 切点按 code point 对齐，不会把代理对劈成两半。
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function chunkText(text) {
+  const chunks = [];
+  let start = 0;
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.codePointAt(i);
+    const size = c <= 0x7f ? 1 : c <= 0x7ff ? 2 : c <= 0xffff ? 3 : 4;
+    if (c > 0xffff) i++;
+    if (bytes + size > CHUNK_BYTE_BUDGET && i > start) {
+      chunks.push(text.slice(start, i));
+      start = i;
+      bytes = 0;
+    }
+    bytes += size;
+  }
+  if (start < text.length) chunks.push(text.slice(start));
+  return chunks;
+}
+
+/**
+ * 构造单个文件的全部传输消息（小文件天然单片）。
+ * @param {string} appName
+ * @param {string} path 相对 client/ 的路径
+ * @param {string} text 文件完整内容
+ */
+export function buildFileMessages(appName, path, text) {
+  const parts = chunkText(text);
+  const total = parts.length;
+  return parts.map((part, i) => ({
+    type: "file",
+    appName,
+    path,
+    seq: i,
+    total,
+    text: part,
+  }));
+}
+
+/** 估算业务 payload 序列化后的粗略字节数（用于发送前校验） */
+export function assertSendable(payload) {
+  const size = byteSize(JSON.stringify(payload));
+  if (size > MAX_PAYLOAD_BYTES) {
+    throw new Error(
+      `payload too large: ${size} bytes (max ${MAX_PAYLOAD_BYTES})`,
+    );
+  }
+  return size;
+}
+
+const SEEN_TTL = 5 * 60 * 1000;
+
+/**
+ * 可靠链路：一端一实例，同时承担发送（串行队列 + ACK 等待 + 超时重发）
+ * 与接收（回 ACK + 按 msgId 去重）。
+ *
+ * @param {Object} opts
+ * @param {(envelope: Object) => Promise<any[]>} opts.sendTo
+ *        底层发送函数（通常包装 remoteUser.sendToService(appId, env, { sessionId })）
+ * @param {number} [opts.ackTimeout=3000]
+ * @param {number} [opts.maxRetry=3]
+ */
+export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) {
+  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries }
+  const seenIds = new Map(); // msgId -> 首次接收时间戳
+  const sendQueues = new Map(); // 队列 key -> 尾部 Promise
+  let msgSeq = 0;
+
+  const pruneSeen = () => {
+    const deadline = Date.now() - SEEN_TTL;
+    for (const [id, ts] of seenIds) {
+      if (ts < deadline) seenIds.delete(id);
+    }
+  };
+
+  const attempt = (msgId, payload, entry) =>
+    new Promise((resolveAttempt) => {
+      const run = async () => {
+        entry.tries++;
+        if (entry.tries > maxRetry) {
+          pendingAcks.delete(msgId);
+          entry.reject(
+            new Error(`ACK timeout after ${maxRetry} retries: ${msgId}`),
+          );
+          return;
+        }
+        try {
+          // 重发复用同一 msgId，接收方据此去重
+          const results = await sendTo({ msgId, kind: "data", payload });
+          if (!results || !results.some((r) => r && r.status === "ok")) {
+            // 连通道都没进去（no_receiver / offline / error），直接进入下一轮重试
+            entry.timer = setTimeout(run, ackTimeout);
+            return;
+          }
+        } catch (_) {
+          entry.timer = setTimeout(run, ackTimeout);
+          return;
+        }
+        entry.timer = setTimeout(run, ackTimeout);
+        resolveAttempt();
+      };
+      run();
+    });
+
+  /** 发送一条业务消息，收到 ACK 后 resolve；实现串行（上一条落定才发下一条） */
+  const send = (payload, queueKey = "default") => {
+    assertSendable(payload);
+    const task = () =>
+      new Promise((resolve, reject) => {
+        const msgId = `m-${Date.now()}-${++msgSeq}`;
+        const entry = { resolve, reject, timer: null, tries: 0 };
+        pendingAcks.set(msgId, entry);
+        attempt(msgId, payload, entry);
+      });
+    const prev = sendQueues.get(queueKey) ?? Promise.resolve();
+    const next = prev.then(task, task);
+    sendQueues.set(queueKey, next);
+    next.finally(() => {
+      if (sendQueues.get(queueKey) === next) sendQueues.delete(queueKey);
+    });
+    return next;
+  };
+
+  const resolveAck = (msgId) => {
+    const entry = pendingAcks.get(msgId);
+    if (!entry) return; // 迟到的重复 ACK，忽略
+    clearTimeout(entry.timer);
+    pendingAcks.delete(msgId);
+    entry.resolve();
+  };
+
+  /**
+   * 接收一条信封消息。
+   * ACK 消息只结算本端等待；数据消息立即回 ACK（先于去重），
+   * 重复消息返回 null（业务不重复执行）。
+   * @returns {Object|null} 首次收到的业务 payload；ACK / 重复消息返回 null
+   */
+  const receive = (data, reply) => {
+    if (!data || typeof data.msgId !== "string") return null;
+    if (data.kind === "ack") {
+      resolveAck(data.msgId);
+      return null;
+    }
+    // 无论是否重复都先回 ACK（重复消息说明上次 ACK 丢了）
+    if (reply) {
+      try {
+        reply({ msgId: data.msgId, kind: "ack" });
+      } catch (_) {
+        /* ACK 发送失败由对端重发兜底 */
+      }
+    }
+    if (seenIds.has(data.msgId)) return null;
+    seenIds.set(data.msgId, Date.now());
+    pruneSeen();
+    return data.payload;
+  };
+
+  /** 放弃所有在途发送（页面关闭 / 会话失效时调用） */
+  const dispose = () => {
+    for (const [, entry] of pendingAcks) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error("link disposed"));
+    }
+    pendingAcks.clear();
+    seenIds.clear();
+  };
+
+  return { send, receive, dispose };
+}
+
+/**
+ * 文件拼装器（bridge 接收端）：按 path 聚合分片，收齐返回完整文本。
+ * 纯逻辑，便于单测。
+ */
+export function createFileAssembler() {
+  const entries = new Map(); // path -> { total, parts: [] }
+  const completed = new Set(); // 已收齐的 path（迟到重复分片直接忽略，容量封顶）
+  const COMPLETED_CAP = 1000;
+
+  /**
+   * @param {{ path: string, seq: number, total: number, text: string }} msg
+   * @returns {{ path: string, text: string } | null} 收齐最后一片时返回完整文件
+   */
+  const push = (msg) => {
+    const { path, seq, total, text } = msg;
+    // 文件已收齐后的迟到重复分片（entry 已删除），静默忽略
+    if (completed.has(path)) return null;
+    let entry = entries.get(path);
+    if (!entry) {
+      entry = { total, parts: new Array(total).fill(undefined) };
+      entries.set(path, entry);
+    }
+    if (seq < 0 || seq >= entry.total || entry.parts[seq] !== undefined) {
+      throw new Error(`非法文件分片：${path} #${seq}/${entry.total}`);
+    }
+    entry.parts[seq] = text;
+    if (entry.parts.every((p) => p !== undefined)) {
+      entries.delete(path);
+      completed.add(path);
+      if (completed.size > COMPLETED_CAP) {
+        completed.delete(completed.values().next().value);
+      }
+      return { path, text: entry.parts.join("") };
+    }
+    return null;
+  };
+
+  /** 尚未收齐的文件数（进度展示用） */
+  const pendingCount = () => entries.size;
+
+  return { push, pendingCount };
+}
