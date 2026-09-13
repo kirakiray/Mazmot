@@ -118,7 +118,7 @@ Agent 的「查文档」能力，技能**不内置**在应用内：启动后后�
 
 ## 隔离预览（bridge 跨域推送）
 
-AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落地卡片）一律调仓库 `openAppRemote(appName, mode)`，把应用文件推送到隔离域 bridge（默认 `http://localhost:30032/bridge/`，`npm run static` 同伺服 30031–30036）运行——AI 代码接触不到主域的用户资料与 IndexedDB。原主域直开逻辑 `openApp` 保留为兜底、无 UI 入口。
+AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落地卡片）一律调仓库 `openAppRemote(appName, mode)`，把应用文件推送到隔离域 bridge 运行——AI 代码接触不到主域的用户资料与 IndexedDB。隔离域 origin（`remote-preview.js` 的 `BRIDGE_ORIGIN`，按 `location.hostname` 自动选择）：本地开发 `http://localhost:30032/bridge/`（`npm run static` 同伺服 30031–30036）；线上（非 localhost 域名）统一 `https://c1.dev.mazmot.noneos.com/bridge/`（同一份静态站的独立子域，与主站不同 origin 保持隔离）。原主域直开逻辑 `openApp` 保留为兜底、无 UI 入口。
 
 **双路径自动选择**（`remote-preview.js`，bridge/agent 侧 userId 持久化在自存储 `bridge-user-id` 键；**服务只注册一次**——模块级单例 + 共享 waiters + `lastPeerSeenAt`（最近一次对端信封时间），重复 `registerService` 会抛 already registered）：
 
@@ -188,7 +188,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 | `lib/test-space/` | 测试基建包：`virtual-space.js`（统一虚拟空间：内存版 /nos/fs、storage、目录句柄，所有需要 fake 的测试共用）、`self-test-kit.js`（`defineSelfTest` 通用测试基座）、`visual-test-kit.js`（`defineVisualSelfTest` 视觉基座，含组件挂载台）；约定见 `lib/test-space/README.md` |
 | `pages/home.html` | 唯一页面模块（见下节；只负责视觉与交互，业务委托仓库；输入区行内有上下文占用小圆圈进度 + 最大窗口 select（128k/256k/512k/768k/1mb），`applyMessageEvent` 时经 `syncCtx` 重算；网页 `document.title` 经 watch `currentAppName` 跟随项目切换：草稿「新项目 - 妙造 Conjure」，项目「项目名 - 妙造 Conjure」（会话不体现在 title 上）；输入框 `attr:placeholder` 走 `inputPlaceholder`，由 `syncInputPlaceholder` 按场景切换：草稿「描述你想生成的应用…」、应用内「向 AI 描述要如何迭代这个应用…」） |
 | `lib/builder-store.js` | `createBuilderStore({ fs, mazmotStore, selfStore, load })` 可观察状态仓库（见「状态仓库」小节） |
-| `lib/remote-preview.js` | 隔离预览编排（`openRemotePreview({ load, appName, files, onStatus, bridgeOrigin })`，`BRIDGE_ORIGIN` 默认 `http://localhost:30032`；协议细节见「隔离预览」小节） |
+| `lib/remote-preview.js` | 隔离预览编排（`openRemotePreview({ load, appName, files, onStatus, bridgeOrigin })`，`BRIDGE_ORIGIN` 按环境自动选择：本地 `http://localhost:30032` / 线上 `https://c1.dev.mazmot.noneos.com`；协议细节见「隔离预览」小节） |
 | `lib/markdown.js` | Markdown → HTML（代码块头部为语言标签 + ghost 胶囊复制按钮（图标 + 文案，复制成功短暂变为「已复制」主色态），点击经页面 `attached`（根级生命周期）里挂在 `#chatScroll` 上的事件委托处理，`:html` 重渲后依然有效；围栏代码用 highlight.js 做语法高亮——模块加载时顶层 `await import("/npm/@highlightjs/cdn-assets@11.11.1/es/highlight.min.js")`（common 语言集，SW 拦截离线可用），语言可识别按语言高亮、未标注语言自动探测，超 20k 字符或加载失败（无 SW 测试环境）退化为纯转义；token 配色在 `home.css` 用 `light-dark()` 跟随明暗主题） |
 
 ## 状态仓库（lib/builder-store.js）

@@ -1,7 +1,8 @@
 // 妙造隔离预览 —— conjure 侧编排
 //
 // 把生成的应用文件经 noneos-core 应用间通信（remoteUser + registerService）
-// 推送到隔离域（bridge，默认 http://localhost:30032），由 bridge 写入其
+// 推送到隔离域（bridge，origin 见下方 BRIDGE_ORIGIN：本地 localhost:30032 /
+// 线上 c1.dev.mazmot.noneos.com），由 bridge 写入其
 // 本域 VFS 后跳转运行。主域（本域）不执行 AI 生成的代码，达到数据隔离目的。
 //
 // 两条推送路径（自动选择）：
@@ -31,8 +32,15 @@ import {
   createReliableLink,
 } from "/bridge/proto.js";
 
-// 隔离域 origin（npm run static 同时伺服 30031-30036，30032 即第二实例）
-export const BRIDGE_ORIGIN = "http://localhost:30032";
+// 隔离域 origin：按运行环境自动选择——
+//  - 本地开发（npm run static 同时伺服 30031-30036，30032 即第二实例）
+//  - 线上部署（主站在任意非 localhost 域名，如 dev.mazmot.noneos.com）统一走
+//    https://c1.dev.mazmot.noneos.com：同一份静态站的独立子域，与主站不同
+//    origin，保持 AI 生成代码的隔离
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+export const BRIDGE_ORIGIN = LOCAL_HOSTS.includes(location.hostname)
+  ? "http://localhost:30032"
+  : "https://c1.dev.mazmot.noneos.com";
 
 // bridge / agent 侧 userId 的持久化键（存调用方注入的 selfStore）
 const BRIDGE_USER_KEY = "bridge-user-id";

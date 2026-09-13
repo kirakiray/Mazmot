@@ -110,7 +110,10 @@ Mazmot/
 │
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
 │
-├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外）
+├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外；
+│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
+│                             #   https://c1.dev.mazmot.noneos.com——conjure 侧 remote-preview.js 的 BRIDGE_ORIGIN 按
+│                             #   location.hostname 自动选择，bridge 侧自身不感知具体域名）
 │   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app
 │   ├── app-config.js         # 应用配置（home 指向 bridge.html）
 │   ├── bridge.html           # 隔离预览引导页（页面模块）：nos-version 装 Core → 创建本地用户并注册 conjure-bridge 服务 →
