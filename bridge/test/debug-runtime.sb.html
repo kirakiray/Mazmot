@@ -415,5 +415,150 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="summarizeDbgArgs - 各指令的关键参数摘要">
+      <template>
+        <script type="module">
+          import { summarizeDbgArgs, DBG_TOOL_NAMES } from "../debug-runtime.js";
+          const s = (cmd, args) => summarizeDbgArgs(cmd, args);
+          const longCode = "const x = 1;\nsecondLine();";
+          const checks = {
+            statusEmpty: s("status", {}) === "",
+            consoleParams:
+              s("console", { limit: 50, since: 123 }) === "limit=50 since=123",
+            textDefault: s("text", {}) === "body",
+            typeSummary: s("type", { selector: "#in", text: "你好世界" }).includes("#in") &&
+              s("type", { selector: "#in", text: "你好世界" }).includes("你好世界"),
+            waitAbsent: s("wait", { selector: ".x", absent: true }).startsWith("等消失"),
+            waitCode: s("wait", { code: longCode }).includes("const x = 1;"),
+            domParams: s("dom", { selector: "#a", depth: 6 }).includes("depth=6"),
+            evalFirstLine: s("eval", { code: longCode }) === "const x = 1;" ||
+              s("eval", { code: longCode }).startsWith("const x = 1;"),
+            longTruncated: s("click", { selector: "." + "a".repeat(200) }).endsWith("…"),
+            toolNames: Object.entries({
+              status: "preview_status",
+              console: "preview_console",
+              text: "preview_text",
+              click: "preview_click",
+              type: "preview_type",
+              wait: "preview_wait",
+              dom: "preview_dom",
+              eval: "preview_eval",
+              shot: "preview_screenshot",
+            }).every(([c, name]) => DBG_TOOL_NAMES[c] === name),
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createOpLog - 记录/回填/分组持久化/上限/清空/订阅">
+      <template>
+        <script type="module">
+          import { createOpLog } from "../debug-runtime.js";
+          const mkStore = () => {
+            const m = new Map();
+            return {
+              getItem: (k) => (m.has(k) ? m.get(k) : null),
+              setItem: (k, v) => m.set(k, String(v)),
+            };
+          };
+          const store1 = mkStore();
+          const log1 = createOpLog(store1);
+          const events1 = [];
+          log1.subscribe(() => events1.push(1));
+          const id1 = log1.record("console", { limit: 50 });
+          const id2 = log1.record("eval", { code: "1+1" });
+          // sessions() 返回活引用：finish 前先取布尔值快照（不能存 entry 引用后再读）
+          const runningOk =
+            log1.sessions().at(-1).entries.find((e) => e.id === id1)?.ok;
+          log1.finish(id1, true, 12);
+          log1.finish(id2, false, 3, "Error: boom\n  at file.js:1:1");
+          const entries = log1.sessions().at(-1).entries;
+          // 同一 storage 再建一个实例：旧分组保留 + 新增一个「本次加载」分组
+          const log2 = createOpLog(store1);
+          log2.record("dom", { selector: "body" });
+          const sessions2 = log2.sessions();
+          // 上限：单组 100 条（record 120 次后剩 100）；分组上限 5
+          const store3 = mkStore();
+          const log3 = createOpLog(store3);
+          for (let i = 0; i < 120; i++) log3.record("status", {});
+          const capped = log3.sessions().at(-1).entries.length;
+          const store4 = mkStore();
+          for (let i = 0; i < 7; i++) createOpLog(store4);
+          const groups4 = createOpLog(store4).sessions().length;
+          log1.clear();
+          const checks = {
+            runningBeforeFinish: runningOk === null,
+            backfilledOk:
+              entries.find((e) => e.id === id1)?.ok === true &&
+              entries.find((e) => e.id === id1)?.ms === 12,
+            backfilledErr:
+              entries.find((e) => e.id === id2)?.ok === false &&
+              entries.find((e) => e.id === id2)?.err === "Error: boom",
+            subscribeFired: events1.length >= 4,
+            groupsOnReload: sessions2.length === 2,
+            newGroupHasNewCall:
+              sessions2.at(-1).entries.some((e) => e.cmd === "dom"),
+            oldGroupKept:
+              sessions2.at(-2).entries.some((e) => e.cmd === "eval"),
+            entriesCap: capped === 100,
+            sessionsCap: groups4 === 5,
+            clearWorks: log1.sessions().length === 1 && log1.sessions().at(-1).entries.length === 0,
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks, events1: events1.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="captureScreenshot - 截完即停止共享（不留常驻轨道）">
+      <template>
+        <script type="module">
+          import { captureScreenshot } from "../debug-runtime.js";
+          if (!navigator.mediaDevices) {
+            return { assert: true, content: { skipped: "无 mediaDevices，跳过" } };
+          }
+          const stopped = [];
+          const track = {
+            readyState: "live",
+            addEventListener() {},
+            getSettings: () => ({ width: 320, height: 160 }),
+            stop() {
+              stopped.push(1);
+              this.readyState = "ended";
+            },
+          };
+          const orig = navigator.mediaDevices.getDisplayMedia;
+          navigator.mediaDevices.getDisplayMedia = async () => ({
+            getVideoTracks: () => [track],
+            getTracks: () => [track],
+          });
+          let result = null;
+          let err = null;
+          try {
+            result = await captureScreenshot(undefined, { maxSide: 320, quality: 0.5 });
+          } catch (e) {
+            err = e; // 假流出不了帧，部分环境会走失败路径——两种路径都必须停止轨道
+          } finally {
+            navigator.mediaDevices.getDisplayMedia = orig;
+          }
+          return {
+            // 核心断言：无论成功（返回 base64）还是中途失败，轨道都恰好停止一次
+            assert:
+              stopped.length === 1 &&
+              (!!result?.base64 || !!err),
+            content: {
+              stopped: stopped.length,
+              ok: !!result,
+              errHead: err ? String(err.message).slice(0, 80) : null,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

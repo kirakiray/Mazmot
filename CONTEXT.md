@@ -74,7 +74,9 @@ Mazmot/
 │   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
 │   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js）
-│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
+│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库；isToolLoop 真循环检测——
+│   │   │                    #   连续 4 次相同调用 / 最近 8 次 ≤2 种签名的窄循环 → 注入提醒并收起工具优雅收束，
+│   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
 │   ├── cert/                 # 系统级证书能力（封装 noneos-core user.cred，URL = /mz/cert/*）
@@ -101,7 +103,7 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview_* 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview_* 系列工具经 dbg 指令远程调试运行中的预览页——preview_app 推送运行 / preview_console / preview_dom / preview_click / preview_type / preview_wait / preview_eval / preview_screenshot，形成「写→跑→查→修」闭环）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS；preview-debug.js 一文件导出 preview_* 系列多个工具）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/status/console/dom/text/click/type/wait/eval/screenshot）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、其余查证与交互，形成「写→跑→查→修」闭环）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS；preview-debug.js 为单一 preview 工具，action 参数分发各操作）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
@@ -126,6 +128,8 @@ Mazmot/
 │   │                         #   对象/Error 栈/DOM 节点安全序列化），createLogDialog 以 Shadow DOM 渲染（应用 CSS 无法穿透），
 │   │                         #   等级过滤（全部/错误/警告 带计数）/ 清空 / Esc 或按钮关闭，打开时实时追加并自动滚底；
 │   │                         #   顶栏可拖拽（视口钳制 + sessionStorage 位置记忆，按钮不触发拖拽）；
+│   │                         #   面板为双视图——「控制台」与「妙造调用」（conjure 调试指令的操作记录：工具名 +
+│   │                         #   参数摘要 + 成败耗时，按页面加载分组，createOpLog 持久化 sessionStorage，实时刷新）；
 │   │                         #   另承载 conjure 调试指令（dbg）：只信任注入时绑定的 conjure 用户（ctx.fromUserId 校验），
 │   │                         #   经 debug-runtime 执行后按 dbg-chunk/dbg-result 协议回传结果
 │   ├── debug-runtime.js       # 调试指令运行时（纯页面逻辑，无 /nos 依赖，可单测；实现参考同作者 web-bridge-mcp 的
@@ -133,7 +137,8 @@ Mazmot/
 │   │                         #   $deep / $$deep（穿 shadow DOM）/ $wait / $rect / $css / $import，表达式自动 return；
 │   │                         #   serializeValue 安全序列化（Error 栈/循环引用/深度长度封顶）、domSnapshot 免授权
 │   │                         #   DOM 样式快照（几何+关键样式+文本，穿 shadow）、captureScreenshot（getDisplayMedia 真实
-│   │                         #   截图，授权一次复用，JPEG 压缩后 base64）、formatConsoleEntries（since 增量拉取）
+│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、formatConsoleEntries
+│   │                         #   （since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/DBG_TOOL_NAMES（「妙造调用」视图数据源）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
 │   │                         #   validateRelPath 守卫 / chunkText 字节分片 / sha256Hex+buildManifest（文件指纹清单）/

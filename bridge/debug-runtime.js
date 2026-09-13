@@ -9,7 +9,7 @@
 //   wait     轮询等待元素出现/消失或谓词成立
 //   dom      DOM 样式快照（每节点一行几何 + 关键样式 + 文本，穿 shadow DOM）
 //   eval     执行任意 JS（预置 $ / $$ / $deep / $$deep / $wait / $rect 等）
-//   shot     真实截图（getDisplayMedia，需用户在浏览器授权一次）
+//   shot     真实截图（getDisplayMedia，每次独立授权，截完即停止共享）
 //
 // eval 运行时、序列化、DOM 快照的实现参考 web-bridge-mcp 的 client.js
 // （同作者既有项目，方法经过实践验证），按本场景精简适配。
@@ -282,13 +282,12 @@ export function domSnapshot(root, opts = {}) {
   return out || "（无可见的节点内容）";
 }
 
-/* ---------- 真实截图（getDisplayMedia，需用户授权一次） ---------- */
-
-let shotStream = null; // 授权过的捕获流复用（页面存续期内免二次打扰）
+/* ---------- 真实截图（getDisplayMedia） ---------- */
 
 /**
- * 截取页面真实渲染像素（JPEG base64）。首次调用浏览器弹原生授权框
- * （Chromium 预选当前标签页），授权一次后本页生命周期内复用。
+ * 截取页面真实渲染像素（JPEG base64）。每次截图独立申请捕获流，
+ * **截完（含失败）立即停止全部轨道**——不留常驻的屏幕分享状态（否则标签页
+ * 会一直挂着共享指示条）。代价是每次调用都会弹一次浏览器的屏幕授权框。
  * @param {Element} [el] 按该元素视口矩形裁剪；缺省截整个视口
  * @param {{ maxSide?: number, quality?: number }} [opts] maxSide 默认 1280（0=不缩放），quality 默认 0.72
  * @returns {Promise<{ base64: string, w: number, h: number, mime: string }>}
@@ -300,30 +299,27 @@ export async function captureScreenshot(el, opts = {}) {
       "当前浏览器不支持屏幕捕获（getDisplayMedia），无法截图；请改用 dom 指令获取样式快照",
     );
   }
-  if (!shotStream || !shotStream.getVideoTracks().some((t) => t.readyState === "live")) {
-    try {
-      shotStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-        preferCurrentTab: true,
-        selfBrowserSurface: "include",
-      });
-    } catch (e) {
-      throw new Error(
-        "未获得屏幕授权（用户拒绝或取消了浏览器弹框），无法截图: " + (e && e.message),
-      );
-    }
-    shotStream.getVideoTracks()[0].addEventListener("ended", () => {
-      shotStream = null;
-    });
-  }
-  const settings = shotStream.getVideoTracks()[0].getSettings();
-  const video = document.createElement("video");
-  video.srcObject = shotStream;
-  video.muted = true;
-  video.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;";
-  document.documentElement.appendChild(video);
+  let stream;
   try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: false,
+      preferCurrentTab: true, // Chromium：预选当前标签页，降低选错目标概率
+      selfBrowserSurface: "include",
+    });
+  } catch (e) {
+    throw new Error(
+      "未获得屏幕授权（用户拒绝或取消了浏览器弹框），无法截图: " + (e && e.message),
+    );
+  }
+  const video = document.createElement("video");
+  try {
+    video.srcObject = stream;
+    video.muted = true;
+    video.style.cssText =
+      "position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;";
+    document.documentElement.appendChild(video);
+    const settings = stream.getVideoTracks()[0]?.getSettings() || {};
     // 等首帧；play() 的 promise 在后台标签可能永不 settle，超时兜底
     await new Promise((resolve) => {
       let done = false;
@@ -369,6 +365,12 @@ export async function captureScreenshot(el, opts = {}) {
     return { base64, w: canvas.width, h: canvas.height, mime: "image/jpeg" };
   } finally {
     video.remove();
+    // 截完（或任何一步失败）立即停止共享：不留常驻捕获流，标签页共享指示条随之消失
+    for (const t of stream.getTracks()) {
+      try {
+        t.stop();
+      } catch (_) {}
+    }
   }
 }
 
@@ -403,6 +405,163 @@ export function formatConsoleEntries(entries, opts = {}) {
     `${since ? "增量" : "最近"} ${picked.length} 条（最新 ts: ${latestTs}，可作 since 继续增量拉取）` +
     (filtered.length > picked.length ? `，共匹配 ${filtered.length} 条只取末尾 ${limit} 条` : "");
   return { text: head + "：\n" + lines.join("\n"), latestTs, count: picked.length };
+}
+
+/* ---------- conjure 调用记录（预览页侧的操作日志） ---------- */
+
+// 指令 → 妙造工具名（面板展示用；未登记的指令原样显示）
+export const DBG_TOOL_NAMES = {
+  status: "preview_status",
+  console: "preview_console",
+  text: "preview_text",
+  click: "preview_click",
+  type: "preview_type",
+  wait: "preview_wait",
+  dom: "preview_dom",
+  eval: "preview_eval",
+  shot: "preview_screenshot",
+};
+
+/**
+ * 调用参数的一行摘要（面板展示用）：按指令取关键字段，兜底 JSON。
+ * 纯函数，可单测。
+ */
+export function summarizeDbgArgs(cmd, args = {}) {
+  const clip = (t, n = 80) => {
+    t = String(t ?? "");
+    return t.length > n ? t.slice(0, n) + "…" : t;
+  };
+  switch (cmd) {
+    case "status":
+      return "";
+    case "console": {
+      const parts = [];
+      if (args.limit != null) parts.push(`limit=${args.limit}`);
+      if (args.since) parts.push(`since=${args.since}`);
+      return parts.join(" ");
+    }
+    case "text":
+      return clip(args.selector || "body");
+    case "click":
+      return clip(args.selector || "");
+    case "type":
+      return `${clip(args.selector || "")} ⋐ ${clip(args.text, 30)}`;
+    case "wait": {
+      const what = args.selector
+        ? clip(args.selector)
+        : clip(String(args.code || "").split("\n")[0]);
+      return `${args.absent ? "等消失 " : ""}${what}`;
+    }
+    case "dom": {
+      const parts = [clip(args.selector || "body")];
+      if (args.depth != null) parts.push(`depth=${args.depth}`);
+      if (args.maxNodes != null) parts.push(`nodes=${args.maxNodes}`);
+      return parts.join(" ");
+    }
+    case "eval":
+      return clip(String(args.code || "").split("\n")[0], 100);
+    case "shot": {
+      const parts = [];
+      if (args.selector) parts.push(clip(args.selector));
+      if (args.maxSide != null) parts.push(`maxSide=${args.maxSide}`);
+      return parts.join(" ");
+    }
+    default:
+      return clip(JSON.stringify(args) || "");
+  }
+}
+
+const OP_STORAGE_KEY = "conjure-agent-op-log";
+const OP_SESSIONS_MAX = 5; // 最多保留最近几次页面加载
+const OP_ENTRIES_MAX = 100; // 每次加载最多记录条数（超出丢最旧）
+const OP_ARGS_MAX = 200; // 入库时参数摘要截断长度
+
+/**
+ * conjure 调用记录存储：sessionStorage 持久化、按页面加载分组（刷新后旧记录
+ * 隔到上一组），record/finish 配对回填成败与耗时。日志面板「妙造调用」视图的
+ * 数据源。storage 可注入（单测用内存实现），缺省 sessionStorage（不可用退化为内存）。
+ * @param {{ getItem(k): string|null, setItem(k, v): void }} [storage]
+ */
+export function createOpLog(storage) {
+  let store = storage;
+  if (!store) {
+    try {
+      store = sessionStorage;
+    } catch (_) {
+      store = null;
+    }
+  }
+  let data = { sessions: [] };
+  try {
+    const parsed = store ? JSON.parse(store.getItem(OP_STORAGE_KEY) || "null") : null;
+    if (parsed && Array.isArray(parsed.sessions)) data = parsed;
+  } catch (_) {}
+  // 本次加载即新分组
+  data.sessions.push({ startedAt: Date.now(), entries: [] });
+  if (data.sessions.length > OP_SESSIONS_MAX) {
+    data.sessions.splice(0, data.sessions.length - OP_SESSIONS_MAX);
+  }
+  let current = data.sessions[data.sessions.length - 1];
+  let seq = 0;
+  const subs = new Set();
+
+  const save = () => {
+    try {
+      store?.setItem(OP_STORAGE_KEY, JSON.stringify(data));
+    } catch (_) {}
+  };
+  const notify = () =>
+    subs.forEach((f) => {
+      try {
+        f();
+      } catch (_) {}
+    });
+  save();
+
+  return {
+    /** 记录一次调用开始，返回 id；执行完用 finish 回填结果 */
+    record(cmd, args) {
+      const id = ++seq;
+      current.entries.push({
+        id,
+        ts: Date.now(),
+        cmd: String(cmd),
+        args: summarizeDbgArgs(cmd, args).slice(0, OP_ARGS_MAX),
+        ok: null,
+        ms: null,
+        err: "",
+      });
+      if (current.entries.length > OP_ENTRIES_MAX) {
+        current.entries.splice(0, current.entries.length - OP_ENTRIES_MAX);
+      }
+      save();
+      notify();
+      return id;
+    },
+    /** 回填执行结果（跨加载的迟到 finish 找不到条目时静默忽略） */
+    finish(id, ok, ms, err = "") {
+      const entry = [...current.entries].reverse().find((e) => e.id === id);
+      if (!entry) return;
+      entry.ok = ok;
+      entry.ms = ms;
+      entry.err = String(err || "").split("\n")[0].slice(0, 120);
+      save();
+      notify();
+    },
+    /** 全部分组（旧的在前）；末位即本次加载 */
+    sessions: () => data.sessions,
+    /** 清空全部记录（重新从本次加载开始） */
+    clear() {
+      data = { sessions: [{ startedAt: Date.now(), entries: [] }] };
+      current = data.sessions[0];
+      save();
+      notify();
+    },
+    subscribe(fn) {
+      subs.add(fn);
+      return () => subs.delete(fn);
+    },
+  };
 }
 
 /* ---------- 指令分发 ---------- */

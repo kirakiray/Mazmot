@@ -127,7 +127,8 @@ console.log(second.content);
 
 ### Agent 其他说明
 
-- `maxSteps`（默认 12）：模型↔工具往返上限，超限抛错，防止模型陷入工具循环。
+- **工具循环检测**（`isToolLoop`）：追踪已执行工具调用的签名（工具名 + 按 key 深排序的规范化参数）——连续 4 次完全相同、或最近 8 次里只有 ≤2 种签名（A,B,A,B… 窄循环）判定为真循环。命中后不抛错，而是注入一条 user 提醒并**收起后续轮次的工具**，逼模型基于已有信息收尾（给结论或说明障碍），回合优雅结束。参数递增、与不同调用交织的合法重复（如带 `since` 的增量轮询、每轮修复后重推预览）不会误伤。
+- `maxSteps`（默认 80）：防失控**硬上限**（模型↔工具往返数），正常任务不应触达；真循环靠上面的检测收束，长流程不会被低上限误杀。
 - `chat({ signal })` 支持传入 `AbortSignal` 取消请求（透传给循环内每次 `assistant.chat`）。
 - `MemorySaver` 提供 `get` / `set` / `delete` / `clear`；`delete` / `clear` 可手动清理某个 thread 的记忆。
 
@@ -175,7 +176,7 @@ schema 字段定义：
 | `tools` | array / `() => array` `[]` | `tool()` 定义的工具列表，可为空（退化为普通对话）；传函数时每轮求值，支持会话中途动态增删 |
 | `systemPrompt` | string `""` | 系统提示词，每次运行重新注入、不写入记忆 |
 | `checkpointer` | object `null` | 会话记忆（如 `MemorySaver`），配合 `chat` 的 `threadId` 使用 |
-| `maxSteps` | number `12` | 模型↔工具往返上限，超限抛错 |
+| `maxSteps` | number `80` | 防失控硬上限（模型↔工具往返数）；真循环由 `isToolLoop` 检测并优雅收束，不依赖此上限 |
 
 #### chat(params)
 

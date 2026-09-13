@@ -9,10 +9,12 @@
 //     location.reload() 应用新代码，无需重开 bridge 引导页；
 //   - 妙造的调试工具经 dbg 指令远程调试本页（console/eval/click/dom 快照/
 //     截图等，见 debug-runtime.js），结果按 proto.js 的 dbg-chunk/dbg-result
-//     协议回传；
+//     协议回传；每次调用记入操作日志（createOpLog，sessionStorage 按页面加载
+//     分组），日志面板「妙造调用」视图可查；
 //   - 页面内常驻可拖拽的「隔离预览」胶囊（见 createBubble），标识本应用
 //     经隔离预览（debug）模式运行，并联动代理状态；胶囊右侧「日志」按钮
-//     打开控制台日志面板（见 createLogDialog / installConsoleCapture）。
+//     打开控制台日志面板（见 createLogDialog / installConsoleCapture，
+//     面板含「控制台」与「妙造调用」双视图）。
 //
 // 以 ES module 加载；依赖的同源静态模块（proto/receiver）与 /nos/*（页面
 // 由 Core SW 伺服，必定受控）均可直接 import。
@@ -25,7 +27,11 @@ import {
   createReliableLink,
 } from "/bridge/proto.js";
 import { createPreviewReceiver, waitUrlReady } from "/bridge/receiver.js";
-import { runDebugCommand } from "/bridge/debug-runtime.js";
+import {
+  runDebugCommand,
+  createOpLog,
+  DBG_TOOL_NAMES,
+} from "/bridge/debug-runtime.js";
 import { getUser } from "/nos/user/main.js";
 
 // 注入标签里的 conjure 侧 userId（module script 无 document.currentScript，
@@ -148,10 +154,15 @@ export function installConsoleCapture() {
 const DIALOG_ID = "conjure-log-dialog";
 
 /**
- * 创建日志面板：等级过滤（全部/错误/警告）/ 清空 / 关闭（Esc 同效），
- * 打开时自动滚动到底部并实时追加新日志。返回 { toggle(), open(), close() }。
+ * 创建日志面板：双视图——「控制台」（等级过滤 全部/错误/警告 + 清空 + Esc 关闭，
+ * 打开时自动滚动到底部并实时追加新日志）与「妙造调用」（conjure 经调试指令
+ * 对本页做过的操作记录：工具名 + 参数摘要 + 成败与耗时，按页面加载分组，
+ * sessionStorage 持久化）。返回 { toggle(), open(), close() }。
+ * @param {{ entries: Array, subscribe: Function }} capture installConsoleCapture 产物
+ * @param {{ sessions: Function, clear: Function, subscribe?: Function }} [opLog]
+ *        createOpLog 产物（缺省时不显示「妙造调用」视图）
  */
-export function createLogDialog(capture) {
+export function createLogDialog(capture, opLog = null) {
   if (document.getElementById(DIALOG_ID)) {
     return { toggle: () => {}, open: () => {}, close: () => {} };
   }
@@ -201,7 +212,14 @@ export function createLogDialog(capture) {
     touch-action: none;
   }
   header.dragging { cursor: grabbing; }
-  header .title { font-weight: 600; color: #fff; }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    border: none; cursor: pointer;
+    padding: 3px 10px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfd3d9; font-size: 11px;
+  }
+  .tab.active { background: #4f8cff; color: #fff; }
   .chips { display: flex; gap: 6px; margin-left: 8px; }
   .chip {
     border: none; cursor: pointer;
@@ -240,10 +258,46 @@ export function createLogDialog(capture) {
   .row.debug .lv { color: #9aa0a6; }
   .row.log .lv { color: #9aa0a6; }
   .empty { padding: 24px; text-align: center; color: #9aa0a6; }
+  /* 妙造调用视图 */
+  .group-head {
+    padding: 8px 12px 4px;
+    color: #9aa0a6; font-size: 10.5px; font-weight: 600;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .group-head:first-child { border-top: none; }
+  .call-row {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 3px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .call-row .t { flex: none; color: #8ab4f8; opacity: 0.85; }
+  .call-badge {
+    flex: none; max-width: 40%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 1px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 600;
+    background: rgba(255, 255, 255, 0.1); color: #cfd3d9;
+  }
+  .call-badge.query { color: #8ab4f8; }
+  .call-badge.act { color: #fbbf24; }
+  .call-badge.inspect { color: #7eeac5; }
+  .call-badge.shot { color: #c58af9; }
+  .call-args {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #bdc1c6;
+  }
+  .call-st { flex: none; font-size: 10.5px; }
+  .call-st.ok { color: #22c55e; }
+  .call-st.err { color: #f87171; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .call-st.run { color: #9aa0a6; }
 </style>
 <div class="panel">
   <header>
-    <span class="title">日志</span>
+    <span class="tabs">
+      <button class="tab" data-view="console">控制台</button>
+      <button class="tab" data-view="calls">妙造调用</button>
+    </span>
     <span class="chips">
       <button class="chip" data-f="all">全部<span class="n"></span></button>
       <button class="chip" data-f="error">错误<span class="n"></span></button>
@@ -316,10 +370,25 @@ export function createLogDialog(capture) {
     const p = (n, w = 2) => String(n).padStart(w, "0");
     return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
   };
+  const fmtTimeShort = (t) => {
+    const d = new Date(t);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
   const levelName = (lv) =>
     ({ error: "error", warn: "warn", info: "info" }[lv] || "log");
 
-  const render = () => {
+  // ---------- 视图状态：console（控制台）/ calls（妙造调用） ----------
+  const tabs = [...shadow.querySelectorAll(".tab")];
+  const chipsEl = shadow.querySelector(".chips");
+  const DIALOG_VIEW_KEY = "conjure-log-dialog-view";
+  let view = "console";
+  try {
+    const saved = sessionStorage.getItem(DIALOG_VIEW_KEY);
+    if (saved === "console" || saved === "calls") view = saved;
+  } catch (_) {}
+
+  const renderConsole = () => {
     const list = capture.entries.filter((e) =>
       filter === "all"
         ? true
@@ -366,6 +435,87 @@ export function createLogDialog(capture) {
     });
   };
 
+  // ---------- 妙造调用视图：conjure 调试指令记录（按页面加载分组） ----------
+  const CALL_TONE = {
+    status: "query", console: "query", text: "query",
+    click: "act", type: "act", wait: "act",
+    dom: "inspect", eval: "inspect",
+    shot: "shot",
+  };
+  const renderCalls = () => {
+    bodyEl.innerHTML = "";
+    if (!opLog) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "调用记录不可用";
+      bodyEl.appendChild(empty);
+      return;
+    }
+    const sessions = opLog.sessions();
+    if (!sessions.some((s) => s.entries.length)) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "暂无妙造调用记录";
+      bodyEl.appendChild(empty);
+      return;
+    }
+    // 新的加载分组在前；组内条目按时间顺序
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (!s.entries.length) continue;
+      const head = document.createElement("div");
+      head.className = "group-head";
+      head.textContent = `── ${i === sessions.length - 1 ? "本次加载" : "上次加载"} ${fmtTimeShort(s.startedAt)} ──`;
+      bodyEl.appendChild(head);
+      for (const e of s.entries) {
+        const row = document.createElement("div");
+        row.className = "call-row";
+        const t = document.createElement("span");
+        t.className = "t";
+        t.textContent = fmtTime(e.ts);
+        const badge = document.createElement("span");
+        badge.className = `call-badge ${CALL_TONE[e.cmd] || ""}`;
+        badge.textContent = DBG_TOOL_NAMES[e.cmd] || e.cmd;
+        row.title = e.args || badge.textContent;
+        const args = document.createElement("span");
+        args.className = "call-args";
+        args.textContent = e.args || "—";
+        const st = document.createElement("span");
+        if (e.ok === true) {
+          st.className = "call-st ok";
+          st.textContent = `✓ ${e.ms ?? "?"}ms`;
+        } else if (e.ok === false) {
+          st.className = "call-st err";
+          st.textContent = `✗ ${e.err || "失败"}`;
+        } else {
+          st.className = "call-st run";
+          st.textContent = "执行中…";
+        }
+        row.append(t, badge, args, st);
+        bodyEl.appendChild(row);
+      }
+    }
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  };
+
+  const render = () => {
+    tabs.forEach((tb) => tb.classList.toggle("active", tb.dataset.view === view));
+    // 等级过滤 chips 只属于控制台视图
+    chipsEl.style.display = view === "console" ? "" : "none";
+    if (view === "calls") renderCalls();
+    else renderConsole();
+  };
+
+  tabs.forEach((tb) =>
+    tb.addEventListener("click", () => {
+      view = tb.dataset.view;
+      try {
+        sessionStorage.setItem(DIALOG_VIEW_KEY, view);
+      } catch (_) {}
+      render();
+    }),
+  );
+
   chips.forEach((c) =>
     c.addEventListener("click", () => {
       filter = c.dataset.f;
@@ -373,7 +523,11 @@ export function createLogDialog(capture) {
     }),
   );
   shadow.querySelector('[data-act="clear"]').addEventListener("click", () => {
-    capture.entries.length = 0;
+    if (view === "calls") {
+      opLog?.clear();
+    } else {
+      capture.entries.length = 0;
+    }
     render();
   });
   shadow.querySelector('[data-act="close"]').addEventListener("click", () =>
@@ -397,10 +551,15 @@ export function createLogDialog(capture) {
     document.removeEventListener("keydown", onKey, true);
   }
 
-  // 打开期间实时追加
+  // 打开期间实时追加：控制台日志与调用记录各自刷新当前视图
   capture.subscribe(() => {
-    if (open_) render();
+    if (open_ && view === "console") render();
   });
+  if (opLog && typeof opLog.subscribe === "function") {
+    opLog.subscribe(() => {
+      if (open_ && view === "calls") render();
+    });
+  }
 
   return { toggle: () => (open_ ? close() : open()), open, close };
 }
@@ -613,7 +772,9 @@ async function ensureServerConnected(user, timeout = 5000) {
 async function main() {
   // 控制台捕获要尽早装上（module defer 执行时，应用后续输出都能收进环形缓冲）
   const capture = installConsoleCapture();
-  const dialog = createLogDialog(capture);
+  // conjure 调试指令的操作记录（日志面板「妙造调用」视图；按页面加载分组持久化）
+  const opLog = createOpLog();
+  const dialog = createLogDialog(capture, opLog);
   const bubble = createBubble(() => dialog.toggle());
   bubble.set("隔离预览", "idle");
 
@@ -652,11 +813,13 @@ async function main() {
     });
 
     // conjure 下发的调试指令：在本页执行（eval/console/click/dom/shot...），
-    // 结果经 proto 的 dbg-chunk/dbg-result 协议回传（大结果自动分片）
+    // 结果经 proto 的 dbg-chunk/dbg-result 协议回传（大结果自动分片）；
+    // 每次调用记入操作日志（面板「妙造调用」视图可见）
     const handleDbg = async (payload) => {
       if (!payload.reqId || typeof payload.cmd !== "string") return;
       bubble.set("隔离预览 · 调试中", "busy");
       const started = Date.now();
+      const opId = opLog.record(payload.cmd, payload.args || {});
       let outcome;
       try {
         outcome = await runDebugCommand({
@@ -669,6 +832,12 @@ async function main() {
         outcome = { ok: false, error: (err && err.stack) || String(err) };
       }
       outcome.meta = { ...(outcome.meta || {}), ms: Date.now() - started };
+      opLog.finish(
+        opId,
+        outcome.ok === true,
+        Date.now() - started,
+        outcome.ok ? "" : outcome.error,
+      );
       for (const msg of buildDbgResultMessages(payload.reqId, outcome)) {
         link.send(msg).catch((err) => log("调试结果回传失败：", err));
       }
