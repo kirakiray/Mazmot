@@ -114,9 +114,19 @@ Mazmot/
 │                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
 │                             #   https://c1.dev.mazmot.noneos.com——conjure 侧 remote-preview.js 的 BRIDGE_ORIGIN 按
 │                             #   location.hostname 自动选择，bridge 侧自身不感知具体域名）
-│   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app
+│   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app；
+│   │                         #   head 首位内联域名白名单守卫（经典脚本解析期立即执行，
+│   │                         #   非允许域名 window.stop + 整页替换为错误说明，ofa/主题不再加载）
+│   ├── host-guard.js         # 域名白名单守卫 canonical 实现（index.html 内联副本与 bridge.html 均引用）：
+│   │                         #   isBridgeHostAllowed——仅 *.dev.mazmot.noneos.com（endsWith 后缀匹配，
+│   │                         #   不含 apex dev.mazmot.noneos.com 本身）与本地开发（localhost/127.0.0.1/[::1]）
+│   │                         #   放行；blockBridgeHost——阻断渲染并抛错。安全动机：引导页按 ?u= 对端
+│   │                         #   接收文件 + 注入代理（含任意 JS eval），静态站与主站同批部署，若主站域名上的
+│   │                         #   /bridge/ 也能跑，恶意页面可 window.open 主站域名引导页 + 攻击者自己的
+│   │                         #   userId，把任意代码注入受害者浏览器中主站 origin 的存储——必须两道锁
+│   │                         #   （入口内联 + bridge.html 页面模块）同时保留
 │   ├── app-config.js         # 应用配置（home 指向 bridge.html）
-│   ├── bridge.html           # 隔离预览引导页（页面模块）：nos-version 装 Core → 创建本地用户并注册 conjure-bridge 服务 →
+│   ├── bridge.html           # 隔离预览引导页（页面模块）：域名白名单守卫（第二道锁）→ nos-version 装 Core → 创建本地用户并注册 conjure-bridge 服务 →
 │   │                         #   连接 URL ?u= 指定的 conjure 用户 → 接收推送的应用文件写入本域 VFS（conjure-apps/<name>/client/，
 │   │                         #   index.html 注入常驻代理脚本）→ 跳转 /$conjure-apps/... 运行（首启后引导页角色结束，后续更新走代理）
 │   ├── inject.js             # 应用页常驻代理（ES module，由 receiver 注入到 index.html，data-conjure-id 随标签下发）：
@@ -154,6 +164,7 @@ Mazmot/
 │   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
 │   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ debug-runtime.sb.html（调试运行时与 dbg 结果协议 14 用例：
                                #   compileEval 自动 return / 深度选择器 / 序列化 / DOM 快照 / 控制台格式化 / 指令分发 / 分片聚合）+
+                               #   host-guard.sb.html（域名白名单：预览子域/本地放行，主站 apex 与伪装域名拒绝）+
                                #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件）

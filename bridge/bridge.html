@@ -110,6 +110,26 @@
     const CORE_END = 40;
 
     export default async ({ load }) => {
+      // 域名白名单守卫（第二道锁，与入口 index.html 的内联守卫成对）：
+      // 引导页会按 ?u= 对端接收文件并注入代理（含任意 JS eval），只允许
+      // *.dev.mazmot.noneos.com / 本地开发域名运行，防其它入口绕过 index.html
+      const { isBridgeHostAllowed } = await load("./host-guard.js");
+      if (!isBridgeHostAllowed()) {
+        return {
+          data: {
+            step: "error",
+            iconText: "⛔",
+            titleText: "预览容器不可用",
+            subtitleText: "",
+            statusText: "",
+            progress: 0,
+            errorText: `当前域名 ${location.hostname} 不在允许清单`,
+            statusDetail:
+              "隔离预览引导页仅允许在 *.dev.mazmot.noneos.com（本地开发为 localhost）运行",
+          },
+        };
+      }
+
       // 协议模块与本页同源，Core SW 就绪前也能加载（纯静态文件）；
       // receiver 为接收端核心逻辑（写 VFS + URL 就绪等待），与集成测试共用
       const proto = await load("./proto.js");
