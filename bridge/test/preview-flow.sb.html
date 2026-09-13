@@ -453,6 +453,91 @@
       </template>
     </sb-test>
 
+    <sb-test name="代理注入 - index.html 注入脚本标签，比对时剥离保持 hash 一致">
+      <template>
+        <script type="module">
+          import {
+            buildManifest,
+            sha256Hex,
+          } from "../proto.js";
+          import {
+            createPreviewReceiver,
+            injectAgent,
+            stripAgent,
+          } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+
+          // 纯函数层：注入 / 剥离 / 幂等 / hash 对齐
+          const html = "<!doctype html><html><head><title>a</title></head><body><div>app</div></body></html>";
+          const injected = injectAgent(html, "user-abc");
+          const injectedTwice = injectAgent(injected, "user-abc");
+          const stripped = stripAgent(injected);
+          const headInjected = /inject\.js[^>]*><\/script><\/head>/.test(injected);
+          const noHead = injectAgent("<html><body>x</body></html>", "u1");
+          const bodyInjected = /inject\.js[^>]*><\/script><\/body>/.test(noHead);
+          const hashAligned =
+            (await sha256Hex(stripped)) === (await sha256Hex(html));
+          const hasModuleType = /type="module"/.test(injected);
+          const hasDataId = /data-conjure-id="user-abc"/.test(injected);
+
+          // 落盘层：带 conjureId 的 receiver 写入的 index.html 含注入标签，
+          // 且 sync-check 对「原始内容」的 manifest 报零差异（剥离比对生效）
+          const appName = `it-agent-app-${Date.now() % 100000}`;
+          const receiver = createPreviewReceiver({ init, conjureId: "user-abc" });
+          await receiver.handle({
+            type: "app-begin",
+            appName,
+            fileCount: 1,
+          });
+          await receiver.handle({
+            type: "file",
+            appName,
+            path: "index.html",
+            seq: 0,
+            total: 1,
+            text: html,
+          });
+          await receiver.handle({ type: "app-end", appName });
+          const onDisk = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+          const check = await receiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          return {
+            assert:
+              injected !== html &&
+              injectedTwice === injected &&
+              stripped === html &&
+              headInjected &&
+              bodyInjected &&
+              hashAligned &&
+              hasModuleType &&
+              hasDataId &&
+              onDisk.includes("/bridge/inject.js") &&
+              onDisk.includes('data-conjure-id="user-abc"') &&
+              check.reply &&
+              check.reply.missing.length === 0,
+            content: {
+              injectedTag: injected.match(/<script[^>]*>/)[0],
+              checks: {
+                idempotent: injectedTwice === injected,
+                stripRestores: stripped === html,
+                hashAligned,
+                headInjected,
+                bodyInjected,
+                onDiskInjected: onDisk.includes("/bridge/inject.js"),
+                zeroDiffAfterStrip: check.reply && check.reply.missing.length === 0,
+              },
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="waitUrlReady - 就绪 URL 立即返回 true，未挂载 URL 超时 false">
       <template>
         <script type="module">

@@ -8,12 +8,13 @@
 // 不直接 import /nos/*（Core 加载时机约束），传输句柄由调用方注入。
 //
 // 消息流（payload.type）：
-//   bridge → conjure（服务 conjure-preview）：
-//     { type: "hello", userId }                 —— bridge 就绪，告知自己的 userId
+//   bridge 页 / 应用页代理 → conjure（服务 conjure-preview）：
+//     { type: "hello", userId }                 —— bridge 页就绪，告知自己的 userId
+//     { type: "agent-online", userId }          —— 应用页内 inject.js 就绪（常驻代理）
 //     { type: "sync-diff", appName, missing }   —— 增量比对结果：需要（重）传的 path 列表
 //     { type: "done", appName, url }            —— 文件落盘完成（或已最新），回传运行 URL
-//   conjure → bridge（服务 conjure-bridge）：
-//     { type: "sync-check", appName, manifest } —— 增量同步：[{path, hash}] 清单，bridge 比对本地
+//   conjure → bridge 页（服务 conjure-bridge）/ 应用页代理（服务 conjure-agent）：
+//     { type: "sync-check", appName, manifest } —— 增量同步：[{path, hash}] 清单，比对本地
 //     { type: "app-begin", appName, fileCount, wipe? }  —— wipe 缺省 true（全量，清目录重建）；
 //                                                  增量推送时 false（只覆盖写入差异文件）
 //     { type: "file", appName, path, seq, total, text }  —— 大文件按 seq/total 分片
@@ -21,9 +22,14 @@
 
 export const SERVICE_ID_CONJURE = "conjure-preview";
 export const SERVICE_ID_BRIDGE = "conjure-bridge";
+// 常驻代理：首次预览后由 inject.js 注入到应用页内注册（后续预览直连增量更新 + 自动刷新）
+export const SERVICE_ID_AGENT = "conjure-agent";
 
 // 双端共用的本地用户命名空间（各自 origin 独立存储，同串即可）
 export const USER_NAMESPACE = "conjure-preview";
+
+// 应用页注入的代理脚本地址（同源静态文件，绝对路径引用）
+export const AGENT_SCRIPT_SRC = "/bridge/inject.js";
 
 // 隔离域写入的 VFS 命名空间与应用运行 URL 前缀
 export const BRIDGE_NAMESPACE = "conjure-apps";

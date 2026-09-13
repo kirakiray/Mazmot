@@ -1094,6 +1094,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         load,
         appName: name,
         files,
+        selfStore,
         onStatus: (text) => set("previewStatus", text),
       });
     } catch (err) {

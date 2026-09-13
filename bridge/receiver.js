@@ -5,11 +5,38 @@
 
 import {
   BRIDGE_NAMESPACE,
+  AGENT_SCRIPT_SRC,
   sanitizeAppName,
   validateRelPath,
   createFileAssembler,
   sha256Hex,
 } from "./proto.js";
+
+// 注入标记：写入 index.html 的代理脚本标签（幂等判据）
+const INJECT_RE = new RegExp(
+  `<script[^>]*src="${AGENT_SCRIPT_SRC.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*><\\/script>\\s*`,
+);
+
+/**
+ * 往应用入口 index.html 注入常驻代理脚本（conjure 侧 userId 随 data 属性下发）。
+ * 已注入则原样返回（幂等）。
+ */
+export function injectAgent(html, conjureId) {
+  const text = String(html ?? "");
+  if (INJECT_RE.test(text)) return text;
+  const tag = `<script type="module" src="${AGENT_SCRIPT_SRC}" data-conjure-id="${encodeURIComponent(
+    String(conjureId || ""),
+  )}"><\/script>`;
+  // 优先 </head> 前，其次 </body> 前，都没有则追加到末尾
+  if (/<\/head>/i.test(text)) return text.replace(/<\/head>/i, tag + "</head>");
+  if (/<\/body>/i.test(text)) return text.replace(/<\/body>/i, tag + "</body>");
+  return text + tag;
+}
+
+/** 剥离注入的代理脚本标签（增量比对 hash 前用，保证与发送端原始内容一致） */
+export function stripAgent(html) {
+  return String(html ?? "").replace(INJECT_RE, "");
+}
 
 /**
  * 创建接收器。
@@ -19,7 +46,11 @@ import {
  * @returns {{ handle: (payload: Object) => Promise<{ appName: string, url: string } | null> }}
  *          handle 处理一条业务消息；app-end 收齐时返回 { appName, url }，其余返回 null
  */
-export function createPreviewReceiver({ init, onProgress = () => {} } = {}) {
+export function createPreviewReceiver({
+  init,
+  onProgress = () => {},
+  conjureId = "",
+} = {}) {
   let clientDir = null; // 当前应用的 client/ 目录句柄
   let assembler = null;
   let fileTotal = 0;
@@ -50,7 +81,11 @@ export function createPreviewReceiver({ init, onProgress = () => {} } = {}) {
           const file = localClient ? await localClient.get(item.path) : null;
           if (file && file.kind === "file") text = await file.text();
         } catch (_) {}
-        if (text == null || (await sha256Hex(text)) !== item.hash) {
+        // 注入的代理脚本不参与内容比对（与发送端原始内容对齐）
+        if (
+          text == null ||
+          (await sha256Hex(stripAgent(text))) !== item.hash
+        ) {
           missing.push(item.path);
         }
       }
@@ -88,7 +123,12 @@ export function createPreviewReceiver({ init, onProgress = () => {} } = {}) {
       const check = validateRelPath(done.path);
       if (!check.ok) throw new Error(`${done.path}：${check.reason}`);
       const file = await clientDir.get(done.path, { create: "file" });
-      await file.write(done.text);
+      // 应用入口注入常驻代理脚本（仅在调用方提供 conjureId 时；幂等），其余文件原样写入
+      await file.write(
+        done.path === "index.html" && conjureId
+          ? injectAgent(done.text, conjureId)
+          : done.text,
+      );
       fileDone++;
       onProgress(fileTotal, fileDone, done.path);
       return null;
