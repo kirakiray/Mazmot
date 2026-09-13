@@ -19,6 +19,13 @@
 //                                                  增量推送时 false（只覆盖写入差异文件）
 //     { type: "file", appName, path, seq, total, text }  —— 大文件按 seq/total 分片
 //     { type: "app-end", appName }
+//   conjure → 应用页代理（调试指令，见 debug-runtime.js 的指令集）：
+//     { type: "dbg", cmd, args, reqId }        —— 在预览页执行调试指令（eval/console/click/...）
+//   应用页代理 → conjure（调试结果；大结果按分片回传）：
+//     { type: "dbg-chunk", reqId, seq, total, text } —— 调试结果分片（与文件分片同字节预算）
+//     { type: "dbg-result", reqId, ok, result?|error?, chunks?, meta? }
+//                                                  —— 小结果单条直达（result 携带全文）；
+//                                                  大结果作汇总标记（chunks=分片数，文本以分片为准）
 
 export const SERVICE_ID_CONJURE = "conjure-preview";
 export const SERVICE_ID_BRIDGE = "conjure-bridge";
@@ -326,4 +333,99 @@ export function createFileAssembler() {
   const pendingCount = () => entries.size;
 
   return { push, pendingCount };
+}
+
+/* ---------- 调试指令（dbg）结果回传 ---------- */
+
+/**
+ * 构造调试结果的回传消息序列（应用页代理 → conjure）。
+ * 小结果单条 dbg-result 直达；大结果先按 chunkText 分片为 dbg-chunk
+ * （seq/total，串行链路保序），末条 dbg-result 作汇总标记（chunks=分片数）。
+ * @param {string} reqId 调试指令携带的请求 id（原样回传配对）
+ * @param {{ ok: boolean, result?: string, error?: string, meta?: Object }} outcome
+ * @returns {Array<Object>} 待逐条 link.send 的消息
+ */
+export function buildDbgResultMessages(reqId, outcome) {
+  const meta = outcome.meta ?? null;
+  if (!outcome.ok) {
+    return [
+      {
+        type: "dbg-result",
+        reqId,
+        ok: false,
+        error: String(outcome.error ?? "unknown error"),
+        meta,
+      },
+    ];
+  }
+  const text = String(outcome.result ?? "");
+  // 与文件分片同预算（96KB 字节），为 JSON 包装开销再留 2KB 余量
+  if (byteSize(text) > CHUNK_BYTE_BUDGET - 2048) {
+    const parts = chunkText(text);
+    const msgs = parts.map((part, i) => ({
+      type: "dbg-chunk",
+      reqId,
+      seq: i,
+      total: parts.length,
+      text: part,
+    }));
+    msgs.push({ type: "dbg-result", reqId, ok: true, chunks: parts.length, meta });
+    return msgs;
+  }
+  return [{ type: "dbg-result", reqId, ok: true, result: text, meta }];
+}
+
+/**
+ * 调试结果收集器（conjure 侧）：按 reqId 聚合 dbg-chunk 分片，
+ * 收到 dbg-result 汇总且分片齐备时返回拼装后的最终结果。
+ * 与 createFileAssembler 同构，纯逻辑便于单测。
+ * @returns {{ push(msg: Object): ({ok: boolean, result?: string, error?: string, meta: Object} | null) }}
+ */
+export function createDbgCollector() {
+  const entries = new Map(); // reqId -> { total, parts: [] }
+
+  const push = (msg) => {
+    if (!msg || typeof msg.reqId !== "string") return null;
+    if (msg.type === "dbg-chunk") {
+      let entry = entries.get(msg.reqId);
+      if (!entry) {
+        entry = { total: msg.total || 0, parts: [] };
+        entries.set(msg.reqId, entry);
+      }
+      const seq = Number(msg.seq);
+      if (!(seq >= 0) || seq >= entry.total || entry.parts[seq] !== undefined) {
+        throw new Error(`非法调试结果分片：${msg.reqId} #${seq}/${entry.total}`);
+      }
+      entry.parts[seq] = msg.text;
+      return null;
+    }
+    if (msg.type === "dbg-result") {
+      const entry = entries.get(msg.reqId);
+      if (msg.ok === false) {
+        entries.delete(msg.reqId);
+        return { ok: false, error: msg.error, meta: msg.meta ?? null };
+      }
+      // 单条直达（无分片）
+      if (!entry || msg.chunks == null) {
+        entries.delete(msg.reqId);
+        return {
+          ok: true,
+          result: String(msg.result ?? ""),
+          meta: msg.meta ?? null,
+        };
+      }
+      const complete =
+        msg.chunks === entry.total &&
+        entry.parts.length === entry.total &&
+        entry.parts.every((p) => p !== undefined);
+      entries.delete(msg.reqId);
+      if (!complete) {
+        return { ok: false, error: "调试结果分片不完整", meta: msg.meta ?? null };
+      }
+      return { ok: true, result: entry.parts.join(""), meta: msg.meta ?? null };
+    }
+    return null;
+  };
+
+  return { push };
 }

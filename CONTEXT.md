@@ -101,7 +101,7 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files 工具生成 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：虚拟渠道直接开 /$ai-apps/<name>/client/index.html，本地渠道经 /mz/app-runner.js getRunUrl 挂载 client/（句柄从 mazmot apps[] 记录恢复）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview_* 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview_* 系列工具经 dbg 指令远程调试运行中的预览页——preview_app 推送运行 / preview_console / preview_dom / preview_click / preview_type / preview_wait / preview_eval / preview_screenshot，形成「写→跑→查→修」闭环）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS；preview-debug.js 一文件导出 preview_* 系列多个工具）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
@@ -125,17 +125,28 @@ Mazmot/
 │   │                         #   time·timeLog·timeEnd/table 与 window error / unhandledrejection（带时间戳入 800 条环形缓冲，
 │   │                         #   对象/Error 栈/DOM 节点安全序列化），createLogDialog 以 Shadow DOM 渲染（应用 CSS 无法穿透），
 │   │                         #   等级过滤（全部/错误/警告 带计数）/ 清空 / Esc 或按钮关闭，打开时实时追加并自动滚底；
-│   │                         #   顶栏可拖拽（视口钳制 + sessionStorage 位置记忆，按钮不触发拖拽）
+│   │                         #   顶栏可拖拽（视口钳制 + sessionStorage 位置记忆，按钮不触发拖拽）；
+│   │                         #   另承载 conjure 调试指令（dbg）：只信任注入时绑定的 conjure 用户（ctx.fromUserId 校验），
+│   │                         #   经 debug-runtime 执行后按 dbg-chunk/dbg-result 协议回传结果
+│   ├── debug-runtime.js       # 调试指令运行时（纯页面逻辑，无 /nos 依赖，可单测；实现参考同作者 web-bridge-mcp 的
+│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot；eval 预置 $ / $$ /
+│   │                         #   $deep / $$deep（穿 shadow DOM）/ $wait / $rect / $css / $import，表达式自动 return；
+│   │                         #   serializeValue 安全序列化（Error 栈/循环引用/深度长度封顶）、domSnapshot 免授权
+│   │                         #   DOM 样式快照（几何+关键样式+文本，穿 shadow）、captureScreenshot（getDisplayMedia 真实
+│   │                         #   截图，授权一次复用，JPEG 压缩后 base64）、formatConsoleEntries（since 增量拉取）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
-│   │                         #   sync-check/sync-diff 与 agent-online）/ sanitizeAppName+validateRelPath 守卫 / chunkText 字节分片 /
-│   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列）/
-│   │                         #   createFileAssembler（分片拼装，迟到重复分片忽略）
+│   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
+│   │                         #   validateRelPath 守卫 / chunkText 字节分片 / sha256Hex+buildManifest（文件指纹清单）/
+│   │                         #   createReliableLink（ACK+重发+去重+串行队列）/ createFileAssembler（分片拼装，迟到重复
+│   │                         #   分片忽略）/ buildDbgResultMessages+createDbgCollector（调试结果分片回传与聚合）
 │   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：sync-check 本地 hash 比对（剥离注入标签后
 │   │                         #   比对；存量 index.html 缺注入标记时强制重传一次性迁移）/ app-begin（wipe 缺省全量清目录重建，
 │   │                         #   增量只覆盖差异文件）→ file 写 conjure-apps/<name>/client/（index.html 且提供 conjureId 时经
 │   │                         #   injectAgent 注入代理脚本，幂等）→ app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可
 │   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
-│   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ preview-flow.sb.html（双真实 LocalUser 全链路集成 6 用例，
+│   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ debug-runtime.sb.html（调试运行时与 dbg 结果协议 14 用例：
+                               #   compileEval 自动 return / 深度选择器 / 序列化 / DOM 快照 / 控制台格式化 / 指令分发 / 分片聚合）+
+                               #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件）
 │

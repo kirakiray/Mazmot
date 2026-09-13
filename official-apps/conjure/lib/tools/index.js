@@ -1,10 +1,12 @@
 // 工具插件注册中心
 // 每个工具是 lib/tools/ 下的一个独立插件文件，默认导出：
 //   { key, name, description, schema, exec(args, ctx) }
-// ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite }
+// ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite, readSkill,
+//   requestForm, openPreview, previewDebug, onPreviewShot }
 //
 // 新增工具：在 lib/tools/ 下建 <tool-name>.js 插件文件，
 // 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）。
+// （preview-debug.js 一个文件导出多个工具定义，展开并入）
 
 import createApp from "./create-app.js";
 import writeFile from "./write-file.js";
@@ -12,8 +14,17 @@ import readFile from "./read-file.js";
 import listFiles from "./list-files.js";
 import readSkill from "./read-skill.js";
 import showForm from "./show-form/index.js";
+import previewTools from "./preview-debug.js";
 
-export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill, showForm];
+export const TOOL_DEFS = [
+  createApp,
+  writeFile,
+  readFile,
+  listFiles,
+  readSkill,
+  showForm,
+  ...previewTools,
+];
 
 // 视觉交互工具包（目录式包）的约定：包内 index.js 导出
 //   visual   —— 配套视觉组件模块地址（下方聚合为 visualModules，宿主页面预载）
@@ -31,6 +42,9 @@ export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
  * @param {Function} [opts.onFileWrite] write_file 成功回调
  * @param {Function} [opts.readSkill] 技能文档读取函数 (id, path) => Promise<string>
  * @param {Function} [opts.requestForm] 视觉交互表单（show_form）：渲染表单卡片并等待用户提交，resolve 用户数据
+ * @param {Function} [opts.openPreview] preview_app 工具：推送应用到隔离预览窗口
+ * @param {Function} [opts.previewDebug] preview_* 工具的调试指令通道 (cmd, args, timeoutMs) => outcome
+ * @param {Function} [opts.onPreviewShot] preview_screenshot 工具：把截图 dataUrl 展示为聊天图片卡片
  * @returns {Object<string, Object>} 按 key 索引的工具映射
  */
 export function createTools({
@@ -41,8 +55,21 @@ export function createTools({
   onFileWrite,
   readSkill,
   requestForm,
+  openPreview,
+  previewDebug,
+  onPreviewShot,
 }) {
-  const ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm };
+  const ctx = {
+    fs,
+    rootHandle,
+    onAppCreated,
+    onFileWrite,
+    readSkill,
+    requestForm,
+    openPreview,
+    previewDebug,
+    onPreviewShot,
+  };
   const tools = {};
   for (const def of TOOL_DEFS) {
     tools[def.key] = tool(

@@ -10,6 +10,14 @@
 //  - 慢路径：代理不在线（首次预览 / 应用页已关）→ 新标签打开 bridge 引导页，
 //    走 hello → sync-check → 推送 → done → 跳转 的完整流程。
 //
+// 推送完成（done）后若发生了文件写入/页面跳转，还会等应用页代理回线
+//（agent-online），保证调用方（预览按钮 / preview_app 工具）返回时代理
+// 已可响应调试指令。
+//
+// 调试通道（debugPreviewCommand）：经独立 dbgLink 向应用页代理下发 dbg 指令
+//（console/eval/click/dom/shot 等，见 /bridge/debug-runtime.js），结果按
+// dbg-chunk/dbg-result 协议回传并在此结算。文件推送与调试指令互不干扰。
+//
 // 通信协议与可靠投递实现见 /bridge/proto.js（双端共享）。
 
 import {
@@ -19,6 +27,7 @@ import {
   USER_NAMESPACE,
   buildFileMessages,
   buildManifest,
+  createDbgCollector,
   createReliableLink,
 } from "/bridge/proto.js";
 
@@ -50,6 +59,12 @@ const AGENT_PROBE_TIMEOUT = 8_000;
 // 探测失败后，最近 RELOAD_GRACE 内还见过对端信封（ACK 等）时判定「只是
 // reload 中」，再给一轮探测宽限；超过该窗口视为真离线
 const RELOAD_GRACE = 15_000;
+// done 后等应用页代理回线（agent-online）的窗口：覆盖 reload / 跳转 +
+// 代理重连信令服务器全程；超时不视为推送失败（预览本身已成功）
+const AGENT_BACK_TIMEOUT = 30_000;
+// 调试指令等待结果的默认/上限窗口（wait/eval/shot 可由 args 放宽到上限）
+const DBG_TIMEOUT = 25_000;
+const DBG_TIMEOUT_MAX = 120_000;
 
 // 模块级共享状态：同一页面多次预览复用同一 LocalUser 与服务注册
 //（registerService 重复注册会抛 "already registered"，必须只注册一次）
@@ -57,6 +72,12 @@ let svcUser = null; // 已注册 conjure-preview 服务的 LocalUser
 let activeLink = null; // 当前回合的可靠链路（服务 handler 里用于回 ACK）
 let waiters = null; // 当前回合的 { hello, diff, done } Promise
 let peerService = SERVICE_ID_BRIDGE; // 当前回合的对端服务（bridge 页 / 应用页代理）
+// 调试通道：与预览回合链路并存（dbgLink 常驻，activeLink 随回合创建/销毁）
+let dbgLink = null; // 常驻可靠链路（只承载 dbg 指令与其结果）
+let agentRemote = null; // 应用页代理的 remoteUser 句柄（dbg 指令的投递目标）
+let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
+const dbgWaiters = new Map(); // reqId -> { resolve, reject }
+let dbgSeq = 0;
 
 const resetWaiters = () => {
   let helloResolve, diffResolve, doneResolve;
@@ -77,21 +98,65 @@ let lastPeerSeenAt = 0; // 最近一次收到对端信封（含 ACK）的时间�
 
 function ensureService(user) {
   if (svcUser === user) return;
+  // 调试链路常驻：不随预览回合创建/销毁（preview_app 推送与 dbg 指令可交错）
+  dbgCollector = createDbgCollector();
+  dbgLink = createReliableLink({
+    sendTo: (env) =>
+      agentRemote
+        ? agentRemote.sendToService(SERVICE_ID_AGENT, env, {
+            waitForService: 3000,
+          })
+        : Promise.resolve([{ status: "error" }]),
+  });
   user.registerService(SERVICE_ID_CONJURE, {
     onMessage: (data, ctx) => {
       lastPeerSeenAt = Date.now();
-      if (!activeLink) return;
-      const payload = activeLink.receive(data, (env) => {
+      const reply = (env) => {
         // ACK 定向回复到发送方监听的服务：hello 来自 bridge 页，
-        // agent-online / 快路径的 sync-diff、done 来自应用页代理。
+        // agent-online / 快路径的 sync-diff、done、dbg 结果来自应用页代理。
         // 两个都发（其一必然 no_receiver，重复 ACK 无害），避免依赖对端类型判断
         for (const appId of [SERVICE_ID_BRIDGE, SERVICE_ID_AGENT]) {
           ctx.remoteUser
             .sendToService(appId, env, { sessionId: ctx.fromSessionId })
             .catch(() => {});
         }
-      });
-      if (!payload || !waiters) return;
+      };
+      // ACK 信封：两条链路都尝试结算（各自只 resolve 自己的 pending，无冲突）
+      if (data && data.kind === "ack") {
+        if (dbgLink) dbgLink.receive(data, reply);
+        if (activeLink) activeLink.receive(data, reply);
+        return;
+      }
+      // 数据信封按 payload.type 定向到一条链路（receive 内负责回 ACK + 去重）
+      const type = data?.payload?.type;
+      const isDbg = type === "dbg-chunk" || type === "dbg-result";
+      const link = isDbg ? dbgLink : activeLink;
+      if (!link) {
+        try {
+          reply({ msgId: data?.msgId, kind: "ack" });
+        } catch (_) {}
+        return;
+      }
+      const payload = link.receive(data, reply);
+      if (!payload) return;
+      if (isDbg) {
+        // 调试结果：聚合分片，收齐后结算对应等待器
+        let outcome = null;
+        try {
+          outcome = dbgCollector.push(payload);
+        } catch (err) {
+          outcome = { ok: false, error: err.message, meta: null };
+        }
+        if (outcome) {
+          const w = dbgWaiters.get(payload.reqId);
+          if (w) {
+            dbgWaiters.delete(payload.reqId);
+            w.resolve(outcome);
+          }
+        }
+        return;
+      }
+      if (!waiters) return;
       if (payload.type === "hello" && payload.userId) {
         waiters.helloResolve({ userId: payload.userId, agent: false });
       } else if (payload.type === "agent-online" && payload.userId) {
@@ -138,6 +203,42 @@ const withTimeout = (promise, ms, message) =>
     ),
   ]);
 
+/* ---------- 代理在线判定（三信号） ----------
+ * isRemoteUserOnline 只反映「本页实例已建立的连接」（remoteUsers 缓存 =
+ * 主动 connectUser + 被动收到消息后自动创建）：刷新后的页面 / 新开的
+ * conjure 标签页缓存为空，会把开着的预览代理误判为离线（RTC 连接是页级
+ * 的，不随 userId 跨标签继承），导致快路径被跳过、预览窗口被导航回
+ * bridge 引导页。因此在线判定依次用：
+ *   1. 本地缓存 isRemoteUserOnline（本页连过且未断）；
+ *   2. 近期对端信封宽限（lastPeerSeenAt，覆盖 reload 抖动）；
+ *   3. 有界主动连接探测（connectUser：代理页开着即连上并进入缓存，
+ *      连不上/超时才视为真离线）。
+ */
+
+const PROBE_CONNECT_TIMEOUT = 6_000;
+
+// 有界主动连接：返回是否连上（超时/失败为 false；后台迟到的连接无害，会进缓存）
+const probeConnect = async (user, targetId, ms = PROBE_CONNECT_TIMEOUT) => {
+  try {
+    await withTimeout(user.connectUser(targetId), ms, "connect timeout");
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
+// 三信号在线判定；probe=false 时只查前两信号（watcher 轮询场景做节流探测）
+async function isAgentLikelyOnline(user, targetId, { probe = true } = {}) {
+  let online = false;
+  try {
+    online = await user.isRemoteUserOnline(targetId);
+  } catch (_) {}
+  if (online) return true;
+  if (Date.now() - lastPeerSeenAt < 8_000) return true;
+  if (probe) return await probeConnect(user, targetId);
+  return false;
+}
+
 const readStoredBridgeId = async (selfStore) => {
   if (!selfStore) return null;
   try {
@@ -180,6 +281,7 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
 
       let lastOnline = null;
       let targetId = null; // update() 时缓存的预览用户 id（事件回调里比对用）
+      let lastProbeAt = 0; // 上次主动连接探测时间（≥30s 一次，防信令抖动）
       const update = async () => {
         targetId = (await readStoredBridgeId(selfStore)) || null;
         if (!targetId) return false;
@@ -191,6 +293,12 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
         // 不立刻熄灭；对端真正关闭后最迟 8s 熄灭
         if (!online && Date.now() - lastPeerSeenAt < 8_000) {
           online = true;
+        }
+        // 新标签页/刷新后缓存为空（连接是页级的）：周期性有界探测一次，
+        // 代理页开着即点亮；探测建立的连接同时服务后续预览快路径
+        if (!online && Date.now() - lastProbeAt > 30_000) {
+          lastProbeAt = Date.now();
+          online = await probeConnect(user, targetId);
         }
         if (online !== lastOnline) {
           lastOnline = online;
@@ -274,7 +382,8 @@ export async function openRemotePreview({
   activeLink = link;
   resetWaiters();
 
-  // 推送差异文件到当前对端（bridge 页 / 应用页代理共用协议）
+  // 推送差异文件到当前对端（bridge 页 / 应用页代理共用协议）；
+  // 返回是否实际推送了文件（false = 零差异，对端页面不会刷新）
   const pushFiles = async (diff) => {
     const missing = new Set(Array.isArray(diff.missing) ? diff.missing : []);
     const toSend = files.filter((f) => missing.has(f.path));
@@ -282,7 +391,7 @@ export async function openRemotePreview({
     const wipe = toSend.length === files.length;
     if (!toSend.length) {
       status("内容无变化，预览已是最新");
-      return;
+      return false;
     }
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
     await link.send({
@@ -300,18 +409,29 @@ export async function openRemotePreview({
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
     }
     await link.send({ type: "app-end", appName });
+    return true;
   };
 
   // ---------- 快路径：直连应用页常驻代理 ----------
-  // 已连接（或近期有信封往来）的代理绝不走 bridge 引导页；
+  // 三信号在线判定（见 isAgentLikelyOnline）：连得上就绝不走 bridge 引导页；
   // 只有确认离线（应用页已关）才回退慢路径
   const storedId = await readStoredBridgeId(selfStore);
+  let probedOnline = false; // 本回合内经连接探测确认过代理可达（宽限重试的依据之一）
   if (storedId) {
-    let agentLikelyOnline = true;
+    let agentLikelyOnline = false;
     try {
-      // LocalUser 的在线缓存（sync / async 都兼容）
       agentLikelyOnline = await user.isRemoteUserOnline(storedId);
     } catch (_) {}
+    if (!agentLikelyOnline && Date.now() - lastPeerSeenAt < 8_000) {
+      agentLikelyOnline = true; // 近期见过对端信封（reload 抖动）
+    }
+    if (!agentLikelyOnline) {
+      // 本页没连过（新标签页/刷新后缓存为空）：主动探测一次，
+      // 代理页开着即连上走快路径，连不上才视为真离线回退慢路径
+      status("探测已打开的预览页...");
+      agentLikelyOnline = await probeConnect(user, storedId);
+      probedOnline = agentLikelyOnline;
+    }
     if (agentLikelyOnline) {
       // 一次探测 = 连接 + sync-check + 等 sync-diff；
       // 探测失败但刚见过对端信封（多半是应用页 reload 中）→ 再给一轮宽限
@@ -331,21 +451,34 @@ export async function openRemotePreview({
         try {
           diff = await attemptAgent(AGENT_PROBE_TIMEOUT, "检测已打开的预览页...");
         } catch (err) {
-          if (Date.now() - lastPeerSeenAt > RELOAD_GRACE) throw err;
-          // 应用页正在 reload：换新等待器再等一轮（agent-online 后即可应答）
+          // 宽限条件：近期见过对端信封（多半是应用页 reload 中），或本回合
+          // 内连接探测刚成功过（新标签页里 lastPeerSeenAt 为 0，但代理几秒前
+          // 确实可达）——都值得换新等待器再等一轮；真离线才回退
+          if (Date.now() - lastPeerSeenAt > RELOAD_GRACE && !probedOnline) {
+            throw err;
+          }
           resetWaiters();
           diff = await attemptAgent(
             AGENT_PROBE_TIMEOUT,
             "预览页刷新中，等待代理回线...",
           );
         }
-        await pushFiles(diff);
+        const pushed = await pushFiles(diff);
         const done = await withTimeout(
           waiters.done,
           DONE_TIMEOUT,
           "等待预览页应用更新超时",
         );
         await storeBridgeId(selfStore, storedId);
+        agentRemote = remote; // 调试通道复用该连接
+        // 有文件写入 → 应用页即将 reload：等代理回线（agent-online）再返回，
+        // 调用方（preview_app 工具）紧接着的调试指令不会扑空；零差异无刷新，跳过
+        if (pushed) {
+          resetWaiters();
+          await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览页刷新超时").catch(
+            (err) => console.warn("[remote-preview]", err.message),
+          );
+        }
         link.dispose();
         refreshWatcher?.();
         status(`预览已更新：${done.url}`);
@@ -410,9 +543,84 @@ export async function openRemotePreview({
     DONE_TIMEOUT,
     "等待 bridge 写入完成超时",
   );
+  agentRemote = remote; // 应用页代理与 bridge 页同一本地用户，连接可复用
+  // 引导页正跳转成应用页：等代理回线（agent-online）再返回，调用方紧接着的
+  // 调试指令不会扑空；超时不视为失败（预览本身已成功），由轮询/事件点亮按钮
+  resetWaiters();
+  await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览应用页加载超时").catch(
+    (err) => console.warn("[remote-preview]", err.message),
+  );
   link.dispose();
   status(`隔离预览就绪：${done.url}`);
-  // 引导页跳转成应用页后代理才会上线，稍后由轮询/事件点亮按钮
-  setTimeout(() => refreshWatcher?.(), 3000);
+  refreshWatcher?.();
   return done;
+}
+
+/**
+ * 向预览窗口（应用页代理）下发一条调试指令并等待结果。
+ * 指令集见 /bridge/debug-runtime.js：status/console/text/click/type/wait/dom/eval/shot。
+ * @param {Object} opts
+ * @param {Function} opts.load 页面模块注入的 load 函数（按需加载 /nos/*）
+ * @param {Object} [opts.selfStore] 自存储空间（读取预览侧 userId）
+ * @param {string} opts.cmd 指令名
+ * @param {Object} opts.args 指令参数
+ * @param {number} [opts.timeoutMs] 等待结果的超时（默认 25s，上限 120s）
+ * @returns {Promise<{ ok: true, result: string, meta: Object }>}
+ * @throws 预览窗口未打开 / 指令投递失败 / 等待结果超时 / 对端执行失败
+ */
+export async function debugPreviewCommand({
+  load,
+  selfStore = null,
+  cmd,
+  args = {},
+  timeoutMs,
+}) {
+  const userMod = await load("/nos/user/main.js");
+  const user = await userMod.getUser(USER_NAMESPACE);
+  ensureService(user);
+
+  const storedId = await readStoredBridgeId(selfStore);
+  if (!storedId) {
+    throw new Error(
+      "预览窗口未打开：请先调用 preview_app 工具把应用推送到隔离预览窗口",
+    );
+  }
+  await ensureServerConnected(user).catch(() => {});
+  // 三信号在线判定（含主动连接探测）：新标签页/刷新后本页没连过也能调通
+  if (!(await isAgentLikelyOnline(user, storedId))) {
+    throw new Error(
+      "预览窗口不在线（可能已关闭）；请重新调用 preview_app 恢复预览",
+    );
+  }
+  if (!agentRemote) {
+    agentRemote = await user.connectUser(storedId);
+  }
+
+  const reqId = `dbg-${Date.now().toString(36)}-${++dbgSeq}`;
+  let resolveFn;
+  const promise = new Promise((res) => {
+    resolveFn = res;
+  });
+  dbgWaiters.set(reqId, { resolve: resolveFn });
+
+  try {
+    // send 落定仅代表对端已收（ACK），业务结果经 dbg-chunk/dbg-result 回传结算
+    await dbgLink.send({ type: "dbg", cmd, args, reqId });
+  } catch (err) {
+    dbgWaiters.delete(reqId);
+    throw new Error(`调试指令投递失败（预览页无响应）：${err.message}`);
+  }
+
+  const ms = Math.max(5_000, Math.min(timeoutMs || DBG_TIMEOUT, DBG_TIMEOUT_MAX));
+  let outcome;
+  try {
+    outcome = await withTimeout(promise, ms, `调试指令 ${cmd} 等待结果超时（${ms}ms）`);
+  } catch (err) {
+    dbgWaiters.delete(reqId);
+    throw err;
+  }
+  if (!outcome.ok) {
+    throw new Error(String(outcome.error || `调试指令 ${cmd} 执行失败`));
+  }
+  return outcome;
 }

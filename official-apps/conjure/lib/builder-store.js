@@ -347,6 +347,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       },
       readSkill: (id, path) => readSkillFile(fs, id, path),
       requestForm,
+      // 隔离预览调试（preview_* 工具）：推送入口 + dbg 指令通道 + 截图卡片
+      openPreview: (appName) => {
+        const hit = state.apps.find((a) => a.name === sanitizeAppName(appName));
+        return runRemotePreview(appName, hit?.mode || state.currentAppMode);
+      },
+      previewDebug,
+      onPreviewShot: pushPreviewShot,
     });
     agent = chainModules.createAgent({
       assistant,
@@ -1080,10 +1087,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     return files;
   }
 
-  // 隔离预览：把应用文件推送到 bridge 隔离域运行（AI 代码不接触主域数据）
-  async function openAppRemote(appName, mode) {
+  // 隔离预览推送主流程（预览按钮与 preview_app 工具共用）：
+  // 收集文件 → 推送到 bridge 隔离域运行（AI 代码不接触主域数据）。
+  // 失败写入 keyError 并抛出（调用方决定是否吞掉），成功返回 done（含运行 url）
+  async function runRemotePreview(appName, mode) {
     const name = sanitizeAppName(appName);
-    if (!name || state.previewBusy) return;
+    if (!name) throw new Error("应用名不合法");
+    if (state.previewBusy) throw new Error("预览推送进行中，请稍候再试");
     set("previewBusy", true);
     set("previewStatus", "准备推送...");
     try {
@@ -1092,7 +1102,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       const { openRemotePreview } = await load(
         "/official-apps/conjure/lib/remote-preview.js",
       );
-      await openRemotePreview({
+      return await openRemotePreview({
         load,
         appName: name,
         files,
@@ -1101,10 +1111,40 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       });
     } catch (err) {
       set("keyError", `隔离预览失败：${err.message}`);
+      throw err;
     } finally {
       set("previewBusy", false);
       set("previewStatus", "");
     }
+  }
+
+  // 预览按钮入口：错误已写入 keyError，这里吞掉避免未处理拒绝
+  async function openAppRemote(appName, mode) {
+    try {
+      await runRemotePreview(appName, mode);
+    } catch (_) {
+      /* 错误提示已写入 keyError */
+    }
+  }
+
+  // 调试指令通道（preview_* 工具）：转发到 remote-preview 的 dbg 链路
+  async function previewDebug(cmd, args = {}, timeoutMs) {
+    const { debugPreviewCommand } = await load(
+      "/official-apps/conjure/lib/remote-preview.js",
+    );
+    return debugPreviewCommand({ load, selfStore, cmd, args, timeoutMs });
+  }
+
+  // preview_screenshot 工具：截图以图片卡片进入聊天流（用户可视核对）
+  function pushPreviewShot(dataUrl, meta) {
+    pushMessage({
+      id: state.nextId++,
+      role: "image",
+      src: dataUrl,
+      w: meta?.w || 0,
+      h: meta?.h || 0,
+      newGroup: false,
+    });
   }
 
   // 本地目录应用：应用文件在所选目录的 client/ 子目录（与虚拟渠道布局一致）

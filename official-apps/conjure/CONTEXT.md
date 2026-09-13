@@ -17,7 +17,8 @@ conjure/
 ├── lib/
 │   ├── builder.js      # 核心库：系统提示词、应用名/路径校验、VFS 写入编排、apps[] 登记/注销
 │   ├── remote-preview.js # 隔离预览编排（见「隔离预览」小节）：注册 conjure-preview 服务、开 bridge 标签、
-│   │                    #   等 hello、connectUser、经可靠链路推送应用文件、等 done
+│   │                    #   等 hello、connectUser、经可靠链路推送应用文件、等 done；
+│   │                    #   另含 debugPreviewCommand 调试指令通道（preview_* 工具的底层）
 │   ├── builder-store.js # 可观察状态仓库：AI 创作/运行的全部业务逻辑（Agent 编排、应用/会话管理、
 │   │                    #   写入目标与本地句柄、消息流水线、持久化）封装为独立运行的状态对象，
 │   │                    #   页面只 subscribe 事件同步视图（见「状态仓库」小节）
@@ -27,8 +28,10 @@ conjure/
 │   │   ├── visual-test-kit.js # 视觉工具组件测试基座：defineVisualSelfTest（环境守卫 /
 │   │   │                      #   逐条回调 + 100ms 节奏 / 组件挂载台 bench），
 │   │   │                      #   用法与坑见 lib/tools/visual-test-kit.md
-│   │   └── show-form/  # 视觉交互表单工具包：index.js（插件）+ form-card.html（视觉组件）+
-│   │                   #   self-test.js（内置测试模组）+ README.md + test/show-form.sb.html
+│   │   ├── show-form/  # 视觉交互表单工具包：index.js（插件）+ form-card.html（视觉组件）+
+│   │   │               #   self-test.js（内置测试模组）+ README.md + test/show-form.sb.html
+│   │   └── preview-debug.js # 隔离预览调试工具包（一个文件导出 preview_* 系列多个工具定义，
+│   │                          #   见「隔离预览调试（preview_* 工具）」小节）
 │       ├── index.js        # 注册中心：TOOL_DEFS + createTools()（ctx 注入 + chain tool 包装）
 │       ├── create-app.js   # create_app：建 <name>/client/ 并写 app.json
 │       ├── write-file.js   # write_file：写/覆盖 client/ 下文件（文本白名单 + 路径逃逸校验；目标未初始化时自动补建 app.json 并触发 onAppCreated）
@@ -60,9 +63,9 @@ conjure/
 
 ## 工具插件体系
 
-`lib/tools/` 下每个工具一个插件文件，默认导出 `{ key, name, description, schema, exec(args, ctx) }`；`index.js` 的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。
+`lib/tools/` 下每个工具一个插件文件，默认导出 `{ key, name, description, schema, exec(args, ctx) }`；`index.js` 的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。preview-debug.js 一个文件导出多个工具定义，在 TOOL_DEFS 中展开并入。
 
-现有六个工具：
+现有工具：
 
 | name | 作用 | 备注 |
 |------|------|------|
@@ -72,6 +75,7 @@ conjure/
 | `list_files` | 列文件清单 | 递归收集，兼容无 `flat()` 的旧 Core；本地渠道列所选目录全部文件 |
 | `read_skill` | 读框架知识库文档 | 经 `ctx.readSkill` 注入 `lib/skills/index.js` 的 `readSkillFile`；提示词硬性规则要求写 ofa.js 模板 / 用 senti-ui 组件前先查文档 |
 | `show_form` | 视觉交互表单（见下节「视觉交互表单」）；插件带 `tags: ["视觉"]`，资源面板工具列表以「👁 视觉」徽标标注 | 经 `ctx.requestForm` 注入 builder-store 的 `requestForm(spec)`；工具描述内含字段规范（text/textarea/number/select/radio/checkbox + options/placeholder/required），提交后模型收到 `{"data":{key:值}}`，取消收到 `{"cancelled":true}` |
+| `preview_*`（9 个） | 隔离预览调试（见「隔离预览调试」小节）：`preview_app` / `preview_status` / `preview_console` / `preview_dom` / `preview_click` / `preview_type` / `preview_text` / `preview_wait` / `preview_eval` / `preview_screenshot` | 经 `ctx.openPreview`（仓库 `runRemotePreview`）与 `ctx.previewDebug`（remote-preview 的 `debugPreviewCommand`）注入；截图经 `ctx.onPreviewShot` 以 `role:"image"` 图片卡片进聊天流 |
 
 ## 视觉交互表单（show_form 工具）
 
@@ -109,7 +113,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 
 **双路径自动选择**（`remote-preview.js`，bridge/agent 侧 userId 持久化在自存储 `bridge-user-id` 键；**服务只注册一次**——模块级单例 + 共享 waiters + `lastPeerSeenAt`（最近一次对端信封时间），重复 `registerService` 会抛 already registered）：
 
-- **快路径（应用页代理在线）**：首次预览后应用页内常驻 `/bridge/inject.js` 代理（receiver 写 index.html 时注入 `<script type="module" data-conjure-id=...>`，幂等；比对 hash 前经 `stripAgent` 剥离，与发送端原始内容对齐）。代理注册 `conjure-agent` 服务并上报 `agent-online`；再次预览时先以 `user.isRemoteUserOnline(storedId)` 判定——**在线则绝不走 bridge 引导页**：直连代理 `sync-check`（8s）→ 增量推送 → 代理落盘后回报 done 并 `location.reload()` **无感刷新**，零差异秒回不刷新；探测失败但 `lastPeerSeenAt` 在 15s 宽限内（应用页正 reload 中）会换新等待器再等一轮，仍失败才回退。
+- **快路径（应用页代理在线）**：首次预览后应用页内常驻 `/bridge/inject.js` 代理（receiver 写 index.html 时注入 `<script type="module" data-conjure-id=...>`，幂等；比对 hash 前经 `stripAgent` 剥离，与发送端原始内容对齐）。代理注册 `conjure-agent` 服务并上报 `agent-online`；再次预览时先做**三信号在线判定**（`isAgentLikelyOnline`：① 本地缓存 `isRemoteUserOnline`——注意它只反映「本页实例已建立的连接」，`remoteUsers` 缓存是页级的，**新开/刷新后的 conjure 标签页缓存为空会把开着的代理误判为离线**；② 近期对端信封 8s 宽限 `lastPeerSeenAt`；③ 有界主动连接探测 `probeConnect`（`connectUser` 6s 上限，连上即进入缓存并同时服务后续推送））——**判定在线则绝不走 bridge 引导页**：直连代理 `sync-check`（8s）→ 增量推送 → 代理落盘后回报 done 并 `location.reload()` **无感刷新**，零差异秒回不刷新；探测失败但 `lastPeerSeenAt` 在 15s 宽限内、或本回合连接探测刚成功过（`probedOnline`，新标签页里 `lastPeerSeenAt` 为 0 的场景），会换新等待器再等一轮，仍失败才回退。
 - **慢路径（首次预览 / 应用页已关）**：以**独立新窗口**（popup，非新标签，便于与妙造并排对照）打开 `bridge/?u=<userId>` 引导页，走 hello → sync-check → 推送 → done → 跳转 的完整流程；`window.open` 固定窗口名 `mazmot-bridge-preview` + 尺寸/位置 features（窗口跳转成应用页后即承载代理，回退时被复用聚焦）；被浏览器拦截（返回 null）时报错提示允许弹出式窗口。
 
 **流程**（双端共享协议 `/bridge/proto.js`：服务 ID（`conjure-preview`/`conjure-bridge`/`conjure-agent`）、消息类型、`sanitizeAppName`/`validateRelPath` 守卫、`chunkText` 字节分片、`sha256Hex`+`buildManifest`（文件指纹清单）、`createReliableLink`（信封 + ACK + 超时重发 + msgId 去重 + 串行队列，单条 ≤128KB）、`createFileAssembler` 分片拼装；接收端核心在 `/bridge/receiver.js`）：
@@ -122,6 +126,18 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 
 **状态反馈**：state `previewBusy`（防重入，按钮禁用）/ `previewStatus`（过程提示，顶栏预览按钮左侧小字，经通用 patch 投影到页面）；失败写 `keyError`。
 
+**推送完成 = 代理可用**：done 后若发生了文件写入（页面将 reload / 引导页将跳转成应用页），`openRemotePreview` 会继续等下一轮 `agent-online`（30s 超时不视为推送失败，仅告警跳过）再返回——调用方（预览按钮 / `preview_app` 工具）返回时预览页已在跑新代码且调试代理可响应，紧接着的调试指令不会扑空；零差异（无刷新）跳过等待。仓库层 `openAppRemote` 为 UI 包装（吞错），主流程在 `runRemotePreview(appName, mode)`（失败写 `keyError` 并抛出，供工具层感知）。
+
+## 隔离预览调试（preview_* 工具，dbg 指令通道）
+
+让 Agent 像 Playwright MCP 一样调试**实际运行中的**预览应用，形成「写文件 → preview_app 运行 → 读控制台/查 DOM/模拟交互 → 修复 → 再运行」闭环（系统提示词的工作流第 3 步强制此循环）。指令在 30032 预览页内的常驻代理执行（`/bridge/debug-runtime.js`，纯页面逻辑无 /nos 依赖），主域不执行任何 AI 代码。
+
+- **协议**（`/bridge/proto.js`）：conjure → 代理 `{type:"dbg", cmd, args, reqId}`；结果回传 `{type:"dbg-chunk", reqId, seq, total, text}`（大结果按 `chunkText` 同 96KB 预算分片）+ `{type:"dbg-result", reqId, ok, result|error, chunks?, meta?}` 汇总；`buildDbgResultMessages` / `createDbgCollector` 为双端构造/聚合实现（纯逻辑单测覆盖）。
+- **链路**（`remote-preview.js`）：调试走**常驻 `dbgLink`**（与预览回合的 `activeLink` 并存互不干扰；服务 handler 按 `payload.type` 定向路由，`kind:"ack"` 信封两条链路都尝试结算各自 pending）；`debugPreviewCommand({ load, selfStore, cmd, args, timeoutMs })` 校验预览在线（`isRemoteUserOnline` + 8s 信封宽限）→ 连接代理 → 发指令（默认 25s / 上限 120s 等结果，`reqId` 配对 `dbgWaiters` 结算）；预览未打开 / 不在线抛可读错误并引导先调 `preview_app`。
+- **指令集**（`debug-runtime.js`，实现参考同作者 web-bridge-mcp 的 client.js）：`status`（URL/标题/视口/日志统计）、`console`（读 `installConsoleCapture` 环形缓冲，`since` 增量拉取、返回头带最新 ts）、`text`（innerText）、`click` / `type`（scrollIntoView + click / 聚焦写值派发 input·change）、`wait`（轮询等元素出现/消失或 JS 谓词，200ms 间隔）、`dom`（DOM 样式快照：每可见节点一行几何 + 关键 computed style + 文本，穿 shadow DOM，免授权的「虚拟截图」）、`eval`（任意 JS，预置 `$`/`$$`/`$deep`/`$$deep`（穿 shadow DOM）/`$wait`/`$rect`/`$css`/`$import`；表达式自动 return / 语句块末句表达式自动补 return；结果安全序列化 30k 字符封顶）、`shot`（getDisplayMedia 真实截图，授权一次本页生命周期复用，JPEG 默认 maxSide 1280 / q0.72 压缩后 base64 回传）。
+- **安全**：代理端只信任注入时绑定的 conjure 用户（`ctx.fromUserId !== conjureId` 直接忽略——调试指令可执行任意 JS，必须校验发送方）；eval/type 等全部在隔离域页面内执行，主域零暴露。
+- **工具层**（`lib/tools/preview-debug.js`，一文件多工具）：`preview_app`（走 `runRemotePreview`，返回即代理可用）/ `preview_status` / `preview_console` / `preview_dom` / `preview_click` / `preview_type` / `preview_text` / `preview_wait` / `preview_eval` / `preview_screenshot`；截图经 `ctx.onPreviewShot` 把 dataUrl 以 `role:"image"` 消息卡片展示给用户（模型无法看图，工具文案引导布局核验用 `preview_dom`）。工具图标在 home.html `toolIcon` 映射登记。
+
 ## 数据模型
 
 ### 存储空间 `conjure`（本应用自身状态）
@@ -129,7 +145,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 | 键 | 值 | 说明 |
 |----|----|------|
 | `apps-registry` | `[{ name, displayName, icon, mode: "vfs"\|"local", createdAt, sessions: [{ id, title, createdAt, updatedAt, duration? }], sessionOrder?: [id...] }]` | 应用注册表（含内嵌会话列表）；`duration` 为累计对话耗时毫秒（`finishTurn`/`adoptNewApp` 每回合累加，会话级统计）；`sessionOrder` 为手动拖拽排序登记（可省略，缺省按 `updatedAt` 倒序；不在登记里的新会话按最近更新排最前） |
-| `chat:<app>:<sid>` / `chat:draft` | 消息数组（同页面 `messages` 结构，含 `role: user/assistant/tool/app` 条目；assistant 条目带 `reasoning`（思考过程文本）/ `model`（回答模型徽标）/ `reasoningOpen`（思考块折叠状态）/ `usage`（回合 token 用量，挂在回合末条 AI 消息上，含 DeepSeek 的 `prompt_cache_hit_tokens` 缓存命中；`context_tokens` 为当前上下文占用估算，进度条用）） | 各会话消息；草稿存 `chat:draft` |
+| `chat:<app>:<sid>` / `chat:draft` | 消息数组（同页面 `messages` 结构，含 `role: user/assistant/tool/app/image` 条目；assistant 条目带 `reasoning`（思考过程文本）/ `model`（回答模型徽标）/ `reasoningOpen`（思考块折叠状态）/ `usage`（回合 token 用量，挂在回合末条 AI 消息上，含 DeepSeek 的 `prompt_cache_hit_tokens` 缓存命中；`context_tokens` 为当前上下文占用估算，进度条用）；image 条目带 `src`（dataUrl）/ `w` / `h`（preview_screenshot 工具的截图卡片） | 各会话消息；草稿存 `chat:draft` |
 | `thread:<threadId>` | wire 格式消息数组 | Agent 会话记忆（checkpointer）；`threadId` = 应用名 `:` 会话 id，草稿为 `draft` |
 | `pref:thinking` | boolean | 思考模式开关偏好（输入区「🧠 思考模式」按钮切换，`init` 时恢复并注入 Agent 的 `thinking` 参数） |
 | `pref:ctx-window` | string（token 数，如 `"131072"`） | 上下文窗口大小偏好（输入区 select 切换 128k/256k/512k/768k/1mb，`setCtxWindow` 时持久化，`ready` 时恢复） |
@@ -175,7 +191,7 @@ AI 创作 / 运行过程的全部业务逻辑封装在 `createBuilderStore({ fs,
 
 **每会话消息桶（切换会话不串台的关键）**：每个会话（含草稿）在 `sessionBuckets: Map<chatKey, 消息数组>` 里有独立的消息桶，`state.messages` 只是「当前查看会话」桶的视图镜像（事件只在操作目标桶 === 当前视图时才发给页面）。发送回合开始时固定 `turnKey`（本回合所属 chatKey），流式消息 / 工具事件 / `finishTurn` 落盘全部路由到该桶——用户中途切到别的会话/项目也不受影响，切回时 `loadSessionById` 检测到 `key === turnKey` 直接投影内存实时桶（不读盘覆盖）。`nextId` 全局单调递增防多桶 id 撞车。删除正在流式的会话/应用时中断回合并丢弃实时桶（`finishTurn` 见桶不存在即跳过落盘）。`toggleTool` / `toggleReasoning` 作用于当前视图桶（可能与回合桶不同）。同一时间只允许一个回合（`sending` 互斥），回合归属会话在左侧列表项上有 `busy` 标记（loading 图标，随 `currentAppSessions` 条目的 `busy` 字段下发，`syncCurrentFromRegistry` 重建列表时按 `turnKey` 复原）。**消息增量落盘**：push / patch / remove 消息即触发防抖 400ms 的桶落盘（`scheduleSave(key)`，捕获当下 key 防收尾后写错桶）——刷新 / 意外关闭不再丢失进行中的回合；`finishTurn` 仍做最终落盘。
 
-**state 字段**：`messages` / `sending` / `thinking`（思考模式开关，随 `pref:thinking` 持久化）/ `activeModel`（当前 Agent 的模型标识，AI 消息徽标用）/ `keyError` / `coreError` / `nextId`（消息与发送）；`apps` / `currentAppName`（`""` = 草稿）/ `currentAppDisplay` / `currentAppIcon` / `currentAppMode` / `currentAppSessions` / `currentSessionId` / `currentSessionTitle`（顶栏展示的当前会话标题，`syncSessionTitle` 从 registry 解析，草稿/无会话为空）（应用与会话）；`storageMode` / `localDirLabel` / `permGrantNeeded`（写入目标与授权）；`skills`（技能索引镜像）；`backups`（当前应用备份 id 清单，新的在前）/ `backupBusy`（打包中防重入）/ `smartBackupBusy`（智能备份的 AI 分析阶段）/ `previewBusy` / `previewStatus`（隔离预览推送中与过程提示）/ `previewOnline`（预览窗口内应用页代理在线状态，驱动顶栏预览按钮亮标；由 `init` 时启动的 `watchPreviewAgent` 常驻监听维护——noneos `remote_user_connected`/`remote_user_disconnected` 事件（精确匹配预览用户 id，断开清 `lastPeerSeenAt` 立即熄灭）+ 5s 轮询 `isRemoteUserOnline` 兜底（页面隐藏暂停、回前台即刷；8s「见过信封」短兜底防 reload 抖动误灭；预览完成后 `refreshWatcher` 立即点亮，慢路径另延时 3s 补一次等代理上线））；`apiKeys` / `activeKeyId`（对话用 Key 镜像与选中项）/ `activeModelId`（手动选中的模型）。
+**state 字段**：`messages` / `sending` / `thinking`（思考模式开关，随 `pref:thinking` 持久化）/ `activeModel`（当前 Agent 的模型标识，AI 消息徽标用）/ `keyError` / `coreError` / `nextId`（消息与发送）；`apps` / `currentAppName`（`""` = 草稿）/ `currentAppDisplay` / `currentAppIcon` / `currentAppMode` / `currentAppSessions` / `currentSessionId` / `currentSessionTitle`（顶栏展示的当前会话标题，`syncSessionTitle` 从 registry 解析，草稿/无会话为空）（应用与会话）；`storageMode` / `localDirLabel` / `permGrantNeeded`（写入目标与授权）；`skills`（技能索引镜像）；`backups`（当前应用备份 id 清单，新的在前）/ `backupBusy`（打包中防重入）/ `smartBackupBusy`（智能备份的 AI 分析阶段）/ `previewBusy` / `previewStatus`（隔离预览推送中与过程提示）/ `previewOnline`（预览窗口内应用页代理在线状态，驱动顶栏预览按钮亮标；由 `init` 时启动的 `watchPreviewAgent` 常驻监听维护——noneos `remote_user_connected`/`remote_user_disconnected` 事件（精确匹配预览用户 id，断开清 `lastPeerSeenAt` 立即熄灭）+ 5s 轮询 `isRemoteUserOnline` 兜底（页面隐藏暂停、回前台即刷；8s「见过信封」短兜底防 reload 抖动误灭；新标签页/刷新后本地连接缓存为空时每 ≥30s 一次有界 `connectUser` 探测，代理页开着即点亮，探测建立的连接同时服务后续预览快路径；预览完成后 `refreshWatcher` 立即点亮，慢路径另延时 3s 补一次等代理上线））；`apiKeys` / `activeKeyId`（对话用 Key 镜像与选中项）/ `activeModelId`（手动选中的模型）。
 
 **非响应式闭包资源**（不进 state，防响应式拆原型）：`agent`（惰性创建，切换应用/会话/目标后置 null 重建）、`activeBubble`、`pendingNewApp`、`localRootHandle`（本地句柄）、`checkpointer`、`/mz/ai` 与 `/mz/ai/chain` 模块缓存。
 
@@ -202,5 +218,5 @@ AI 创作 / 运行过程的全部业务逻辑封装在 `createBuilderStore({ fs,
 ## 测试
 
 - 测试框架 sibyl-test，`test/builder.sb.html` 覆盖：`sanitizeAppName` / `validateRelPath`（正常 + 非法路径）/ `truncateThread`（按回合截断、未闭合回合丢弃）、`buildRunUrl` / `buildAppRecord` / `buildLocalAppRecord` / `buildAppJson`、`createAppBackup` / `listAppBackups` / `deleteAppBackup` / `restoreAppBackup`（fake fs：打包忽略 node_modules、内容还原、内容 hash 去重跳过、内容变化产生新备份、更名与备注读写、空串清备注、还原覆盖写回与无变动检测、id 校验、`currentAppFiles` / `readBackupFiles` 读取清单（忽略 __meta.json、非法 id 报错））、`reorderSessions`（fake 自存储：拖拽排序持久化 sessionOrder、新会话排最前、非法参数无变化）、本地项目导入（fake fs + fake 自存储：`detectLocalProject` 探测、`conjure-chats.json` 快照读写 roundtrip、草稿选本地目录自动导入并切换、消息与记忆恢复、mazmot 登记携带句柄）、工具插件注册中心（fake tool + 内存 fake fs 验证 ctx 注入与回调连通）、`show_form` 视觉表单（参数清洗、提交返回 data JSON、取消返回 cancelled、环境不支持/字段全不合法的降级）、`createAppDir` → `writeAppFile` → `validateApp` 端到端（需先访问 `/` 装好 Core）
-- 隔离预览协议层测试在 [bridge/test/proto.sb.html](../../bridge/test/proto.sb.html)：`chunkText` 字节分片（ASCII/中文/emoji 混合、超预算切分、无损还原）、`buildFileMessages` seq/total、`createFileAssembler` 乱序收齐与非法 seq、`createReliableLink`（ACK resolve、串行保序、重复去重且先回 ACK、失败重发）、`assertSendable` 超限、`sha256Hex` 标准向量 + `buildManifest`、`sanitizeAppName` / `validateRelPath` 守卫；全链路集成测试在 [bridge/test/preview-flow.sb.html](../../bridge/test/preview-flow.sb.html)（需 Core 已就绪，单页内两个真实 LocalUser 模拟双端）：hello → 分片推送（含 >96KB 大文件）→ receiver 落盘 → `/$conjure-apps/...` URL 可访问且内容一致、重复推送覆盖旧文件、路径逃逸拦截、`waitUrlReady` 就绪/超时行为、**增量同步**（sync-check/sync-diff 只回报变更+新增文件，未变文件保持原样）、**代理注入**（index.html 注入 `<script type="module">` 代理标签、幂等、`stripAgent` 剥离后 hash 与原始内容对齐、落盘文件含 `data-conjure-id`、注入态零差异比对）
+- 隔离预览协议层测试在 [bridge/test/proto.sb.html](../../bridge/test/proto.sb.html)：`chunkText` 字节分片（ASCII/中文/emoji 混合、超预算切分、无损还原）、`buildFileMessages` seq/total、`createFileAssembler` 乱序收齐与非法 seq、`createReliableLink`（ACK resolve、串行保序、重复去重且先回 ACK、失败重发）、`assertSendable` 超限、`sha256Hex` 标准向量 + `buildManifest`、`sanitizeAppName` / `validateRelPath` 守卫；调试运行时测试在 [bridge/test/debug-runtime.sb.html](../../bridge/test/debug-runtime.sb.html)：`compileEval`（表达式自动 return / 语句块末句自动补 return）、深度选择器穿 shadow DOM、`serializeValue`（对象/Error 栈/循环引用/超长截断）、`domSnapshot`（几何/关键样式/文本/穿 shadow）、`formatConsoleEntries`（since 增量/limit/latestTs）、`runDebugCommand`（text/click/type/eval·预置 $ 助手/wait/console/shot 指令与未知指令可读报错）、dbg 结果协议（`buildDbgResultMessages` 单条直达与大结果分片、`createDbgCollector` 乱序/缺片/重复片/错误直达）；全链路集成测试在 [bridge/test/preview-flow.sb.html](../../bridge/test/preview-flow.sb.html)（需 Core 已就绪，单页内两个真实 LocalUser 模拟双端）：hello → 分片推送（含 >96KB 大文件）→ receiver 落盘 → `/$conjure-apps/...` URL 可访问且内容一致、重复推送覆盖旧文件、路径逃逸拦截、`waitUrlReady` 就绪/超时行为、**增量同步**（sync-check/sync-diff 只回报变更+新增文件，未变文件保持原样）、**代理注入**（index.html 注入 `<script type="module">` 代理标签、幂等、`stripAgent` 剥离后 hash 与原始内容对齐、落盘文件含 `data-conjure-id`、注入态零差异比对）
 - show-form 包自带测试 `lib/tools/show-form/test/show-form.sb.html`：复用包内 `runSelfTest()` 断言（纯模块环境跑插件层 + 预载组件环境跑组件层：控件渲染 / 提交事件 / 只读回填 / XSS 转义），另验 `visual` / `selfTest` 导出约定

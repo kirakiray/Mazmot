@@ -7,6 +7,9 @@
 //   - 后续妙造再次点「预览应用」时与本代理直连：sync-check 增量比对 →
 //     只接收差异文件（经 receiver 写入本域 VFS）→ app-end 后回报 done 并
 //     location.reload() 应用新代码，无需重开 bridge 引导页；
+//   - 妙造的调试工具经 dbg 指令远程调试本页（console/eval/click/dom 快照/
+//     截图等，见 debug-runtime.js），结果按 proto.js 的 dbg-chunk/dbg-result
+//     协议回传；
 //   - 页面内常驻可拖拽的「隔离预览」胶囊（见 createBubble），标识本应用
 //     经隔离预览（debug）模式运行，并联动代理状态；胶囊右侧「日志」按钮
 //     打开控制台日志面板（见 createLogDialog / installConsoleCapture）。
@@ -18,9 +21,11 @@ import {
   SERVICE_ID_CONJURE,
   SERVICE_ID_AGENT,
   USER_NAMESPACE,
+  buildDbgResultMessages,
   createReliableLink,
 } from "/bridge/proto.js";
 import { createPreviewReceiver, waitUrlReady } from "/bridge/receiver.js";
+import { runDebugCommand } from "/bridge/debug-runtime.js";
 import { getUser } from "/nos/user/main.js";
 
 // 注入标签里的 conjure 侧 userId（module script 无 document.currentScript，
@@ -634,6 +639,7 @@ async function main() {
     const appName = decodeURIComponent(
       location.pathname.split("/")[2] || "",
     );
+    const agentBootAt = Date.now();
     const receiver = createPreviewReceiver({
       conjureId,
       onProgress: (total, done, path) => {
@@ -645,8 +651,38 @@ async function main() {
       },
     });
 
+    // conjure 下发的调试指令：在本页执行（eval/console/click/dom/shot...），
+    // 结果经 proto 的 dbg-chunk/dbg-result 协议回传（大结果自动分片）
+    const handleDbg = async (payload) => {
+      if (!payload.reqId || typeof payload.cmd !== "string") return;
+      bubble.set("隔离预览 · 调试中", "busy");
+      const started = Date.now();
+      let outcome;
+      try {
+        outcome = await runDebugCommand({
+          cmd: payload.cmd,
+          args: payload.args || {},
+          capture,
+          info: { appName, agentBootAt },
+        });
+      } catch (err) {
+        outcome = { ok: false, error: (err && err.stack) || String(err) };
+      }
+      outcome.meta = { ...(outcome.meta || {}), ms: Date.now() - started };
+      for (const msg of buildDbgResultMessages(payload.reqId, outcome)) {
+        link.send(msg).catch((err) => log("调试结果回传失败：", err));
+      }
+      bubble.set("隔离预览 · 已连接妙造", "ok");
+    };
+
     user.registerService(SERVICE_ID_AGENT, {
       onMessage: (data, ctx) => {
+        // 只信任注入时绑定的 conjure 用户：其他本地用户即便连上来也不响应
+        //（调试指令可执行任意 JS，必须校验发送方）
+        if (conjureId && ctx.fromUserId && ctx.fromUserId !== conjureId) {
+          log("忽略非 conjure 用户的消息：", ctx.fromUserId);
+          return;
+        }
         const payload = link.receive(data, (env) => {
           // ACK 定向回复到 conjure 监听的服务
           ctx.remoteUser
@@ -656,6 +692,10 @@ async function main() {
             .catch(() => {});
         });
         if (!payload) return;
+        if (payload.type === "dbg") {
+          handleDbg(payload);
+          return;
+        }
         receiver
           .handle(payload)
           .then((result) => {
