@@ -117,10 +117,15 @@ Mazmot/
 │   ├── inject.js             # 应用页常驻代理（ES module，由 receiver 注入到 index.html，data-conjure-id 随标签下发）：
 │   │                         #   注册 conjure-agent 服务，页面加载即 connectUser(conjure) 上报 agent-online；
 │   │                         #   后续预览直连本代理增量更新文件 → app-end 后 location.reload() 无感刷新；
-│   │                         #   同时注入可拖拽的「🛰 隔离预览」状态气泡：挂 documentElement（应用重写 body 不受影响）+
+│   │                         #   同时注入可拖拽的「隔离预览」状态胶囊：挂 documentElement（应用重写 body 不受影响）+
 │   │                         #   MutationObserver 被移除自动回挂，position/z-index/left/top 等关键样式内联 !important
 │   │                         #   压制应用 CSS（Pointer Events 拖拽 + 视口钳制，位置记忆 sessionStorage；
-│   │                         #   状态点联动：idle 灰 / busy 黄（接收 n/m）/ ok 绿 / 离线红）
+│   │                         #   状态点联动：idle 灰 / busy 黄（接收 n/m）/ ok 绿 / 离线红）；
+│   │                         #   胶囊右侧「日志」按钮打开控制台日志面板——installConsoleCapture 挂接 log/info/warn/error/debug/
+│   │                         #   time·timeLog·timeEnd/table 与 window error / unhandledrejection（带时间戳入 800 条环形缓冲，
+│   │                         #   对象/Error 栈/DOM 节点安全序列化），createLogDialog 以 Shadow DOM 渲染（应用 CSS 无法穿透），
+│   │                         #   等级过滤（全部/错误/警告 带计数）/ 清空 / Esc 或按钮关闭，打开时实时追加并自动滚底；
+│   │                         #   顶栏可拖拽（视口钳制 + sessionStorage 位置记忆，按钮不触发拖拽）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff 与 agent-online）/ sanitizeAppName+validateRelPath 守卫 / chunkText 字节分片 /
 │   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列）/
