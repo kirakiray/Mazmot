@@ -1,19 +1,24 @@
 // 工具插件注册中心
-// 每个工具是 lib/tools/ 下的一个独立插件文件，默认导出：
-//   { key, name, description, schema, exec(args, ctx) }
+// 每个工具是 lib/tools/ 下的一个独立包目录 <tool-name>/：
+//   index.js     插件本体，默认导出 { key, name, description, schema, exec(args, ctx) }；
+//                具名导出 selfTest（内置测试模组地址），视觉工具另导出 visual（组件
+//                模块地址）与 tags（面板徽标）、testTags（内置测试等待注册的元素）
+//   self-test.js 内置测试模组（导出 testPlan + runSelfTest，基座见 lib/test-space/）
+//   test/        包的 sibyl-test 测试（test/<tool-name>.sb.html，不分发）
 // ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite, readSkill,
 //   requestForm, openPreview, previewDebug, onPreviewShot }
 //
-// 新增工具：在 lib/tools/ 下建 <tool-name>.js 插件文件，
-// 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）。
+// 新增工具：在 lib/tools/ 下建 <tool-name>/ 目录包（结构照现有包），
+// 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）；
+// 插件导出 selfTest 地址后，工具详情对话框自动出现「内置测试」Tab。
 
-import createApp from "./create-app.js";
-import writeFile from "./write-file.js";
-import readFile from "./read-file.js";
-import listFiles from "./list-files.js";
-import readSkill from "./read-skill.js";
+import createApp from "./create-app/index.js";
+import writeFile from "./write-file/index.js";
+import readFile from "./read-file/index.js";
+import listFiles from "./list-files/index.js";
+import readSkill from "./read-skill/index.js";
 import showForm from "./show-form/index.js";
-import preview from "./preview-debug.js";
+import preview from "./preview/index.js";
 
 export const TOOL_DEFS = [
   createApp,
@@ -25,10 +30,8 @@ export const TOOL_DEFS = [
   preview,
 ];
 
-// 视觉交互工具包（目录式包）的约定：包内 index.js 导出
-//   visual   —— 配套视觉组件模块地址（下方聚合为 visualModules，宿主页面预载）
-//   selfTest —— 内置测试模组地址（工具详情对话框「运行内置测试」加载执行）
-// 宿主页面预载后，对应的自定义元素（如 <show-form-card>）才可用
+// 配套视觉组件模块地址：宿主页面预载（聚合为 visualModules）后，
+// 对应的自定义元素（如 <show-form-card>）才可用
 export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
 
 /**

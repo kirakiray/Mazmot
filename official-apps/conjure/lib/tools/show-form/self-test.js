@@ -9,7 +9,7 @@
 //   2. 本包 test/show-form.sb.html（无 Core / senti-ui 环境也可跑，组件未
 //      预载时组件类用例自动记跳过）
 
-import { defineVisualSelfTest } from "../visual-test-kit.js";
+import { defineVisualSelfTest } from "../../test-space/visual-test-kit.js";
 
 const MIN_SPEC = {
   title: "自测",

@@ -895,11 +895,13 @@
       </div>
     </st-dialog>
 
-    <!-- 工具详情对话框：点工具列表项弹出；视觉工具用「工具信息 / 内置测试」双 Tab。
-         非视觉工具信息少，用窄面板、无 Tab。测试 Tab：左断言 list，右 iframe 实跑测试 -->
+    <!-- 工具详情对话框：点工具列表项弹出；带内置测试的工具（视觉或纯插件）用
+         「工具信息 / 内置测试」双 Tab，无内置测试的工具用窄面板、无 Tab。
+         测试 Tab：左断言 list，右 iframe 实跑测试（视觉工具挂载被测组件，
+         纯插件工具显示断言运行记录） -->
     <st-dialog
       class="tool-detail"
-      class:narrow="toolDetail && !toolDetail.isVisual"
+      class:narrow="toolDetail && !toolDetail.hasTabs"
       sync:open="toolDetailOpen"
       auto-close
     >
@@ -914,8 +916,8 @@
             </o-if>
           </div>
 
-          <!-- 视觉工具：Tab 切换（信息 / 测试） -->
-          <o-if :value="toolDetail.isVisual">
+          <!-- 有内置测试的工具：Tab 切换（信息 / 测试） -->
+          <o-if :value="toolDetail.hasTabs">
             <st-tab-bar class="tool-detail-tabs">
               <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
                 <span class="tab-label">工具信息</span>
@@ -927,7 +929,7 @@
           </o-if>
 
           <!-- Tab 1：工具信息（描述 + Schema；视觉工具右侧保留运行效果演示） -->
-          <o-if :value="toolTab === 'info' || !toolDetail.isVisual">
+          <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
             <div class="tool-info-row">
               <div class="tool-detail-main">
                 <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
@@ -951,7 +953,7 @@
           <!-- Tab 2：内置测试（左断言 list | 右测试运行 iframe）。
                不用 o-if 卸载：切 Tab 销毁 iframe 会让保留的 srcdoc 重挂载时
                自动重跑；改为常驻 + display 切换，跑完的画面得以保留 -->
-          <o-if :value="toolDetail.isVisual">
+          <o-if :value="toolDetail.hasTabs">
             <div class="tool-test-grid" class:show="toolTab === 'test'">
               <div class="tool-test-left">
                 <div class="tool-test-bar">
@@ -1115,31 +1117,65 @@
         );
       };
 
-      // 内置测试 Tab 的运行 iframe：加载组件 + self-test 模组实际执行测试
-      // （被测组件实时挂载在画面上），断言经 postMessage 逐条同步回左列 list
-      const buildToolTestDoc = (def) =>
-        toolDocPre(["内置测试", "右侧实时挂载被测组件"]) +
-        '<l-m src="' + def.visual + '"></l-m>' +
-        toolDocSenti() +
-        [
-          '<div id="mount"></div>',
-          "<" + "script>",
-          "(async () => {",
-          "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
-          "  /* 等 senti 控件与视觉组件注册完成（l-m 异步加载） */",
-          "  const t0 = Date.now();",
-          "  while (Date.now() - t0 < 8000 && !(customElements.get('st-radio') && customElements.get('show-form-card'))) await wait(100);",
-          "  try {",
-          "    const mod = await import('" + def.selfTest + "');",
-          "    const res = await mod.runSelfTest((c) => parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*'));",
-          "    parent.postMessage({ type: 'conjure-tool-test-done', ok: res.ok }, '*');",
-          "  } catch (err) {",
-          "    parent.postMessage({ type: 'conjure-tool-test-error', info: String((err && err.message) || err) }, '*');",
-          "  }",
-          "})();",
-          "</scr" + "ipt>",
-          "</body></html>",
-        ].join("");
+      // 内置测试 Tab 的运行 iframe：视觉工具加载组件 + self-test 模组实际执行
+      // 测试（被测组件实时挂载在画面上）；纯插件工具不预载组件，右侧逐条显示
+      // 断言运行记录。断言经 postMessage 逐条同步回左列 list
+      const buildToolTestDoc = (def) => {
+        const visual = !!def.visual;
+        const waitTags = def.testTags || [];
+        const extra = visual
+          ? toolDocSenti() + '<l-m src="' + def.visual + '"></l-m>' + '<div id="mount"></div>'
+          : [
+              "<style>",
+              ".t-case{font:13px/1.8 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;",
+              "padding:1px 0 1px 20px;position:relative;color:light-dark(#1b1b1f,#e3e2e6)}",
+              ".t-case.pass{color:light-dark(#1b7f3b,#7fd894)}",
+              ".t-case.fail{color:light-dark(#b3261e,#ffb4ab)}",
+              ".t-case::before{position:absolute;left:2px}",
+              ".t-case.pass::before{content:'✓'}.t-case.fail::before{content:'✗'}",
+              "</style>",
+            ].join("");
+        const logFn = visual
+          ? ""
+          : "const log=(c)=>{const d=document.createElement('div');d.className='t-case '+(c.pass?'pass':'fail');" +
+            "d.textContent=c.name+(c.info?' — '+c.info:'');document.body.appendChild(d);};";
+        const waitLoop = waitTags.length
+          ? "const t0 = Date.now();" +
+            "while (Date.now() - t0 < 8000 && !(" +
+            JSON.stringify(waitTags) +
+            ".every((t) => customElements.get(t)))) await wait(100);"
+          : "";
+        const onCase = visual
+          ? "(c) => parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*')"
+          : "(c) => { log(c); parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*'); }";
+        return (
+          toolDocPre(
+            visual
+              ? ["内置测试", "右侧实时挂载被测组件"]
+              : ["内置测试", "右侧为断言运行记录"],
+          ) +
+          extra +
+          [
+            "<" + "script>",
+            "(async () => {",
+            "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
+            ...(logFn ? ["  " + logFn] : []),
+            ...(waitLoop
+              ? ["  /* 等被测组件与依赖控件注册完成（l-m 异步加载） */", "  " + waitLoop]
+              : []),
+            "  try {",
+            "    const mod = await import('" + def.selfTest + "');",
+            "    const res = await mod.runSelfTest(" + onCase + ");",
+            "    parent.postMessage({ type: 'conjure-tool-test-done', ok: res.ok }, '*');",
+            "  } catch (err) {",
+            "    parent.postMessage({ type: 'conjure-tool-test-error', info: String((err && err.message) || err) }, '*');",
+            "  }",
+            "})();",
+            "</scr" + "ipt>",
+            "</body></html>",
+          ].join("\n")
+        );
+      };
 
       // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
       // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
@@ -1217,7 +1253,7 @@
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
           toolDetailOpen: false, // 工具详情对话框
-          toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual）
+          toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual / hasTabs）
           toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
           toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
           toolTestDoc: "", // 内置测试运行 iframe 的 srcdoc
@@ -1935,6 +1971,7 @@
               descHtml,
               schemaText: JSON.stringify(def.schema || {}, null, 2),
               isVisual: !!def.visual,
+              hasTabs: !!def.visual || !!def.selfTest,
             };
             this.toolTab = "info";
             this.toolDemoDoc = def.visual ? buildToolDemoDoc(def) : "";
@@ -1943,7 +1980,7 @@
             this.toolTestDone = false;
             this.toolTestPlan = [];
             this.toolDetailOpen = true;
-            // 复位上个工具遗留的内容区高度（视觉工具会在 sync 里重新设置）
+            // 复位上个工具遗留的内容区高度（带 Tab 的工具会在 sync 里重新设置）
             const panelEle = this.shadow
               .$("st-dialog.tool-detail")
               ?.ele?.querySelector(".tool-detail-panel");
@@ -1971,11 +2008,11 @@
           },
 
           // st-dialog 的 body 包裹层不会自动伸展（flex: 0 1 auto），CSS 够不到
-          // shadow 内部；视觉工具面板是定高的（90vh / max 1040），直接把内容区
+          // shadow 内部；带 Tab 的工具面板是定高的（90vh / max 1040），直接把内容区
           // 高度同步为「面板 clientHeight − 上下 padding」，让「关闭」固定在
           // 底部、中间区域撑满（超出滚动）。窄面板高度随内容，不处理
           syncToolDialogHeight() {
-            if (!this.toolDetail?.isVisual) return;
+            if (!this.toolDetail?.hasTabs) return;
             requestAnimationFrame(() => {
               const dlg = this.shadow.$("st-dialog.tool-detail")?.ele;
               const mine = dlg?.querySelector(".tool-detail-panel");
@@ -1997,10 +2034,10 @@
             this.syncToolDialogHeight();
           },
 
-          // 运行视觉工具包的内置测试模组（约定：包目录下 self-test.js 导出
+          // 运行工具包的内置测试模组（约定：包目录下 self-test.js 导出
           // runSelfTest）。仅在测试 Tab 点击「运行测试」时才执行：测试在右侧
-          // iframe 里实际运行（被测组件实时挂载可见），断言经 postMessage
-          // 逐条同步回左列 list
+          // iframe 里实际运行（视觉工具实时挂载被测组件，纯插件工具显示断言
+          // 运行记录），断言经 postMessage 逐条同步回左列 list
           async runToolSelfTest() {
             if (this.toolTestRunning) return;
             const def = TOOL_DEFS.find((d) => d.name === this.toolDetail?.name);

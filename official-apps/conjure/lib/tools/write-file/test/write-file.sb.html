@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>write-file 工具包测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="runSelfTest 内置测试模组（全部用例通过）">
+      <template>
+        <script type="module">
+          import { runSelfTest } from "../self-test.js";
+          {
+            try {
+              const res = await runSelfTest();
+              const checks = {
+                ok: res.ok === true,
+                allPass: res.cases.every((c) => c.pass),
+                caseCount: res.cases.length >= 6,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, cases: res.cases },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="包导出约定（selfTest 地址 / 无视觉组件）">
+      <template>
+        <script type="module">
+          import plugin, { selfTest } from "../index.js";
+          {
+            const checks = {
+              selfTestUrl: /self-test\.js$/.test(selfTest),
+              exportedOnDef: plugin.selfTest === selfTest,
+              noVisual: plugin.visual === undefined,
+              shape:
+                plugin.key === "writeFile" &&
+                plugin.name === "write_file" &&
+                typeof plugin.exec === "function",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, selfTest },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

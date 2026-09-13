@@ -1,4 +1,4 @@
-// 工具插件：隔离预览统一工具（preview）
+// 工具插件包：preview（隔离预览统一工具）
 //
 // 一个工具 + action 参数分发全部预览操作：把生成的应用推送到隔离预览窗口
 // 实际运行（app），并对运行中的页面做黑盒调试（status/console/dom/text/click/
@@ -7,6 +7,9 @@
 //
 // 依赖注入：ctx = { openPreview(appName), previewDebug(cmd, args, timeoutMs), onPreviewShot(dataUrl, meta) }
 // 均由 builder-store 提供；缺失时工具返回可读的不可用提示。
+
+// 内置测试模组地址（工具详情对话框「运行内置测试」按需加载执行）
+export const selfTest = new URL("./self-test.js", import.meta.url).href;
 
 const unavailable = () =>
   "预览调试不可用：宿主未注入预览通道（请从妙造主界面使用）";
@@ -74,6 +77,7 @@ const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔�
 export default {
   key: "preview",
   name: "preview",
+  selfTest, // 内置测试模组地址（工具详情对话框「运行内置测试」加载）
   description: DESCRIPTION,
   schema: {
     action: {

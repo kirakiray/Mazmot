@@ -1,11 +1,15 @@
-// 工具插件：write_file
+// 工具插件包：write_file
 // 把一个 UTF-8 文本文件写入指定应用的 client/ 目录，路径如 pages/home.html。
 // 依赖注入：ctx = { fs, rootHandle, onFileWrite }
-import { writeAppFile } from "../builder.js";
+import { writeAppFile } from "../../builder.js";
+
+// 内置测试模组地址（工具详情对话框「运行内置测试」按需加载执行）
+export const selfTest = new URL("./self-test.js", import.meta.url).href;
 
 export default {
   key: "writeFile",
   name: "write_file",
+  selfTest, // 内置测试模组地址（工具详情对话框「运行内置测试」加载）
   description:
     "把一个 UTF-8 文本文件写入指定应用的 client/ 目录，路径如 pages/home.html。可覆盖重写以迭代修改。若目标应用尚未初始化（没有 app.json），写入时会自动补建最小 app.json 完成初始化。",
   schema: {
@@ -25,7 +29,7 @@ export default {
           icon: "📦",
         });
       }
-      ctx.onFileWrite?.({ appName, path: r.path, bytes: r.bytes });
+      ctx.onFileWrite?.({ appName: r.name, path: r.path, bytes: r.bytes });
       return `已写入 ${r.path}（${r.bytes} 字节）`;
     } catch (err) {
       return `写入失败：${err.message}`;

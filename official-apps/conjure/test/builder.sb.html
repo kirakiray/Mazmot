@@ -172,23 +172,15 @@
       <template>
         <script type="module">
           import { TOOL_DEFS, createTools, toolNames } from "../lib/tools/index.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
           {
             const names = toolNames();
-            // 用极简 fake tool 工厂 + 内存 fake fs 验证包装：exec 与回调经 ctx 注入连通
+            // 极简 fake tool 工厂 + 统一虚拟空间，验证包装：exec 与回调经 ctx 注入连通
             const fakeTool = (fn, cfg) => ({ fn, cfg });
-            const fakeDir = {
-              kind: "dir",
-              async get(name, opts) {
-                if (name.endsWith("app.json"))
-                  return { kind: "file", write: async () => {} };
-                return { kind: "dir", get: fakeDir.get };
-              },
-            };
-            const fakeFs = { init: async () => fakeDir };
             const seen = [];
             const tools = createTools({
               tool: fakeTool,
-              fs: fakeFs,
+              fs: createVirtualFs(),
               onAppCreated: (info) => seen.push(info),
             });
             const okCreate = await tools.createApp.fn({
@@ -196,13 +188,14 @@
               displayName: "X",
             });
             const checks = {
-              sixDefs: TOOL_DEFS.length === 6,
-              names: ["create_app", "write_file", "read_file", "list_files", "read_skill", "show_form"]
+              sevenDefs: TOOL_DEFS.length === 7,
+              names: ["create_app", "write_file", "read_file", "list_files", "read_skill", "show_form", "preview"]
                 .every((n) => names.includes(n)),
               defShape: TOOL_DEFS.every(
                 (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
               ),
-              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill", "showForm"].every(
+              allHaveSelfTest: TOOL_DEFS.every((d) => /self-test\.js$/.test(d.selfTest || "")),
+              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill", "showForm", "preview"].every(
                 (k) => tools[k],
               ),
               ctxEvents: seen.length === 1 && seen[0].appName === "x",
@@ -216,147 +209,7 @@
       </template>
     </sb-test>
 
-    <sb-test name="show_form 视觉交互表单（提交 / 取消 / 参数清洗）">
-      <template>
-        <script type="module">
-          import { createTools } from "../lib/tools/index.js";
-          {
-            try {
-              const formSpec = {
-                title: "选择方案",
-                description: "请确认",
-                fields: [
-                  { key: "name", label: "名称", type: "text", required: true },
-                  { key: "prio", label: "优先级", type: "radio", options: ["高", "低"] },
-                  { key: "junk", label: "", type: "text" }, // 不合法：label 为空，应被清洗掉
-                  { key: "opt", label: "选项", type: "select", options: [] }, // options 空被剥掉
-                ],
-              };
-              // fake requestForm：记录 spec，用户「提交」返回数据
-              let received = null;
-              const tools = createTools({
-                tool: (fn, cfg) => ({ fn, cfg }),
-                requestForm: async (spec) => {
-                  received = spec;
-                  return { data: { name: "张三", prio: "高" } };
-                },
-              });
-              const res = await tools.showForm.fn(formSpec);
-              const cleaned =
-                received.fields.length === 2 &&
-                received.fields[0].required === true &&
-                received.fields[1].options === undefined;
-
-              // 用户取消场景
-              let received2 = false;
-              const tools2 = createTools({
-                tool: (fn, cfg) => ({ fn, cfg }),
-                requestForm: async () => {
-                  received2 = true;
-                  return { cancelled: true, reason: "用户停止了生成" };
-                },
-              });
-              const res2 = await tools2.showForm.fn(formSpec);
-
-              // 环境不支持（无 requestForm）
-              const tools3 = createTools({ tool: (fn, cfg) => ({ fn, cfg }) });
-              const res3 = await tools3.showForm.fn(formSpec);
-
-              // 全部字段不合法
-              const res4 = await tools.showForm.fn({ title: "t", fields: [{ key: "x" }] });
-
-              const checks = {
-                submittedJson:
-                  res.includes('"data"') && res.includes("张三"),
-                specCleaned: cleaned,
-                specTitle: received.title === "选择方案",
-                cancelled: res2.includes("cancelled") && received2,
-                unsupported: res3.includes("不支持"),
-                invalidFields: res4.includes("不合法"),
-              };
-              return {
-                assert: Object.values(checks).every(Boolean),
-                content: { checks, res, res2, received },
-              };
-            } catch (error) {
-              return { assert: false, content: { error: error.message } };
-            }
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="write_file 跳过 create_app 时自动初始化">
-      <template>
-        <script type="module">
-          import { createTools } from "../lib/tools/index.js";
-          import { readAppFile } from "../lib/builder.js";
-          {
-            try {
-              // 内存 fake fs：多级路径 get，文件内容存 Map；
-              // 无 create 读取缺失文件返回 null（模拟真实 Core 行为）
-              const fileTree = new Map();
-              const makeDir = (prefix) => ({
-                kind: "dir",
-                async get(name, opts = {}) {
-                  const segs = String(name).split("/").filter(Boolean);
-                  for (let i = 0; i < segs.length; i++) {
-                    prefix = prefix ? `${prefix}/${segs[i]}` : segs[i];
-                    if (i < segs.length - 1) continue; // 中间目录隐式存在
-                    if (!fileTree.has(prefix)) {
-                      if (!opts.create) return null;
-                      fileTree.set(prefix, "");
-                    }
-                    return {
-                      kind: "file",
-                      path: prefix,
-                      text: async () => fileTree.get(prefix),
-                      write: async (c) => fileTree.set(prefix, c),
-                    };
-                  }
-                  return makeDir(prefix);
-                },
-              });
-              const fsFake = { init: async () => makeDir("") };
-
-              const seen = [];
-              const tools = createTools({
-                tool: (fn, cfg) => ({ fn, cfg }),
-                fs: fsFake,
-                onAppCreated: (info) => seen.push(info),
-              });
-              // 模型跳过 create_app，直接 write_file
-              await tools.writeFile.fn({
-                appName: "demo-app",
-                path: "index.html",
-                content: "<!doctype html>",
-              });
-              const appJson = await readAppFile(fsFake, "demo-app", "app.json");
-              const meta = JSON.parse(appJson || "{}");
-              // 已初始化后再次写入：不应重复触发 onAppCreated
-              await tools.writeFile.fn({
-                appName: "demo-app",
-                path: "pages/home.html",
-                content: "<template page></template>",
-              });
-              const checks = {
-                appJsonWritten: !!appJson && meta.name === "demo-app",
-                fired: seen.length === 1 && seen[0].appName === "demo-app",
-                onceOnly: seen.length === 1,
-              };
-              return {
-                assert: Object.values(checks).every(Boolean),
-                content: { checks, meta, fired: seen },
-              };
-            } catch (error) {
-              return { assert: false, content: { error: error.message } };
-            }
-          }
-        </script>
-      </template>
-    </sb-test>
-
-    <sb-test name="备份打包 / 列表 / 删除（fake fs）">
+    <sb-test name="备份打包 / 列表 / 删除（统一虚拟空间）">
       <template>
         <script type="module">
           import {
@@ -371,62 +224,16 @@
             currentAppFiles,
             readBackupFiles,
           } from "../lib/builder.js";
+          import {
+            createVirtualFs,
+            readVirtualFile,
+            listVirtualPaths,
+          } from "../lib/test-space/virtual-space.js";
           {
             try {
-              // 内存 fake fs：目录树存 Map（父 → 子名集合），文件内容存 Map；
-              // 缺失读取返回 null（模拟真实 Core），create: "file" 只作用于最后一段
-              const fileTree = new Map(); // dir path -> Set(child name)
-              const contents = new Map(); // file path -> text
-              const ensureDir = (p) => {
-                if (!fileTree.has(p)) fileTree.set(p, new Set());
-              };
-              const makeFile = (p) => ({
-                kind: "file",
-                path: p,
-                text: async () => contents.get(p),
-                write: async (c) => contents.set(p, c),
-              });
-              const makeDir = (prefix) => ({
-                kind: "dir",
-                path: prefix,
-                async get(name, opts = {}) {
-                  const segs = String(name).split("/").filter(Boolean);
-                  let cur = prefix;
-                  ensureDir(cur);
-                  for (let i = 0; i < segs.length; i++) {
-                    const last = i === segs.length - 1;
-                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
-                    const exists = fileTree.has(next) || contents.has(next);
-                    if (!exists) {
-                      if (last && opts.create === "file") {
-                        contents.set(next, "");
-                        fileTree.get(cur).add(segs[i]);
-                        return makeFile(next);
-                      }
-                      if (!opts.create) return null;
-                      ensureDir(next);
-                    }
-                    if (!last || !contents.has(next)) {
-                      fileTree.get(cur).add(segs[i]);
-                    }
-                    cur = next;
-                  }
-                  if (contents.has(cur)) return makeFile(cur);
-                  return makeDir(cur);
-                },
-                async *keys() {
-                  for (const name of fileTree.get(prefix) || []) yield name;
-                },
-                async remove() {
-                  for (const k of [...fileTree.keys()]) {
-                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
-                  }
-                  for (const k of [...contents.keys()]) {
-                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
-                  }
-                },
-              });
-              const fsFake = { init: async () => makeDir("") };
+              // 统一虚拟空间（内存版 /nos/fs，见 lib/test-space/README.md）
+              const fsFake = createVirtualFs();
+              const root = await fsFake.init("ai-apps");
 
               await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
               await writeAppFile(fsFake, "demo", "index.html", "<html></html>");
@@ -441,7 +248,10 @@
 
               const res = await createAppBackup(fsFake, "demo");
               const list = await listAppBackups(fsFake, "demo");
-              const restored = contents.get(`demo/backup/${res.id}/pages/home.html`);
+              const restored = await readVirtualFile(
+                root,
+                `demo/backup/${res.id}/pages/home.html`,
+              );
 
               // 内容无变化再次备份：hash 相同 → 跳过，不产生重复备份
               const res2 = await createAppBackup(fsFake, "demo");
@@ -479,9 +289,9 @@
                 backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
                 packed: res.files === 3 && res.bytes > 0,
                 listed: list.length === 1 && list[0].id === res.id,
-                noNodeModules: ![...contents.keys()].some(
-                  (k) => k.startsWith("demo/backup/") && k.includes("node_modules"),
-                ),
+                noNodeModules: !(
+                  await listVirtualPaths(await root.get("demo/backup"))
+                ).some((p) => p.includes("node_modules")),
                 contentCopied: restored === "<template page></template>",
                 dedupeSkipped: res2.skipped && res2.id === res.id,
                 stillOne: list2.length === 1,
@@ -583,26 +393,13 @@
             writeAppFile,
             listAppFiles,
           } from "../lib/builder.js";
+          import {
+            createVirtualDir,
+            readVirtualFile,
+          } from "../lib/test-space/virtual-space.js";
           {
             try {
-              const files = new Map();
-              const content = new Map();
-              const fakeRoot = {
-                kind: "dir",
-                async get(p) {
-                  if (!files.has(p)) {
-                    files.set(p, {
-                      kind: "file",
-                      path: p,
-                      write: async (c) => content.set(p, c),
-                    });
-                  }
-                  return files.get(p);
-                },
-                async flat() {
-                  return [...files.values()];
-                },
-              };
+              const fakeRoot = createVirtualDir();
               // 本地渠道不应触碰 VFS（init 即视为用错落点）
               const fsFake = {
                 init: async () => {
@@ -615,12 +412,14 @@
               const list = await listAppFiles(fsFake, "my-app", fakeRoot);
 
               const checks = {
-                appJsonInClient: files.has("client/app.json"),
-                pageInClient: files.has("client/pages/home.html"),
-                nothingAtRoot: !files.has("app.json") && !files.has("pages/home.html"),
+                appJsonInClient: (await readVirtualFile(fakeRoot, "client/app.json")) !== null,
+                pageInClient: (await readVirtualFile(fakeRoot, "client/pages/home.html")) === "hi",
+                nothingAtRoot:
+                  (await readVirtualFile(fakeRoot, "app.json")) === null &&
+                  (await readVirtualFile(fakeRoot, "pages/home.html")) === null,
                 listOk:
                   list.includes("app.json") && list.includes("pages/home.html"),
-                metaWritten: (content.get("client/app.json") || "").includes("my-app"),
+                metaWritten: ((await readVirtualFile(fakeRoot, "client/app.json")) || "").includes("my-app"),
               };
               return {
                 assert: Object.values(checks).every(Boolean),
@@ -848,7 +647,7 @@
         </script>
       </template>
     </sb-test>
-    <sb-test name="备份还原：覆盖写回 / 无变动检测（fake fs）">
+    <sb-test name="备份还原：覆盖写回 / 无变动检测（统一虚拟空间）">
       <template>
         <script type="module">
           import {
@@ -859,61 +658,11 @@
             restoreAppBackup,
             listAppBackups,
           } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
           {
             try {
-              // 与备份测试相同的内存 fake fs
-              const fileTree = new Map();
-              const contents = new Map();
-              const ensureDir = (p) => {
-                if (!fileTree.has(p)) fileTree.set(p, new Set());
-              };
-              const makeFile = (p) => ({
-                kind: "file",
-                path: p,
-                text: async () => contents.get(p),
-                write: async (c) => contents.set(p, c),
-              });
-              const makeDir = (prefix) => ({
-                kind: "dir",
-                path: prefix,
-                async get(name, opts = {}) {
-                  const segs = String(name).split("/").filter(Boolean);
-                  let cur = prefix;
-                  ensureDir(cur);
-                  for (let i = 0; i < segs.length; i++) {
-                    const last = i === segs.length - 1;
-                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
-                    const exists = fileTree.has(next) || contents.has(next);
-                    if (!exists) {
-                      if (last && opts.create === "file") {
-                        contents.set(next, "");
-                        fileTree.get(cur).add(segs[i]);
-                        return makeFile(next);
-                      }
-                      if (!opts.create) return null;
-                      ensureDir(next);
-                    }
-                    if (!last || !contents.has(next)) {
-                      fileTree.get(cur).add(segs[i]);
-                    }
-                    cur = next;
-                  }
-                  if (contents.has(cur)) return makeFile(cur);
-                  return makeDir(cur);
-                },
-                async *keys() {
-                  for (const name of fileTree.get(prefix) || []) yield name;
-                },
-                async remove() {
-                  for (const k of [...fileTree.keys()]) {
-                    if (k === prefix || k.startsWith(`${prefix}/`)) fileTree.delete(k);
-                  }
-                  for (const k of [...contents.keys()]) {
-                    if (k.startsWith(`${prefix}/`)) contents.delete(k);
-                  }
-                },
-              });
-              const fsFake = { init: async () => makeDir("") };
+              // 统一虚拟空间（内存版 /nos/fs，见 lib/test-space/README.md）
+              const fsFake = createVirtualFs();
 
               await createAppDir(fsFake, { name: "demo", displayName: "Demo" });
               await writeAppFile(fsFake, "demo", "index.html", "<html>v1</html>");
@@ -974,27 +723,24 @@
       <template>
         <script type="module">
           import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
           {
             try {
-              // 内存 fake 自存储：registry 初始为一个应用三条会话
-              const kv = new Map();
-              kv.set("apps-registry", [
-                {
-                  name: "demo",
-                  displayName: "Demo",
-                  mode: "vfs",
-                  sessions: [
-                    { id: "s1", title: "A", updatedAt: 1 },
-                    { id: "s2", title: "B", updatedAt: 2 },
-                    { id: "s3", title: "C", updatedAt: 3 },
-                  ],
-                },
-              ]);
-              const fakeStore = {
-                getItem: async (k) => kv.get(k) ?? null,
-                setItem: async (k, v) => kv.set(k, v),
-                removeItem: async (k) => kv.delete(k),
-              };
+              // 统一虚拟空间（内存键值存储）：registry 初始为一个应用三条会话
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [
+                      { id: "s1", title: "A", updatedAt: 1 },
+                      { id: "s2", title: "B", updatedAt: 2 },
+                      { id: "s3", title: "C", updatedAt: 3 },
+                    ],
+                  },
+                ],
+              });
               const store = createBuilderStore({
                 fs: null,
                 mazmotStore: null,
@@ -1011,12 +757,14 @@
               // 拖拽：把 s1 移到 s3 前面 → s1, s3, s2
               await store.reorderSessions("s1", "s3");
               const afterIds = store.state.currentAppSessions.map((s) => s.id);
-              const persisted = (kv.get("apps-registry")[0].sessionOrder || []).join(",");
+              const persisted = (
+                (await fakeStore.getItem("apps-registry"))[0].sessionOrder || []
+              ).join(",");
 
               // 新会话（不在 sessionOrder 里）应排最前（按最近更新）
-              const reg = kv.get("apps-registry");
+              const reg = await fakeStore.getItem("apps-registry");
               reg[0].sessions.push({ id: "s4", title: "D", updatedAt: 9 });
-              await kv.set("apps-registry", reg);
+              await fakeStore.setItem("apps-registry", reg);
               await store.reloadApps();
               const withNewIds = store.state.currentAppSessions.map((s) => s.id);
 
@@ -1047,25 +795,22 @@
       <template>
         <script type="module">
           import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
           {
             try {
-              const kv = new Map();
-              kv.set("apps-registry", [
-                {
-                  name: "demo",
-                  displayName: "Demo",
-                  mode: "vfs",
-                  sessions: [
-                    { id: "s1", title: "A", updatedAt: 2, createdAt: 1, duration: 65000 },
-                    { id: "s2", title: "B", updatedAt: 1, createdAt: 1 },
-                  ],
-                },
-              ]);
-              const fakeStore = {
-                getItem: async (k) => kv.get(k) ?? null,
-                setItem: async (k, v) => kv.set(k, v),
-                removeItem: async (k) => kv.delete(k),
-              };
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [
+                      { id: "s1", title: "A", updatedAt: 2, createdAt: 1, duration: 65000 },
+                      { id: "s2", title: "B", updatedAt: 1, createdAt: 1 },
+                    ],
+                  },
+                ],
+              });
               const store = createBuilderStore({
                 fs: null,
                 mazmotStore: null,
@@ -1103,53 +848,14 @@
             saveProjectChats,
           } from "../lib/builder.js";
           import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualDir,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
           {
             try {
-              // 内存 fake fs：目录树 + 文件内容（同前述 fake 实现）
-              const fileTree = new Map();
-              const contents = new Map();
-              const ensureDir = (p) => {
-                if (!fileTree.has(p)) fileTree.set(p, new Set());
-              };
-              const makeFile = (p) => ({
-                kind: "file",
-                path: p,
-                text: async () => contents.get(p),
-                write: async (c) => contents.set(p, c),
-              });
-              const makeDir = (prefix) => ({
-                kind: "dir",
-                path: prefix,
-                async get(name, opts = {}) {
-                  const segs = String(name).split("/").filter(Boolean);
-                  let cur = prefix;
-                  ensureDir(cur);
-                  for (let i = 0; i < segs.length; i++) {
-                    const last = i === segs.length - 1;
-                    const next = cur ? `${cur}/${segs[i]}` : segs[i];
-                    const exists = fileTree.has(next) || contents.has(next);
-                    if (!exists) {
-                      if (last && opts.create === "file") {
-                        contents.set(next, "");
-                        fileTree.get(cur).add(segs[i]);
-                        return makeFile(next);
-                      }
-                      if (!opts.create) return null;
-                      ensureDir(next);
-                    }
-                    if (!last || !contents.has(next)) {
-                      fileTree.get(cur).add(segs[i]);
-                    }
-                    cur = next;
-                  }
-                  if (contents.has(cur)) return makeFile(cur);
-                  return makeDir(cur);
-                },
-                async *keys() {
-                  for (const name of fileTree.get(prefix) || []) yield name;
-                },
-              });
-              const root = makeDir("");
+              // 统一虚拟空间（内存版目录句柄，见 lib/test-space/README.md）
+              const root = createVirtualDir();
 
               // 空目录：探测返回 null
               const none = await detectLocalProject(root);
@@ -1172,19 +878,8 @@
               const chats = await loadProjectChats(root);
 
               // ---- store 层：草稿 + 选本地目录 → 自动导入并切换 ----
-              const kv = new Map();
-              const fakeStore = {
-                getItem: async (k) => kv.get(k) ?? null,
-                setItem: async (k, v) => kv.set(k, v),
-                removeItem: async (k) => kv.delete(k),
-              };
-              const mazmotApps = [];
-              const mazmotStore = {
-                getItem: async (k) => (k === "apps" ? mazmotApps : null),
-                setItem: async (k, v) => {
-                  if (k === "apps") mazmotApps.splice(0, mazmotApps.length, ...v);
-                },
-              };
+              const fakeStore = createVirtualStorage();
+              const mazmotStore = createVirtualStorage();
               const fsFake = {
                 open: async () => root,
                 mount: async (h) => h,
@@ -1215,10 +910,10 @@
                   st.currentAppSessions.map((s) => s.id).join(",") === "a2,a1",
                 msgRestored: importedMsgs?.[0]?.content === "hi",
                 threadRestored: Array.isArray(importedThread) && importedThread.length === 1,
-                mazmotRegistered: mazmotApps.some(
+                mazmotRegistered: ((await mazmotStore.getItem("apps")) || []).some(
                   (a) => a.name === "my-app" && a.source === "local",
                 ),
-                chatFileWritten: contents.has("conjure-chats.json"),
+                chatFileWritten: (await root.get("conjure-chats.json")) !== null,
               };
               return {
                 assert: Object.values(checks).every(Boolean),

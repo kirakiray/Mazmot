@@ -24,26 +24,31 @@ conjure/
 │   │                    #   页面只 subscribe 事件同步视图（见「状态仓库」小节）
 │   ├── markdown.js     # Markdown 渲染（与 ai-chat 同源副本，代码块带复制按钮）
 │   ├── skill-sync.js   # 技能知识库：源清单 + zip 解析 + 下载安装到 VFS skills 空间 + 索引/读取
-│   ├── tools/          # Agent 工具插件（每工具一目录/一文件，见「工具插件体系」）
-│   │   ├── visual-test-kit.js # 视觉工具组件测试基座：defineVisualSelfTest（环境守卫 /
-│   │   │                      #   逐条回调 + 100ms 节奏 / 组件挂载台 bench），
-│   │   │                      #   用法与坑见 lib/tools/visual-test-kit.md
+│   ├── tools/          # Agent 工具插件：注册中心 + 每工具一个独立包目录（见「工具插件体系」）
+│   │   ├── index.js    # 注册中心：TOOL_DEFS + createTools()（ctx 注入 + chain tool 包装）
+│   │   ├── create-app/ # create_app 包：建 <name>/client/ 并写 app.json（index.js + self-test.js + README + test/）
+│   │   ├── write-file/ # write_file 包：写/覆盖 client/ 下文件（文本白名单 + 路径逃逸校验；未初始化自动补 app.json）
+│   │   ├── read-file/  # read_file 包：读文件（迭代修改前查看）
+│   │   ├── list-files/ # list_files 包：列文件清单
+│   │   ├── read-skill/ # read_skill 包：读框架知识库文档（经 ctx.readSkill）
 │   │   ├── show-form/  # 视觉交互表单工具包：index.js（插件）+ form-card.html（视觉组件）+
 │   │   │               #   self-test.js（内置测试模组）+ README.md + test/show-form.sb.html
-│   │   └── preview-debug.js # 隔离预览统一工具：单个 preview 工具，action 参数分发
-│   │                          #   app/status/console/dom/text/click/type/wait/eval/screenshot
-│   │                          #   （见「隔离预览调试」小节）
-│       ├── index.js        # 注册中心：TOOL_DEFS + createTools()（ctx 注入 + chain tool 包装）
-│       ├── create-app.js   # create_app：建 <name>/client/ 并写 app.json
-│       ├── write-file.js   # write_file：写/覆盖 client/ 下文件（文本白名单 + 路径逃逸校验；目标未初始化时自动补建 app.json 并触发 onAppCreated）
-│       ├── read-file.js    # read_file：读文件（迭代修改前查看）
-│       └── list-files.js   # list_files：列文件清单
+│   │   └── preview/    # 隔离预览统一工具包：单个 preview 工具，action 参数分发
+│   │                    #   app/status/console/dom/text/click/type/wait/eval/screenshot
+│   │                    #   （见「隔离预览调试」小节）
+│   ├── test-space/     # 测试基建包（所有工具包内置测试与应用级测试共用）：virtual-space.js
+│   │                    #   （统一虚拟空间：内存版 /nos/fs + storage + 目录句柄）、
+│   │                    #   self-test-kit.js（defineSelfTest 通用基座）、
+│   │                    #   visual-test-kit.js（defineVisualSelfTest 视觉基座，含组件挂载台）；
+│   │                    #   约定与用法见 lib/test-space/README.md
 ├── pages/
 │   ├── home.html       # 唯一页面：三段布局（顶栏 / 左会话栏 / 聊天列）+ 右侧资源面板（只负责视觉与交互，
 │   │                   #   业务全部委托 builder-store）
 │   └── home.css        # 样式（M3 CSS 变量，含应用卡片 / 会话栏 / 滑出面板 / 目标切换器）
 └── test/
-    └── builder.sb.html # sibyl-test：纯函数 + 工具注册中心 + Core 端到端用例
+    └── builder.sb.html # sibyl-test：builder / store 层用例（虚拟空间取自 lib/test-space/）；
+                        #   各工具包的内置测试在 lib/tools/<tool>/self-test.js +
+                        #   test/<tool>.sb.html，show-form 另含组件层用例
 ```
 
 ## 技术栈
@@ -64,7 +69,7 @@ conjure/
 
 ## 工具插件体系
 
-`lib/tools/` 下每个工具一个插件文件，默认导出 `{ key, name, description, schema, exec(args, ctx) }`；`index.js` 的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。
+`lib/tools/` 下每个工具一个**独立包目录** `<tool>/`：`index.js`（插件本体，默认导出 `{ key, name, description, schema, exec(args, ctx) }`，具名导出 `selfTest` 内置测试模组地址；视觉工具另导出 `visual` / `tags` / `testTags`）、`self-test.js`（内置测试模组，见「工具详情对话框与包内置测试」）、`README.md`、`test/<tool>.sb.html`（包测试，不分发）。`index.js` 注册中心的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。新增工具 = 建包目录 + 在注册中心登记，导出 `selfTest` 即自动获得对话框「内置测试」Tab。
 
 现有工具：
 
@@ -84,11 +89,14 @@ conjure/
 
 ## 工具详情对话框与包内置测试
 
-资源面板工具列表项可点击 → `st-dialog.tool-detail`；宽度分两档——非视觉工具窄单栏（`class:narrow`，min(560px, 92vw)，无 Tab），视觉工具 82vw / max-width 1280、带「工具信息 / 内置测试」双 Tab（`toolTab`）。
-- **工具信息 Tab**：描述、参数 Schema、「▶ 前往测试」入口（只切 Tab 不执行）；视觉工具右侧保留 iframe 演示（srcdoc 由 `buildToolDemoDoc` 生成，渲染一张 pending 可交互的示例表单卡片）。
-- **内置测试 Tab**：左列为测试计划 list（打开对话框时加载 `self-test.js` 导出的 `testPlan` 用例名，全部为 pending 空心圆），右列为测试运行 iframe；**点「▶ 运行测试」才实际执行**——点击时清空旧 srcdoc 再挂新文档（同值属性不触发 iframe 重载，先归空才能保证每次点击都真正重跑），加载包内组件 + senti 控件 + `selfTest` 模组跑 `runSelfTest(onCase)`，被测组件实时挂载在画面上、结束保留画面；断言经 `postMessage`（`conjure-tool-test-case/done/error`）逐条同步回左列，按用例名把该项从 pending 打勾为 pass / fail。测试区 `.tool-test-grid` 常驻不卸载（仅 display 显隐）——若用 o-if 卸载，切 Tab 会让保留的 srcdoc 重挂载而自动重跑。
+资源面板工具列表项可点击 → `st-dialog.tool-detail`；宽度分两档——无内置测试的工具窄单栏（`class:narrow`，min(560px, 92vw)，无 Tab），带 `selfTest` 的工具（视觉或纯插件，当前全部工具）82vw / max-width 1280、带「工具信息 / 内置测试」双 Tab（`toolTab`）。
+- **工具信息 Tab**：描述、参数 Schema；视觉工具右侧保留 iframe 演示（srcdoc 由 `buildToolDemoDoc` 生成，渲染一张 pending 可交互的示例表单卡片）。
+- **内置测试 Tab**：左列为测试计划 list（打开对话框时加载 `self-test.js` 导出的 `testPlan` 用例名，全部为 pending 空心圆），右列为测试运行 iframe（srcdoc 由 `buildToolTestDoc` 生成：视觉工具预载包内组件 + senti 控件、按 `testTags` 等待元素注册，被测组件实时挂载在画面上；纯插件工具不预载组件，右侧逐条显示断言运行记录）；**点「▶ 运行测试」才实际执行**——点击时清空旧 srcdoc 再挂新文档（同值属性不触发 iframe 重载，先归空才能保证每次点击都真正重跑），加载 `selfTest` 模组跑 `runSelfTest(onCase)`，结束保留画面；断言经 `postMessage`（`conjure-tool-test-case/done/error`）逐条同步回左列，按用例名把该项从 pending 打勾为 pass / fail。测试区 `.tool-test-grid` 常驻不卸载（仅 display 显隐）——若用 o-if 卸载，切 Tab 会让保留的 srcdoc 重挂载而自动重跑。
 - 两个 iframe 的 srcdoc 公共骨架在 `toolDocPre` / `toolDocSenti`：`<base>` 指向站点根、l-m src 必须完整绝对地址、script 开闭标签拆开拼、内嵌脚本单行且只能用块注释——违反任一条会导致模板解析失败或脚本截断 / 吞闭合括号。
-show-form 包的 `self-test.js` 覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；组件或 senti 控件未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归。新增视觉工具包照此约定导出 `visual` + `selfTest`（self-test.js 再导出 `testPlan` 用例名清单）即自动获得 Tab、测试计划 list、测试运行 iframe 与演示预览。self-test.js 不直接写断言样板，而是引用 `lib/tools/visual-test-kit.js` 的 `defineVisualSelfTest({ tag, requiredTags, plan, run })`：基座统一处理环境守卫（`kit.componentReady`）、逐条回调 + 100ms 节奏（`kit.check`）、组件挂载（`kit.mount()` 直接返回被测组件的 ofa.js 实例，用例用 ofa 自带能力随意操作；proto 方法带参调用、数据不走 this，见 lib/tools/visual-test-kit.md）。
+
+**每个工具包都带内置测试**：`self-test.js` 导出 `testPlan`（用例名清单，与 `check()` 的 name 一一对应）与 `runSelfTest(onCase)`（返回 `{ ok, cases }`），用 `lib/test-space` 的基座声明——纯插件工具用 `self-test-kit.js` 的 `defineSelfTest({ plan, run })`（kit = `{ wait, check }`），视觉工具用 `visual-test-kit.js` 的 `defineVisualSelfTest({ tag, requiredTags, plan, run })`（kit 再加 `componentReady` 环境守卫与 `mount()` 挂载台，直接返回被测组件的 ofa.js 实例；内部复用 defineSelfTest）。**需要虚拟空间的用例一律从 `lib/test-space/virtual-space.js` 取内存版 fake**（`createVirtualFs` / `createVirtualDir` / `createVirtualStorage` / `seedVirtualFiles` / `readVirtualFile` / `listVirtualPaths`，形状对齐 /nos/fs 与 /nos/storage 的常用子集），禁止在测试文件内再造内联 fake。基座 API、ofa.js 相关坑（proto 方法带参调用、数据不走 this）与虚拟空间行为约定见 lib/test-space/README.md。
+
+show-form 包的用例覆盖插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）与组件层（控件渲染 / required 拦截 / 事件冒泡 / 只读回填 / XSS 转义；组件或 senti 控件未注册的环境自动跳过组件断言），包内 `test/show-form.sb.html` 复用同一 `runSelfTest()` 做两种环境（纯模块 / 预载组件）的回归；其余工具包的 `self-test.js` 全部纯插件层（虚拟空间或 fake 通道替身），`test/<tool>.sb.html` 跑同一 `runSelfTest()` 加导出约定断言。
 
 ## 技能知识库（运行时下载到 VFS）
 
@@ -138,7 +146,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 - **指令集**（`debug-runtime.js`，实现参考同作者 web-bridge-mcp 的 client.js）：`status`（URL/标题/视口/日志统计）、`console`（读 `installConsoleCapture` 环形缓冲，`since` 增量拉取、返回头带最新 ts）、`text`（innerText）、`click` / `type`（scrollIntoView + click / 聚焦写值派发 input·change）、`wait`（轮询等元素出现/消失或 JS 谓词，200ms 间隔）、`dom`（DOM 样式快照：每可见节点一行几何 + 关键 computed style + 文本，穿 shadow DOM，免授权的「虚拟截图」）、`eval`（任意 JS，预置 `$`/`$$`/`$deep`/`$$deep`（穿 shadow DOM）/`$wait`/`$rect`/`$css`/`$import`；表达式自动 return / 语句块末句表达式自动补 return；结果安全序列化 30k 字符封顶）、`shot`（getDisplayMedia 真实截图，每次独立授权、**截完（含失败路径）立即停止全部轨道**不留常驻共享状态，JPEG 默认 maxSide 1280 / q0.72 压缩后 base64 回传）。
 - **安全**：代理端只信任注入时绑定的 conjure 用户（`ctx.fromUserId !== conjureId` 直接忽略——调试指令可执行任意 JS，必须校验发送方）；eval/type 等全部在隔离域页面内执行，主域零暴露。
 - **调用记录（可观测）**：每次 dbg 指令经 `createOpLog` 记入操作日志（工具名 + `summarizeDbgArgs` 参数摘要 + 成败耗时；sessionStorage 持久化、按页面加载分组，上限 5 组 × 100 条），预览页胶囊「日志」面板新增**「妙造调用」视图**可查（与「控制台」双 tab，实时刷新，视图偏好记忆 sessionStorage）——用户能看到 AI 对预览页做过的每一步操作。
-- **工具层**（`lib/tools/preview-debug.js`）：**单一 `preview` 工具 + `action` 参数分发**（app/status/console/dom/text/click/type/wait/eval/screenshot；screenshot 映射 dbg 指令 `shot`），操作专属参数放 `args` 对象，exec 内做各 action 的必填参数校验与结果超时表（screenshot 90s / wait 按其 timeoutMs 放宽 / console·eval 30s / 其余默认 25s）；action=app 走 `runRemotePreview`（返回即代理可用），其余走 `debugPreviewCommand`；截图经 `ctx.onPreviewShot` 把 dataUrl 以 `role:"image"` 消息卡片展示给用户（模型无法看图，工具文案引导布局核验用 action=dom）。工具图标在 home.html `toolIcon` 映射登记。
+- **工具层**（`lib/tools/preview/index.js`）：**单一 `preview` 工具 + `action` 参数分发**（app/status/console/dom/text/click/type/wait/eval/screenshot；screenshot 映射 dbg 指令 `shot`），操作专属参数放 `args` 对象，exec 内做各 action 的必填参数校验与结果超时表（screenshot 90s / wait 按其 timeoutMs 放宽 / console·eval 30s / 其余默认 25s）；action=app 走 `runRemotePreview`（返回即代理可用），其余走 `debugPreviewCommand`；截图经 `ctx.onPreviewShot` 把 dataUrl 以 `role:"image"` 消息卡片展示给用户（模型无法看图，工具文案引导布局核验用 action=dom）。工具图标在 home.html `toolIcon` 映射登记。
 
 ## 数据模型
 
@@ -176,7 +184,8 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 |------|------|
 | `lib/builder.js` | `NAMESPACE`/`REQUIRED_FILES` 常量；`contextInfo(messages)`（从回合末条 AI 消息的 `usage.context_tokens` 读出当前会话上下文占用，供输入区圆圈进度，窗口总量由页面 select 选定）；`truncateThread(thread, turns)`（把 wire 记忆按回合截断、丢弃末尾未闭合的 tool_calls 回合，供会话 fork 复制记忆）；`tailThread(thread, keepTurns)`（取末尾 k 个完整回合，供压缩后保留最近原文）；`COMPACTION_PROMPT`（上下文压缩摘要的系统提示词）；`sanitizeAppName`（规范化为 `/^[a-z0-9_-]+$/`）、`validateRelPath`（路径白名单校验）；`buildAppJson` / `buildAppRecord` / `buildLocalAppRecord`；`createAppDir` / `writeAppFile`（写入前自动确保 app.json 已初始化，返回值带 `initialized` 标记）/ `ensureAppInitialized` / `readAppFile` / `listAppFiles` / `validateApp`（均接受可选 `rootHandle` 切换渠道）；`registerAppRecord` / `unregisterAppRecord` / `listRegisteredApps` / `deleteVfsApp`；数据备份：`createAppBackup`（把 client/ 全部文件按原相对路径复制到同层 `backup/<id>/`，`node_modules` 整体忽略；id 尾部为内容指纹——对排序后的 路径+内容 清单算 SHA-256 取前 8 位 hex，内容与已有备份一致时跳过写入，幂等去重）/ `listAppBackups`（列 backup/ 下备份目录，新的在前，每项带 `label` 与 `note`——读目录内 `__meta.json`，无则空串）/ `currentAppHash`（当前 client/ 内容指纹，供列表标注「与当前一致」项）/ `currentAppFiles`（当前 client/ 全部文件的 `{path, text}` 清单，供智能备份对比）/ `readBackupFiles`（读取指定备份目录内全部文件（忽略 `__meta.json`），供智能备份取上一版内容）/ `renameAppBackup`（更名写 `__meta.json` 的 label，目录名/内容寻址不变，label 非空且 ≤50 字）/ `setBackupNote`（备注写同一 `__meta.json` 的 note，空串清除，≤200 字）/ `restoreAppBackup`（还原：先比对当前 client/ 内容指纹与备份 id 尾部 hash，一致返回 `unchanged` 不写入；否则清空 client/ 后按备份目录写回，`__meta.json` 不参与还原）/ `deleteAppBackup`（递归删除指定备份，校验 id 格式防路径逃逸，均接受可选 `rootHandle` 切换渠道）；本地项目：`detectLocalProject`（探测目录是否既有项目）/ `PROJECT_CHAT_FILE` + `saveProjectChats` / `loadProjectChats`（项目目录对话快照读写）；`SYSTEM_PROMPT`（教模型 Mazmot/ofa.js 结构与硬性约束；工作流程要求功能文件完成后补写 **AGENTS.md**（给 AI 的开发规范）与 **CONTEXT.md**（项目说明）两份项目文档，且内容须基于实际生成的代码）+ `buildSystemPrompt(ctx)`（按当前上下文动态构建：已选应用时注入应用名/渠道与强制规则——「回答项目问题前必须先 list_files / read_file（至少读 AGENTS.md、CONTEXT.md 和 app.json），禁止凭猜测描述项目」「修改时先读后写，必须先读项目内 AGENTS.md 与 CONTEXT.md 并严格遵守其中约定，改完同步更新 CONTEXT.md」；草稿阶段退回基础提示词） |
 | `lib/tools/index.js` | 插件注册中心（见「工具插件体系」） |
-| `lib/tools/*.js` + `lib/tools/show-form/` | 六个工具插件，宿主依赖全走 `ctx`；show-form 为目录式包（插件 index.js + 视觉组件 form-card.html + 内置测试 self-test.js + 包测试 test/ + README），插件默认导出可带 `tags`（面板徽标）、`visual`（配套组件模块地址，registry 聚合为 `visualModules` 供页面 `l-m` 声明预载）与 `selfTest`（内置测试模组地址，工具详情对话框「运行内置测试」加载） |
+| `lib/tools/<tool>/`（7 个包目录） | 七个工具插件包（create-app / write-file / read-file / list-files / read-skill / show-form / preview），宿主依赖全走 `ctx`；每包含 index.js（插件）+ self-test.js（内置测试模组）+ README.md + test/<tool>.sb.html（不分发）；插件默认导出可带 `tags`（面板徽标）、`visual`（配套组件模块地址，registry 聚合为 `visualModules` 供页面 `l-m` 声明预载）、`selfTest`（内置测试模组地址，工具详情对话框「运行内置测试」加载）与 `testTags`（测试 iframe 等待注册的元素清单） |
+| `lib/test-space/` | 测试基建包：`virtual-space.js`（统一虚拟空间：内存版 /nos/fs、storage、目录句柄，所有需要 fake 的测试共用）、`self-test-kit.js`（`defineSelfTest` 通用测试基座）、`visual-test-kit.js`（`defineVisualSelfTest` 视觉基座，含组件挂载台）；约定见 `lib/test-space/README.md` |
 | `pages/home.html` | 唯一页面模块（见下节；只负责视觉与交互，业务委托仓库；输入区行内有上下文占用小圆圈进度 + 最大窗口 select（128k/256k/512k/768k/1mb），`applyMessageEvent` 时经 `syncCtx` 重算；网页 `document.title` 经 watch `currentAppName` 跟随项目切换：草稿「新项目 - 妙造 Conjure」，项目「项目名 - 妙造 Conjure」（会话不体现在 title 上）；输入框 `attr:placeholder` 走 `inputPlaceholder`，由 `syncInputPlaceholder` 按场景切换：草稿「描述你想生成的应用…」、应用内「向 AI 描述要如何迭代这个应用…」） |
 | `lib/builder-store.js` | `createBuilderStore({ fs, mazmotStore, selfStore, load })` 可观察状态仓库（见「状态仓库」小节） |
 | `lib/remote-preview.js` | 隔离预览编排（`openRemotePreview({ load, appName, files, onStatus, bridgeOrigin })`，`BRIDGE_ORIGIN` 默认 `http://localhost:30032`；协议细节见「隔离预览」小节） |
@@ -219,6 +228,7 @@ AI 创作 / 运行过程的全部业务逻辑封装在 `createBuilderStore({ fs,
 
 ## 测试
 
-- 测试框架 sibyl-test，`test/builder.sb.html` 覆盖：`sanitizeAppName` / `validateRelPath`（正常 + 非法路径）/ `truncateThread`（按回合截断、未闭合回合丢弃）、`buildRunUrl` / `buildAppRecord` / `buildLocalAppRecord` / `buildAppJson`、`createAppBackup` / `listAppBackups` / `deleteAppBackup` / `restoreAppBackup`（fake fs：打包忽略 node_modules、内容还原、内容 hash 去重跳过、内容变化产生新备份、更名与备注读写、空串清备注、还原覆盖写回与无变动检测、id 校验、`currentAppFiles` / `readBackupFiles` 读取清单（忽略 __meta.json、非法 id 报错））、`reorderSessions`（fake 自存储：拖拽排序持久化 sessionOrder、新会话排最前、非法参数无变化）、本地项目导入（fake fs + fake 自存储：`detectLocalProject` 探测、`conjure-chats.json` 快照读写 roundtrip、草稿选本地目录自动导入并切换、消息与记忆恢复、mazmot 登记携带句柄）、工具插件注册中心（fake tool + 内存 fake fs 验证 ctx 注入与回调连通）、`show_form` 视觉表单（参数清洗、提交返回 data JSON、取消返回 cancelled、环境不支持/字段全不合法的降级）、`createAppDir` → `writeAppFile` → `validateApp` 端到端（需先访问 `/` 装好 Core）
+- 测试框架 sibyl-test；**需要虚拟空间（fake fs / storage）的用例一律取 `lib/test-space/virtual-space.js` 的内存版 fake，禁止内联再造**。`test/builder.sb.html` 覆盖 builder / store 层：`sanitizeAppName` / `validateRelPath`（正常 + 非法路径）/ `truncateThread`（按回合截断、未闭合回合丢弃）、`buildRunUrl` / `buildAppRecord` / `buildLocalAppRecord` / `buildAppJson`、`createAppBackup` / `listAppBackups` / `deleteAppBackup` / `restoreAppBackup`（统一虚拟空间：打包忽略 node_modules、内容还原、内容 hash 去重跳过、内容变化产生新备份、更名与备注读写、空串清备注、还原覆盖写回与无变动检测、id 校验、`currentAppFiles` / `readBackupFiles` 读取清单（忽略 __meta.json、非法 id 报错））、`reorderSessions`（虚拟 storage：拖拽排序持久化 sessionOrder、新会话排最前、非法参数无变化）、本地项目导入（虚拟目录 + 虚拟 storage：`detectLocalProject` 探测、`conjure-chats.json` 快照读写 roundtrip、草稿选本地目录自动导入并切换、消息与记忆恢复、mazmot 登记携带句柄）、本地渠道写入 `client/` 子目录布局、工具插件注册中心（fake tool + 虚拟 fs：7 个工具、全部带 selfTest、ctx 注入与回调连通）、`createAppDir` → `writeAppFile` → `validateApp` 端到端（需先访问 `/` 装好 Core）
+- **每个工具包自带内置测试**（`lib/tools/<tool>/self-test.js` + `test/<tool>.sb.html`，见「工具详情对话框与包内置测试」）：create-app（落盘内容 / onAppCreated 回调 / 非法名 / 覆盖重建）、write-file（UTF-8 字节数 / onFileWrite / 跳过 create_app 自动初始化恰一次 / 非法路径 / 覆盖重写）、read-file（原样读回 / 文件与应用不存在的提示 / 本地渠道）、list-files（换行列举 / 空应用占位 / 本地渠道）、read-skill（未注入提示 / 参数与返回值透传 / path 缺省）、preview（未知 action / 必填参数校验 / action=app 流程与不可用提示 / 指令分发与超时表 / 结果排版 / 截图卡片流 / 错误包装，通道全程 fake 替身）、show-form（见下条）
 - 隔离预览协议层测试在 [bridge/test/proto.sb.html](../../bridge/test/proto.sb.html)：`chunkText` 字节分片（ASCII/中文/emoji 混合、超预算切分、无损还原）、`buildFileMessages` seq/total、`createFileAssembler` 乱序收齐与非法 seq、`createReliableLink`（ACK resolve、串行保序、重复去重且先回 ACK、失败重发）、`assertSendable` 超限、`sha256Hex` 标准向量 + `buildManifest`、`sanitizeAppName` / `validateRelPath` 守卫；调试运行时测试在 [bridge/test/debug-runtime.sb.html](../../bridge/test/debug-runtime.sb.html)：`compileEval`（表达式自动 return / 语句块末句自动补 return）、深度选择器穿 shadow DOM、`serializeValue`（对象/Error 栈/循环引用/超长截断）、`domSnapshot`（几何/关键样式/文本/穿 shadow）、`formatConsoleEntries`（since 增量/limit/latestTs）、`runDebugCommand`（text/click/type/eval·预置 $ 助手/wait/console/shot 指令与未知指令可读报错）、dbg 结果协议（`buildDbgResultMessages` 单条直达与大结果分片、`createDbgCollector` 乱序/缺片/重复片/错误直达）；全链路集成测试在 [bridge/test/preview-flow.sb.html](../../bridge/test/preview-flow.sb.html)（需 Core 已就绪，单页内两个真实 LocalUser 模拟双端）：hello → 分片推送（含 >96KB 大文件）→ receiver 落盘 → `/$conjure-apps/...` URL 可访问且内容一致、重复推送覆盖旧文件、路径逃逸拦截、`waitUrlReady` 就绪/超时行为、**增量同步**（sync-check/sync-diff 只回报变更+新增文件，未变文件保持原样）、**代理注入**（index.html 注入 `<script type="module">` 代理标签、幂等、`stripAgent` 剥离后 hash 与原始内容对齐、落盘文件含 `data-conjure-id`、注入态零差异比对）
 - show-form 包自带测试 `lib/tools/show-form/test/show-form.sb.html`：复用包内 `runSelfTest()` 断言（纯模块环境跑插件层 + 预载组件环境跑组件层：控件渲染 / 提交事件 / 只读回填 / XSS 转义），另验 `visual` / `selfTest` 导出约定

@@ -10,6 +10,15 @@
 export const visual = new URL("./form-card.html", import.meta.url).href;
 // 内置测试模组地址（工具详情对话框「运行内置测试」按需加载并展示断言结果）
 export const selfTest = new URL("./self-test.js", import.meta.url).href;
+// 内置测试运行 iframe 等待注册完成的元素（组件 + 依赖的 senti 控件）
+export const testTags = [
+  "show-form-card",
+  "st-input",
+  "st-textarea",
+  "st-select",
+  "st-checkbox",
+  "st-radio",
+];
 
 export default {
   key: "showForm",
@@ -17,6 +26,7 @@ export default {
   tags: ["视觉"], // 面板列表标注：带视觉交互界面
   visual, // 配套视觉组件模块地址（宿主页面经 visualModules 预载）
   selfTest, // 内置测试模组地址（视觉工具详情对话框的「运行内置测试」）
+  testTags,
   description: [
     "向用户展示一张可交互的表单卡片，用户在界面上填写并点击「提交」后，你会收到用户交互产生的数据：",
     'JSON 对象 {"data": {<字段key>: <用户输入值>}}；用户取消/中断时返回 {"cancelled": true}。',
