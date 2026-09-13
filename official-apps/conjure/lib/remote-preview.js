@@ -154,6 +154,80 @@ const storeBridgeId = async (selfStore, id) => {
   } catch (_) {}
 };
 
+/* ---------- 预览窗口在线状态监听（按钮亮标） ---------- */
+
+// watchPreviewAgent 启动后注册的即时刷新句柄（预览完成后立刻点亮/熄灭）
+let refreshWatcher = null;
+
+/**
+ * 常驻监听预览窗口（应用页代理）是否在线：
+ * noneos 的 remote_user_connected / disconnected 事件驱动 + 5s 轮询兜底
+ *（页面隐藏时暂停轮询，回前台立即刷新）。多次调用幂等（单例）。
+ *
+ * @param {Object} opts
+ * @param {Function} opts.load
+ * @param {Object} opts.selfStore
+ * @param {(online: boolean) => void} opts.onChange 在线状态变化回调
+ */
+export function watchPreviewAgent({ load, selfStore, onChange }) {
+  if (watchPreviewAgent._started) return;
+  watchPreviewAgent._started = true;
+  (async () => {
+    try {
+      const userMod = await load("/nos/user/main.js");
+      const user = await userMod.getUser(USER_NAMESPACE);
+      ensureService(user); // 与 openRemotePreview 共用同一次服务注册
+
+      let lastOnline = null;
+      let targetId = null; // update() 时缓存的预览用户 id（事件回调里比对用）
+      const update = async () => {
+        targetId = (await readStoredBridgeId(selfStore)) || null;
+        if (!targetId) return false;
+        let online = false;
+        try {
+          online = await user.isRemoteUserOnline(targetId);
+        } catch (_) {}
+        // 短兜底（8s）：连接事件与在线缓存短暂抖动（如对端 reload 中）时
+        // 不立刻熄灭；对端真正关闭后最迟 8s 熄灭
+        if (!online && Date.now() - lastPeerSeenAt < 8_000) {
+          online = true;
+        }
+        if (online !== lastOnline) {
+          lastOnline = online;
+          try {
+            onChange(online);
+          } catch (_) {}
+        }
+        return online;
+      };
+      refreshWatcher = update;
+
+      try {
+        user.bind("remote_user_connected", () => update());
+        user.bind("remote_user_disconnected", (e) => {
+          // 精确匹配预览用户断开：清兜底时间戳，立即熄灭
+          const d = e && e.detail;
+          if (d && targetId && d.userId === targetId) {
+            lastPeerSeenAt = 0;
+          }
+          setTimeout(update, 500);
+        });
+      } catch (_) {}
+      await ensureServerConnected(user).catch(() => {});
+      await update();
+      // 轮询兜底：连接事件可能漏发（如代理窗口直接被杀）
+      setInterval(() => {
+        if (!document.hidden) update();
+      }, 5000);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) update();
+      });
+    } catch (err) {
+      console.warn("[remote-preview] 预览窗口状态监听失败：", err);
+    }
+  })();
+}
+
 /**
  * 打开隔离预览：优先直连已打开预览页里的常驻代理（增量更新 + 自动刷新），
  * 代理不在线则新标签走 bridge 引导页完整流程。
@@ -273,6 +347,7 @@ export async function openRemotePreview({
         );
         await storeBridgeId(selfStore, storedId);
         link.dispose();
+        refreshWatcher?.();
         status(`预览已更新：${done.url}`);
         return done;
       } catch (err) {
@@ -337,5 +412,7 @@ export async function openRemotePreview({
   );
   link.dispose();
   status(`隔离预览就绪：${done.url}`);
+  // 引导页跳转成应用页后代理才会上线，稍后由轮询/事件点亮按钮
+  setTimeout(() => refreshWatcher?.(), 3000);
   return done;
 }

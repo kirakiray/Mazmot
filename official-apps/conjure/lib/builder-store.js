@@ -87,9 +87,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     backups: [],
     backupBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
-    // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示
+    // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
+    // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
     previewBusy: false,
     previewStatus: "",
+    previewOnline: false,
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -2063,6 +2065,19 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         "NoneOS Core 未就绪：无法写入文件系统，请从 Mazmot 主系统打开本应用。",
       );
     }
+    // 预览窗口（应用页代理）在线状态监听：预览按钮亮标（失败静默，不影响主流程）
+    (async () => {
+      try {
+        const { watchPreviewAgent } = await load(
+          "/official-apps/conjure/lib/remote-preview.js",
+        );
+        watchPreviewAgent({
+          load,
+          selfStore,
+          onChange: (online) => set("previewOnline", online),
+        });
+      } catch (_) {}
+    })();
     // 恢复思考模式偏好
     if (selfStore) {
       try {

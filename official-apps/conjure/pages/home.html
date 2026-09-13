@@ -79,11 +79,14 @@
             <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
           </o-if>
           <st-icon-button
-            title="预览应用（隔离域运行）"
+            class:preview-live="previewOnline"
+            attr:title="previewOnline ? '预览窗口已打开 · 点击增量更新' : '预览应用（隔离域运行）'"
             attr:disabled="previewBusy"
             on:click="openAppRemote(currentAppName, currentAppMode)"
           >
-            <n-icon icon="mdi:play-circle-outline"></n-icon>
+            <n-icon
+              attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
+            ></n-icon>
           </st-icon-button>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
             <n-icon icon="mdi:backup-restore"></n-icon>
@@ -1195,6 +1198,7 @@
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
+          previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
