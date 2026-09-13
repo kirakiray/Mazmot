@@ -55,8 +55,8 @@
           const bridgeUser = await getUser("conjure-bridge");
           await Promise.all([ensureServer(conjureUser), ensureServer(bridgeUser)]);
 
-          // 接收端（bridge）：可靠链路 + receiver 写 VFS
-          const receiver = createPreviewReceiver({});
+          // 接收端（bridge）：可靠链路 + receiver 写 VFS（conjureId 与真实 bridge 页一致）
+          const receiver = createPreviewReceiver({ conjureId: conjureUser.userId });
           let bridgeRemote = null;
           const bridgeLink = createReliableLink({
             sendTo: (env) =>
@@ -89,15 +89,23 @@
             },
           });
 
-          // 发送端（conjure）：可靠链路 + 等 hello
+          // 发送端（conjure）：可靠链路 + 等 hello。
+          // 旁路记录实际发出的 index.html 分片文本——断言传输的是「原始字符串」，
+          // 发送端绝不注入（注入只发生在 30032 接收端落盘时，见 receiver.injectAgent）
+          const sentIndexChunks = [];
           let senderRemote = null;
           let senderLink = createReliableLink({
-            sendTo: (env) =>
-              senderRemote
+            sendTo: (env) => {
+              const p = env?.payload;
+              if (p && p.type === "file" && p.path === "index.html") {
+                sentIndexChunks.push(p.text);
+              }
+              return senderRemote
                 ? senderRemote.sendToService(SERVICE_ID_BRIDGE, env, {
                     waitForService: 3000,
                   })
-                : Promise.resolve([{ status: "error" }]),
+                : Promise.resolve([{ status: "error" }]);
+            },
           });
           let helloResolve;
           const helloPromise = new Promise((r) => {
@@ -162,6 +170,14 @@
           const resBig = await fetch(`/$conjure-apps/${appName}/client/big.js`);
           const resJson = await fetch(`/$conjure-apps/${appName}/client/app.json`);
           const bigRound = resBig.status === 200 ? await resBig.text() : "";
+          const htmlOnDisk = resHtml.status === 200 ? await resHtml.text() : "";
+          const sentIndexHtml = sentIndexChunks.join("");
+          const originalHtml = files[0].text;
+          // 发送端契约：线上传输的是原始 index.html（无注入标记）；
+          // 注入仅发生在 30032 落盘副本（磁盘版本含标签）
+          const sentClean = sentIndexHtml === originalHtml &&
+            !sentIndexHtml.includes("/bridge/inject.js");
+          const diskInjected = htmlOnDisk.includes("/bridge/inject.js");
 
           return {
             assert:
@@ -171,7 +187,9 @@
               resHtml.status === 200 &&
               resJson.status === 200 &&
               resBig.status === 200 &&
-              bigRound === bigText,
+              bigRound === bigText &&
+              sentClean &&
+              diskInjected,
             content: {
               url: done.url,
               bigBytes: bigText.length,
@@ -179,6 +197,8 @@
                 helloOk: hello.userId === bridgeUser.userId,
                 doneOk: done.appName === appName,
                 urlReady: ok,
+                sentCleanOriginal: sentClean,
+                diskInjected,
                 html200: resHtml.status === 200,
                 json200: resJson.status === 200,
                 big200: resBig.status === 200,
@@ -532,6 +552,71 @@
                 onDiskInjected: onDisk.includes("/bridge/inject.js"),
                 zeroDiffAfterStrip: check.reply && check.reply.missing.length === 0,
               },
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="存量迁移 - 未注入的 index.html 内容一致也强制重传补注入">
+      <template>
+        <script type="module">
+          import { buildManifest } from "../proto.js";
+          import { createPreviewReceiver } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+          const appName = `it-migrate-app-${Date.now() % 100000}`;
+          const html = "<html><head><title>m</title></head><body>x</body></html>";
+
+          // 模拟注入功能上线前的旧写入：conjureId 为空 → 原样落盘、无注入
+          const oldReceiver = createPreviewReceiver({ init });
+          await oldReceiver.handle({ type: "app-begin", appName, fileCount: 1 });
+          await oldReceiver.handle({
+            type: "file", appName, path: "index.html", seq: 0, total: 1, text: html,
+          });
+          await oldReceiver.handle({ type: "app-end", appName });
+          const before = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+
+          // 新接收端（带 conjureId）比对同一内容：内容一致但缺注入标记 → 必须报缺失
+          const newReceiver = createPreviewReceiver({ init, conjureId: "user-mig" });
+          const check = await newReceiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          // 重传该文件 → 落盘版本带注入标签
+          await newReceiver.handle({
+            type: "app-begin", appName, fileCount: 1, wipe: false,
+          });
+          await newReceiver.handle({
+            type: "file", appName, path: "index.html", seq: 0, total: 1, text: html,
+          });
+          const after = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+
+          // 已注入版本再比对：不再报缺失（迁移只发生一次）
+          const check2 = await newReceiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          return {
+            assert:
+              !before.includes("/bridge/inject.js") &&
+              check.reply.missing.length === 1 &&
+              check.reply.missing[0] === "index.html" &&
+              after.includes("/bridge/inject.js") &&
+              after.includes('data-conjure-id="user-mig"') &&
+              check2.reply.missing.length === 0,
+            content: {
+              beforeInjected: before.includes("/bridge/inject.js"),
+              migrateMissing: check.reply.missing,
+              afterInjected: after.includes("/bridge/inject.js"),
+              secondCheck: check2.reply.missing,
             },
           };
         </script>

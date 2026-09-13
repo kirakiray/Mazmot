@@ -116,9 +116,9 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 
 1. `openAppRemote` 经 `collectAppFiles` 收集应用全部文件——VFS 渠道 `listAppFiles` + `readAppFile`；本地渠道恢复句柄（`getLocalHandleFromRecord` + `ensureLocalPermission`）后复用 `/mz/app-runner.js` 的 `readAppFiles`（优先 client/ 子目录）。
 2. `remote-preview.js` 的 `openRemotePreview({ load, appName, files, selfStore, onStatus })`：`getUser("conjure-preview")` → **服务只注册一次**（模块级单例 + 共享 waiters，重复 `registerService` 会抛 already registered）→ 等信令服务器连接 → 按上述双路径选择对端。
-3. **增量同步**：发 `sync-check`（`buildManifest` 的「路径 + sha256」清单，每条约 80 字节），对端比对本域 VFS 后回 `sync-diff`（需重传的 path 列表）；conjure 只推送差异文件（部分命中 → `app-begin` 带 `wipe:false` 覆盖写入，全部命中/全新 → `wipe` 全量清目录重建），无差异时跳过推送直接等 done；比对超时（慢路径 30s）/异常回退全量。
+3. **增量同步**：发 `sync-check`（`buildManifest` 的「路径 + sha256」清单，每条约 80 字节），对端比对本域 VFS 后回 `sync-diff`（需重传的 path 列表）；conjure 只推送差异文件（部分命中 → `app-begin` 带 `wipe:false` 覆盖写入，全部命中/全新 → `wipe` 全量清目录重建），无差异时跳过推送直接等 done；比对超时（慢路径 30s）/异常回退全量。比对规则（receiver）：注入的代理脚本先 `stripAgent` 剥离再比对（与发送端原始内容对齐）；**存量迁移**——本地 `index.html` 内容一致但缺注入标记（注入功能上线前写入的）时强制列入重传，一次性补注入，此后走正常增量。
 4. bridge 引导页（`bridge/bridge.html`，Core 引导入口、资源走 jsdelivr 完整 URL）：nos-version 自装 Core → `getUser("conjure-preview")` → 注册 `conjure-bridge` 服务 → 连接 `?u=` 指定的 conjure 用户 → hello → 收 `sync-check` 经 `createPreviewReceiver`（消息串行化处理）比对并回 `sync-diff`，已最新则直接进入启动流程；否则按 wipe 语义写入 `conjure-apps/<name>/client/`（路径经 `validateRelPath` 复检，index.html 注入代理脚本）→ app-end 后回 done；跳转前经 `waitUrlReady` 轮询 URL 可访问（首装 Core 后 SW 激活存在窗口期，立即跳转会 404）再跳 `/$conjure-apps/<name>/client/index.html`。
-5. 应用页代理（`bridge/inject.js`）：页面加载即注册 `conjure-agent`、连接 conjure 上报 `agent-online`；收到更新走同一 `createPreviewReceiver`（带 `conjureId`，重写 index.html 时保持注入），app-end 后回 done 并 reload；代理启动失败不影响应用本身运行。
+5. 应用页代理（`bridge/inject.js`）：页面加载即注册 `conjure-agent`、连接 conjure 上报 `agent-online`；收到更新走同一 `createPreviewReceiver`（带 `conjureId`，重写 index.html 时保持注入），app-end 后回 done 并 reload；代理启动失败不影响应用本身运行。页面内常驻**可拖拽的「🛰 隔离预览」状态气泡**（挂 `documentElement`——应用重写 body 不受影响，MutationObserver 被移除时自动回挂；`position`/`z-index`/`left`/`top` 等关键样式内联 `!important` 压制应用 CSS；Pointer Events 拖拽 + 视口钳制、位置记忆 sessionStorage）：状态点 idle 灰 / busy 黄（接收更新 n/m，联动 receiver onProgress）/ ok 绿（已连接妙造 / 已是最新 / 刷新中）/ offline 红（连接失败或未连妙造）。
 
 **状态反馈**：state `previewBusy`（防重入，按钮禁用）/ `previewStatus`（过程提示，顶栏预览按钮左侧小字，经通用 patch 投影到页面）；失败写 `keyError`。
 

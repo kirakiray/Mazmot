@@ -82,10 +82,15 @@ export function createPreviewReceiver({
           if (file && file.kind === "file") text = await file.text();
         } catch (_) {}
         // 注入的代理脚本不参与内容比对（与发送端原始内容对齐）
-        if (
-          text == null ||
-          (await sha256Hex(stripAgent(text))) !== item.hash
+        if (text == null || (await sha256Hex(stripAgent(text))) !== item.hash) {
+          missing.push(item.path);
+        } else if (
+          item.path === "index.html" &&
+          conjureId &&
+          !INJECT_RE.test(text)
         ) {
+          // 存量 index.html 写于注入功能上线前：内容一致但缺代理脚本，
+          // 强制重传一次以补注入（此后走正常增量路径）
           missing.push(item.path);
         }
       }

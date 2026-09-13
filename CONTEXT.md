@@ -116,16 +116,20 @@ Mazmot/
 │   │                         #   index.html 注入常驻代理脚本）→ 跳转 /$conjure-apps/... 运行（首启后引导页角色结束，后续更新走代理）
 │   ├── inject.js             # 应用页常驻代理（ES module，由 receiver 注入到 index.html，data-conjure-id 随标签下发）：
 │   │                         #   注册 conjure-agent 服务，页面加载即 connectUser(conjure) 上报 agent-online；
-│   │                         #   后续预览直连本代理增量更新文件 → app-end 后 location.reload() 无感刷新
+│   │                         #   后续预览直连本代理增量更新文件 → app-end 后 location.reload() 无感刷新；
+│   │                         #   同时注入可拖拽的「🛰 隔离预览」状态气泡：挂 documentElement（应用重写 body 不受影响）+
+│   │                         #   MutationObserver 被移除自动回挂，position/z-index/left/top 等关键样式内联 !important
+│   │                         #   压制应用 CSS（Pointer Events 拖拽 + 视口钳制，位置记忆 sessionStorage；
+│   │                         #   状态点联动：idle 灰 / busy 黄（接收 n/m）/ ok 绿 / 离线红）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff 与 agent-online）/ sanitizeAppName+validateRelPath 守卫 / chunkText 字节分片 /
 │   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列）/
 │   │                         #   createFileAssembler（分片拼装，迟到重复分片忽略）
 │   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：sync-check 本地 hash 比对（剥离注入标签后
-│   │                         #   比对）回报差异 / app-begin（wipe 缺省全量清目录重建，增量只覆盖差异文件）→ file 写
-│   │                         #   conjure-apps/<name>/client/（index.html 且提供 conjureId 时经 injectAgent 注入代理脚本，幂等）→
-│   │                         #   app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可访问，防 Core SW 首装激活窗口期
-│   │                         #   漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
+│   │                         #   比对；存量 index.html 缺注入标记时强制重传一次性迁移）/ app-begin（wipe 缺省全量清目录重建，
+│   │                         #   增量只覆盖差异文件）→ file 写 conjure-apps/<name>/client/（index.html 且提供 conjureId 时经
+│   │                         #   injectAgent 注入代理脚本，幂等）→ app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可
+│   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
 │   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ preview-flow.sb.html（双真实 LocalUser 全链路集成 6 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件）
