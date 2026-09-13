@@ -162,8 +162,9 @@ Mazmot/
 │   │                         #   增量只覆盖差异文件）→ file 写 conjure-apps/<name>/client/（index.html 且提供 conjureId 时经
 │   │                         #   injectAgent 注入代理脚本，幂等）→ app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可
 │   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
-│   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ debug-runtime.sb.html（调试运行时与 dbg 结果协议 14 用例：
-                               #   compileEval 自动 return / 深度选择器 / 序列化 / DOM 快照 / 控制台格式化 / 指令分发 / 分片聚合）+
+│   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ debug-runtime.sb.html（调试运行时与 dbg 结果协议 17 用例：
+                               #   compileEval 自动 return / 深度选择器 / 序列化（Error 带消息前缀，Firefox/WebKit stack 不含消息）/ DOM 快照 /
+                               #   控制台格式化 / 指令分发（shot 用 canvas 合成捕获流伪造 getDisplayMedia，不弹原生授权框））+
                                #   host-guard.sb.html（域名白名单：预览子域/本地放行，主站 apex 与伪装域名拒绝）+
                                #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /

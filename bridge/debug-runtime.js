@@ -128,6 +128,15 @@ export function serializeValue(v) {
     : out;
 }
 
+// Error → 带消息前缀的可读文本：Firefox/WebKit 的 stack 不含「name: message」
+// 前缀（Chrome 自带），统一补上并防重复——否则这些浏览器里错误消息会被丢掉
+const formatError = (err) => {
+  const head = `${err.name}: ${err.message}`;
+  const stack = typeof err.stack === "string" ? err.stack.trim() : "";
+  if (!stack) return head;
+  return stack.startsWith(head) ? stack : head + "\n" + stack;
+};
+
 function previewInner(v, depth, seen) {
   try {
     if (v === undefined) return "undefined";
@@ -144,8 +153,7 @@ function previewInner(v, depth, seen) {
       const src = Function.prototype.toString.call(v).split("\n")[0].slice(0, 200);
       return "ƒ " + (v.name || "(anonymous)") + " — " + src;
     }
-    if (v instanceof Error)
-      return v.stack ? String(v.stack) : v.name + ": " + v.message;
+    if (v instanceof Error) return formatError(v);
     if (v instanceof Date) return v.toISOString();
     if (v instanceof RegExp) return String(v);
     if (typeof Node !== "undefined" && v instanceof Node) {
@@ -721,6 +729,9 @@ export async function runDebugCommand({ cmd, args = {}, capture, info = {} }) {
         throw new Error(`未知调试指令: ${cmd}`);
     }
   } catch (err) {
-    return { ok: false, error: (err && err.stack) || String(err) };
+    return {
+      ok: false,
+      error: err instanceof Error ? formatError(err) : String(err),
+    };
   }
 }

@@ -306,23 +306,56 @@
       </template>
     </sb-test>
 
-    <sb-test name="runDebugCommand - shot 成功或可读失败均可接受">
+    <sb-test name="runDebugCommand - shot 经合成捕获流出图（不弹授权框）">
       <template>
         <script type="module">
           import { runDebugCommand } from "../debug-runtime.js";
-          const r = await runDebugCommand({ cmd: "shot", args: { maxSide: 320, quality: 0.5 }, capture: { entries: [] } });
-          // 真实浏览器首次调用需用户授权（拒绝 → 可读失败并引导改用 dom 指令）；
-          // 自动化环境（Playwright Chromium）可能直接授权成功 → 返回 base64 + meta.image
-          const acceptable =
-            (r.ok === true && typeof r.result === "string" && r.result.length > 100 && r.meta?.image?.mime === "image/jpeg") ||
-            (r.ok === false && /屏幕|授权|截图/.test(r.error || ""));
+          // 真实 getDisplayMedia 会弹原生授权框（不点会挂住测试，Firefox/WebKit
+          // 不会自动授权），用 canvas 合成流伪造——整条截图管线（video 取帧 →
+          // canvas 绘制 → JPEG base64 → 停轨道）照常执行且零交互
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            return { assert: true, content: { skipped: "无 getDisplayMedia，跳过" } };
+          }
+          const cvs = document.createElement("canvas");
+          if (typeof cvs.captureStream !== "function") {
+            return { assert: true, content: { skipped: "无 canvas.captureStream，跳过" } };
+          }
+          cvs.width = 320;
+          cvs.height = 160;
+          const ctx = cvs.getContext("2d");
+          ctx.fillStyle = "#4682ee";
+          ctx.fillRect(0, 0, 320, 160);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "20px sans-serif";
+          ctx.fillText("shot-test", 12, 40);
+          const stream = cvs.captureStream(30);
+          const track = stream.getVideoTracks()[0];
+          const orig = navigator.mediaDevices.getDisplayMedia;
+          let r;
+          try {
+            navigator.mediaDevices.getDisplayMedia = async () => stream;
+            r = await runDebugCommand({
+              cmd: "shot",
+              args: { maxSide: 320, quality: 0.5 },
+              capture: { entries: [] },
+            });
+          } finally {
+            navigator.mediaDevices.getDisplayMedia = orig;
+          }
           return {
-            assert: acceptable,
+            assert:
+              r.ok === true &&
+              typeof r.result === "string" &&
+              r.result.length > 100 &&
+              r.meta?.image?.mime === "image/jpeg" &&
+              r.meta?.image?.w > 0 &&
+              track.readyState === "ended", // 截完轨道已停，无残留共享状态
             content: {
               ok: r.ok,
-              errorHead: r.ok ? null : String(r.error || "").split("\n")[0],
-              meta: r.meta || null,
               resultLen: r.ok ? r.result.length : 0,
+              image: r.meta?.image || null,
+              trackState: track.readyState,
+              errorHead: r.ok ? null : String(r.error || "").split("\n")[0],
             },
           };
         </script>
