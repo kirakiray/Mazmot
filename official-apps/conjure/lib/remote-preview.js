@@ -115,6 +115,8 @@ function ensureService(user) {
             waitForService: 3000,
           })
         : Promise.resolve([{ status: "error" }]),
+    // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
+    onOffline: () => ensureServerConnected(user),
   });
   user.registerService(SERVICE_ID_CONJURE, {
     onMessage: (data, ctx) => {
@@ -386,6 +388,8 @@ export async function openRemotePreview({
       remote
         ? remote.sendToService(peerService, env, { waitForService: 3000 })
         : Promise.resolve([{ status: "error" }]),
+    // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
+    onOffline: () => ensureServerConnected(user),
   });
   activeLink = link;
   resetWaiters();
@@ -503,6 +507,7 @@ export async function openRemotePreview({
             remote
               ? remote.sendToService(peerService, env, { waitForService: 3000 })
               : Promise.resolve([{ status: "error" }]),
+          onOffline: () => ensureServerConnected(user),
         });
         activeLink = link;
         resetWaiters();

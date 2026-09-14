@@ -256,6 +256,8 @@
                   this._remote.sendToService(SERVICE_ID_CONJURE, env, {
                     waitForService: 3000,
                   }),
+                // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
+                onOffline: () => this.ensureServerConnected(),
               });
               this._link = link;
 

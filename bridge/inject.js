@@ -793,6 +793,8 @@ async function main() {
               waitForService: 3000,
             })
           : Promise.resolve([{ status: "error" }]),
+      // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
+      onOffline: () => ensureServerConnected(user),
     });
 
     // 接收端：复用 receiver（含 index.html 代理脚本注入与增量比对），

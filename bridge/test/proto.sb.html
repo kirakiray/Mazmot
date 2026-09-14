@@ -30,12 +30,12 @@
       <template>
         <script type="module">
           import { chunkText, byteSize } from "../proto.js";
-          // 混合 ASCII / 中文 / emoji，构造超过单片预算（64KB）的文本
+          // 混合 ASCII / 中文 / emoji，构造超过单片预算（32KB）的文本
           const unit = "a字🎉";
           const text = unit.repeat(40000);
           const parts = chunkText(text);
           const rejoined = parts.join("");
-          const eachWithinBudget = parts.every((p) => byteSize(p) <= 64 * 1024);
+          const eachWithinBudget = parts.every((p) => byteSize(p) <= 32 * 1024);
           return {
             assert:
               parts.length > 1 && eachWithinBudget && rejoined === text,

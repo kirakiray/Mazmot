@@ -81,10 +81,11 @@ export const MAX_PAYLOAD_BYTES = 128 * 1024;
 
 // 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
 // 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）。
-// 预算取 64KB：E2EE 加密 + JSON 序列化会把信封实际体积放大约四五成，
-// 64KB 分片放大后仍远离服务端 256KB 硬限；且大帧在 RTC 缓冲紧张时
-// （Firefox 等）更易积压，宁可多分几片
-const CHUNK_BYTE_BUDGET = 64 * 1024;
+// 预算取 32KB：CI 等 UDP 受限环境只能走信令服务器中继（via:"server"），
+// 实测大分片（64KB 级、E2EE+JSON 放大后更大）过中继曾触发连接掉线
+//（sendToService 返回 offline 且重试窗口内不自愈）；32KB 在任何放大系数
+// 下都远离服务端 256KB 硬限，宁可多分几片换稳定
+const CHUNK_BYTE_BUDGET = 32 * 1024;
 
 /** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
 export function byteSize(text) {
@@ -184,11 +185,20 @@ const SEEN_TTL = 5 * 60 * 1000;
  * @param {Object} opts
  * @param {(envelope: Object) => Promise<any[]>} opts.sendTo
  *        底层发送函数（通常包装 remoteUser.sendToService(appId, env, { sessionId })）
+ * @param {() => Promise} [opts.onOffline]
+ *        发送结果为 offline / no_receiver / error 时，重试等待前先回调——
+ *        消费方借此主动重连信令服务器。实测（CI 中继通道）连接掉线后
+ *        noneos 未必及时自愈，干等重试只会耗尽次数；钩子抛错不影响重试节奏
  * @param {number} [opts.ackTimeout=3000]
  *        单次 ACK 等待基准（小消息实际值）；大载荷自动按字节放宽（每 16KB +1s）
  * @param {number} [opts.maxRetry=3]
  */
-export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) {
+export function createReliableLink({
+  sendTo,
+  onOffline = null,
+  ackTimeout = 3000,
+  maxRetry = 3,
+}) {
   const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries }
   const seenIds = new Map(); // msgId -> 首次接收时间戳
   const sendQueues = new Map(); // 队列 key -> 尾部 Promise
@@ -237,15 +247,20 @@ export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) 
           );
           return;
         }
+        let delivered = false;
         try {
           // 重发复用同一 msgId，接收方据此去重
           const results = await sendTo({ msgId, kind: "data", payload });
-          if (!results || !results.some((r) => r && r.status === "ok")) {
-            // 连通道都没进去（no_receiver / offline / error），直接进入下一轮重试
-            entry.timer = setTimeout(run, entry.waitMs);
-            return;
+          delivered = !!(results && results.some((r) => r && r.status === "ok"));
+        } catch (_) {}
+        if (!delivered) {
+          // 连通道都没进去（no_receiver / offline / error）：先让消费方
+          // 主动重连（掉线后干等重试曾整窗耗尽），再进入下一轮
+          if (onOffline) {
+            try {
+              await onOffline();
+            } catch (_) {}
           }
-        } catch (_) {
           entry.timer = setTimeout(run, entry.waitMs);
           return;
         }
