@@ -25,6 +25,7 @@ import {
   USER_NAMESPACE,
   buildDbgResultMessages,
   createReliableLink,
+  enableServerAutoReconnect,
 } from "/bridge/proto.js";
 import { createPreviewReceiver, waitUrlReady } from "/bridge/receiver.js";
 import {
@@ -785,6 +786,7 @@ async function main() {
   }
   try {
     const user = await getUser(USER_NAMESPACE);
+    enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
     let remote = null;
     const link = createReliableLink({
       sendTo: (env) =>

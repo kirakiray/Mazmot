@@ -138,6 +138,7 @@
         SERVICE_ID_BRIDGE,
         USER_NAMESPACE,
         createReliableLink,
+        enableServerAutoReconnect,
       } = proto;
       const receiverMod = await load("./receiver.js");
       const { createPreviewReceiver, waitUrlReady } = receiverMod;
@@ -242,6 +243,7 @@
               this.setProgress(CORE_END + 5, "创建本地用户...");
               const userMod = await load("/nos/user/main.js");
               this._user = await userMod.getUser(USER_NAMESPACE);
+              enableServerAutoReconnect(this._user); // 掉线自动重连（默认关闭）
               this.setupReceiver();
 
               this.setProgress(CORE_END + 10, "连接信令服务器...");

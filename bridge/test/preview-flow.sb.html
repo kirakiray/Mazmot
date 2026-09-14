@@ -26,6 +26,7 @@
             SERVICE_ID_BRIDGE,
             createReliableLink,
             buildFileMessages,
+            enableServerAutoReconnect,
           } from "../proto.js";
           import { createPreviewReceiver, waitUrlReady } from "../receiver.js";
           const { getUser } = await import("/nos/user/main.js");
@@ -53,6 +54,9 @@
           // 两侧用户（不同 namespace → 不同身份，模拟跨域两端）
           const conjureUser = await getUser("conjure-preview");
           const bridgeUser = await getUser("conjure-bridge");
+          // 掉线自动重连（默认关闭）：CI 中继长连接被杀后无此开关则永远 offline
+          enableServerAutoReconnect(conjureUser);
+          enableServerAutoReconnect(bridgeUser);
           await Promise.all([ensureServer(conjureUser), ensureServer(bridgeUser)]);
 
           // 接收端（bridge）：可靠链路 + receiver 写 VFS（conjureId 与真实 bridge 页一致）
@@ -359,6 +363,7 @@
             createReliableLink,
             buildFileMessages,
             buildManifest,
+            enableServerAutoReconnect,
           } from "../proto.js";
           import { createPreviewReceiver } from "../receiver.js";
           // 本用例独立的服务 ID，避免与用例 1 在同一页面重复注册同名服务
@@ -387,6 +392,8 @@
 
           const sender = await getUser("conjure-preview");
           const receiverUser = await getUser("conjure-bridge");
+          enableServerAutoReconnect(sender);
+          enableServerAutoReconnect(receiverUser);
           await Promise.all([ensureServer(sender), ensureServer(receiverUser)]);
 
           const receiver = createPreviewReceiver({});

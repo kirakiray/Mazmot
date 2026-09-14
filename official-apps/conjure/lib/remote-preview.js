@@ -30,6 +30,7 @@ import {
   buildManifest,
   createDbgCollector,
   createReliableLink,
+  enableServerAutoReconnect,
 } from "/bridge/proto.js";
 
 // 隔离域 origin：按运行环境自动选择——
@@ -287,6 +288,7 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
     try {
       const userMod = await load("/nos/user/main.js");
       const user = await userMod.getUser(USER_NAMESPACE);
+      enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
       ensureService(user); // 与 openRemotePreview 共用同一次服务注册
 
       let lastOnline = null;
@@ -374,6 +376,7 @@ export async function openRemotePreview({
   status("创建本地用户...");
   const userMod = await load("/nos/user/main.js");
   const user = await userMod.getUser(USER_NAMESPACE);
+  enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
   ensureService(user);
 
   status("连接信令服务器...");
@@ -590,6 +593,7 @@ export async function debugPreviewCommand({
 }) {
   const userMod = await load("/nos/user/main.js");
   const user = await userMod.getUser(USER_NAMESPACE);
+  enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
   ensureService(user);
 
   const storedId = await readStoredBridgeId(selfStore);

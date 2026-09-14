@@ -179,6 +179,23 @@ export async function buildManifest(files) {
 const SEEN_TTL = 5 * 60 * 1000;
 
 /**
+ * 开启 noneos 服务器自动重连。**默认是关闭的**（setAutoReconnect 默认
+ * enabled:false）——连接掉线后用户会一直停在 offline：CI 等环境下中继
+ * 长连接被杀是常态，未开启时对端重试全部打在 offline 上直至耗尽（实测
+ * WebKit CI 的 ACK timeout 即此因）。防御式可选链兼容旧版 Core，
+ * 重复调用无副作用。各端 getUser 之后应立即调用。
+ */
+export function enableServerAutoReconnect(user) {
+  try {
+    user?.server?.setAutoReconnect?.({
+      enabled: true,
+      baseDelay: 1000, // 掉线后约 1s 即开始恢复，指数退避至 15s
+      maxDelay: 15000,
+    });
+  } catch (_) {}
+}
+
+/**
  * 可靠链路：一端一实例，同时承担发送（串行队列 + ACK 等待 + 超时重发）
  * 与接收（回 ACK + 按 msgId 去重）。
  *
