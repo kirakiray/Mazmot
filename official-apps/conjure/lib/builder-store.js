@@ -297,7 +297,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (key && state.activeModelId && providerModels.includes(state.activeModelId)) {
       model = state.activeModelId;
     } else if (key?.provider === "deepseek") {
-      model = "deepseek-v4-flash";
+      model = "deepseek-flash";
     } else {
       model = undefined;
     }

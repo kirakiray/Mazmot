@@ -41,7 +41,7 @@ const response = await assistant.chat({
   ],
   thinking: false,
   stream: false,
-  model: "deepseek-v4-flash",
+  model: "deepseek-flash",
   onStream: (data) => { /* ... */ },
   signal: controller.signal, // AbortSignal
 });
@@ -99,7 +99,7 @@ import {
 
 | 提供商 | 模型 | 思考模式 | 流式输出 |
 |--------|------|----------|----------|
-| DeepSeek | `deepseek-v4-flash`, `deepseek-v4-pro` | ✅ | ✅ |
+| DeepSeek | `deepseek-flash`, `deepseek-v4-flash`, `deepseek-v4-pro` | ✅ | ✅ |
 | Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.6`, `kimi-k2.5` | ✅ | ✅ |
 | GLM | `glm-5.3`, `glm-5.3-flash`, `glm-4.7` 等（按量付费 Key） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
@@ -194,7 +194,7 @@ const unsub = onApiKeysChange((keys) => renderKeyList(keys));
 // 4. 对话
 const assistant = getAssistant();
 const result = await assistant.chat({
-  model: "deepseek-v4-flash",
+  model: "deepseek-flash",
   messages: [{ role: "user", content: "你好" }],
 });
 // 5. 清理

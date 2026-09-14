@@ -17,7 +17,7 @@ export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 // 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
 // 模型可选项依赖当前选中的 API Key 所属供应商
 export const MODEL_OPTIONS = {
-  deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  deepseek: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"],
   glm: ["glm-5.3-flash", "glm-5.3"],
   "glm-coding": ["glm-5.3-flash", "glm-5.3"],
   kimi: ["kimi-k3", "kimi-k2.7-code"],
