@@ -81,10 +81,12 @@ export const MAX_PAYLOAD_BYTES = 128 * 1024;
 
 // 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
 // 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）。
-// 预算取 32KB：CI 等 UDP 受限环境只能走信令服务器中继（via:"server"），
-// 实测大分片（64KB 级、E2EE+JSON 放大后更大）过中继曾触发连接掉线
-//（sendToService 返回 offline 且重试窗口内不自愈）；32KB 在任何放大系数
-// 下都远离服务端 256KB 硬限，宁可多分几片换稳定
+// 预算取 32KB：历史上大分片整窗丢失有两个已修复的独立根因——
+// ① 分片劈开代理对产生孤立代理项（TextEncoder/E2EE 不可逆损坏，见
+// chunkText 内注释）；② noneos-handshake 服务器日志截断 &text[..500]
+// 按字节切片在多字节字符上 panic，连接静默死亡（已在上游修复并以修复版
+// 重建 test-bin 二进制）。32KB（≈45KB 帧）对公网中继的不确定性再留
+// 一层余量，代价只是多几片串行 ACK
 const CHUNK_BYTE_BUDGET = 32 * 1024;
 
 /** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
@@ -111,13 +113,17 @@ export function chunkText(text) {
   for (let i = 0; i < text.length; i++) {
     const c = text.codePointAt(i);
     const size = c <= 0x7f ? 1 : c <= 0x7ff ? 2 : c <= 0xffff ? 3 : 4;
-    if (c > 0xffff) i++;
+    // 注意：跳过低位代理的 i++ 必须放在切分判断**之后**——否则切点会落在
+    // 代理对中间，产出含孤立代理项的畸形分片：TextEncoder（E2EE 加密必经）
+    // 会把孤立代理替换成 U+FFFD（不可逆损坏），WebKit 的传输链直接丢弃该
+    // 消息且逐次重发同样丢失（CI 稳定挂在「某个固定分片」的真正根因）
     if (bytes + size > CHUNK_BYTE_BUDGET && i > start) {
       chunks.push(text.slice(start, i));
       start = i;
       bytes = 0;
     }
     bytes += size;
+    if (c > 0xffff) i++;
   }
   if (start < text.length) chunks.push(text.slice(start));
   return chunks;
@@ -196,27 +202,112 @@ export function enableServerAutoReconnect(user) {
 }
 
 /**
+ * 确保本地用户连上信令服务器（connectUser 的前置条件），并**收敛到排序
+ * 首位的同一台服务器**。双端（同浏览器里的 conjure 与 bridge）持有同一份
+ * server 列表，跑同一个确定性算法 → 落在同一台中继，路径确定、诊断简单
+ *（CI 里即 test-bin 的本地服务器）。
+ *
+ * 必须对非首选 URL「先发制人」disconnect（而非只断已连上的）：getUser
+ * 会在后台 connectAll() 列表里的全部服务器且不阻塞 ready，公网中继握手
+ * 常晚于本函数收敛才落地，把会话重新挂上多台——多台会话意味着消息路由
+ * 可能跨服务器转发，路径不确定。
+ *
+ * hard = true 时把首选服务器的连接也断开重建：发送命令超 8s 无响应
+ * （send-capped）通常意味着连接已成僵尸（对端/中继早已断开但本地未感知），
+ * 而 connect() 对同 URL 会复用旧连接，无法自愈，必须先 disconnect。
+ *
+ * @returns {Promise<boolean>} 是否已连上（失败由调用方决定如何提示）
+ */
+export async function ensureServerConnected(
+  user,
+  { timeout = 6000, hard = false } = {},
+) {
+  if (!user || !user.server) return false;
+  const urls = () =>
+    Array.isArray(user.server.connectedUrls) ? user.server.connectedUrls : [];
+  let servers = [];
+  try {
+    servers = (await user.server.getServers()) || [];
+  } catch (_) {
+    return urls().length > 0;
+  }
+  const sorted = [...servers].sort();
+  const preferred = sorted[0];
+  if (preferred == null) return urls().length > 0;
+  // 清剿全部非首选（含仍在握手中的）；hard 时首选也重建
+  for (const url of hard ? sorted : sorted.slice(1)) {
+    try {
+      user.server.disconnect(url);
+    } catch (_) {}
+  }
+  if (hard || !urls().includes(preferred)) {
+    try {
+      await user.server.connect(preferred); // 已连时幂等复用，无副作用
+    } catch (_) {}
+  }
+  if (urls().length === 0 && sorted.length > 1) {
+    // 首选不可用：退回并行连其余（主动 connect 会清除主动断开标记），
+    // 可用性优先于同区域
+    await Promise.all(
+      sorted.slice(1).map((url) => user.server.connect(url).catch(() => {})),
+    );
+  }
+  const deadline = Date.now() + timeout;
+  while (urls().length === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return urls().length > 0;
+}
+
+/**
  * 可靠链路：一端一实例，同时承担发送（串行队列 + ACK 等待 + 超时重发）
  * 与接收（回 ACK + 按 msgId 去重）。
  *
  * @param {Object} opts
  * @param {(envelope: Object) => Promise<any[]>} opts.sendTo
  *        底层发送函数（通常包装 remoteUser.sendToService(appId, env, { sessionId })）
- * @param {() => Promise} [opts.onOffline]
- *        发送结果为 offline / no_receiver / error 时，重试等待前先回调——
- *        消费方借此主动重连信令服务器。实测（CI 中继通道）连接掉线后
- *        noneos 未必及时自愈，干等重试只会耗尽次数；钩子抛错不影响重试节奏
+ * @param {(info: { reason: "capped" | "not-delivered" }) => Promise} [opts.onOffline]
+ *        发送未达（offline / no_receiver / error / 命令封顶）时，重试等待前
+ *        先回调——消费方借此主动重连信令服务器。实测（CI 中继通道）连接
+ *        掉线后 noneos 未必及时自愈，干等重试只会耗尽次数；钩子抛错不影响
+ *        重试节奏。reason="capped" 表示命令超 sendCapMs 无响应（连接疑似
+ *        僵尸），消费方应硬重置（disconnect + connect）；"not-delivered"
+ *        表示命令有回执但未送达，软检查即可
  * @param {number} [opts.ackTimeout=3000]
  *        单次 ACK 等待基准（小消息实际值）；大载荷自动按字节放宽（每 16KB +1s）
  * @param {number} [opts.maxRetry=3]
+ * @param {number} [opts.sendCapMs=8000]
+ *        单次 sendTo 调用时长上限：noneos 内部命令超时可长达 45s（"Command
+ *        timed out (type: relay_response)"），不封顶会把重试节奏拖垮——一次
+ *        卡 45s 等于整个消息的重试窗口作废。超时按未送达处理（进入 onOffline
+ *        + 重试），迟到的真实结果被丢弃
+ * @param {(evt: Object) => void} [opts.onEvent]
+ *        链路事件日志钩子（追踪投递问题用）：attempt / sent / send-capped /
+ *        retry / reconnect / ack / duplicate / rejected / disposed 等 phase。
+ *        默认打到 console.debug；消费方可换成自定义收集器（如测试的 diag）
  */
 export function createReliableLink({
   sendTo,
   onOffline = null,
   ackTimeout = 3000,
   maxRetry = 3,
+  sendCapMs = 8000,
+  onEvent = null,
 }) {
-  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries }
+  const emit = (evt) => {
+    try {
+      const fn =
+        onEvent ||
+        ((e) => {
+          try {
+            console.debug("[bridge-link]", e.phase, e);
+          } catch (_) {}
+        });
+      fn(evt);
+    } catch (_) {}
+  };
+
+  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries, baseMaxTries, bytes }
   const seenIds = new Map(); // msgId -> 首次接收时间戳
   const sendQueues = new Map(); // 队列 key -> 尾部 Promise
   let msgSeq = 0;
@@ -225,24 +316,12 @@ export function createReliableLink({
   // 大分片的一次往返可能超过固定 3s，若不放宽，重试反而重复推全量
   // 载荷加剧拥塞并耗尽次数（CI 的 WebKit 集成测试曾因此报 ACK timeout）。
   // 每 16KB 加 1s，小消息维持原 ackTimeout 不变
-  const waitMsFor = (payload) => {
-    let bytes = 0;
-    try {
-      bytes = byteSize(JSON.stringify(payload));
-    } catch (_) {}
-    return Math.max(ackTimeout, Math.ceil(bytes / (16 * 1024)) * 1000);
-  };
+  const waitMsFor = (bytes) => Math.max(ackTimeout, Math.ceil(bytes / (16 * 1024)) * 1000);
 
   // 可用尝试次数：大载荷按字节追加（noneos 文档明确「通道切换（RTC↔中继）
   // 期间发出的消息可能丢失」——丢失与重发恢复都是常态，大分片需要更长的
   // 总重试窗口等通道回稳；每 32KB +1 次，上限 +5）
-  const maxTriesFor = (payload) => {
-    let bytes = 0;
-    try {
-      bytes = byteSize(JSON.stringify(payload));
-    } catch (_) {}
-    return maxRetry + Math.min(5, Math.floor(bytes / (32 * 1024)));
-  };
+  const maxTriesFor = (bytes) => maxRetry + Math.min(5, Math.floor(bytes / (32 * 1024)));
 
   const pruneSeen = () => {
     const deadline = Date.now() - SEEN_TTL;
@@ -257,28 +336,71 @@ export function createReliableLink({
         entry.tries++;
         if (entry.tries > entry.maxTries) {
           pendingAcks.delete(msgId);
-          entry.reject(
-            new Error(
-              `ACK timeout after ${entry.maxTries - 1} retries: ${msgId}`,
-            ),
+          const err = new Error(
+            `ACK timeout after ${entry.maxTries - 1} retries: ${msgId}`,
           );
+          emit({ phase: "rejected", msgId, tries: entry.tries - 1, bytes: entry.bytes });
+          entry.reject(err);
           return;
         }
+        emit({
+          phase: "attempt",
+          msgId,
+          tries: entry.tries,
+          maxTries: entry.maxTries,
+          bytes: entry.bytes,
+        });
         let delivered = false;
+        let capped = false;
         try {
-          // 重发复用同一 msgId，接收方据此去重
-          const results = await sendTo({ msgId, kind: "data", payload });
-          delivered = !!(results && results.some((r) => r && r.status === "ok"));
-        } catch (_) {}
+          // 重发复用同一 msgId，接收方据此去重。
+          // 封顶 race：不让 noneos 内部 45s 命令超时拖垮重试节奏；
+          // 输家的 rejection 一律吞掉防 unhandled
+          const t0 = Date.now();
+          const sending = Promise.resolve().then(() => sendTo({ msgId, kind: "data", payload }));
+          sending.catch(() => {});
+          const capTimer = new Promise((res) => setTimeout(() => res(null), sendCapMs));
+          const results = await Promise.race([sending, capTimer]);
+          if (results === null || results === undefined) {
+            capped = true;
+            emit({ phase: "send-capped", msgId, tries: entry.tries, capMs: sendCapMs });
+          } else {
+            delivered = !!(results.some && results.some((r) => r && r.status === "ok"));
+            emit({
+              phase: "sent",
+              msgId,
+              tries: entry.tries,
+              ms: Date.now() - t0,
+              statuses: JSON.stringify(results).slice(0, 400),
+              delivered,
+            });
+          }
+        } catch (err) {
+          emit({ phase: "send-throw", msgId, tries: entry.tries, err: String(err && err.message || err) });
+        }
         if (!delivered) {
-          // 连通道都没进去（no_receiver / offline / error）：先让消费方
+          // 连通道都没进去（no_receiver / offline / error / 封顶）：先让消费方
           // 主动重连（掉线后干等重试曾整窗耗尽），再进入下一轮
           if (onOffline) {
+            const reason = capped ? "capped" : "not-delivered";
+            emit({ phase: "reconnect", msgId, tries: entry.tries, reason });
             try {
-              await onOffline();
-            } catch (_) {}
+              await onOffline({ reason });
+            } catch (err) {
+              emit({ phase: "reconnect-throw", msgId, err: String(err && err.message || err) });
+            }
+            // 主动重连换来的新路径值得多一次机会：每次重连 +1 次重试额度
+            //（封顶 +2 防无限循环）。CI 实测曾出现「最后一次尝试才触发重连，
+            // 但额度已尽、下一轮直接拒绝」——重连白做。重连后也用短等待
+            // 立即重试：连接是新的，不需要完整退避
+            entry.maxTries = Math.min(entry.maxTries + 1, entry.baseMaxTries + 2);
+            const waitMs = Math.min(entry.waitMs, 800);
+            entry.timer = setTimeout(run, waitMs);
+            emit({ phase: "retry", msgId, tries: entry.tries, waitMs });
+            return;
           }
           entry.timer = setTimeout(run, entry.waitMs);
+          emit({ phase: "retry", msgId, tries: entry.tries, waitMs: entry.waitMs });
           return;
         }
         entry.timer = setTimeout(run, entry.waitMs);
@@ -294,8 +416,14 @@ export function createReliableLink({
       new Promise((resolve, reject) => {
         const msgId = `m-${Date.now()}-${++msgSeq}`;
         const entry = { resolve, reject, timer: null, tries: 0 };
-        entry.waitMs = waitMsFor(payload);
-        entry.maxTries = maxTriesFor(payload);
+        try {
+          entry.bytes = byteSize(JSON.stringify(payload));
+        } catch (_) {
+          entry.bytes = 0;
+        }
+        entry.waitMs = waitMsFor(entry.bytes);
+        entry.maxTries = maxTriesFor(entry.bytes);
+        entry.baseMaxTries = entry.maxTries; // 重连授予的额外额度以此为封顶基准
         pendingAcks.set(msgId, entry);
         attempt(msgId, payload, entry);
       });
@@ -313,6 +441,7 @@ export function createReliableLink({
     if (!entry) return; // 迟到的重复 ACK，忽略
     clearTimeout(entry.timer);
     pendingAcks.delete(msgId);
+    emit({ phase: "ack", msgId, tries: entry.tries, bytes: entry.bytes });
     entry.resolve();
   };
 
@@ -332,18 +461,28 @@ export function createReliableLink({
     if (reply) {
       try {
         reply({ msgId: data.msgId, kind: "ack" });
-      } catch (_) {
+      } catch (err) {
         /* ACK 发送失败由对端重发兜底 */
+        emit({
+          phase: "reply-throw",
+          msgId: data.msgId,
+          err: String(err && err.message || err),
+        });
       }
     }
-    if (seenIds.has(data.msgId)) return null;
+    if (seenIds.has(data.msgId)) {
+      emit({ phase: "duplicate", msgId: data.msgId });
+      return null;
+    }
     seenIds.set(data.msgId, Date.now());
     pruneSeen();
+    emit({ phase: "recv", msgId: data.msgId });
     return data.payload;
   };
 
   /** 放弃所有在途发送（页面关闭 / 会话失效时调用） */
   const dispose = () => {
+    emit({ phase: "disposed", pending: pendingAcks.size });
     for (const [, entry] of pendingAcks) {
       clearTimeout(entry.timer);
       entry.reject(new Error("link disposed"));
@@ -422,7 +561,7 @@ export function buildDbgResultMessages(reqId, outcome) {
     ];
   }
   const text = String(outcome.result ?? "");
-  // 与文件分片同预算（64KB 字节），为 JSON 包装开销再留 2KB 余量
+  // 与文件分片同预算（CHUNK_BYTE_BUDGET），为 JSON 包装开销再留 2KB 余量
   if (byteSize(text) > CHUNK_BYTE_BUDGET - 2048) {
     const parts = chunkText(text);
     const msgs = parts.map((part, i) => ({

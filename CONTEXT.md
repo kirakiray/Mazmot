@@ -108,7 +108,7 @@ Mazmot/
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
 │
-├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
+├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）；scripts/start-handshake.sh 在各任务测试前启动本地信令服务器（test-bin/）
 │
 ├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外；
 │                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
@@ -154,26 +154,39 @@ Mazmot/
 │   │                         #   （since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/DBG_TOOL_NAMES（「妙造调用」视图数据源）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
-│   │                         #   validateRelPath 守卫 / chunkText 字节分片 / sha256Hex+buildManifest（文件指纹清单）/
-│   │                         #   createReliableLink（ACK+重发+去重+串行队列）/ createFileAssembler（分片拼装，迟到重复
-│   │                         #   分片忽略）/ buildDbgResultMessages+createDbgCollector（调试结果分片回传与聚合）
+│   │                         #   validateRelPath 守卫 / chunkText 字节分片（预算 32KB，切点按 code point 对齐不劈代理对）/
+│   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列；onOffline
+│   │                         #   钩子带 reason——capped=命令悬挂需硬重置连接；每次主动重连授予 +1 重试额度封顶 +2）/
+│   │                         #   enableServerAutoReconnect（noneos 自动重连默认关闭，各端 getUser 后必须开）/
+│   │                         #   ensureServerConnected（双端收敛到排序首位同一台中继：对非首选 URL 先发制人
+│   │                         #   disconnect——getUser 后台 connectAll 不阻塞 ready，迟到的公网握手会把会话
+│   │                         #   重新挂上多台；hard 时首选也 disconnect+connect 治僵尸连接）/
+│   │                         #   createFileAssembler（分片拼装，迟到重复分片忽略）/ buildDbgResultMessages+createDbgCollector
+│   │                         #  （调试结果分片回传与聚合）
 │   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：sync-check 本地 hash 比对（剥离注入标签后
 │   │                         #   比对；存量 index.html 缺注入标记时强制重传一次性迁移）/ app-begin（wipe 缺省全量清目录重建，
 │   │                         #   增量只覆盖差异文件）→ file 写 conjure-apps/<name>/client/（index.html 且提供 conjureId 时经
 │   │                         #   injectAgent 注入代理脚本，幂等）→ app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可
 │   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
-│   └── test/                 # proto.sb.html（协议纯逻辑 11 用例）+ debug-runtime.sb.html（调试运行时与 dbg 结果协议 17 用例：
+│   └── test/                 # proto.sb.html（协议纯逻辑 15 用例：分片/拼装/可靠链路/capped 钩子/重连额度/中继收敛）+
+                               #   debug-runtime.sb.html（调试运行时与 dbg 结果协议 17 用例：
                                #   compileEval 自动 return / 深度选择器 / 序列化（Error 带消息前缀，Firefox/WebKit stack 不含消息）/ DOM 快照 /
                                #   控制台格式化 / 指令分发（shot 用 canvas 合成捕获流伪造 getDisplayMedia，不弹原生授权框））+
                                #   host-guard.sb.html（域名白名单：预览子域/本地放行，主站 apex 与伪装域名拒绝）+
                                #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
-                               #   增量同步只传差异文件）
+                               #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
+│
+├── test-bin/                 # 测试专用二进制（不参与部署）：noneos-handshake 信令服务器（noneos-core server/handshake 的
+│                             #   Rust 单二进制，macos-arm64 + linux-x86_64 各一份，含日志截断 panic 修复版重建）。
+│                             #   CI 各测试任务先跑它再跑测试——localhost 源下 noneos 默认服务器列表含
+│                             #   ws://localhost:8081 且排序首位，双端测试用户被 proto.js 的 ensureServerConnected
+│                             #   收敛到它，跨用户通信用例闭环本地（不依赖公网中继）。更新方法见 test-bin/README.md
 │
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │
@@ -377,7 +390,7 @@ npm run static
 npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 ```
 
-**CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵。
+**CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵；各任务先执行 [.github/scripts/start-handshake.sh](.github/scripts/start-handshake.sh) 用 [test-bin/](test-bin/) 的二进制启动本地信令服务器（ws://localhost:8081），跨用户通信用例（bridge 隔离预览等）完全闭环在本地，不依赖公网中继。
 
 ### 安装并运行第一个应用
 

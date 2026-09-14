@@ -27,28 +27,19 @@
             createReliableLink,
             buildFileMessages,
             enableServerAutoReconnect,
+            ensureServerConnected,
           } from "../proto.js";
           import { createPreviewReceiver, waitUrlReady } from "../receiver.js";
           const { getUser } = await import("/nos/user/main.js");
 
-          // 等待用户连上至少一台信令服务器（connectUser 前置）
-          const ensureServer = async (user) => {
-            const urls = () =>
-              Array.isArray(user.server?.connectedUrls)
-                ? user.server.connectedUrls
-                : [];
-            let servers = [];
-            try {
-              servers = (await user.server.getServers()) || [];
-            } catch (_) {}
-            await Promise.all(
-              servers.map((s) => user.server.connect(s).catch(() => {})),
-            );
-            const deadline = Date.now() + 10000;
-            while (urls().length === 0 && Date.now() < deadline) {
-              await new Promise((r) => setTimeout(r, 200));
-            }
-            if (urls().length === 0) throw new Error("信令服务器未连接");
+          // 双端收敛到同一台（排序首位）中继——双端分裂到不同区域中继时，
+          // 跨区转发的大帧曾整窗丢失（delivered:true 但对端从未收到）；
+          // capped（发送命令悬挂）时硬重置连接治僵尸
+          const ensureServer = async (user, info) => {
+            const ok = await ensureServerConnected(user, {
+              hard: info?.reason === "capped",
+            });
+            if (!ok) throw new Error("信令服务器未连接");
           };
 
           // 两侧用户（不同 namespace → 不同身份，模拟跨域两端）
@@ -58,6 +49,65 @@
           enableServerAutoReconnect(conjureUser);
           enableServerAutoReconnect(bridgeUser);
           await Promise.all([ensureServer(conjureUser), ensureServer(bridgeUser)]);
+
+          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）；
+          // linkEvents 收集可靠链路的协议级事件（attempt/sent/capped/reconnect/ack…）
+          const diag = { sends: [], recvs: [], linkEvents: [] };
+          const onEvt = (side) => (e) => {
+            try {
+              diag.linkEvents.push({ side, ...e });
+            } catch (_) {}
+          };
+          // 紧凑摘要：CI 日志对长 content 会截断（历史失败里 diagRecvs 整段
+          // 被切掉，无法判断接收端到底收没收到）。全部压成短行，预算 < 2KB：
+          //   send = 发送端逐条投递结果（含中继区域/delivered）与 ACK 回执
+          //   recv = 接收端实际收到的信封（缺哪条一眼可见）
+          //   evt  = 链路事件尾部（重试/封顶/重连节奏）
+          //   conn = 失败瞬间双端各自的信令连接
+          const diagTag = (id) => (id ? "-" + id.split("-").pop() : "?");
+          const diagStatus = (s) => {
+            const via = /"via":"(\w+)"/.exec(s || "")?.[1] || "?";
+            const relay = /hand3-([a-z0-9]+)\./.exec(s || "")?.[1] || "";
+            return via + (relay ? "@" + relay : "") +
+              (/"delivered":true/.test(s || "") ? "+dv" : "");
+          };
+          const shortUrls = (u) =>
+            (Array.isArray(u) ? u : [])
+              .map((x) => String(x).replace(/^wss?:\/\//, ""))
+              .join(";");
+          const failDiag = (err) => ({
+            error: String(err?.message || err).slice(0, 100),
+            send:
+              diag.sends.slice(-14).map((d) =>
+                d.dir === "ack"
+                  ? `ack${diagTag(d.msgId)}${d.err ? "!" + d.err.slice(0, 40) : ""}`
+                  : `D${diagTag(d.msgId)}${d.path ? "@" + d.path : ""}` +
+                    `:${d.bytes}B/${diagStatus(d.statuses)}` +
+                    `${d.ms != null ? "/" + d.ms + "ms" : ""}` +
+                    `${d.err ? "!" + d.err.slice(0, 40) : ""}`,
+              ).join(" ") || "(none)",
+            recv:
+              diag.recvs.slice(-14).map((r) =>
+                `${r.kind}${diagTag(r.msgId)}${r.bytes ? ":" + r.bytes + "B" : ""}`,
+              ).join(" ") || "(none)",
+            evt:
+              diag.linkEvents
+                .filter((e) =>
+                  ["attempt", "sent", "send-capped", "reconnect", "ack", "retry", "rejected"]
+                    .includes(e.phase),
+                )
+                .slice(-18)
+                .map((e) =>
+                  `${e.side === "conjure" ? "cj" : "bd"}:${e.phase}` +
+                  `${diagTag(e.msgId)}${e.tries ? "#" + e.tries : ""}` +
+                  `${e.ms != null ? "/" + e.ms + "ms" : ""}` +
+                  `${e.reason ? "/" + e.reason : ""}` +
+                  `${e.delivered === false ? "/nodv" : ""}`,
+                )
+                .join(" ") || "(none)",
+            conn: `cj[${shortUrls(conjureUser.server?.connectedUrls)}]` +
+              ` bd[${shortUrls(bridgeUser.server?.connectedUrls)}]`,
+          });
 
           // 接收端（bridge）：可靠链路 + receiver 写 VFS（conjureId 与真实 bridge 页一致）
           const receiver = createPreviewReceiver({ conjureId: conjureUser.userId });
@@ -70,10 +120,9 @@
                   })
                 : Promise.resolve([{ status: "error" }]),
             // 中继通道掉线时主动重连本侧信令，别让重试窗口干等耗尽
-            onOffline: () => ensureServer(bridgeUser),
+            onOffline: (info) => ensureServer(bridgeUser, info),
+            onEvent: onEvt("bridge"),
           });
-          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）
-          const diag = { sends: [], recvs: [] };
           let donePayload = null;
           const donePromise = new Promise((r) => {
             donePayload = r;
@@ -121,7 +170,8 @@
           const sentIndexChunks = [];
           let senderRemote = null;
           const senderLink = createReliableLink({
-            onOffline: () => ensureServer(conjureUser),
+            onOffline: (info) => ensureServer(conjureUser, info),
+            onEvent: onEvt("conjure"),
             sendTo: (env) => {
               const p = env?.payload;
               if (p && p.type === "file" && p.path === "index.html") {
@@ -186,7 +236,7 @@
 
           // conjure → bridge：推送应用文件（含大文件分片与中文内容）
           const appName = "it-flow-app";
-          const bigText = "妙造隔离预览🎉\n".repeat(12000); // >64KB，触发多分片
+          const bigText = "妙造隔离预览🎉\n".repeat(12000); // ~276KB，32KB 预算下 9 片
           const files = [
             { path: "index.html", text: "<h1>it-flow</h1><script>/* 中文 ok */</" + "script>" },
             { path: "app.json", text: JSON.stringify({ name: appName, version: "0.1.0" }) },
@@ -205,23 +255,22 @@
             }
             await senderLink.send({ type: "app-end", appName });
           } catch (pushErr) {
-            // 投递失败：带上双向诊断（发送结果 / 接收记录）便于定位丢在哪一程
-            return {
-              assert: false,
-              content: {
-                error: pushErr.message,
-                diagSends: diag.sends,
-                diagRecvs: diag.recvs,
-              },
-            };
+            // 投递失败：紧凑诊断（send/recv/evt/conn），CI 日志不截断
+            return { assert: false, content: failDiag(pushErr) };
           }
 
-          const done = await Promise.race([
-            donePromise,
-            new Promise((_, rej) =>
-              setTimeout(() => rej(new Error("等待 done 超时")), 40000),
-            ),
-          ]);
+          let done;
+          try {
+            done = await Promise.race([
+              donePromise,
+              new Promise((_, rej) =>
+                setTimeout(() => rej(new Error("等待 done 超时")), 40000),
+              ),
+            ]);
+          } catch (doneErr) {
+            // done 超时同样带紧凑诊断（文件可能已收齐但回程 done 丢失）
+            return { assert: false, content: failDiag(doneErr) };
+          }
 
           // VFS URL 经 SW 可访问且内容一致
           const ok = await waitUrlReady(done.url, 10000);
@@ -364,6 +413,7 @@
             buildFileMessages,
             buildManifest,
             enableServerAutoReconnect,
+            ensureServerConnected,
           } from "../proto.js";
           import { createPreviewReceiver } from "../receiver.js";
           // 本用例独立的服务 ID，避免与用例 1 在同一页面重复注册同名服务
@@ -371,23 +421,12 @@
           const SERVICE_ID_BRIDGE = "conjure-bridge-t2";
           const { getUser } = await import("/nos/user/main.js");
 
-          const ensureServer = async (user) => {
-            const urls = () =>
-              Array.isArray(user.server?.connectedUrls)
-                ? user.server.connectedUrls
-                : [];
-            let servers = [];
-            try {
-              servers = (await user.server.getServers()) || [];
-            } catch (_) {}
-            await Promise.all(
-              servers.map((s) => user.server.connect(s).catch(() => {})),
-            );
-            const deadline = Date.now() + 10000;
-            while (urls().length === 0 && Date.now() < deadline) {
-              await new Promise((r) => setTimeout(r, 200));
-            }
-            if (urls().length === 0) throw new Error("信令服务器未连接");
+          // 同用例 1：收敛到同一台中继 + capped 硬重置
+          const ensureServer = async (user, info) => {
+            const ok = await ensureServerConnected(user, {
+              hard: info?.reason === "capped",
+            });
+            if (!ok) throw new Error("信令服务器未连接");
           };
 
           const sender = await getUser("conjure-preview");
@@ -405,7 +444,7 @@
                     waitForService: 3000,
                   })
                 : Promise.resolve([{ status: "error" }]),
-            onOffline: () => ensureServer(receiverUser),
+            onOffline: (info) => ensureServer(receiverUser, info),
           });
           // 接收端对 sync-check 的 reply（sync-diff）经链路回传给发送端
           receiverUser.registerService("conjure-bridge-t2", {
@@ -432,7 +471,7 @@
                     waitForService: 3000,
                   })
                 : Promise.resolve([{ status: "error" }]),
-            onOffline: () => ensureServer(sender),
+            onOffline: (info) => ensureServer(sender, info),
           });
           const diffs = []; // 按到达顺序收集 sync-diff（两次 sync-check 各一条）
           sender.registerService("conjure-preview-t2", {

@@ -139,6 +139,7 @@
         USER_NAMESPACE,
         createReliableLink,
         enableServerAutoReconnect,
+        ensureServerConnected: ensureSignaling,
       } = proto;
       const receiverMod = await load("./receiver.js");
       const { createPreviewReceiver, waitUrlReady } = receiverMod;
@@ -259,7 +260,7 @@
                     waitForService: 3000,
                   }),
                 // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
-                onOffline: () => this.ensureServerConnected(),
+                onOffline: (info) => this.ensureServerConnected(info),
               });
               this._link = link;
 
@@ -270,31 +271,14 @@
             }
           },
 
-          // 等待本地用户连上至少一台信令服务器（connectUser 的前置条件）
-          async ensureServerConnected() {
-            const user = this._user;
-            if (!user || !user.server) return;
-            const connectedUrls = () =>
-              Array.isArray(user.server.connectedUrls)
-                ? user.server.connectedUrls
-                : [];
-            if (connectedUrls().length > 0) return;
-            let servers = [];
-            try {
-              servers = (await user.server.getServers()) || [];
-            } catch (_) {
-              return; // 取列表失败时仍尝试连接（可能已在连接中）
-            }
-            await Promise.all(
-              servers.map((url) =>
-                user.server.connect(url).catch(() => {}),
-              ),
-            );
-            const deadline = Date.now() + 5000;
-            while (connectedUrls().length === 0 && Date.now() < deadline) {
-              await new Promise((r) => setTimeout(r, 200));
-            }
-            if (connectedUrls().length === 0) {
+          // 等待本地用户连上信令服务器（connectUser 的前置条件）。
+          // 共享实现会与 conjure 端收敛到同一台（排序首位的）中继，避免跨
+          // 区域转发大帧丢失；capped（命令悬挂）时硬重置连接
+          async ensureServerConnected(info) {
+            const ok = await ensureSignaling(this._user, {
+              hard: info?.reason === "capped",
+            });
+            if (!ok) {
               throw new Error("无法连接到任何信令服务器，请检查网络后重试");
             }
           },
