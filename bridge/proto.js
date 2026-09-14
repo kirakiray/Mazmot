@@ -80,8 +80,11 @@ export function validateRelPath(path) {
 export const MAX_PAYLOAD_BYTES = 128 * 1024;
 
 // 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
-// 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）
-const CHUNK_BYTE_BUDGET = 96 * 1024;
+// 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）。
+// 预算取 64KB：E2EE 加密 + JSON 序列化会把信封实际体积放大约四五成，
+// 64KB 分片放大后仍远离服务端 256KB 硬限；且大帧在 RTC 缓冲紧张时
+// （Firefox 等）更易积压，宁可多分几片
+const CHUNK_BYTE_BUDGET = 64 * 1024;
 
 /** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
 export function byteSize(text) {
@@ -182,13 +185,37 @@ const SEEN_TTL = 5 * 60 * 1000;
  * @param {(envelope: Object) => Promise<any[]>} opts.sendTo
  *        底层发送函数（通常包装 remoteUser.sendToService(appId, env, { sessionId })）
  * @param {number} [opts.ackTimeout=3000]
+ *        单次 ACK 等待基准（小消息实际值）；大载荷自动按字节放宽（每 16KB +1s）
  * @param {number} [opts.maxRetry=3]
  */
 export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) {
-  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries }
+  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries }
   const seenIds = new Map(); // msgId -> 首次接收时间戳
   const sendQueues = new Map(); // 队列 key -> 尾部 Promise
   let msgSeq = 0;
+
+  // 单次 ACK 等待时长：大载荷按字节放宽——慢网络（CI / 远端信令中继）下
+  // 大分片的一次往返可能超过固定 3s，若不放宽，重试反而重复推全量
+  // 载荷加剧拥塞并耗尽次数（CI 的 WebKit 集成测试曾因此报 ACK timeout）。
+  // 每 16KB 加 1s，小消息维持原 ackTimeout 不变
+  const waitMsFor = (payload) => {
+    let bytes = 0;
+    try {
+      bytes = byteSize(JSON.stringify(payload));
+    } catch (_) {}
+    return Math.max(ackTimeout, Math.ceil(bytes / (16 * 1024)) * 1000);
+  };
+
+  // 可用尝试次数：大载荷按字节追加（noneos 文档明确「通道切换（RTC↔中继）
+  // 期间发出的消息可能丢失」——丢失与重发恢复都是常态，大分片需要更长的
+  // 总重试窗口等通道回稳；每 32KB +1 次，上限 +5）
+  const maxTriesFor = (payload) => {
+    let bytes = 0;
+    try {
+      bytes = byteSize(JSON.stringify(payload));
+    } catch (_) {}
+    return maxRetry + Math.min(5, Math.floor(bytes / (32 * 1024)));
+  };
 
   const pruneSeen = () => {
     const deadline = Date.now() - SEEN_TTL;
@@ -201,10 +228,12 @@ export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) 
     new Promise((resolveAttempt) => {
       const run = async () => {
         entry.tries++;
-        if (entry.tries > maxRetry) {
+        if (entry.tries > entry.maxTries) {
           pendingAcks.delete(msgId);
           entry.reject(
-            new Error(`ACK timeout after ${maxRetry} retries: ${msgId}`),
+            new Error(
+              `ACK timeout after ${entry.maxTries - 1} retries: ${msgId}`,
+            ),
           );
           return;
         }
@@ -213,14 +242,14 @@ export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) 
           const results = await sendTo({ msgId, kind: "data", payload });
           if (!results || !results.some((r) => r && r.status === "ok")) {
             // 连通道都没进去（no_receiver / offline / error），直接进入下一轮重试
-            entry.timer = setTimeout(run, ackTimeout);
+            entry.timer = setTimeout(run, entry.waitMs);
             return;
           }
         } catch (_) {
-          entry.timer = setTimeout(run, ackTimeout);
+          entry.timer = setTimeout(run, entry.waitMs);
           return;
         }
-        entry.timer = setTimeout(run, ackTimeout);
+        entry.timer = setTimeout(run, entry.waitMs);
         resolveAttempt();
       };
       run();
@@ -233,6 +262,8 @@ export function createReliableLink({ sendTo, ackTimeout = 3000, maxRetry = 3 }) 
       new Promise((resolve, reject) => {
         const msgId = `m-${Date.now()}-${++msgSeq}`;
         const entry = { resolve, reject, timer: null, tries: 0 };
+        entry.waitMs = waitMsFor(payload);
+        entry.maxTries = maxTriesFor(payload);
         pendingAcks.set(msgId, entry);
         attempt(msgId, payload, entry);
       });
@@ -359,7 +390,7 @@ export function buildDbgResultMessages(reqId, outcome) {
     ];
   }
   const text = String(outcome.result ?? "");
-  // 与文件分片同预算（96KB 字节），为 JSON 包装开销再留 2KB 余量
+  // 与文件分片同预算（64KB 字节），为 JSON 包装开销再留 2KB 余量
   if (byteSize(text) > CHUNK_BYTE_BUDGET - 2048) {
     const parts = chunkText(text);
     const msgs = parts.map((part, i) => ({

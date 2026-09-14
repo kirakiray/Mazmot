@@ -66,19 +66,39 @@
                   })
                 : Promise.resolve([{ status: "error" }]),
           });
+          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）
+          const diag = { sends: [], recvs: [] };
           let donePayload = null;
           const donePromise = new Promise((r) => {
             donePayload = r;
           });
           bridgeUser.registerService(SERVICE_ID_BRIDGE, {
             onMessage: (data, ctx) => {
+              diag.recvs.push({
+                msgId: data?.msgId,
+                kind: data?.kind,
+                bytes: data?.payload?.text?.length || 0,
+              });
               const payload = bridgeLink.receive(data, (env) => {
                 // ACK 定向回复到发送方（conjure）监听的服务
                 ctx.remoteUser
                   .sendToService(SERVICE_ID_CONJURE, env, {
                     sessionId: ctx.fromSessionId,
                   })
-                  .catch(() => {});
+                  .then(
+                    (rs) =>
+                      diag.sends.push({
+                        dir: "ack",
+                        msgId: env.msgId,
+                        statuses: JSON.stringify(rs),
+                      }),
+                    (e) =>
+                      diag.sends.push({
+                        dir: "ack",
+                        msgId: env.msgId,
+                        err: String(e && e.message || e),
+                      }),
+                  );
               });
               if (payload) {
                 const result = receiver.handle(payload);
@@ -94,17 +114,37 @@
           // 发送端绝不注入（注入只发生在 30032 接收端落盘时，见 receiver.injectAgent）
           const sentIndexChunks = [];
           let senderRemote = null;
-          let senderLink = createReliableLink({
+          const senderLink = createReliableLink({
             sendTo: (env) => {
               const p = env?.payload;
               if (p && p.type === "file" && p.path === "index.html") {
                 sentIndexChunks.push(p.text);
               }
+              if (!senderRemote) return Promise.resolve([{ status: "error" }]);
+              const entry = {
+                dir: "data",
+                msgId: env.msgId,
+                path: p?.path,
+                bytes: p?.text?.length || 0,
+              };
+              const t0 = Date.now();
               return senderRemote
-                ? senderRemote.sendToService(SERVICE_ID_BRIDGE, env, {
-                    waitForService: 3000,
-                  })
-                : Promise.resolve([{ status: "error" }]);
+                .sendToService(SERVICE_ID_BRIDGE, env, {
+                  waitForService: 3000,
+                })
+                .then(
+                  (rs) => {
+                    entry.statuses = JSON.stringify(rs);
+                    entry.ms = Date.now() - t0;
+                    diag.sends.push(entry);
+                    return rs;
+                  },
+                  (e) => {
+                    entry.err = String(e && e.message || e);
+                    diag.sends.push(entry);
+                    throw e;
+                  },
+                );
             },
           });
           let helloResolve;
@@ -139,28 +179,40 @@
 
           // conjure → bridge：推送应用文件（含大文件分片与中文内容）
           const appName = "it-flow-app";
-          const bigText = "妙造隔离预览🎉\n".repeat(12000); // >96KB，触发分片
+          const bigText = "妙造隔离预览🎉\n".repeat(12000); // >64KB，触发多分片
           const files = [
             { path: "index.html", text: "<h1>it-flow</h1><script>/* 中文 ok */</" + "script>" },
             { path: "app.json", text: JSON.stringify({ name: appName, version: "0.1.0" }) },
             { path: "big.js", text: bigText },
           ];
-          await senderLink.send({
-            type: "app-begin",
-            appName,
-            fileCount: files.length,
-          });
-          for (const f of files) {
-            for (const msg of buildFileMessages(appName, f.path, f.text)) {
-              await senderLink.send(msg);
+          try {
+            await senderLink.send({
+              type: "app-begin",
+              appName,
+              fileCount: files.length,
+            });
+            for (const f of files) {
+              for (const msg of buildFileMessages(appName, f.path, f.text)) {
+                await senderLink.send(msg);
+              }
             }
+            await senderLink.send({ type: "app-end", appName });
+          } catch (pushErr) {
+            // 投递失败：带上双向诊断（发送结果 / 接收记录）便于定位丢在哪一程
+            return {
+              assert: false,
+              content: {
+                error: pushErr.message,
+                diagSends: diag.sends,
+                diagRecvs: diag.recvs,
+              },
+            };
           }
-          await senderLink.send({ type: "app-end", appName });
 
           const done = await Promise.race([
             donePromise,
             new Promise((_, rej) =>
-              setTimeout(() => rej(new Error("等待 done 超时")), 15000),
+              setTimeout(() => rej(new Error("等待 done 超时")), 40000),
             ),
           ]);
 
