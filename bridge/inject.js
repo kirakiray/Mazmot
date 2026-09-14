@@ -26,6 +26,7 @@ import {
   buildDbgResultMessages,
   createReliableLink,
   enableServerAutoReconnect,
+  ensureServerConnected,
 } from "/bridge/proto.js";
 import { createPreviewReceiver, waitUrlReady } from "/bridge/receiver.js";
 import {
@@ -752,22 +753,15 @@ export function createBubble(onLogsClick) {
 
 /* ---------- 代理主流程 ---------- */
 
-async function ensureServerConnected(user, timeout = 5000) {
-  const urls = () =>
-    Array.isArray(user.server?.connectedUrls) ? user.server.connectedUrls : [];
-  let servers = [];
+// 共享实现（proto.js）：收敛到同一台中继 + 命令悬挂（capped）时硬重置连接；
+// 代理侧静默尽力而为，不抛错打断页面
+async function ensureServerConnectedSafe(user, info) {
   try {
-    servers = (await user.server.getServers()) || [];
-  } catch (_) {
-    return;
-  }
-  await Promise.all(
-    servers.map((s) => user.server.connect(s).catch(() => {})),
-  );
-  const deadline = Date.now() + timeout;
-  while (urls().length === 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 200));
-  }
+    await ensureServerConnected(user, {
+      timeout: 5000,
+      hard: info?.reason === "capped",
+    });
+  } catch (_) {}
 }
 
 async function main() {
@@ -796,7 +790,7 @@ async function main() {
             })
           : Promise.resolve([{ status: "error" }]),
       // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
-      onOffline: () => ensureServerConnected(user),
+      onOffline: (info) => ensureServerConnectedSafe(user, info),
     });
 
     // 接收端：复用 receiver（含 index.html 代理脚本注入与增量比对），
@@ -900,7 +894,7 @@ async function main() {
       },
     });
 
-    await ensureServerConnected(user);
+    await ensureServerConnectedSafe(user);
     remote = await user.connectUser(conjureId);
     // 上报就绪（尽力投递；conjure 不在线时静默失败，不影响应用本身运行）
     await link.send({ type: "agent-online", userId: user.userId });

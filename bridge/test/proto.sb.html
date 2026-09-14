@@ -30,12 +30,12 @@
       <template>
         <script type="module">
           import { chunkText, byteSize } from "../proto.js";
-          // 混合 ASCII / 中文 / emoji，构造超过单片预算（64KB）的文本
+          // 混合 ASCII / 中文 / emoji，构造超过单片预算（32KB）的文本
           const unit = "a字🎉";
           const text = unit.repeat(40000);
           const bigParts = chunkText(text);
           const rejoined = bigParts.join("");
-          const eachWithinBudget = bigParts.every((p) => byteSize(p) <= 64 * 1024);
+          const eachWithinBudget = bigParts.every((p) => byteSize(p) <= 32 * 1024);
           return {
             assert:
               bigParts.length > 1 && eachWithinBudget && rejoined === text,
@@ -79,7 +79,7 @@
               checks[k] =
                 sampleParts.length >= 1 &&
                 !sampleParts.some(hasLoneSurrogate) &&
-                sampleParts.every((p) => byteSize(p) <= 64 * 1024) &&
+                sampleParts.every((p) => byteSize(p) <= 32 * 1024) &&
                 sampleParts.join("") === sampleText &&
                 // E2EE 关键性质：每片单独 TextEncoder/Decoder 往返无损
                 sampleParts.every(
@@ -246,6 +246,137 @@
             assert: attempts === 2,
             content: { attempts },
           };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 命令悬挂按 capped 回调且重连授予额外重试额度">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          {
+            // 模拟 noneos 命令悬挂（连接僵尸：45s 内不会有 relay_response）：
+            // sendTo 永不落定 → 每轮按 capped 处理。maxRetry=2（基础 3 次尝试）
+            // + 每次重连 +1 额度（封顶基础 +2）→ 共 4 次尝试后拒绝，
+            // onOffline 每次都收到 reason:"capped"
+            let sendCalls = 0;
+            const reasons = [];
+            const linkCap = createReliableLink({
+              sendTo: () => {
+                sendCalls++;
+                return new Promise(() => {});
+              },
+              ackTimeout: 20,
+              maxRetry: 2,
+              sendCapMs: 40,
+              onOffline: (info) => reasons.push(info?.reason),
+            });
+            let rejected = null;
+            await linkCap.send({ type: "file", text: "x" }).catch((e) => {
+              rejected = e;
+            });
+            return {
+              assert:
+                !!rejected &&
+                /ACK timeout/.test(rejected.message) &&
+                sendCalls === 4 && // 基础 3 次 + 重连授予 1 次
+                reasons.length === 4 &&
+                reasons.every((r) => r === "capped"),
+              content: { message: rejected?.message, sendCalls, reasons },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 重连授予的额度让迟到的通道恢复仍能送达">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          {
+            // 前 2 次 no_receiver（无 onOffline 时 maxRetry=1 会在第 2 次后
+            // 拒绝）；带 onOffline 后每次失败 +1 额度（封顶 +2），第 3 次
+            // 通道恢复并回 ACK → send 应 resolve 而非拒绝
+            let attempts = 0;
+            const linkHeal = createReliableLink({
+              sendTo: async (env) => {
+                attempts++;
+                if (attempts <= 2) return [{ status: "no_receiver" }];
+                queueMicrotask(() =>
+                  linkHeal.receive({ msgId: env.msgId, kind: "ack" }),
+                );
+                return [{ status: "ok" }];
+              },
+              ackTimeout: 20,
+              maxRetry: 1,
+              onOffline: () => {},
+            });
+            await linkHeal.send({ type: "hello", userId: "u1" });
+            return {
+              assert: attempts === 3,
+              content: { attempts },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected - 收敛到排序首位中继，hard 时重建连接">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../proto.js";
+          {
+            const makeUser = ({ connected = [], servers }) => {
+              const state = { connected: [...connected], calls: [] };
+              return {
+                state,
+                server: {
+                  get connectedUrls() {
+                    return state.connected;
+                  },
+                  getServers: async () => servers,
+                  connect: async (url) => {
+                    state.calls.push("+" + url);
+                    if (!state.connected.includes(url)) state.connected.push(url);
+                  },
+                  disconnect: (url) => {
+                    state.calls.push("-" + url);
+                    state.connected = state.connected.filter((u) => u !== url);
+                  },
+                },
+              };
+            };
+            // 注意排序语义：helper 以字符串排序取首选，jp1 < us1
+            const servers = ["wss://hand3-jp1.noneos.com:4331", "wss://hand3-us1.noneos.com:4331"];
+            // 场景 1：已连多台（竞速分裂）→ 收敛到排序首位，断开其余
+            const uSplit = makeUser({ connected: servers.slice().reverse(), servers });
+            const ok1 = await ensureServerConnected(uSplit);
+            // 场景 2：已连首选 → 不折腾
+            const uPinned = makeUser({ connected: [servers[0]], servers });
+            const ok2 = await ensureServerConnected(uPinned);
+            const churn = uPinned.state.calls.length;
+            // 场景 3：hard → 首选也断开重建
+            const uHard = makeUser({ connected: [servers[0]], servers });
+            const ok3 = await ensureServerConnected(uHard, { hard: true });
+            return {
+              assert:
+                ok1 === true &&
+                ok2 === true &&
+                ok3 === true &&
+                uSplit.state.connected.length === 1 &&
+                uSplit.state.connected[0] === servers[0] &&
+                uSplit.state.calls.includes("-" + servers[1]) &&
+                churn === 0 &&
+                uHard.state.calls[0] === "-" + servers[0] &&
+                uHard.state.calls[1] === "+" + servers[0] &&
+                uHard.state.connected.length === 1,
+              content: {
+                split: uSplit.state,
+                churn,
+                hard: uHard.state.calls,
+              },
+            };
+          }
         </script>
       </template>
     </sb-test>

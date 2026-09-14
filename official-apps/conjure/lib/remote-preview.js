@@ -31,6 +31,7 @@ import {
   createDbgCollector,
   createReliableLink,
   enableServerAutoReconnect,
+  ensureServerConnected as ensureSignaling,
 } from "/bridge/proto.js";
 
 // 隔离域 origin：按运行环境自动选择——
@@ -117,7 +118,7 @@ function ensureService(user) {
           })
         : Promise.resolve([{ status: "error" }]),
     // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
-    onOffline: () => ensureServerConnected(user),
+    onOffline: (info) => ensureServerConnected(user, info),
   });
   user.registerService(SERVICE_ID_CONJURE, {
     onMessage: (data, ctx) => {
@@ -182,28 +183,14 @@ function ensureService(user) {
   svcUser = user;
 }
 
-// 等待本地用户连上至少一台信令服务器（connectUser 的前置条件）
-async function ensureServerConnected(user) {
-  if (!user || !user.server) return;
-  const connectedUrls = () =>
-    Array.isArray(user.server.connectedUrls) ? user.server.connectedUrls : [];
-  if (connectedUrls().length > 0) return;
-  let servers = [];
-  try {
-    servers = (await user.server.getServers()) || [];
-  } catch (_) {
-    return; // 取列表失败时仍尝试连接（可能已在连接中）
-  }
-  await Promise.all(
-    servers.map((url) => user.server.connect(url).catch(() => {})),
-  );
-  const deadline = Date.now() + 5000;
-  while (connectedUrls().length === 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  if (connectedUrls().length === 0) {
-    throw new Error("无法连接到任何信令服务器，请检查网络后重试");
-  }
+// 等待本地用户连上信令服务器（connectUser 的前置条件）。
+// 共享实现会把双端收敛到同一台（排序首位的）中继，避免跨区域转发大帧丢失；
+// reason="capped"（发送命令悬挂，连接疑似僵尸）时硬重置连接
+async function ensureServerConnected(user, info) {
+  const ok = await ensureSignaling(user, {
+    hard: info?.reason === "capped",
+  });
+  if (!ok) throw new Error("无法连接到任何信令服务器，请检查网络后重试");
 }
 
 const withTimeout = (promise, ms, message) =>
@@ -392,7 +379,7 @@ export async function openRemotePreview({
         ? remote.sendToService(peerService, env, { waitForService: 3000 })
         : Promise.resolve([{ status: "error" }]),
     // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
-    onOffline: () => ensureServerConnected(user),
+    onOffline: (info) => ensureServerConnected(user, info),
   });
   activeLink = link;
   resetWaiters();
@@ -510,7 +497,7 @@ export async function openRemotePreview({
             remote
               ? remote.sendToService(peerService, env, { waitForService: 3000 })
               : Promise.resolve([{ status: "error" }]),
-          onOffline: () => ensureServerConnected(user),
+          onOffline: (info) => ensureServerConnected(user, info),
         });
         activeLink = link;
         resetWaiters();

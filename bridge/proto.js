@@ -81,10 +81,14 @@ export const MAX_PAYLOAD_BYTES = 128 * 1024;
 
 // 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
 // 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）。
-// 预算取 64KB：E2EE 加密 + JSON 序列化放大约四五成后仍远离服务端 256KB
-// 硬限；历史上下调到 32KB/8KB 是误诊——真正的丢消息根因是分片劈开
-// 代理对产生的孤立代理项（见 chunkText 内注释），修复后与尺寸无关
-const CHUNK_BYTE_BUDGET = 64 * 1024;
+// 预算取 32KB：实际传输帧 = JSON 信封 + E2EE 密文 + base64，约为文本的
+// 1.4 倍（64KB 文本 ≈ 91KB 帧）。WebKit 走中继（UDP 受限的 CI 环境）且
+// 双端落在不同区域中继（实测 jp1→us1 跨区转发）时，91KB 级大帧曾整窗
+// 丢失：连续 5 次重发中继都报 delivered:true 但对端一个分片都收不到，
+// 同期小消息全部正常。孤立代理对缺陷（见 chunkText）修复后该现象仍在，
+// 证明跨区大帧丢失是独立根因——收敛到同区域中继（见 ensureServerConnected）
+// 为主治，32KB 预算（≈45KB 帧）再加一层余量，代价只是多几片串行 ACK
+const CHUNK_BYTE_BUDGET = 32 * 1024;
 
 /** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
 export function byteSize(text) {
@@ -199,16 +203,74 @@ export function enableServerAutoReconnect(user) {
 }
 
 /**
+ * 确保本地用户连上信令服务器（connectUser 的前置条件），并**收敛到排序
+ * 首位的同一台服务器**。双端（同浏览器里的 conjure 与 bridge）持有同一份
+ * server 列表，跑同一个确定性算法 → 落在同一台中继，消息无需跨区域转发。
+ * 旧实现并行连全部服务器，「哪台先握手成功用哪台」是纯竞速：双端常常
+ * 分裂到不同区域（实测 CI 中 conjure 落 jp1、bridge 落 us1），跨区转发
+ * 的大帧曾整窗丢失（delivered:true 但对端从未收到）。
+ *
+ * hard = true 时把首选服务器的连接也断开重建：发送命令超 8s 无响应
+ * （send-capped）通常意味着连接已成僵尸（对端/中继早已断开但本地未感知），
+ * 而 connect() 对同 URL 会复用旧连接，无法自愈，必须先 disconnect。
+ *
+ * @returns {Promise<boolean>} 是否已连上（失败由调用方决定如何提示）
+ */
+export async function ensureServerConnected(
+  user,
+  { timeout = 6000, hard = false } = {},
+) {
+  if (!user || !user.server) return false;
+  const urls = () =>
+    Array.isArray(user.server.connectedUrls) ? user.server.connectedUrls : [];
+  let servers = [];
+  try {
+    servers = (await user.server.getServers()) || [];
+  } catch (_) {
+    return urls().length > 0;
+  }
+  const sorted = [...servers].sort();
+  const preferred = sorted[0];
+  if (preferred == null) return urls().length > 0;
+  // 收敛：断开所有非首选连接（跨区转发是大帧丢失的温床）；hard 时首选也重建
+  for (const url of [...urls()]) {
+    if (url === preferred && !hard) continue;
+    try {
+      user.server.disconnect(url);
+    } catch (_) {}
+  }
+  if (hard || !urls().includes(preferred)) {
+    try {
+      await user.server.connect(preferred); // 已连时幂等复用，无副作用
+    } catch (_) {}
+  }
+  if (urls().length === 0 && sorted.length > 1) {
+    // 首选不可用：退回并行连其余，可用性优先于同区域
+    await Promise.all(
+      sorted.slice(1).map((url) => user.server.connect(url).catch(() => {})),
+    );
+  }
+  const deadline = Date.now() + timeout;
+  while (urls().length === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return urls().length > 0;
+}
+
+/**
  * 可靠链路：一端一实例，同时承担发送（串行队列 + ACK 等待 + 超时重发）
  * 与接收（回 ACK + 按 msgId 去重）。
  *
  * @param {Object} opts
  * @param {(envelope: Object) => Promise<any[]>} opts.sendTo
  *        底层发送函数（通常包装 remoteUser.sendToService(appId, env, { sessionId })）
- * @param {() => Promise} [opts.onOffline]
- *        发送结果为 offline / no_receiver / error 时，重试等待前先回调——
- *        消费方借此主动重连信令服务器。实测（CI 中继通道）连接掉线后
- *        noneos 未必及时自愈，干等重试只会耗尽次数；钩子抛错不影响重试节奏
+ * @param {(info: { reason: "capped" | "not-delivered" }) => Promise} [opts.onOffline]
+ *        发送未达（offline / no_receiver / error / 命令封顶）时，重试等待前
+ *        先回调——消费方借此主动重连信令服务器。实测（CI 中继通道）连接
+ *        掉线后 noneos 未必及时自愈，干等重试只会耗尽次数；钩子抛错不影响
+ *        重试节奏。reason="capped" 表示命令超 sendCapMs 无响应（连接疑似
+ *        僵尸），消费方应硬重置（disconnect + connect）；"not-delivered"
+ *        表示命令有回执但未送达，软检查即可
  * @param {number} [opts.ackTimeout=3000]
  *        单次 ACK 等待基准（小消息实际值）；大载荷自动按字节放宽（每 16KB +1s）
  * @param {number} [opts.maxRetry=3]
@@ -243,7 +305,7 @@ export function createReliableLink({
     } catch (_) {}
   };
 
-  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries, bytes }
+  const pendingAcks = new Map(); // msgId -> { resolve, reject, timer, tries, waitMs, maxTries, baseMaxTries, bytes }
   const seenIds = new Map(); // msgId -> 首次接收时间戳
   const sendQueues = new Map(); // 队列 key -> 尾部 Promise
   let msgSeq = 0;
@@ -287,6 +349,7 @@ export function createReliableLink({
           bytes: entry.bytes,
         });
         let delivered = false;
+        let capped = false;
         try {
           // 重发复用同一 msgId，接收方据此去重。
           // 封顶 race：不让 noneos 内部 45s 命令超时拖垮重试节奏；
@@ -294,9 +357,10 @@ export function createReliableLink({
           const t0 = Date.now();
           const sending = Promise.resolve().then(() => sendTo({ msgId, kind: "data", payload }));
           sending.catch(() => {});
-          const capped = new Promise((res) => setTimeout(() => res(null), sendCapMs));
-          const results = await Promise.race([sending, capped]);
+          const capTimer = new Promise((res) => setTimeout(() => res(null), sendCapMs));
+          const results = await Promise.race([sending, capTimer]);
           if (results === null || results === undefined) {
+            capped = true;
             emit({ phase: "send-capped", msgId, tries: entry.tries, capMs: sendCapMs });
           } else {
             delivered = !!(results.some && results.some((r) => r && r.status === "ok"));
@@ -316,12 +380,22 @@ export function createReliableLink({
           // 连通道都没进去（no_receiver / offline / error / 封顶）：先让消费方
           // 主动重连（掉线后干等重试曾整窗耗尽），再进入下一轮
           if (onOffline) {
-            emit({ phase: "reconnect", msgId, tries: entry.tries });
+            const reason = capped ? "capped" : "not-delivered";
+            emit({ phase: "reconnect", msgId, tries: entry.tries, reason });
             try {
-              await onOffline();
+              await onOffline({ reason });
             } catch (err) {
               emit({ phase: "reconnect-throw", msgId, err: String(err && err.message || err) });
             }
+            // 主动重连换来的新路径值得多一次机会：每次重连 +1 次重试额度
+            //（封顶 +2 防无限循环）。CI 实测曾出现「最后一次尝试才触发重连，
+            // 但额度已尽、下一轮直接拒绝」——重连白做。重连后也用短等待
+            // 立即重试：连接是新的，不需要完整退避
+            entry.maxTries = Math.min(entry.maxTries + 1, entry.baseMaxTries + 2);
+            const waitMs = Math.min(entry.waitMs, 800);
+            entry.timer = setTimeout(run, waitMs);
+            emit({ phase: "retry", msgId, tries: entry.tries, waitMs });
+            return;
           }
           entry.timer = setTimeout(run, entry.waitMs);
           emit({ phase: "retry", msgId, tries: entry.tries, waitMs: entry.waitMs });
@@ -347,6 +421,7 @@ export function createReliableLink({
         }
         entry.waitMs = waitMsFor(entry.bytes);
         entry.maxTries = maxTriesFor(entry.bytes);
+        entry.baseMaxTries = entry.maxTries; // 重连授予的额外额度以此为封顶基准
         pendingAcks.set(msgId, entry);
         attempt(msgId, payload, entry);
       });
@@ -484,7 +559,7 @@ export function buildDbgResultMessages(reqId, outcome) {
     ];
   }
   const text = String(outcome.result ?? "");
-  // 与文件分片同预算（64KB 字节），为 JSON 包装开销再留 2KB 余量
+  // 与文件分片同预算（CHUNK_BYTE_BUDGET），为 JSON 包装开销再留 2KB 余量
   if (byteSize(text) > CHUNK_BYTE_BUDGET - 2048) {
     const parts = chunkText(text);
     const msgs = parts.map((part, i) => ({
