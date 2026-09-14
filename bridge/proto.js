@@ -81,13 +81,12 @@ export const MAX_PAYLOAD_BYTES = 128 * 1024;
 
 // 文本分片按字符数取值：UTF-8 下单字符最多 4 字节，
 // 96k 字符最坏 384KB 会超限，故按「字节预算」分片（见 chunkText）。
-// 预算取 32KB：实际传输帧 = JSON 信封 + E2EE 密文 + base64，约为文本的
-// 1.4 倍（64KB 文本 ≈ 91KB 帧）。WebKit 走中继（UDP 受限的 CI 环境）且
-// 双端落在不同区域中继（实测 jp1→us1 跨区转发）时，91KB 级大帧曾整窗
-// 丢失：连续 5 次重发中继都报 delivered:true 但对端一个分片都收不到，
-// 同期小消息全部正常。孤立代理对缺陷（见 chunkText）修复后该现象仍在，
-// 证明跨区大帧丢失是独立根因——收敛到同区域中继（见 ensureServerConnected）
-// 为主治，32KB 预算（≈45KB 帧）再加一层余量，代价只是多几片串行 ACK
+// 预算取 32KB：历史上大分片整窗丢失有两个已修复的独立根因——
+// ① 分片劈开代理对产生孤立代理项（TextEncoder/E2EE 不可逆损坏，见
+// chunkText 内注释）；② noneos-handshake 服务器日志截断 &text[..500]
+// 按字节切片在多字节字符上 panic，连接静默死亡（已在上游修复并以修复版
+// 重建 test-bin 二进制）。32KB（≈45KB 帧）对公网中继的不确定性再留
+// 一层余量，代价只是多几片串行 ACK
 const CHUNK_BYTE_BUDGET = 32 * 1024;
 
 /** 粗测字符串 UTF-8 字节数（避免逐字符 TextEncoder 全量编码的开销） */
@@ -205,10 +204,13 @@ export function enableServerAutoReconnect(user) {
 /**
  * 确保本地用户连上信令服务器（connectUser 的前置条件），并**收敛到排序
  * 首位的同一台服务器**。双端（同浏览器里的 conjure 与 bridge）持有同一份
- * server 列表，跑同一个确定性算法 → 落在同一台中继，消息无需跨区域转发。
- * 旧实现并行连全部服务器，「哪台先握手成功用哪台」是纯竞速：双端常常
- * 分裂到不同区域（实测 CI 中 conjure 落 jp1、bridge 落 us1），跨区转发
- * 的大帧曾整窗丢失（delivered:true 但对端从未收到）。
+ * server 列表，跑同一个确定性算法 → 落在同一台中继，路径确定、诊断简单
+ *（CI 里即 test-bin 的本地服务器）。
+ *
+ * 必须对非首选 URL「先发制人」disconnect（而非只断已连上的）：getUser
+ * 会在后台 connectAll() 列表里的全部服务器且不阻塞 ready，公网中继握手
+ * 常晚于本函数收敛才落地，把会话重新挂上多台——多台会话意味着消息路由
+ * 可能跨服务器转发，路径不确定。
  *
  * hard = true 时把首选服务器的连接也断开重建：发送命令超 8s 无响应
  * （send-capped）通常意味着连接已成僵尸（对端/中继早已断开但本地未感知），
@@ -232,9 +234,8 @@ export async function ensureServerConnected(
   const sorted = [...servers].sort();
   const preferred = sorted[0];
   if (preferred == null) return urls().length > 0;
-  // 收敛：断开所有非首选连接（跨区转发是大帧丢失的温床）；hard 时首选也重建
-  for (const url of [...urls()]) {
-    if (url === preferred && !hard) continue;
+  // 清剿全部非首选（含仍在握手中的）；hard 时首选也重建
+  for (const url of hard ? sorted : sorted.slice(1)) {
     try {
       user.server.disconnect(url);
     } catch (_) {}
@@ -245,7 +246,8 @@ export async function ensureServerConnected(
     } catch (_) {}
   }
   if (urls().length === 0 && sorted.length > 1) {
-    // 首选不可用：退回并行连其余，可用性优先于同区域
+    // 首选不可用：退回并行连其余（主动 connect 会清除主动断开标记），
+    // 可用性优先于同区域
     await Promise.all(
       sorted.slice(1).map((url) => user.server.connect(url).catch(() => {})),
     );

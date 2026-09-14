@@ -158,8 +158,9 @@ Mazmot/
 │   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列；onOffline
 │   │                         #   钩子带 reason——capped=命令悬挂需硬重置连接；每次主动重连授予 +1 重试额度封顶 +2）/
 │   │                         #   enableServerAutoReconnect（noneos 自动重连默认关闭，各端 getUser 后必须开）/
-│   │                         #   ensureServerConnected（双端收敛到排序首位同一台中继——公网并行竞速会把双端分裂到不同
-│   │                         #   区域中继，跨区转发大帧曾整窗丢失；hard 时 disconnect+connect 治僵尸连接）/
+│   │                         #   ensureServerConnected（双端收敛到排序首位同一台中继：对非首选 URL 先发制人
+│   │                         #   disconnect——getUser 后台 connectAll 不阻塞 ready，迟到的公网握手会把会话
+│   │                         #   重新挂上多台；hard 时首选也 disconnect+connect 治僵尸连接）/
 │   │                         #   createFileAssembler（分片拼装，迟到重复分片忽略）/ buildDbgResultMessages+createDbgCollector
 │   │                         #  （调试结果分片回传与聚合）
 │   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：sync-check 本地 hash 比对（剥离注入标签后
@@ -182,10 +183,10 @@ Mazmot/
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
 │
 ├── test-bin/                 # 测试专用二进制（不参与部署）：noneos-handshake 信令服务器（noneos-core server/handshake 的
-│                             #   Rust 单二进制，macos-arm64 + linux-x86_64 各一份）。CI 各测试任务先跑它再跑测试——
-│                             #   localhost 源下 noneos 默认服务器列表含 ws://localhost:8081 且排序首位，双端测试用户
-│                             #   被 proto.js 的 ensureServerConnected 收敛到它，跨用户通信用例不再依赖公网中继
-│                             #  （公网双端可能分裂到不同区域中继，跨区转发大帧曾整窗丢失）。更新方法见 test-bin/README.md
+│                             #   Rust 单二进制，macos-arm64 + linux-x86_64 各一份，含日志截断 panic 修复版重建）。
+│                             #   CI 各测试任务先跑它再跑测试——localhost 源下 noneos 默认服务器列表含
+│                             #   ws://localhost:8081 且排序首位，双端测试用户被 proto.js 的 ensureServerConnected
+│                             #   收敛到它，跨用户通信用例闭环本地（不依赖公网中继）。更新方法见 test-bin/README.md
 │
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │

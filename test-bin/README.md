@@ -16,11 +16,16 @@
 ### 为什么 vendor 进仓库
 
 浏览器测试里的跨用户通信用例（如 `bridge/test/preview-flow.sb.html`）
-需要真实的 noneos 信令通道。若依赖公网中继（`hand3-*.noneos.com`），
-CI 上双端可能被竞速分配到不同区域的中继，跨区转发大帧会整窗丢失
-（WebKit 曾稳定挂在首个大分片）；本地起服务器后测试完全闭环。
-noneos-core 的 GitHub Release 目前不带二进制资产，CI 在线构建又需
-Rust 工具链，故直接随仓库分发。
+需要真实的 noneos 信令通道，依赖公网中继（`hand3-*.noneos.com`）既慢又
+不确定。本地起服务器后测试完全闭环、毫秒级往返。
+
+历史教训（为什么当初必须本地化排查）：大分片「整窗丢失、delivered:true
+但对端从未收到」的确定性故障，最终定位为 noneos-handshake 服务器日志
+截断 `&text[..500]` 按字节切片在多字节字符（中文/emoji）上 panic——
+连接静默死亡，挂起命令既无响应也无转发（noneos-core ceb3309 已修复；
+本目录二进制为修复后重建版）。此前「跨区域中继丢大帧」等诊断均被该
+故障掩盖。noneos-core 的 GitHub Release 目前不带二进制资产，CI 在线
+构建又需 Rust 工具链，故直接随仓库分发。
 
 客户端无需任何配置即可用上它：localhost 源下 noneos 默认服务器列表
 就含 `ws://localhost:8081`，且 `/bridge/proto.js` 的

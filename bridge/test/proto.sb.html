@@ -351,11 +351,14 @@
             // 场景 1：已连多台（竞速分裂）→ 收敛到排序首位，断开其余
             const uSplit = makeUser({ connected: servers.slice().reverse(), servers });
             const ok1 = await ensureServerConnected(uSplit);
-            // 场景 2：已连首选 → 不折腾
+            // 场景 2：已连首选 → 首选零折腾；非首选仍被**预防性**断开标记
+            //（getUser 后台 connectAll 不阻塞 ready，迟到的握手必须被掐掉）
             const uPinned = makeUser({ connected: [servers[0]], servers });
             const ok2 = await ensureServerConnected(uPinned);
-            const churn = uPinned.state.calls.length;
-            // 场景 3：hard → 首选也断开重建
+            const preferredChurn = uPinned.state.calls.some((c) =>
+              c === "-" + servers[0] || c === "+" + servers[0],
+            );
+            // 场景 3：hard → 首选与非首选全部断开，首选重建
             const uHard = makeUser({ connected: [servers[0]], servers });
             const ok3 = await ensureServerConnected(uHard, { hard: true });
             return {
@@ -366,13 +369,15 @@
                 uSplit.state.connected.length === 1 &&
                 uSplit.state.connected[0] === servers[0] &&
                 uSplit.state.calls.includes("-" + servers[1]) &&
-                churn === 0 &&
-                uHard.state.calls[0] === "-" + servers[0] &&
-                uHard.state.calls[1] === "+" + servers[0] &&
+                preferredChurn === false &&
+                uPinned.state.calls.includes("-" + servers[1]) &&
+                uHard.state.calls.includes("-" + servers[0]) &&
+                uHard.state.calls.includes("-" + servers[1]) &&
+                uHard.state.calls.includes("+" + servers[0]) &&
                 uHard.state.connected.length === 1,
               content: {
                 split: uSplit.state,
-                churn,
+                pinned: uPinned.state,
                 hard: uHard.state.calls,
               },
             };
