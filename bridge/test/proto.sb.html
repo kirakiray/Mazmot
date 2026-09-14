@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge/proto.js 协议模块测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：不依赖 NoneOS Core SW，直接以静态路径导入被测模块 -->
+    <sb-test name="chunkText - 小文本单片且原样返回">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          const parts = chunkText("hello 妙造");
+          return {
+            assert:
+              parts.length === 1 &&
+              parts[0] === "hello 妙造" &&
+              byteSize(parts[0]) === byteSize("hello 妙造"),
+            content: { parts },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chunkText - 超大文本按字节预算分片且可无损还原">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          // 混合 ASCII / 中文 / emoji，构造超过单片预算（32KB）的文本
+          const unit = "a字🎉";
+          const text = unit.repeat(40000);
+          const bigParts = chunkText(text);
+          const rejoined = bigParts.join("");
+          const eachWithinBudget = bigParts.every((p) => byteSize(p) <= 32 * 1024);
+          return {
+            assert:
+              bigParts.length > 1 && eachWithinBudget && rejoined === text,
+            content: {
+              parts: bigParts.length,
+              totalBytes: byteSize(text),
+              maxChunkBytes: Math.max(...bigParts.map(byteSize)),
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chunkText - 代理对安全（切点不劈开 emoji，重编码无损）">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          {
+            // 历史缺陷：切点落在代理对中间 → 分片含孤立代理项，TextEncoder
+            // （E2EE 必经）替换成 U+FFFD 不可逆损坏，WebKit 传输链直接丢消息
+            //（CI 稳定挂在固定分片的真正根因）。本用例锁死该行为。
+            const hasLoneSurrogate = (s) => {
+              for (let i = 0; i < s.length; i++) {
+                const c = s.charCodeAt(i);
+                const hi = c >= 0xd800 && c <= 0xdbff;
+                const lo = c >= 0xdc00 && c <= 0xdfff;
+                if (hi && !(i + 1 < s.length && s.charCodeAt(i + 1) >= 0xdc00 && s.charCodeAt(i + 1) <= 0xdfff)) return true;
+                if (lo && !(i > 0 && s.charCodeAt(i - 1) >= 0xd800 && s.charCodeAt(i - 1) <= 0xdbff)) return true;
+              }
+              return false;
+            };
+            const samples = {
+              emojiDense: "妙造隔离预览🎉\n".repeat(12000),
+              pureEmoji: "🎉".repeat(50000),
+              mixed: "ab🎉cd😀\n".repeat(20000),
+              ascii: "x".repeat(200000),
+            };
+            const checks = {};
+            for (const [k, sampleText] of Object.entries(samples)) {
+              const sampleParts = chunkText(sampleText);
+              checks[k] =
+                sampleParts.length >= 1 &&
+                !sampleParts.some(hasLoneSurrogate) &&
+                sampleParts.every((p) => byteSize(p) <= 32 * 1024) &&
+                sampleParts.join("") === sampleText &&
+                // E2EE 关键性质：每片单独 TextEncoder/Decoder 往返无损
+                sampleParts.every(
+                  (p) =>
+                    new TextDecoder().decode(new TextEncoder().encode(p)) === p,
+                );
+            }
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildFileMessages - 分片消息带 seq/total 且拼回原文">
+      <template>
+        <script type="module">
+          import { buildFileMessages } from "../proto.js";
+          const big = "x".repeat(200 * 1024) + "尾部";
+          const msgs = buildFileMessages("demo-app", "big.js", big);
+          const rebuilt = msgs.map((m) => m.text).join("");
+          const seqOk =
+            msgs.every((m, i) => m.seq === i) &&
+            msgs.every((m) => m.total === msgs.length && m.type === "file" && m.appName === "demo-app" && m.path === "big.js");
+          const smallMsgs = buildFileMessages("demo-app", "s.html", "<p>hi</p>");
+          return {
+            assert:
+              seqOk &&
+              rebuilt === big &&
+              smallMsgs.length === 1 &&
+              smallMsgs[0].seq === 0 &&
+              smallMsgs[0].total === 1,
+            content: { chunks: msgs.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createFileAssembler - 乱序分片收齐返回完整文件">
+      <template>
+        <script type="module">
+          import { createFileAssembler } from "../proto.js";
+          const asmReorder = createFileAssembler();
+          const r1 = asmReorder.push({ path: "a.js", seq: 1, total: 2, text: "BB" });
+          const r2 = asmReorder.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          // 收齐后的迟到重复分片：静默忽略（entry 已删，不得新建僵尸 entry）
+          const late = asmReorder.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          // 未收齐时的重复 seq：非法分片，抛错
+          let dupThrows = false;
+          try {
+            asmReorder.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+            asmReorder.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+          } catch (_) {
+            dupThrows = true;
+          }
+          return {
+            assert:
+              r1 === null &&
+              r2 &&
+              r2.text === "AABB" &&
+              r2.path === "a.js" &&
+              late === null &&
+              dupThrows &&
+              asmReorder.pendingCount() === 1,
+            content: { r2, late: late === null, dupThrows },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createFileAssembler - 非法 seq 抛错">
+      <template>
+        <script type="module">
+          import { createFileAssembler } from "../proto.js";
+          const asmBadSeq = createFileAssembler();
+          try {
+            asmBadSeq.push({ path: "a.js", seq: 5, total: 2, text: "X" });
+            return { assert: false, content: "未抛错" };
+          } catch (err) {
+            return { assert: /非法文件分片/.test(err.message), content: err.message };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - ACK 后 send resolve，串行保序">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          // 模拟对端：收到 data 信封立即回 ACK
+          const sent = [];
+          const peer = createReliableLink({
+            sendTo: async (env) => {
+              sent.push(env);
+              linkAck.receive(env, (ackEnv) => {
+                queueMicrotask(() => linkAck.receive(ackEnv));
+              });
+              return [{ status: "ok" }];
+            },
+          });
+          const linkAck = peer;
+          const order = [];
+          await linkAck.send({ type: "app-begin", n: 1 }, "k");
+          order.push(1);
+          await linkAck.send({ type: "app-end", n: 2 }, "k");
+          order.push(2);
+          return {
+            assert:
+              order[0] === 1 &&
+              order[1] === 2 &&
+              sent.length === 2 &&
+              sent.every((e) => e.kind === "data" && typeof e.msgId === "string"),
+            content: { sent: sent.length, order },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 重复消息去重且先回 ACK">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          const linkDedup = createReliableLink({ sendTo: async () => [{ status: "ok" }] });
+          const acks = [];
+          const reply = (env) => acks.push(env);
+          const env = { msgId: "m-test-dup", kind: "data", payload: { type: "file" } };
+          const first = linkDedup.receive(env, reply);
+          const second = linkDedup.receive(env, reply); // 重发产生的重复
+          return {
+            assert:
+              first &&
+              first.type === "file" &&
+              second === null &&
+              acks.length === 2 &&
+              acks.every((a) => a.kind === "ack" && a.msgId === "m-test-dup"),
+            content: { acks: acks.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 发送失败重发直至 ACK">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          let attempts = 0;
+          const linkRetry = createReliableLink({
+            sendTo: async (env) => {
+              attempts++;
+              // 第一次通道失败（no_receiver），重发成功并回 ACK
+              if (attempts === 1) return [{ status: "no_receiver" }];
+              queueMicrotask(() =>
+                linkRetry.receive({ msgId: env.msgId, kind: "ack" }),
+              );
+              return [{ status: "ok" }];
+            },
+            ackTimeout: 20,
+            maxRetry: 5,
+          });
+          await linkRetry.send({ type: "hello", userId: "u1" });
+          return {
+            assert: attempts === 2,
+            content: { attempts },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 命令悬挂按 capped 回调且重连授予额外重试额度">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          {
+            // 模拟 noneos 命令悬挂（连接僵尸：45s 内不会有 relay_response）：
+            // sendTo 永不落定 → 每轮按 capped 处理。maxRetry=2（基础 3 次尝试）
+            // + 每次重连 +1 额度（封顶基础 +2）→ 共 4 次尝试后拒绝，
+            // onOffline 每次都收到 reason:"capped"
+            let sendCalls = 0;
+            const reasons = [];
+            const linkCap = createReliableLink({
+              sendTo: () => {
+                sendCalls++;
+                return new Promise(() => {});
+              },
+              ackTimeout: 20,
+              maxRetry: 2,
+              sendCapMs: 40,
+              onOffline: (info) => reasons.push(info?.reason),
+            });
+            let rejected = null;
+            await linkCap.send({ type: "file", text: "x" }).catch((e) => {
+              rejected = e;
+            });
+            return {
+              assert:
+                !!rejected &&
+                /ACK timeout/.test(rejected.message) &&
+                sendCalls === 4 && // 基础 3 次 + 重连授予 1 次
+                reasons.length === 4 &&
+                reasons.every((r) => r === "capped"),
+              content: { message: rejected?.message, sendCalls, reasons },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - 重连授予的额度让迟到的通道恢复仍能送达">
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          {
+            // 前 2 次 no_receiver（无 onOffline 时 maxRetry=1 会在第 2 次后
+            // 拒绝）；带 onOffline 后每次失败 +1 额度（封顶 +2），第 3 次
+            // 通道恢复并回 ACK → send 应 resolve 而非拒绝
+            let attempts = 0;
+            const linkHeal = createReliableLink({
+              sendTo: async (env) => {
+                attempts++;
+                if (attempts <= 2) return [{ status: "no_receiver" }];
+                queueMicrotask(() =>
+                  linkHeal.receive({ msgId: env.msgId, kind: "ack" }),
+                );
+                return [{ status: "ok" }];
+              },
+              ackTimeout: 20,
+              maxRetry: 1,
+              onOffline: () => {},
+            });
+            await linkHeal.send({ type: "hello", userId: "u1" });
+            return {
+              assert: attempts === 3,
+              content: { attempts },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="ensureServerConnected - 收敛到排序首位中继，hard 时重建连接">
+      <template>
+        <script type="module">
+          import { ensureServerConnected } from "../proto.js";
+          {
+            const makeUser = ({ connected = [], servers }) => {
+              const state = { connected: [...connected], calls: [] };
+              return {
+                state,
+                server: {
+                  get connectedUrls() {
+                    return state.connected;
+                  },
+                  getServers: async () => servers,
+                  connect: async (url) => {
+                    state.calls.push("+" + url);
+                    if (!state.connected.includes(url)) state.connected.push(url);
+                  },
+                  disconnect: (url) => {
+                    state.calls.push("-" + url);
+                    state.connected = state.connected.filter((u) => u !== url);
+                  },
+                },
+              };
+            };
+            // 注意排序语义：helper 以字符串排序取首选，jp1 < us1
+            const servers = ["wss://hand3-jp1.noneos.com:4331", "wss://hand3-us1.noneos.com:4331"];
+            // 场景 1：已连多台（竞速分裂）→ 收敛到排序首位，断开其余
+            const uSplit = makeUser({ connected: servers.slice().reverse(), servers });
+            const ok1 = await ensureServerConnected(uSplit);
+            // 场景 2：已连首选 → 首选零折腾；非首选仍被**预防性**断开标记
+            //（getUser 后台 connectAll 不阻塞 ready，迟到的握手必须被掐掉）
+            const uPinned = makeUser({ connected: [servers[0]], servers });
+            const ok2 = await ensureServerConnected(uPinned);
+            const preferredChurn = uPinned.state.calls.some((c) =>
+              c === "-" + servers[0] || c === "+" + servers[0],
+            );
+            // 场景 3：hard → 首选与非首选全部断开，首选重建
+            const uHard = makeUser({ connected: [servers[0]], servers });
+            const ok3 = await ensureServerConnected(uHard, { hard: true });
+            return {
+              assert:
+                ok1 === true &&
+                ok2 === true &&
+                ok3 === true &&
+                uSplit.state.connected.length === 1 &&
+                uSplit.state.connected[0] === servers[0] &&
+                uSplit.state.calls.includes("-" + servers[1]) &&
+                preferredChurn === false &&
+                uPinned.state.calls.includes("-" + servers[1]) &&
+                uHard.state.calls.includes("-" + servers[0]) &&
+                uHard.state.calls.includes("-" + servers[1]) &&
+                uHard.state.calls.includes("+" + servers[0]) &&
+                uHard.state.connected.length === 1,
+              content: {
+                split: uSplit.state,
+                pinned: uPinned.state,
+                hard: uHard.state.calls,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="assertSendable - 超限 payload 抛错">
+      <template>
+        <script type="module">
+          import { assertSendable } from "../proto.js";
+          try {
+            assertSendable({ type: "file", text: "x".repeat(200 * 1024) });
+            return { assert: false, content: "未抛错" };
+          } catch (err) {
+            return {
+              assert: /payload too large/.test(err.message),
+              content: err.message,
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="sanitizeAppName / validateRelPath - 规范与逃逸拦截">
+      <template>
+        <script type="module">
+          import { sanitizeAppName, validateRelPath } from "../proto.js";
+          const nameOk = sanitizeAppName("  My Cool.App! ") === "my-cool-app";
+          const relOk = validateRelPath("pages/home.html").ok;
+          const abs = validateRelPath("/etc/passwd");
+          const escape = validateRelPath("../secret.txt");
+          const bin = validateRelPath("logo.png");
+          return {
+            assert:
+              nameOk &&
+              relOk &&
+              !abs.ok &&
+              !escape.ok &&
+              !bin.ok,
+            content: { abs: abs.reason, escape: escape.reason, bin: bin.reason },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="sha256Hex / buildManifest - 指纹与清单构造">
+      <template>
+        <script type="module">
+          import { sha256Hex, buildManifest } from "../proto.js";
+          // "abc" 的 SHA-256 标准测试向量
+          const abc = await sha256Hex("abc");
+          const manifest = await buildManifest([
+            { path: "a.txt", text: "hello" },
+            { path: "b/c.js", text: "中文🎉" },
+          ]);
+          return {
+            assert:
+              abc ===
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" &&
+              manifest.length === 2 &&
+              manifest[0].path === "a.txt" &&
+              /^[0-9a-f]{64}$/.test(manifest[0].hash) &&
+              manifest[1].hash !== manifest[0].hash,
+            content: { abc: abc.slice(0, 12), manifest },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge 隔离预览全链路集成测试（需 Core 已就绪）</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      隔离预览端到端：在同一页面用两个真实 LocalUser（不同 namespace）模拟
+      conjure（发送端）与 bridge（接收端），走真实 noneos-core 消息通道
+      （registerService + sendToService + 可靠链路 ACK/去重），
+      最终验证文件落盘 + /$conjure-apps/... 虚拟挂载 URL 可访问。
+
+      前置：本源已安装 NoneOS Core（先访问 / 根入口装好，同 conjure 的
+      test/builder.sb.html 端到端用例约束）。
+    -->
+    <sb-test name="全链路 - hello 推送文件 落盘 done，VFS URL 可访问">
+      <template>
+        <script type="module">
+          import {
+            SERVICE_ID_CONJURE,
+            SERVICE_ID_BRIDGE,
+            createReliableLink,
+            buildFileMessages,
+            enableServerAutoReconnect,
+            ensureServerConnected,
+          } from "../proto.js";
+          import { createPreviewReceiver, waitUrlReady } from "../receiver.js";
+          const { getUser } = await import("/nos/user/main.js");
+
+          // 双端收敛到同一台（排序首位）中继——双端分裂到不同区域中继时，
+          // 跨区转发的大帧曾整窗丢失（delivered:true 但对端从未收到）；
+          // capped（发送命令悬挂）时硬重置连接治僵尸
+          const ensureServer = async (user, info) => {
+            const ok = await ensureServerConnected(user, {
+              hard: info?.reason === "capped",
+            });
+            if (!ok) throw new Error("信令服务器未连接");
+          };
+
+          // 两侧用户（不同 namespace → 不同身份，模拟跨域两端）
+          const conjureUser = await getUser("conjure-preview");
+          const bridgeUser = await getUser("conjure-bridge");
+          // 掉线自动重连（默认关闭）：CI 中继长连接被杀后无此开关则永远 offline
+          enableServerAutoReconnect(conjureUser);
+          enableServerAutoReconnect(bridgeUser);
+          await Promise.all([ensureServer(conjureUser), ensureServer(bridgeUser)]);
+
+          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）；
+          // linkEvents 收集可靠链路的协议级事件（attempt/sent/capped/reconnect/ack…）
+          const diag = { sends: [], recvs: [], linkEvents: [] };
+          const onEvt = (side) => (e) => {
+            try {
+              diag.linkEvents.push({ side, ...e });
+            } catch (_) {}
+          };
+          // 紧凑摘要：CI 日志对长 content 会截断（历史失败里 diagRecvs 整段
+          // 被切掉，无法判断接收端到底收没收到）。全部压成短行，预算 < 2KB：
+          //   send = 发送端逐条投递结果（含中继区域/delivered）与 ACK 回执
+          //   recv = 接收端实际收到的信封（缺哪条一眼可见）
+          //   evt  = 链路事件尾部（重试/封顶/重连节奏）
+          //   conn = 失败瞬间双端各自的信令连接
+          const diagTag = (id) => (id ? "-" + id.split("-").pop() : "?");
+          const diagStatus = (s) => {
+            const via = /"via":"(\w+)"/.exec(s || "")?.[1] || "?";
+            const relay = /hand3-([a-z0-9]+)\./.exec(s || "")?.[1] || "";
+            return via + (relay ? "@" + relay : "") +
+              (/"delivered":true/.test(s || "") ? "+dv" : "");
+          };
+          const shortUrls = (u) =>
+            (Array.isArray(u) ? u : [])
+              .map((x) => String(x).replace(/^wss?:\/\//, ""))
+              .join(";");
+          const failDiag = (err) => ({
+            error: String(err?.message || err).slice(0, 100),
+            send:
+              diag.sends.slice(-14).map((d) =>
+                d.dir === "ack"
+                  ? `ack${diagTag(d.msgId)}${d.err ? "!" + d.err.slice(0, 40) : ""}`
+                  : `D${diagTag(d.msgId)}${d.path ? "@" + d.path : ""}` +
+                    `:${d.bytes}B/${diagStatus(d.statuses)}` +
+                    `${d.ms != null ? "/" + d.ms + "ms" : ""}` +
+                    `${d.err ? "!" + d.err.slice(0, 40) : ""}`,
+              ).join(" ") || "(none)",
+            recv:
+              diag.recvs.slice(-14).map((r) =>
+                `${r.kind}${diagTag(r.msgId)}${r.bytes ? ":" + r.bytes + "B" : ""}`,
+              ).join(" ") || "(none)",
+            evt:
+              diag.linkEvents
+                .filter((e) =>
+                  ["attempt", "sent", "send-capped", "reconnect", "ack", "retry", "rejected"]
+                    .includes(e.phase),
+                )
+                .slice(-18)
+                .map((e) =>
+                  `${e.side === "conjure" ? "cj" : "bd"}:${e.phase}` +
+                  `${diagTag(e.msgId)}${e.tries ? "#" + e.tries : ""}` +
+                  `${e.ms != null ? "/" + e.ms + "ms" : ""}` +
+                  `${e.reason ? "/" + e.reason : ""}` +
+                  `${e.delivered === false ? "/nodv" : ""}`,
+                )
+                .join(" ") || "(none)",
+            conn: `cj[${shortUrls(conjureUser.server?.connectedUrls)}]` +
+              ` bd[${shortUrls(bridgeUser.server?.connectedUrls)}]`,
+          });
+
+          // 接收端（bridge）：可靠链路 + receiver 写 VFS（conjureId 与真实 bridge 页一致）
+          const receiver = createPreviewReceiver({ conjureId: conjureUser.userId });
+          let bridgeRemote = null;
+          const bridgeLink = createReliableLink({
+            sendTo: (env) =>
+              bridgeRemote
+                ? bridgeRemote.sendToService(SERVICE_ID_CONJURE, env, {
+                    waitForService: 3000,
+                  })
+                : Promise.resolve([{ status: "error" }]),
+            // 中继通道掉线时主动重连本侧信令，别让重试窗口干等耗尽
+            onOffline: (info) => ensureServer(bridgeUser, info),
+            onEvent: onEvt("bridge"),
+          });
+          let donePayload = null;
+          const donePromise = new Promise((r) => {
+            donePayload = r;
+          });
+          bridgeUser.registerService(SERVICE_ID_BRIDGE, {
+            onMessage: (data, ctx) => {
+              diag.recvs.push({
+                msgId: data?.msgId,
+                kind: data?.kind,
+                bytes: data?.payload?.text?.length || 0,
+              });
+              const payload = bridgeLink.receive(data, (env) => {
+                // ACK 定向回复到发送方（conjure）监听的服务
+                ctx.remoteUser
+                  .sendToService(SERVICE_ID_CONJURE, env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .then(
+                    (rs) =>
+                      diag.sends.push({
+                        dir: "ack",
+                        msgId: env.msgId,
+                        statuses: JSON.stringify(rs),
+                      }),
+                    (e) =>
+                      diag.sends.push({
+                        dir: "ack",
+                        msgId: env.msgId,
+                        err: String(e && e.message || e),
+                      }),
+                  );
+              });
+              if (payload) {
+                const result = receiver.handle(payload);
+                if (result && payload.type === "app-end") {
+                  result.then((r) => r && donePayload(r)).catch(() => {});
+                }
+              }
+            },
+          });
+
+          // 发送端（conjure）：可靠链路 + 等 hello。
+          // 旁路记录实际发出的 index.html 分片文本——断言传输的是「原始字符串」，
+          // 发送端绝不注入（注入只发生在 30032 接收端落盘时，见 receiver.injectAgent）
+          const sentIndexChunks = [];
+          let senderRemote = null;
+          const senderLink = createReliableLink({
+            onOffline: (info) => ensureServer(conjureUser, info),
+            onEvent: onEvt("conjure"),
+            sendTo: (env) => {
+              const p = env?.payload;
+              if (p && p.type === "file" && p.path === "index.html") {
+                sentIndexChunks.push(p.text);
+              }
+              if (!senderRemote) return Promise.resolve([{ status: "error" }]);
+              const entry = {
+                dir: "data",
+                msgId: env.msgId,
+                path: p?.path,
+                bytes: p?.text?.length || 0,
+              };
+              const t0 = Date.now();
+              return senderRemote
+                .sendToService(SERVICE_ID_BRIDGE, env, {
+                  waitForService: 3000,
+                })
+                .then(
+                  (rs) => {
+                    entry.statuses = JSON.stringify(rs);
+                    entry.ms = Date.now() - t0;
+                    diag.sends.push(entry);
+                    return rs;
+                  },
+                  (e) => {
+                    entry.err = String(e && e.message || e);
+                    diag.sends.push(entry);
+                    throw e;
+                  },
+                );
+            },
+          });
+          let helloResolve;
+          const helloPromise = new Promise((r) => {
+            helloResolve = r;
+          });
+          conjureUser.registerService(SERVICE_ID_CONJURE, {
+            onMessage: (data, ctx) => {
+              const payload = senderLink.receive(data, (env) => {
+                ctx.remoteUser
+                  .sendToService(SERVICE_ID_BRIDGE, env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .catch(() => {});
+              });
+              if (payload && payload.type === "hello") helloResolve(payload);
+            },
+          });
+
+          // 建链（互连，与真实两端流程一致）
+          senderRemote = await conjureUser.connectUser(bridgeUser.userId);
+          bridgeRemote = await bridgeUser.connectUser(conjureUser.userId);
+
+          // bridge → conjure：hello
+          await bridgeLink.send({ type: "hello", userId: bridgeUser.userId });
+          const hello = await Promise.race([
+            helloPromise,
+            new Promise((_, rej) =>
+              setTimeout(() => rej(new Error("等待 hello 超时")), 10000),
+            ),
+          ]);
+
+          // conjure → bridge：推送应用文件（含大文件分片与中文内容）
+          const appName = "it-flow-app";
+          const bigText = "妙造隔离预览🎉\n".repeat(12000); // ~276KB，32KB 预算下 9 片
+          const files = [
+            { path: "index.html", text: "<h1>it-flow</h1><script>/* 中文 ok */</" + "script>" },
+            { path: "app.json", text: JSON.stringify({ name: appName, version: "0.1.0" }) },
+            { path: "big.js", text: bigText },
+          ];
+          try {
+            await senderLink.send({
+              type: "app-begin",
+              appName,
+              fileCount: files.length,
+            });
+            for (const f of files) {
+              for (const msg of buildFileMessages(appName, f.path, f.text)) {
+                await senderLink.send(msg);
+              }
+            }
+            await senderLink.send({ type: "app-end", appName });
+          } catch (pushErr) {
+            // 投递失败：紧凑诊断（send/recv/evt/conn），CI 日志不截断
+            return { assert: false, content: failDiag(pushErr) };
+          }
+
+          let done;
+          try {
+            done = await Promise.race([
+              donePromise,
+              new Promise((_, rej) =>
+                setTimeout(() => rej(new Error("等待 done 超时")), 40000),
+              ),
+            ]);
+          } catch (doneErr) {
+            // done 超时同样带紧凑诊断（文件可能已收齐但回程 done 丢失）
+            return { assert: false, content: failDiag(doneErr) };
+          }
+
+          // VFS URL 经 SW 可访问且内容一致
+          const ok = await waitUrlReady(done.url, 10000);
+          const resHtml = await fetch(`/$conjure-apps/${appName}/client/index.html`);
+          const resBig = await fetch(`/$conjure-apps/${appName}/client/big.js`);
+          const resJson = await fetch(`/$conjure-apps/${appName}/client/app.json`);
+          const bigRound = resBig.status === 200 ? await resBig.text() : "";
+          const htmlOnDisk = resHtml.status === 200 ? await resHtml.text() : "";
+          const sentIndexHtml = sentIndexChunks.join("");
+          const originalHtml = files[0].text;
+          // 发送端契约：线上传输的是原始 index.html（无注入标记）；
+          // 注入仅发生在 30032 落盘副本（磁盘版本含标签）
+          const sentClean = sentIndexHtml === originalHtml &&
+            !sentIndexHtml.includes("/bridge/inject.js");
+          const diskInjected = htmlOnDisk.includes("/bridge/inject.js");
+
+          return {
+            assert:
+              hello.userId === bridgeUser.userId &&
+              done.appName === appName &&
+              ok &&
+              resHtml.status === 200 &&
+              resJson.status === 200 &&
+              resBig.status === 200 &&
+              bigRound === bigText &&
+              sentClean &&
+              diskInjected,
+            content: {
+              url: done.url,
+              bigBytes: bigText.length,
+              checks: {
+                helloOk: hello.userId === bridgeUser.userId,
+                doneOk: done.appName === appName,
+                urlReady: ok,
+                sentCleanOriginal: sentClean,
+                diskInjected,
+                html200: resHtml.status === 200,
+                json200: resJson.status === 200,
+                big200: resBig.status === 200,
+                bigRoundtrip: bigRound === bigText,
+              },
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="receiver - 重复推送覆盖旧文件（app-begin 清目录重建）">
+      <template>
+        <script type="module">
+          import { createPreviewReceiver, waitUrlReady } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+          const name = "it-overwrite-app";
+
+          const pushAll = async (receiver, appName, files) => {
+            await receiver.handle({
+              type: "app-begin",
+              appName,
+              fileCount: files.length,
+            });
+            for (const f of files) {
+              // 小文件直接单片，不经通信
+              await receiver.handle({
+                type: "file",
+                appName,
+                path: f.path,
+                seq: 0,
+                total: 1,
+                text: f.text,
+              });
+            }
+            return receiver.handle({ type: "app-end", appName });
+          };
+
+          const r1 = createPreviewReceiver({ init });
+          await pushAll(r1, name, [
+            { path: "index.html", text: "<p>v1</p>" },
+            { path: "old.css", text: "body{}" },
+          ]);
+          const r2 = createPreviewReceiver({ init });
+          const done2 = await pushAll(r2, name, [
+            { path: "index.html", text: "<p>v2</p>" },
+          ]);
+
+          const idx = await fetch(`/$conjure-apps/${name}/client/index.html`);
+          const old = await fetch(`/$conjure-apps/${name}/client/old.css`);
+          return {
+            assert:
+              done2.url === `/$conjure-apps/${name}/client/index.html` &&
+              idx.status === 200 &&
+              (await idx.text()) === "<p>v2</p>" &&
+              old.status === 404, // 旧文件随目录重建被清除
+            content: {
+              url: done2.url,
+              idxStatus: idx.status,
+              oldStatus: old.status,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="receiver - 非法相对路径被拦截">
+      <template>
+        <script type="module">
+          import { createPreviewReceiver } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+          const receiver = createPreviewReceiver({ init });
+          await receiver.handle({
+            type: "app-begin",
+            appName: "it-evil-app",
+            fileCount: 1,
+          });
+          try {
+            await receiver.handle({
+              type: "file",
+              appName: "it-evil-app",
+              path: "../escape.txt",
+              seq: 0,
+              total: 1,
+              text: "x",
+            });
+            return { assert: false, content: "未抛错" };
+          } catch (err) {
+            const res = await fetch("/$conjure-apps/it-evil-app/client/index.html");
+            return {
+              assert: /escape\.txt/.test(err.message) && res.status === 404,
+              content: { message: err.message, escape404: res.status === 404 },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="增量同步 - hash 比对只传差异文件，未变文件保持原样">
+      <template>
+        <script type="module">
+          import {
+            createReliableLink,
+            buildFileMessages,
+            buildManifest,
+            enableServerAutoReconnect,
+            ensureServerConnected,
+          } from "../proto.js";
+          import { createPreviewReceiver } from "../receiver.js";
+          // 本用例独立的服务 ID，避免与用例 1 在同一页面重复注册同名服务
+          const SERVICE_ID_CONJURE = "conjure-preview-t2";
+          const SERVICE_ID_BRIDGE = "conjure-bridge-t2";
+          const { getUser } = await import("/nos/user/main.js");
+
+          // 同用例 1：收敛到同一台中继 + capped 硬重置
+          const ensureServer = async (user, info) => {
+            const ok = await ensureServerConnected(user, {
+              hard: info?.reason === "capped",
+            });
+            if (!ok) throw new Error("信令服务器未连接");
+          };
+
+          const sender = await getUser("conjure-preview");
+          const receiverUser = await getUser("conjure-bridge");
+          enableServerAutoReconnect(sender);
+          enableServerAutoReconnect(receiverUser);
+          await Promise.all([ensureServer(sender), ensureServer(receiverUser)]);
+
+          const receiver = createPreviewReceiver({});
+          let receiverRemote = null;
+          const receiverLink = createReliableLink({
+            sendTo: (env) =>
+              receiverRemote
+                ? receiverRemote.sendToService("conjure-preview-t2", env, {
+                    waitForService: 3000,
+                  })
+                : Promise.resolve([{ status: "error" }]),
+            onOffline: (info) => ensureServer(receiverUser, info),
+          });
+          // 接收端对 sync-check 的 reply（sync-diff）经链路回传给发送端
+          receiverUser.registerService("conjure-bridge-t2", {
+            onMessage: (data, ctx) => {
+              const payload = receiverLink.receive(data, (env) => {
+                ctx.remoteUser
+                  .sendToService("conjure-preview-t2", env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .catch(() => {});
+              });
+              if (!payload) return;
+              receiver.handle(payload).then((result) => {
+                if (result && result.reply) receiverLink.send(result.reply);
+              }).catch(() => {});
+            },
+          });
+
+          let senderRemote = null;
+          let senderLink = createReliableLink({
+            sendTo: (env) =>
+              senderRemote
+                ? senderRemote.sendToService("conjure-bridge-t2", env, {
+                    waitForService: 3000,
+                  })
+                : Promise.resolve([{ status: "error" }]),
+            onOffline: (info) => ensureServer(sender, info),
+          });
+          const diffs = []; // 按到达顺序收集 sync-diff（两次 sync-check 各一条）
+          sender.registerService("conjure-preview-t2", {
+            onMessage: (data, ctx) => {
+              const payload = senderLink.receive(data, (env) => {
+                ctx.remoteUser
+                  .sendToService("conjure-bridge-t2", env, {
+                    sessionId: ctx.fromSessionId,
+                  })
+                  .catch(() => {});
+              });
+              if (payload && payload.type === "sync-diff") diffs.push(payload);
+            },
+          });
+          // 等到第 n 条 sync-diff（轮询，带超时）
+          const waitDiff = async (n, ms = 15000) => {
+            const deadline = Date.now() + ms;
+            while (diffs.length < n && Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            if (diffs.length < n) throw new Error(`等待第 ${n} 条 sync-diff 超时`);
+            return diffs[n - 1];
+          };
+
+          senderRemote = await sender.connectUser(receiverUser.userId);
+          receiverRemote = await receiverUser.connectUser(sender.userId);
+
+          // 随机后缀保证用例幂等（上一轮运行可能已把文件写入 VFS）
+          const appName = `it-incr-app-${Date.now() % 100000}`;
+          const v1 = [
+            { path: "index.html", text: "<p>v1</p>" },
+            { path: "style.css", text: "body{color:red}" },
+            { path: "app.json", text: '{"v":1}' },
+          ];
+          // 第一次：全量推送（receiver 无既有文件 → diff 应全缺失）
+          await senderLink.send({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest(v1),
+          });
+          const diff1 = await waitDiff(1);
+          const pushFiles = async (list, wipe) => {
+            await senderLink.send({
+              type: "app-begin",
+              appName,
+              fileCount: list.length,
+              wipe,
+            });
+            for (const f of list) {
+              for (const msg of buildFileMessages(appName, f.path, f.text)) {
+                await senderLink.send(msg);
+              }
+            }
+            await senderLink.send({ type: "app-end", appName });
+          };
+          await pushFiles(
+            v1.filter((f) => diff1.missing.includes(f.path)),
+            diff1.missing.length === v1.length,
+          );
+
+          // 第二次：只改 index.html 与新增 note.md
+          const v2 = [
+            { path: "index.html", text: "<p>v2</p>" },
+            { path: "style.css", text: "body{color:red}" },
+            { path: "app.json", text: '{"v":1}' },
+            { path: "note.md", text: "新增" },
+          ];
+          await senderLink.send({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest(v2),
+          });
+          const diff2 = await waitDiff(2);
+          const missing2 = [...diff2.missing].sort();
+          await pushFiles(
+            v2.filter((f) => diff2.missing.includes(f.path)),
+            diff2.missing.length === v2.length,
+          );
+
+          const get = async (p) => {
+            const res = await fetch(`/$conjure-apps/${appName}/client/${p}`);
+            return res.status === 200 ? await res.text() : null;
+          };
+          return {
+            assert:
+              // 全量：首轮全缺失
+              diff1.missing.length === 3 &&
+              // 增量：只回报 index.html（变更）+ note.md（新增），style.css/app.json 命中跳过
+              missing2.length === 2 &&
+              missing2[0] === "index.html" &&
+              missing2[1] === "note.md" &&
+              (await get("index.html")) === "<p>v2</p>" &&
+              (await get("style.css")) === "body{color:red}" &&
+              (await get("app.json")) === '{"v":1}' &&
+              (await get("note.md")) === "新增",
+            content: {
+              diff1: diff1.missing,
+              diff2: missing2,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="代理注入 - index.html 注入脚本标签，比对时剥离保持 hash 一致">
+      <template>
+        <script type="module">
+          import {
+            buildManifest,
+            sha256Hex,
+          } from "../proto.js";
+          import {
+            createPreviewReceiver,
+            injectAgent,
+            stripAgent,
+          } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+
+          // 纯函数层：注入 / 剥离 / 幂等 / hash 对齐
+          const html = "<!doctype html><html><head><title>a</title></head><body><div>app</div></body></html>";
+          const injected = injectAgent(html, "user-abc");
+          const injectedTwice = injectAgent(injected, "user-abc");
+          const stripped = stripAgent(injected);
+          const headInjected = /inject\.js[^>]*><\/script><\/head>/.test(injected);
+          const noHead = injectAgent("<html><body>x</body></html>", "u1");
+          const bodyInjected = /inject\.js[^>]*><\/script><\/body>/.test(noHead);
+          const hashAligned =
+            (await sha256Hex(stripped)) === (await sha256Hex(html));
+          const hasModuleType = /type="module"/.test(injected);
+          const hasDataId = /data-conjure-id="user-abc"/.test(injected);
+
+          // 落盘层：带 conjureId 的 receiver 写入的 index.html 含注入标签，
+          // 且 sync-check 对「原始内容」的 manifest 报零差异（剥离比对生效）
+          const appName = `it-agent-app-${Date.now() % 100000}`;
+          const receiver = createPreviewReceiver({ init, conjureId: "user-abc" });
+          await receiver.handle({
+            type: "app-begin",
+            appName,
+            fileCount: 1,
+          });
+          await receiver.handle({
+            type: "file",
+            appName,
+            path: "index.html",
+            seq: 0,
+            total: 1,
+            text: html,
+          });
+          await receiver.handle({ type: "app-end", appName });
+          const onDisk = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+          const check = await receiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          return {
+            assert:
+              injected !== html &&
+              injectedTwice === injected &&
+              stripped === html &&
+              headInjected &&
+              bodyInjected &&
+              hashAligned &&
+              hasModuleType &&
+              hasDataId &&
+              onDisk.includes("/bridge/inject.js") &&
+              onDisk.includes('data-conjure-id="user-abc"') &&
+              check.reply &&
+              check.reply.missing.length === 0,
+            content: {
+              injectedTag: injected.match(/<script[^>]*>/)[0],
+              checks: {
+                idempotent: injectedTwice === injected,
+                stripRestores: stripped === html,
+                hashAligned,
+                headInjected,
+                bodyInjected,
+                onDiskInjected: onDisk.includes("/bridge/inject.js"),
+                zeroDiffAfterStrip: check.reply && check.reply.missing.length === 0,
+              },
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="存量迁移 - 未注入的 index.html 内容一致也强制重传补注入">
+      <template>
+        <script type="module">
+          import { buildManifest } from "../proto.js";
+          import { createPreviewReceiver } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+          const appName = `it-migrate-app-${Date.now() % 100000}`;
+          const html = "<html><head><title>m</title></head><body>x</body></html>";
+
+          // 模拟注入功能上线前的旧写入：conjureId 为空 → 原样落盘、无注入
+          const oldReceiver = createPreviewReceiver({ init });
+          await oldReceiver.handle({ type: "app-begin", appName, fileCount: 1 });
+          await oldReceiver.handle({
+            type: "file", appName, path: "index.html", seq: 0, total: 1, text: html,
+          });
+          await oldReceiver.handle({ type: "app-end", appName });
+          const before = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+
+          // 新接收端（带 conjureId）比对同一内容：内容一致但缺注入标记 → 必须报缺失
+          const newReceiver = createPreviewReceiver({ init, conjureId: "user-mig" });
+          const check = await newReceiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          // 重传该文件 → 落盘版本带注入标签
+          await newReceiver.handle({
+            type: "app-begin", appName, fileCount: 1, wipe: false,
+          });
+          await newReceiver.handle({
+            type: "file", appName, path: "index.html", seq: 0, total: 1, text: html,
+          });
+          const after = await (await fetch(
+            `/$conjure-apps/${appName}/client/index.html`,
+          )).text();
+
+          // 已注入版本再比对：不再报缺失（迁移只发生一次）
+          const check2 = await newReceiver.handle({
+            type: "sync-check",
+            appName,
+            manifest: await buildManifest([{ path: "index.html", text: html }]),
+          });
+
+          return {
+            assert:
+              !before.includes("/bridge/inject.js") &&
+              check.reply.missing.length === 1 &&
+              check.reply.missing[0] === "index.html" &&
+              after.includes("/bridge/inject.js") &&
+              after.includes('data-conjure-id="user-mig"') &&
+              check2.reply.missing.length === 0,
+            content: {
+              beforeInjected: before.includes("/bridge/inject.js"),
+              migrateMissing: check.reply.missing,
+              afterInjected: after.includes("/bridge/inject.js"),
+              secondCheck: check2.reply.missing,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="waitUrlReady - 就绪 URL 立即返回 true，未挂载 URL 超时 false">
+      <template>
+        <script type="module">
+          import { createPreviewReceiver, waitUrlReady } from "../receiver.js";
+          const { init } = await import("/nos/fs/main.js");
+          const receiver = createPreviewReceiver({ init });
+          await receiver.handle({
+            type: "app-begin",
+            appName: "it-ready-app",
+            fileCount: 1,
+          });
+          await receiver.handle({
+            type: "file",
+            appName: "it-ready-app",
+            path: "index.html",
+            seq: 0,
+            total: 1,
+            text: "<p>ready</p>",
+          });
+          const done = await receiver.handle({
+            type: "app-end",
+            appName: "it-ready-app",
+          });
+          const t0 = Date.now();
+          const okFast = await waitUrlReady(done.url, 8000);
+          const elapsed = Date.now() - t0;
+          const okMissing = await waitUrlReady(
+            "/$conjure-apps/it-ready-app/client/nope.html",
+            1200,
+          );
+          return {
+            assert: okFast && elapsed < 5000 && okMissing === false,
+            content: { okFast, elapsed, okMissing },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

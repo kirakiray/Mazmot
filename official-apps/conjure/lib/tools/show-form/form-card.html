@@ -1,0 +1,331 @@
+<template component>
+  <style>
+    :host {
+      display: block;
+      max-width: min(525px, 82%);
+    }
+    .form-card {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container-low);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .form-card-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .form-card-title n-icon {
+      font-size: 18px;
+      color: var(--md-sys-color-primary);
+    }
+    .form-badge {
+      margin-left: auto;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 400;
+      background: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .form-badge-pending {
+      background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+      color: var(--md-sys-color-primary);
+    }
+    .form-badge-done {
+      background: color-mix(in srgb, var(--md-sys-color-tertiary) 16%, transparent);
+      color: var(--md-sys-color-tertiary);
+    }
+    .form-card-desc {
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .form-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .form-label {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .form-req {
+      color: var(--md-sys-color-error);
+      font-style: normal;
+      margin-left: 2px;
+    }
+    /* 待填控件用 senti-ui 表单组件（st-input / st-textarea / st-select /
+       st-radio / st-checkbox，宿主页面预载），这里只管布局 */
+    .form-field st-input,
+    .form-field st-textarea,
+    .form-field st-select {
+      width: 100%;
+      font-size: 13px;
+    }
+    .form-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding: 2px 0;
+    }
+    .form-opt {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      cursor: pointer;
+    }
+    .form-card-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .form-submit {
+      border: none;
+      cursor: pointer;
+      padding: 7px 20px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      background: var(--md-sys-color-primary);
+      color: var(--md-sys-color-on-primary);
+    }
+    .form-submit:hover {
+      box-shadow: 0 1px 4px color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+    }
+    .form-submit:active {
+      opacity: 0.85;
+    }
+    .form-review {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-review-row {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      line-height: 19px;
+    }
+    .form-review-label {
+      flex: none;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .form-review-label::after {
+      content: "：";
+    }
+    .form-review-value {
+      color: var(--md-sys-color-on-surface);
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+    }
+  </style>
+  <!-- spec 就绪前不渲染：组件首渲染可能早于 data 默认值合并，
+       直接读 spec.title 会抛表达式错误 -->
+  <o-if :value="spec">
+    <div class="form-card">
+    <div class="form-card-title">
+      <n-icon icon="mdi:form-select"></n-icon>
+      <span>{{spec.title}}</span>
+      <o-if :value="spec.status === 'pending'">
+        <span class="form-badge form-badge-pending">等待填写</span>
+      </o-if>
+      <o-if :value="spec.status === 'submitted'">
+        <span class="form-badge form-badge-done">已提交 · 只读</span>
+      </o-if>
+      <o-if :value="spec.status === 'cancelled'">
+        <span class="form-badge">已取消</span>
+      </o-if>
+      <o-if :value="spec.status === 'expired'">
+        <span class="form-badge">已过期 · 只读</span>
+      </o-if>
+    </div>
+    <o-if :value="spec.description !== ''">
+      <div class="form-card-desc">{{spec.description}}</div>
+    </o-if>
+    <div class="form-card-body" :html="bodyHtml"></div>
+    <o-if :value="spec.status === 'pending'">
+      <div class="form-card-actions">
+        <button class="form-submit" on:click="submitClick">提交</button>
+      </div>
+    </o-if>
+    </div>
+  </o-if>
+  <script>
+    // show_form 视觉交互工具的表单卡片组件（show-form 包）。
+    // data.spec 为表单规范 + 状态：{ title, description, fields[], status, data }。
+    // pending 时渲染可编辑控件；submitted / cancelled / expired 只读回填。
+    // 提交数据经 form-submit 事件（bubbles + composed）冒泡给宿主页面。
+    export default async ({ load }) => {
+      return {
+        tag: "show-form-card",
+        data: {
+          // 默认值必须字段齐全：模板表达式在首次渲染就要能求值
+          spec: {
+            title: "",
+            description: "",
+            status: "",
+            fields: [],
+            data: null,
+          },
+          bodyHtml: "", // 表单主体 HTML（watch specJson 生成，含控件 / 只读清单）
+        },
+        watch: {
+          spec() {
+            this.bodyHtml = this.renderFields(this.spec || {});
+          },
+        },
+        proto: {
+          // 命令式设置表单规范并渲染：生产路径是 :spec 声明式绑定触发 watch，
+          // 外部属性赋值不触发 watch，测试 / 演示脚本走这个入口
+          applySpec(spec) {
+            this.spec = spec || {
+              title: "",
+              description: "",
+              status: "",
+              fields: [],
+              data: null,
+            };
+            this.bodyHtml = this.renderFields(this.spec);
+          },
+          esc(text) {
+            return String(text ?? "").replace(/[&<>"']/g, (c) => ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c]);
+          },
+          // pending 生成可编辑控件；其余状态渲染「label：值」只读清单
+          renderFields(form) {
+            form = form || {};
+            const fields = Array.isArray(form.fields) ? form.fields : [];
+            const esc = (t) => this.esc(t);
+            if (form.status !== "pending") {
+              return (
+                '<div class="form-review">' +
+                fields
+                  .map((f) => {
+                    let v = form.data ? form.data[f.key] : "";
+                    if (f.type === "checkbox") v = v ? "是" : "否";
+                    const text =
+                      v === undefined || v === null || v === ""
+                        ? "（未填写）"
+                        : String(v);
+                    return (
+                      '<div class="form-review-row">' +
+                      `<span class="form-review-label">${esc(f.label)}</span>` +
+                      `<span class="form-review-value">${esc(text)}</span>` +
+                      "</div>"
+                    );
+                  })
+                  .join("") +
+                "</div>"
+              );
+            }
+            // pending 生成 senti-ui 表单控件（name 属性用于提交时收集值；
+            // st-radio 以 name 为同组互斥键，value 为该选项提交值）
+            return fields
+              .map((f) => {
+                const name = esc(f.key);
+                const label = `<span class="form-label">${esc(f.label)}${
+                  f.required ? '<i class="form-req">*</i>' : ""
+                }</span>`;
+                if (f.type === "textarea")
+                  return `<label class="form-field">${label}<st-textarea name="${name}" rows="3" autosize${
+                    f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""
+                  }></st-textarea></label>`;
+                if (f.type === "select")
+                  return (
+                    `<label class="form-field">${label}<st-select name="${name}">` +
+                    (f.options || [])
+                      .map(
+                        (o) =>
+                          `<option value="${esc(o)}">${esc(o)}</option>`,
+                      )
+                      .join("") +
+                    "</st-select></label>"
+                  );
+                if (f.type === "radio")
+                  return (
+                    `<div class="form-field">${label}<div class="form-options">` +
+                    (f.options || [])
+                      .map(
+                        (o) =>
+                          `<label class="form-opt"><st-radio name="${name}" value="${esc(o)}">${esc(o)}</st-radio></label>`,
+                      )
+                      .join("") +
+                    "</div></div>"
+                  );
+                if (f.type === "checkbox")
+                  return `<st-checkbox class="form-opt" name="${name}">${esc(f.label)}${
+                    f.required ? '<i class="form-req">*</i>' : ""
+                  }</st-checkbox>`;
+                const type = f.type === "number" ? "number" : "text";
+                return `<label class="form-field">${label}<st-input name="${name}" type="${type}"${
+                  f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""
+                }></st-input></label>`;
+              })
+              .join("");
+          },
+          // 「提交」：收集 senti 控件值 → required 校验 → form-submit 事件冒泡
+          async submitClick() {
+            const values = {};
+            // ofa 的 this.shadow 只有 $ 查询；拿原生卡片节点后用原生 API 收集
+            const cardEle = this.shadow.$(".form-card")?.ele;
+            for (const el of cardEle?.querySelectorAll(
+              "st-input, st-textarea, st-select, st-checkbox, st-radio",
+            ) || []) {
+              const name = el.getAttribute("name");
+              if (!name) continue;
+              if (el.tagName === "ST-CHECKBOX") {
+                values[name] = el.hasAttribute("checked");
+              } else if (el.tagName === "ST-RADIO") {
+                // 未选中的 radio 不产生值；选中项取其 value 属性
+                if (el.hasAttribute("checked")) values[name] = el.getAttribute("value");
+              } else {
+                const v = el.value ?? "";
+                values[name] = typeof v === "string" ? v.trim() : v;
+              }
+            }
+            const missing = (this.spec?.fields || []).filter(
+              (f) =>
+                f.required &&
+                (values[f.key] === undefined ||
+                  values[f.key] === "" ||
+                  values[f.key] === false),
+            );
+            if (missing.length) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              );
+              toast(`请填写：${missing.map((f) => f.label).join("、")}`);
+              return;
+            }
+            this.emit("form-submit", {
+              data: values,
+              bubbles: true,
+              composed: true,
+            });
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -250,6 +250,195 @@
       </template>
     </sb-test>
 
+    <sb-test name="isToolLoop: 真循环判定（连续重复/窄循环/合法重复不误伤）">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { isToolLoop } = await import("../chain/agent.js");
+            const sig = (n, v) => `t:${JSON.stringify(v)}`;
+            const checks = {
+              short: !isToolLoop([sig(1, "a"), sig(1, "a"), sig(1, "a")]),
+              fourSame: isToolLoop([
+                sig(1, "a"), sig(1, "a"), sig(1, "a"), sig(1, "a"),
+              ]),
+              threeSameThenNew: !isToolLoop([
+                sig(1, "a"), sig(1, "a"), sig(1, "a"), sig(2, "b"),
+              ]),
+              abab: isToolLoop([
+                sig(1, "a"), sig(2, "b"), sig(1, "a"), sig(2, "b"),
+                sig(1, "a"), sig(2, "b"), sig(1, "a"), sig(2, "b"),
+              ]),
+              // 参数递增的重复调用（如 preview_console 带递增 since）不是循环
+              varyingArgs: !(() => {
+                const s = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => `t:{"i":${i}}`);
+                return isToolLoop(s);
+              })(),
+              // 与不同调用交织的合法重复（如每轮修复后重推 preview_app）
+              interleaved: !(() => {
+                const s = [];
+                for (let i = 0; i < 4; i++)
+                  s.push('t:{"app":"x"}', `t:{"file":"f${i}"}`, `t:{"i":${i}}`);
+                return isToolLoop(s);
+              })(),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAgent: 循环检测优雅收束（不再靠步数上限）">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { createAgent, tool } = await import("../chain/main.js");
+            const calls = [];
+            const probe = tool(async (args) => {
+              calls.push(args);
+              return "ok";
+            }, { name: "probe", schema: { v: { type: "string" } } });
+
+            // 前 4 轮每轮发起完全相同的 tool call；收到循环提醒（tools 收起）后给最终回答
+            let round = 0;
+            const assistant = {
+              chat: async ({ messages, tools }) => {
+                round++;
+                const nudged = messages.some(
+                  (m) =>
+                    m.role === "user" && String(m.content).includes("陷入了循环"),
+                );
+                if (nudged || tools === null) {
+                  return { content: "已收尾：重复调用无新信息，结论如下。", model: "fake" };
+                }
+                return {
+                  content: "",
+                  toolCalls: [
+                    {
+                      id: `c${round}`,
+                      type: "function",
+                      function: { name: "probe", arguments: '{"v":"x"}' },
+                    },
+                  ],
+                };
+              },
+            };
+
+            const agent = createAgent({ assistant, tools: [probe], maxSteps: 20 });
+            const result = await agent.chat({
+              messages: [{ role: "user", content: "干活" }],
+            });
+            const roles = result.messages.map((m) => m.role);
+            const checks = {
+              executedFour: calls.length === 4, // 第 4 次重复后触发提醒，不再执行
+              gracefulEnd:
+                result.content.includes("已收尾") && !("error" in result),
+              hasNudge:
+                result.messages.some(
+                  (m) =>
+                    m.role === "user" && String(m.content).includes("陷入了循环"),
+                ),
+              noPendingToolCalls: result.toolCalls.length === 0,
+              rolesLookRight: roles.filter((r) => r === "tool").length === 4,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, rounds: round, roles },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAgent: 合法长流程不触发循环（参数每轮变化）">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { createAgent, tool } = await import("../chain/main.js");
+            const probe = tool(async () => "ok", {
+              name: "probe",
+              schema: { i: { type: "number" } },
+            });
+            // 15 轮带工具往返（参数每轮变化），旧版 maxSteps=12 会在中途抛错
+            let round = 0;
+            const assistant = {
+              chat: async () => {
+                round++;
+                if (round > 15) return { content: "长流程完成", model: "fake" };
+                return {
+                  content: "",
+                  toolCalls: [
+                    {
+                      id: `c${round}`,
+                      type: "function",
+                      function: { name: "probe", arguments: `{"i":${round}}` },
+                    },
+                  ],
+                };
+              },
+            };
+            const agent = createAgent({ assistant, tools: [probe] }); // 默认 maxSteps
+            const result = await agent.chat({
+              messages: [{ role: "user", content: "长任务" }],
+            });
+            const nudged = result.messages.some(
+              (m) => m.role === "user" && String(m.content).includes("陷入了循环"),
+            );
+            return {
+              assert: result.content === "长流程完成" && !nudged && round === 16,
+              content: { rounds: round, nudged },
+            };
+          })();
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAgent: 防失控硬上限仍生效（可配置）">
+      <template>
+        <script type="module">
+          return (async () => {
+            const { createAgent, tool } = await import("../chain/main.js");
+            const probe = tool(async () => "ok", {
+              name: "probe",
+              schema: { i: { type: "number" } },
+            });
+            let round = 0;
+            const assistant = {
+              chat: async () => {
+                round++;
+                return {
+                  content: "",
+                  toolCalls: [
+                    {
+                      id: `c${round}`,
+                      type: "function",
+                      // 参数每轮都不同 → 不触发循环检测，只能被硬上限拦下
+                      function: { name: "probe", arguments: `{"i":${round}}` },
+                    },
+                  ],
+                };
+              },
+            };
+            const agent = createAgent({ assistant, tools: [probe], maxSteps: 5 });
+            try {
+              await agent.chat({ messages: [{ role: "user", content: "x" }] });
+              return { assert: false, content: { error: "未抛错" } };
+            } catch (err) {
+              return {
+                assert:
+                  err.message.includes("上限") &&
+                  err.message.includes("5") &&
+                  round === 5,
+                content: { message: err.message, rounds: round },
+              };
+            }
+          })();
+        </script>
+      </template>
+    </sb-test>
+
     <!-- ============================== -->
     <!-- 以下为真实 DeepSeek API 测试     -->
     <!-- 模型：deepseek-v4-flash          -->

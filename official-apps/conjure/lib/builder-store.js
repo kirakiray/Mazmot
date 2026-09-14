@@ -22,6 +22,8 @@ import {
   unregisterAppRecord,
   deleteVfsApp,
   sanitizeAppName,
+  listAppFiles,
+  readAppFile,
   createAppBackup,
   listAppBackups,
   deleteAppBackup,
@@ -29,6 +31,8 @@ import {
   setBackupNote,
   restoreAppBackup,
   currentAppHash,
+  currentAppFiles,
+  readBackupFiles,
   detectLocalProject,
   loadProjectChats,
   saveProjectChats,
@@ -82,6 +86,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 数据备份（当前应用的 backup/ 目录清单；backupBusy 防创建重入）
     backups: [],
     backupBusy: false,
+    smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
+    // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
+    // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
+    previewBusy: false,
+    previewStatus: "",
+    previewOnline: false,
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -132,11 +142,26 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 消息操作的目标桶：回合进行中固定写回合桶，否则写当前视图桶
   const activeKey = () => turnKey || viewKey();
 
+  // 增量落盘（防抖 400ms）：回合中途（表单挂起、流式输出等）也把消息写进
+  // IndexedDB，刷新 / 意外关闭不再丢失整轮对话。捕获当下的 key，避免防抖
+  // 触发时回合已收尾、activeKey 变化而写错桶
+  function scheduleSave(key) {
+    if (!selfStore || !sessionBuckets.has(key)) return;
+    clearTimeout(scheduleSave._timer);
+    scheduleSave._timer = setTimeout(() => {
+      if (!sessionBuckets.has(key)) return;
+      selfStore
+        .setItem(key, bucketFor(key).map((m) => ({ ...m })))
+        .catch(() => {});
+    }, 400);
+  }
+
   function pushMessage(item) {
     const key = activeKey();
     // 消息落盘时间：所有角色（含用户消息）统一在这里补时间戳，hover 展示
     if (item.ts == null) item.ts = Date.now();
     bucketFor(key).push(item);
+    scheduleSave(key);
     if (key === viewKey()) {
       state.messages.push(item);
       msgEvent({ op: "push", item });
@@ -148,6 +173,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const item = bucketFor(key).find((m) => m.id === id);
     if (!item) return;
     Object.assign(item, patch);
+    scheduleSave(key);
     if (key === viewKey()) msgEvent({ op: "patch", id, patch });
   }
   function removeMessage(id) {
@@ -156,18 +182,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const idx = list.findIndex((m) => m.id === id);
     if (idx > -1) {
       list.splice(idx, 1);
+      scheduleSave(key);
       if (key === viewKey()) msgEvent({ op: "splice", id });
     }
   }
   // 整组替换某个会话桶并（若是当前视图）刷新镜像；nextId 全局单调递增，
-  // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上
+  // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上。
+  // 注意：pending 表单原样保留——刷新后仍可填写提交（submitForm 走恢复回合）
   function replaceMessages(list, key = viewKey()) {
-    const norm = (list || []).map((m) => ({
-      ...m,
-      pending: false,
-      open: false,
-      reasoningOpen: false, // 历史消息的思考过程默认收起
-    }));
+    const norm = (list || []).map((m) => {
+      return {
+        ...m,
+        pending: false,
+        open: false,
+        reasoningOpen: false, // 历史消息的思考过程默认收起
+      };
+    });
     sessionBuckets.set(key, norm);
     state.nextId = Math.max(
       state.nextId,
@@ -267,7 +297,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (key && state.activeModelId && providerModels.includes(state.activeModelId)) {
       model = state.activeModelId;
     } else if (key?.provider === "deepseek") {
-      model = "deepseek-v4-flash";
+      model = "deepseek-flash";
     } else {
       model = undefined;
     }
@@ -316,6 +346,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         pendingNewApp = { ...info, mode: lockedMode };
       },
       readSkill: (id, path) => readSkillFile(fs, id, path),
+      requestForm,
+      // 隔离预览调试（preview_* 工具）：推送入口 + dbg 指令通道 + 截图卡片
+      openPreview: (appName) => {
+        const hit = state.apps.find((a) => a.name === sanitizeAppName(appName));
+        return runRemotePreview(appName, hit?.mode || state.currentAppMode);
+      },
+      previewDebug,
+      onPreviewShot: pushPreviewShot,
     });
     agent = chainModules.createAgent({
       assistant,
@@ -1019,6 +1057,96 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     window.open(buildRunUrl(name), `mazmot-app-${name}`);
   }
 
+  /* ---------- 隔离预览（bridge 跨域推送） ---------- */
+
+  // 收集指定应用的全部文件（VFS 渠道读 ai-apps/<name>/client/，
+  // 本地渠道恢复句柄后复用 app-runner 的 readAppFiles，优先 client/ 子目录）
+  async function collectAppFiles(name, mode) {
+    if (mode === "local") {
+      let handle = localRootHandle;
+      if (!handle) {
+        handle = await getLocalHandleFromRecord(name);
+        if (handle) {
+          localRootHandle = handle;
+          set("localDirLabel", handle?.name || "");
+        }
+      }
+      if (!handle) throw new Error("本地目录句柄已丢失，请重新选择目录");
+      const granted = await ensureLocalPermission(handle);
+      if (!granted) throw new Error("本地目录权限未授予，无法读取应用文件");
+      const { readAppFiles } = await load("/mz/app-runner.js");
+      const raw = await readAppFiles(handle);
+      return raw.map((f) => ({ path: f.path, text: f.content }));
+    }
+    const paths = await listAppFiles(fs, name);
+    const files = [];
+    for (const p of paths) {
+      const text = await readAppFile(fs, name, p);
+      if (text != null) files.push({ path: p, text });
+    }
+    return files;
+  }
+
+  // 隔离预览推送主流程（预览按钮与 preview_app 工具共用）：
+  // 收集文件 → 推送到 bridge 隔离域运行（AI 代码不接触主域数据）。
+  // 失败写入 keyError 并抛出（调用方决定是否吞掉），成功返回 done（含运行 url）
+  async function runRemotePreview(appName, mode) {
+    const name = sanitizeAppName(appName);
+    if (!name) throw new Error("应用名不合法");
+    if (state.previewBusy) throw new Error("预览推送进行中，请稍候再试");
+    set("previewBusy", true);
+    set("previewStatus", "准备推送...");
+    try {
+      const files = await collectAppFiles(name, mode);
+      if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
+      const { openRemotePreview } = await load(
+        "/official-apps/conjure/lib/remote-preview.js",
+      );
+      return await openRemotePreview({
+        load,
+        appName: name,
+        files,
+        selfStore,
+        onStatus: (text) => set("previewStatus", text),
+      });
+    } catch (err) {
+      set("keyError", `隔离预览失败：${err.message}`);
+      throw err;
+    } finally {
+      set("previewBusy", false);
+      set("previewStatus", "");
+    }
+  }
+
+  // 预览按钮入口：错误已写入 keyError，这里吞掉避免未处理拒绝
+  async function openAppRemote(appName, mode) {
+    try {
+      await runRemotePreview(appName, mode);
+    } catch (_) {
+      /* 错误提示已写入 keyError */
+    }
+  }
+
+  // 调试指令通道（preview_* 工具）：转发到 remote-preview 的 dbg 链路
+  async function previewDebug(cmd, args = {}, timeoutMs) {
+    const { debugPreviewCommand } = await load(
+      "/official-apps/conjure/lib/remote-preview.js",
+    );
+    return debugPreviewCommand({ load, selfStore, cmd, args, timeoutMs });
+  }
+
+  // preview_screenshot 工具：截图以图片卡片进入聊天流（用户可视核对）
+  function pushPreviewShot(dataUrl, meta) {
+    pushMessage({
+      id: state.nextId++,
+      role: "image",
+      src: dataUrl,
+      w: meta?.w || 0,
+      h: meta?.h || 0,
+      newGroup: false,
+    });
+  }
+
   // 本地目录应用：应用文件在所选目录的 client/ 子目录（与虚拟渠道布局一致）
   // （app-runner 的 getRunUrl 本地逻辑会挂载 client/，不存在时回退挂载根目录）
   async function openLocalApp(name) {
@@ -1097,6 +1225,94 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       set("keyError", `创建备份失败：${err.message}`);
     } finally {
       set("backupBusy", false);
+    }
+  }
+
+  // 智能备份的 AI 阶段：对比当前与上一版备份，生成备份标题与变更备注
+  async function generateBackupMeta(currentFiles, prevFiles) {
+    if (!aiModules) aiModules = await load("/mz/ai/main.js");
+    const { assistant, model } = await pickAssistant();
+    const clip = (t) =>
+      t.length > 2500 ? `${t.slice(0, 2500)}\n…（过长截断）` : t;
+    const prevMap = new Map(prevFiles.map((f) => [f.path, f.text]));
+    const curMap = new Map(currentFiles.map((f) => [f.path, f.text]));
+    const parts = [];
+    for (const f of currentFiles) {
+      if (!prevMap.has(f.path)) {
+        parts.push(`[新增文件] ${f.path}\n${clip(f.text)}`);
+      } else if (prevMap.get(f.path) !== f.text) {
+        parts.push(
+          `[修改文件] ${f.path}\n--- 新版 ---\n${clip(f.text)}\n--- 旧版 ---\n${clip(prevMap.get(f.path))}`,
+        );
+      }
+    }
+    for (const f of prevFiles) {
+      if (!curMap.has(f.path)) parts.push(`[删除文件] ${f.path}`);
+    }
+    const hasPrev = prevFiles.length > 0;
+    const diffText =
+      parts.join("\n\n") || "（两个版本内容没有文件级差异）";
+
+    const system = `你是软件版本发布助手。根据用户提供的应用文件差异，输出备份的标题与备注。
+要求：
+1. 只输出一个 JSON 对象，格式：{"label":"...","note":"..."}，不要输出任何其他内容或代码块标记。
+2. label：备份标题，不超过 16 字，概括这个版本的主题（如「任务清单页」）；首个备份则概括应用功能。
+3. note：不超过 120 字的中文备注${hasPrev ? "，说明相比上一版新增了什么功能、少了/移除了什么功能" : "，简要介绍应用包含的功能"}；用「新增：…；移除：…」结构化表述，无对应项可省略。`;
+    const res = await assistant.chat({
+      ...(model ? { model } : {}),
+      thinking: false,
+      stream: false,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: `文件差异：\n\n${diffText}` },
+      ],
+    });
+    const raw = String(res.content || "").trim();
+    const m = /\{[\s\S]*\}/.exec(raw);
+    let out = {};
+    try {
+      out = JSON.parse(m ? m[0] : raw) || {};
+    } catch {
+      // 解析失败退化为把整段回复当备注
+      out = { note: raw.slice(0, 200) };
+    }
+    return {
+      label: String(out.label || "").trim().slice(0, 50),
+      note: String(out.note || "").trim().slice(0, 200),
+    };
+  }
+
+  // 智能备份：打包当前版本后，用 AI 对比上一版生成标题与备注并写入备份 meta。
+  // 返回 { id, label, note }；内容无变化时返回 { skipped: true }
+  async function smartBackup() {
+    if (state.backupBusy || state.currentAppName === "" || !fs) return;
+    set("backupBusy", true);
+    set("smartBackupBusy", true);
+    try {
+      const rootHandle = await backupRootHandle();
+      const res = await createAppBackup(fs, state.currentAppName, rootHandle);
+      await refreshBackups();
+      if (res?.skipped) return { skipped: true };
+      // 上一版 = 备份列表（新的在前）里除新备份外的第一份；首个备份则无对比基准
+      const prev = state.backups.find((b) => b.id !== res.id);
+      const currentFiles = await currentAppFiles(fs, state.currentAppName, rootHandle);
+      const prevFiles = prev
+        ? await readBackupFiles(fs, state.currentAppName, prev.id, rootHandle)
+        : [];
+      const { label, note } = await generateBackupMeta(currentFiles, prevFiles);
+      if (label) {
+        await renameAppBackup(fs, state.currentAppName, res.id, label, rootHandle);
+      }
+      if (note) {
+        await setBackupNote(fs, state.currentAppName, res.id, note, rootHandle);
+      }
+      await refreshBackups();
+      return { id: res.id, label, note };
+    } catch (err) {
+      set("keyError", `智能备份失败：${err.message}`);
+    } finally {
+      set("backupBusy", false);
+      set("smartBackupBusy", false);
     }
   }
 
@@ -1634,9 +1850,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
 
     set("sending", true);
-    activeBubble = null;
-    currentAbort = { stopped: false };
-    const abort = currentAbort;
     // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
     try {
       const info = contextInfo(bucketFor(turnKey));
@@ -1647,9 +1860,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } catch (err) {
       console.warn("自动压缩上下文失败：", err);
     }
+    await driveTurn(threadId, text, [{ role: "user", content: text }]);
+  }
+
+  // 驱动一轮 agent 对话循环：流式转发、错误入气泡、收尾（取消挂起表单、
+  // 落盘、迁移草稿、清忙）。send 与表单恢复回合共用
+  async function driveTurn(threadId, firstUserText, inputMessages) {
+    activeBubble = null;
+    currentAbort = { stopped: false };
+    const abort = currentAbort;
     try {
       await agent.chat({
-        messages: [{ role: "user", content: text }],
+        messages: inputMessages,
         threadId,
         stream: true,
         onStream: (ev) => {
@@ -1667,6 +1889,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } finally {
       activeBubble = null;
       currentAbort = null;
+      cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
       // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
       // 落盘前 patch，随会话桶一起持久化）
@@ -1676,7 +1899,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           .find((m) => m.role === "assistant");
         if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
       }
-      await finishTurn(text, threadId, Date.now() - turnStartAt);
+      await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
       turnKey = null;
@@ -1685,9 +1908,166 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘
+  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘。
+  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回
   function stop() {
     if (currentAbort) currentAbort.stopped = true;
+    cancelPendingForm("用户停止了生成");
+  }
+
+  /* ---------- 视觉交互表单（show_form 工具） ---------- */
+
+  // 当前挂起的表单等待器：{ msgId, resolve }；同一时刻最多一张
+  let formWaiter = null;
+  let formResuming = false; // 恢复回合防重入
+
+  // show_form 工具入口：把表单卡片作为一条 assistant 消息推入当前回合，
+  // 返回的 Promise 在用户提交（submitForm）或取消（cancelPendingForm）时落定
+  function requestForm(spec) {
+    const item = pushMessage({
+      id: state.nextId++,
+      role: "assistant",
+      type: "form",
+      content: "",
+      form: { ...spec, status: "pending", data: null },
+      newGroup: false,
+    });
+    return new Promise((resolve) => {
+      formWaiter = { msgId: item.id, resolve };
+    });
+  }
+
+  // 用户在卡片上点「提交」：数据写回消息（随会话桶持久化，历史只读回填），
+  // 并把数据交回 Agent 工具调用。
+  // 无活动等待器（页面刷新后恢复的挂起表单）→ 走恢复回合
+  function submitForm(msgId, values) {
+    if (formWaiter && formWaiter.msgId === msgId) {
+      const { resolve } = formWaiter;
+      formWaiter = null;
+      const item = bucketFor(activeKey()).find((m) => m.id === msgId);
+      const form = { ...(item?.form || {}), status: "submitted", data: values };
+      patchMessage(msgId, { form });
+      resolve({ data: values });
+      return true;
+    }
+    const item = bucketFor(viewKey()).find((m) => m.id === msgId);
+    if (item?.type === "form" && item.form?.status === "pending") {
+      resumeFormTurn(item, values); // 异步恢复回合
+      return true;
+    }
+    return false;
+  }
+
+  // 恢复回合：页面刷新后用户提交恢复的挂起表单时，原回合的工具等待已随页面
+  // 消失、且本轮对话从未写入模型记忆（检查点只在回合收尾落盘）。
+  // 做法：把「用户请求 → assistant 调 show_form → 工具结果（用户提交的数据）」
+  // 合成进记忆线程，再以空输入重新驱动 agent 循环，模型即可接上上下文继续。
+  async function resumeFormTurn(item, values) {
+    if (state.sending || formResuming || !fs) return;
+    formResuming = true;
+    try {
+      await doResumeFormTurn(item, values);
+    } finally {
+      formResuming = false;
+    }
+  }
+
+  async function doResumeFormTurn(item, values) {
+    if (!fs) return;
+    const viewKeyNow = viewKey();
+
+    // 找本轮的用户请求文本（表单消息之前最近一条 user 消息）
+    const list = bucketFor(viewKeyNow);
+    let firstUserText = "（继续表单）";
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].role === "user") {
+        firstUserText = list[i].content;
+        break;
+      }
+    }
+
+    const threadId =
+      viewKeyNow === "chat:draft" ? "draft" : viewKeyNow.slice("chat:".length);
+    turnKey = viewKeyNow;
+    if (!sessionBuckets.has(turnKey)) {
+      sessionBuckets.set(turnKey, [...state.messages]);
+    }
+    turnStartAt = Date.now();
+    markBusy(turnKey, true);
+    setMany({ keyError: "", turnStartTs: turnStartAt });
+
+    try {
+      await ensureAgent();
+    } catch {
+      turnKey = null;
+      turnStartAt = 0;
+      markBusy(null);
+      setMany({
+        keyError: "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
+        turnStartTs: 0,
+      });
+      return; // 表单保持 pending，修复环境后仍可提交
+    }
+
+    set("sending", true);
+    // 表单落「已提交」（随会话桶持久化，历史只读回填）
+    const form = { ...(item.form || {}), status: "submitted", data: values };
+    patchMessage(item.id, { form });
+
+    // 合成记忆：user 请求 → assistant 的 show_form 调用 → 工具结果（提交的数据）
+    try {
+      const threadKey = `thread:${threadId}`;
+      const history = (await selfStore.getItem(threadKey)) ?? [];
+      const toolCallId = `call_resume_${Date.now().toString(36)}`;
+      const wire = [
+        { role: "user", content: firstUserText },
+        {
+          role: "assistant",
+          content: "",
+          // DeepSeek 思考模式要求带 tool_calls 的 assistant 消息必须回传
+          // reasoning_content（合成消息没有真实思考内容，传空字符串）
+          reasoning_content: "",
+          tool_calls: [
+            {
+              id: toolCallId,
+              type: "function",
+              function: {
+                name: "show_form",
+                arguments: JSON.stringify({
+                  title: form.title,
+                  description: form.description,
+                  fields: form.fields,
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: toolCallId,
+          name: "show_form",
+          content: JSON.stringify({ data: values }),
+        },
+      ];
+      await selfStore.setItem(threadKey, [...history, ...wire]);
+      await driveTurn(threadId, firstUserText, []);
+    } catch (err) {
+      turnKey = null;
+      turnStartAt = 0;
+      markBusy(null);
+      setMany({ sending: false, turnStartTs: 0, keyError: err.message });
+    }
+  }
+
+  // 取消挂起的表单（用户停止 / 回合兜底结束）：卡片置 cancelled 只读
+  function cancelPendingForm(reason = "") {
+    if (!formWaiter) return;
+    const { msgId, resolve } = formWaiter;
+    formWaiter = null;
+    const item = bucketFor(activeKey()).find((m) => m.id === msgId);
+    const form = { ...(item?.form || {}), status: "cancelled" };
+    patchMessage(msgId, { form });
+    resolve({ cancelled: true, reason });
   }
 
   /* ---------- 初始化 ---------- */
@@ -1725,6 +2105,19 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         "NoneOS Core 未就绪：无法写入文件系统，请从 Mazmot 主系统打开本应用。",
       );
     }
+    // 预览窗口（应用页代理）在线状态监听：预览按钮亮标（失败静默，不影响主流程）
+    (async () => {
+      try {
+        const { watchPreviewAgent } = await load(
+          "/official-apps/conjure/lib/remote-preview.js",
+        );
+        watchPreviewAgent({
+          load,
+          selfStore,
+          onChange: (online) => set("previewOnline", online),
+        });
+      } catch (_) {}
+    })();
     // 恢复思考模式偏好
     if (selfStore) {
       try {
@@ -1828,8 +2221,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     grantLocalPermission,
     installSkillFromSource,
     openApp,
+    openAppRemote,
+    submitForm,
     refreshBackups,
     createBackup,
+    smartBackup,
     deleteBackup,
     renameBackup,
     setNote,

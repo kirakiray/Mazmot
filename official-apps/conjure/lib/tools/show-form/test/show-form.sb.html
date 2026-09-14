@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>show-form 视觉交互工具包测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="runSelfTest 内置测试模组（插件层断言）">
+      <template>
+        <script type="module">
+          import { runSelfTest } from "../self-test.js";
+          {
+            try {
+              const res = await runSelfTest();
+              // 纯模块环境（无 ofa / Core / senti-ui）：组件层断言被跳过，
+              // 插件层（包结构 / 参数清洗 / 提交 / 取消 / 环境兜底）必须全过
+              const skipped = res.cases.find((c) => c.info.startsWith("跳过"));
+              const pluginCases = res.cases.filter((c) => !skipped || c !== skipped);
+              const checks = {
+                ok: res.ok === true,
+                hasCases: res.cases.length >= 6,
+                pluginAllPass: pluginCases.every((c) => c.pass),
+                skippedComponent: !!skipped,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, cases: res.cases },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="视觉组件渲染 / 提交 / 只读回填（预载组件后完整内置测试）">
+      <template>
+        <script type="module">
+          {
+            try {
+              // sb-test 环境无 NoneOS Core SW，/gh/ 前缀不可用，ofa 与 senti 控件
+              // 走 jsdelivr 完整 URL。注意：senti 组件是 .html 模块，jsdelivr 按
+              // text/plain 提供（nosniff），原生 import() 因 MIME 校验必失败——
+              // 统一用 ofa 的 l-m 声明加载（ofa 自己 fetch 文本再编译，不受限），
+              // 再轮询等自定义元素注册完成
+              await import(
+                "https://cdn.jsdelivr.net/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
+              );
+              const sentiBase =
+                "https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/";
+              const wanted = [];
+              const lmFor = (src, tag) => {
+                const lm = document.createElement("l-m");
+                lm.setAttribute("src", src);
+                document.head.appendChild(lm);
+                wanted.push(tag);
+              };
+              for (const n of ["input", "textarea", "select", "checkbox", "radio"]) {
+                lmFor(sentiBase + n + "/" + n + ".html", "st-" + n);
+              }
+              // 测试脚本经 sb-test 内联执行，import.meta.url 不可作 base；
+              // 各 sb.html 按原始路径加载，用文档地址解析同包组件模块
+              lmFor(
+                new URL("../form-card.html", location.href).href,
+                "show-form-card",
+              );
+              const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+              const t0 = Date.now();
+              while (
+                Date.now() - t0 < 15_000 &&
+                !wanted.every((t) => customElements.get(t))
+              ) {
+                await wait(100);
+              }
+              const missing = wanted.filter((t) => !customElements.get(t));
+              if (missing.length) {
+                throw new Error("组件加载超时未注册：" + missing.join(","));
+              }
+              const { runSelfTest } = await import("../self-test.js");
+              const res = await runSelfTest();
+              const componentCases = res.cases.filter(
+                (c) => !c.info.startsWith("跳过"),
+              );
+              const checks = {
+                ok: res.ok === true,
+                allPass: res.cases.every((c) => c.pass),
+                componentRan: componentCases.length >= 3,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, cases: res.cases },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="包导出约定（visual / selfTest 地址）">
+      <template>
+        <script type="module">
+          import plugin, { visual, selfTest } from "../index.js";
+          {
+            const checks = {
+              visualUrl: /form-card\.html$/.test(visual) && visual.startsWith("file") === false,
+              selfTestUrl: /self-test\.js$/.test(selfTest),
+              exportedOnDef: plugin.visual === visual && plugin.selfTest === selfTest,
+              tags: plugin.tags.includes("视觉"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, visual, selfTest },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -1,6 +1,6 @@
-// dev 入口不能直接 init "mazmot"，因为 NoneOS Core 可能尚未安装，
-// 页面模块内嵌 <nos-version auto-install> 自行完成 Core 初始化后再动态使用 /nos/fs。
-export const home = "./dev.html";
+// bridge 入口与 run-app 同理：Core 可能尚未安装，页面模块内嵌
+// <nos-version auto-install> 自行完成 Core 初始化后再动态使用 /nos/*。
+export const home = "./bridge.html";
 
 export const pageAnime = {
   current: {

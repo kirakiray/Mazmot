@@ -1,18 +1,38 @@
 // 工具插件注册中心
-// 每个工具是 lib/tools/ 下的一个独立插件文件，默认导出：
-//   { key, name, description, schema, exec(args, ctx) }
-// ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite }
+// 每个工具是 lib/tools/ 下的一个独立包目录 <tool-name>/：
+//   index.js     插件本体，默认导出 { key, name, description, schema, exec(args, ctx) }；
+//                具名导出 selfTest（内置测试模组地址），视觉工具另导出 visual（组件
+//                模块地址）与 tags（面板徽标）、testTags（内置测试等待注册的元素）
+//   self-test.js 内置测试模组（导出 testPlan + runSelfTest，基座见 lib/test-space/）
+//   test/        包的 sibyl-test 测试（test/<tool-name>.sb.html，不分发）
+// ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite, readSkill,
+//   requestForm, openPreview, previewDebug, onPreviewShot }
 //
-// 新增工具：在 lib/tools/ 下建 <tool-name>.js 插件文件，
-// 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）。
+// 新增工具：在 lib/tools/ 下建 <tool-name>/ 目录包（结构照现有包），
+// 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）；
+// 插件导出 selfTest 地址后，工具详情对话框自动出现「内置测试」Tab。
 
-import createApp from "./create-app.js";
-import writeFile from "./write-file.js";
-import readFile from "./read-file.js";
-import listFiles from "./list-files.js";
-import readSkill from "./read-skill.js";
+import createApp from "./create-app/index.js";
+import writeFile from "./write-file/index.js";
+import readFile from "./read-file/index.js";
+import listFiles from "./list-files/index.js";
+import readSkill from "./read-skill/index.js";
+import showForm from "./show-form/index.js";
+import preview from "./preview/index.js";
 
-export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill];
+export const TOOL_DEFS = [
+  createApp,
+  writeFile,
+  readFile,
+  listFiles,
+  readSkill,
+  showForm,
+  preview,
+];
+
+// 配套视觉组件模块地址：宿主页面预载（聚合为 visualModules）后，
+// 对应的自定义元素（如 <show-form-card>）才可用
+export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
 
 /**
  * 用 chain 层的 `tool` 工厂把插件定义包装成 Agent 可用工具。
@@ -23,6 +43,10 @@ export const TOOL_DEFS = [createApp, writeFile, readFile, listFiles, readSkill];
  * @param {Function} [opts.onAppCreated] create_app 成功回调
  * @param {Function} [opts.onFileWrite] write_file 成功回调
  * @param {Function} [opts.readSkill] 技能文档读取函数 (id, path) => Promise<string>
+ * @param {Function} [opts.requestForm] 视觉交互表单（show_form）：渲染表单卡片并等待用户提交，resolve 用户数据
+ * @param {Function} [opts.openPreview] preview 工具（action=app）：推送应用到隔离预览窗口
+ * @param {Function} [opts.previewDebug] preview 工具的调试指令通道 (cmd, args, timeoutMs) => outcome
+ * @param {Function} [opts.onPreviewShot] preview 工具（action=screenshot）：把截图 dataUrl 展示为聊天图片卡片
  * @returns {Object<string, Object>} 按 key 索引的工具映射
  */
 export function createTools({
@@ -32,8 +56,22 @@ export function createTools({
   onAppCreated,
   onFileWrite,
   readSkill,
+  requestForm,
+  openPreview,
+  previewDebug,
+  onPreviewShot,
 }) {
-  const ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill };
+  const ctx = {
+    fs,
+    rootHandle,
+    onAppCreated,
+    onFileWrite,
+    readSkill,
+    requestForm,
+    openPreview,
+    previewDebug,
+    onPreviewShot,
+  };
   const tools = {};
   for (const def of TOOL_DEFS) {
     tools[def.key] = tool(

@@ -59,11 +59,6 @@ Mazmot/
 │   │       └── test/
 │   │           └── run-app-utils.sb.html  # run-app-utils 的 sibyl-test 单测
 │   │
-│   ├── dev/                  # 开发者工具应用（可直接访问的首访入口），URL = /apps/dev/（用途与流程详见 apps/dev/README.md）
-│   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">（同 run-app：整目录用 jsdelivr 完整 URL，渲染时 Core SW 可能未注册）
-│   │   ├── app-config.js     # 声明 home = ./dev.html（不 init 文件系统，Core 由页面模块自己装）
-│   │   └── dev.html          # 页面模块：先校验当前 host 是否允许开发者模式（与 sw.js 一致：localhost + 端口 30033-30040，或 https 下 dev1-6.mazmot.noneos.com，不满足则显示不可用）→ 内嵌 <nos-version auto-install> 装 Core（进度条同 run-app 模式）→ 经 /nos/fs 读取 nos-config/system.json 回填 devBridge.script → 表单保存注入脚本（合并写回 system.json 后 fetch /__config 触发 SW 重载；清空保存即移除 devBridge；保存后 sessionStorage 标记控制刷新一次让当前页生效）；URL 带 ?script=<url>（encodeURIComponent 编码）时自动填充并确认保存
-│   │
 │   └── network/              # 网络应用（服务器/用户连接状态与流量监控），URL = /apps/network/
 │       ├── index.html        # 应用入口 HTML：校验 /nos/fs、/nos/user 模块
 │       ├── app-config.js     # ofa.js 配置（home = ./home.html，init "mazmot"）
@@ -79,7 +74,9 @@ Mazmot/
 │   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
 │   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js）
-│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库）
+│   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库；isToolLoop 真循环检测——
+│   │   │                    #   连续 4 次相同调用 / 最近 8 次 ≤2 种签名的窄循环 → 注入提醒并收起工具优雅收束，
+│   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
 │   ├── cert/                 # 系统级证书能力（封装 noneos-core user.cred，URL = /mz/cert/*）
@@ -106,17 +103,90 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-v4-flash）经 create_app / write_file / read_file / list_files 工具生成 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：虚拟渠道直接开 /$ai-apps/<name>/client/index.html，本地渠道经 /mz/app-runner.js getRunUrl 挂载 client/（句柄从 mazmot apps[] 记录恢复）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一文件，默认导出 { key, name, description, schema, exec(args, ctx) }，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite } 并用 chain 的 tool 工厂包装，新增工具只需加文件 + 登记 TOOL_DEFS）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/status/console/dom/text/click/type/wait/eval/screenshot）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、其余查证与交互，形成「写→跑→查→修」闭环）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一个独立包目录：index.js 插件 + self-test.js 内置测试 + README + test/<tool>.sb.html，默认导出 { key, name, description, schema, exec(args, ctx) } 并具名导出 selfTest 地址，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot } 并用 chain 的 tool 工厂包装，新增工具只需建包目录 + 登记 TOOL_DEFS；preview/ 包为单一 preview 工具，action 参数分发各操作；测试基建统一在 lib/test-space/——virtual-space.js 内存版 fs/storage 与 self-test-kit / visual-test-kit 两套基座，工具详情对话框对所有带 selfTest 的工具开放「内置测试」Tab）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html 与各工具包内置测试 lib/tools/<tool>/test/
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
 │
-├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）
+├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）；scripts/start-handshake.sh 在各任务测试前启动本地信令服务器（test-bin/）
+│
+├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外；
+│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
+│                             #   https://c1.dev.mazmot.noneos.com——conjure 侧 remote-preview.js 的 BRIDGE_ORIGIN 按
+│                             #   location.hostname 自动选择，bridge 侧自身不感知具体域名）
+│   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app；
+│   │                         #   head 首位内联域名白名单守卫（经典脚本解析期立即执行，
+│   │                         #   非允许域名 window.stop + 整页替换为错误说明，ofa/主题不再加载）
+│   ├── host-guard.js         # 域名白名单守卫 canonical 实现（index.html 内联副本与 bridge.html 均引用）：
+│   │                         #   isBridgeHostAllowed——仅 *.dev.mazmot.noneos.com（endsWith 后缀匹配，
+│   │                         #   不含 apex dev.mazmot.noneos.com 本身）与本地开发（localhost/127.0.0.1/[::1]）
+│   │                         #   放行；blockBridgeHost——阻断渲染并抛错。安全动机：引导页按 ?u= 对端
+│   │                         #   接收文件 + 注入代理（含任意 JS eval），静态站与主站同批部署，若主站域名上的
+│   │                         #   /bridge/ 也能跑，恶意页面可 window.open 主站域名引导页 + 攻击者自己的
+│   │                         #   userId，把任意代码注入受害者浏览器中主站 origin 的存储——必须两道锁
+│   │                         #   （入口内联 + bridge.html 页面模块）同时保留
+│   ├── app-config.js         # 应用配置（home 指向 bridge.html）
+│   ├── bridge.html           # 隔离预览引导页（页面模块）：域名白名单守卫（第二道锁）→ nos-version 装 Core → 创建本地用户并注册 conjure-bridge 服务 →
+│   │                         #   连接 URL ?u= 指定的 conjure 用户 → 接收推送的应用文件写入本域 VFS（conjure-apps/<name>/client/，
+│   │                         #   index.html 注入常驻代理脚本）→ 跳转 /$conjure-apps/... 运行（首启后引导页角色结束，后续更新走代理）
+│   ├── inject.js             # 应用页常驻代理（ES module，由 receiver 注入到 index.html，data-conjure-id 随标签下发）：
+│   │                         #   注册 conjure-agent 服务，页面加载即 connectUser(conjure) 上报 agent-online；
+│   │                         #   后续预览直连本代理增量更新文件 → app-end 后 location.reload() 无感刷新；
+│   │                         #   同时注入可拖拽的「隔离预览」状态胶囊：挂 documentElement（应用重写 body 不受影响）+
+│   │                         #   MutationObserver 被移除自动回挂，position/z-index/left/top 等关键样式内联 !important
+│   │                         #   压制应用 CSS（Pointer Events 拖拽 + 视口钳制，位置记忆 sessionStorage；
+│   │                         #   状态点联动：idle 灰 / busy 黄（接收 n/m）/ ok 绿 / 离线红）；
+│   │                         #   胶囊右侧「日志」按钮打开控制台日志面板——installConsoleCapture 挂接 log/info/warn/error/debug/
+│   │                         #   time·timeLog·timeEnd/table 与 window error / unhandledrejection（带时间戳入 800 条环形缓冲，
+│   │                         #   对象/Error 栈/DOM 节点安全序列化），createLogDialog 以 Shadow DOM 渲染（应用 CSS 无法穿透），
+│   │                         #   等级过滤（全部/错误/警告 带计数）/ 清空 / Esc 或按钮关闭，打开时实时追加并自动滚底；
+│   │                         #   顶栏可拖拽（视口钳制 + sessionStorage 位置记忆，按钮不触发拖拽）；
+│   │                         #   面板为双视图——「控制台」与「妙造调用」（conjure 调试指令的操作记录：工具名 +
+│   │                         #   参数摘要 + 成败耗时，按页面加载分组，createOpLog 持久化 sessionStorage，实时刷新）；
+│   │                         #   另承载 conjure 调试指令（dbg）：只信任注入时绑定的 conjure 用户（ctx.fromUserId 校验），
+│   │                         #   经 debug-runtime 执行后按 dbg-chunk/dbg-result 协议回传结果
+│   ├── debug-runtime.js       # 调试指令运行时（纯页面逻辑，无 /nos 依赖，可单测；实现参考同作者 web-bridge-mcp 的
+│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot；eval 预置 $ / $$ /
+│   │                         #   $deep / $$deep（穿 shadow DOM）/ $wait / $rect / $css / $import，表达式自动 return；
+│   │                         #   serializeValue 安全序列化（Error 栈/循环引用/深度长度封顶）、domSnapshot 免授权
+│   │                         #   DOM 样式快照（几何+关键样式+文本，穿 shadow）、captureScreenshot（getDisplayMedia 真实
+│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、formatConsoleEntries
+│   │                         #   （since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
+│   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
+│   │                         #   validateRelPath 守卫 / chunkText 字节分片（预算 32KB，切点按 code point 对齐不劈代理对）/
+│   │                         #   sha256Hex+buildManifest（文件指纹清单）/ createReliableLink（ACK+重发+去重+串行队列；onOffline
+│   │                         #   钩子带 reason——capped=命令悬挂需硬重置连接；每次主动重连授予 +1 重试额度封顶 +2）/
+│   │                         #   enableServerAutoReconnect（noneos 自动重连默认关闭，各端 getUser 后必须开）/
+│   │                         #   ensureServerConnected（双端收敛到排序首位同一台中继：对非首选 URL 先发制人
+│   │                         #   disconnect——getUser 后台 connectAll 不阻塞 ready，迟到的公网握手会把会话
+│   │                         #   重新挂上多台；hard 时首选也 disconnect+connect 治僵尸连接）/
+│   │                         #   createFileAssembler（分片拼装，迟到重复分片忽略）/ buildDbgResultMessages+createDbgCollector
+│   │                         #  （调试结果分片回传与聚合）
+│   ├── receiver.js           # 接收端核心逻辑：createPreviewReceiver（消息串行化处理：sync-check 本地 hash 比对（剥离注入标签后
+│   │                         #   比对；存量 index.html 缺注入标记时强制重传一次性迁移）/ app-begin（wipe 缺省全量清目录重建，
+│   │                         #   增量只覆盖差异文件）→ file 写 conjure-apps/<name>/client/（index.html 且提供 conjureId 时经
+│   │                         #   injectAgent 注入代理脚本，幂等）→ app-end 返回运行 URL）+ waitUrlReady（跳转前轮询 URL 可
+│   │                         #   访问，防 Core SW 首装激活窗口期漏到静态服务器 404）；injectAgent/stripAgent 为纯函数
+│   └── test/                 # proto.sb.html（协议纯逻辑 15 用例：分片/拼装/可靠链路/capped 钩子/重连额度/中继收敛）+
+                               #   debug-runtime.sb.html（调试运行时与 dbg 结果协议 17 用例：
+                               #   compileEval 自动 return / 深度选择器 / 序列化（Error 带消息前缀，Firefox/WebKit stack 不含消息）/ DOM 快照 /
+                               #   控制台格式化 / 指令分发（shot 用 canvas 合成捕获流伪造 getDisplayMedia，不弹原生授权框））+
+                               #   host-guard.sb.html（域名白名单：预览子域/本地放行，主站 apex 与伪装域名拒绝）+
+                               #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
+                               #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
+                               #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
+│
+├── test-bin/                 # 测试专用二进制（不参与部署）：noneos-handshake 信令服务器（noneos-core server/handshake 的
+│                             #   Rust 单二进制，macos-arm64 + linux-x86_64 各一份，含日志截断 panic 修复版重建）。
+│                             #   CI 各测试任务先跑它再跑测试——localhost 源下 noneos 默认服务器列表含
+│                             #   ws://localhost:8081 且排序首位，双端测试用户被 proto.js 的 ensureServerConnected
+│                             #   收敛到它，跨用户通信用例闭环本地（不依赖公网中继）。更新方法见 test-bin/README.md
 │
 ├── others/                   # 实验性/一次性测试页（语音、whisper、向量检索等），可忽略
 │
@@ -320,7 +390,7 @@ npm run static
 npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 ```
 
-**CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵。
+**CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵；各任务先执行 [.github/scripts/start-handshake.sh](.github/scripts/start-handshake.sh) 用 [test-bin/](test-bin/) 的二进制启动本地信令服务器（ws://localhost:8081），跨用户通信用例（bridge 隔离预览等）完全闭环在本地，不依赖公网中继。
 
 ### 安装并运行第一个应用
 

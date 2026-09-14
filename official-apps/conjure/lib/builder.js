@@ -17,7 +17,7 @@ export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 // 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
 // 模型可选项依赖当前选中的 API Key 所属供应商
 export const MODEL_OPTIONS = {
-  deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  deepseek: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"],
   glm: ["glm-5.3-flash", "glm-5.3"],
   "glm-coding": ["glm-5.3-flash", "glm-5.3"],
   kimi: ["kimi-k3", "kimi-k2.7-code"],
@@ -572,6 +572,45 @@ export async function currentAppHash(fs, appName, rootHandle) {
 }
 
 /**
+ * 读取当前 client/ 全部文件（排序后的 { path, text } 清单），供智能备份做版本对比。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function currentAppFiles(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) return [];
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const collected = await collectClientFiles(base, rel);
+  const files = [];
+  for (const f of collected) files.push({ path: f.path, text: await f.item.text() });
+  return files;
+}
+
+/**
+ * 读取一份备份目录内的全部文件（忽略 __meta.json，排序后的 { path, text } 清单）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ */
+export async function readBackupFiles(fs, appName, backupId, rootHandle) {
+  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
+  if (!dir || dir.kind !== "dir") throw new Error("备份不存在");
+  const out = [];
+  const walk = async (d, pfx) => {
+    for await (const key of d.keys()) {
+      const item = await d.get(key);
+      if (!item) continue;
+      const p = pfx ? `${pfx}/${key}` : key;
+      if (item.kind === "dir") await walk(item, p);
+      else if (key !== "__meta.json") out.push({ path: p, text: await item.text() });
+    }
+  };
+  await walk(dir, "");
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+/**
  * 创建备份：把当前 client/ 打包复制到同层 backup/<id>/ 目录。
  * id 含内容 hash（对排序后的 路径+内容 清单算 SHA-256）；已存在相同内容
  * 的备份时跳过写入（幂等，无改动反复点备份不会产生重复备份）。
@@ -788,10 +827,15 @@ export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 妙造，通过�
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
-3. 功能文件完成后，再补两份项目文档（内容基于你实际写的代码，不要写空话）：
+3. 功能文件完成后，实际运行调试（必须，不能只凭代码推断「应该没问题」）：
+   - 新功能写完：用 preview 工具（action=app，appName 必填）把应用推送到隔离预览窗口实际运行（返回时已在跑最新代码）；
+   - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
+   - 发现问题（报错、渲染不对、交互失灵）→ write_file 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互可用为止；
+   - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
+4. 调试通过后，再补两份项目文档（内容基于你实际写的代码，不要写空话）：
    - AGENTS.md —— 给 AI 代理的开发规范：这个项目继续开发时需要遵守的约定（围绕你实际用到的技术栈与结构，规则具体、可执行）
    - CONTEXT.md —— 项目说明：后续开发 AI 接手时需要了解的项目事实（架构、数据、流程，以实际代码为准）
-4. 全部文件写完后，用一段简短的话告诉用户可以点「预览」了，并说明应用功能与用法。
+5. 全部完成后，用一段简短的话告诉用户应用已在预览窗口运行、功能与用法，以及调试验证过的结论。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -845,7 +889,7 @@ await store.setItem("key", value);
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。
 - 单个文件尽量小于 300 行，功能聚焦，一次对话先交付可运行的最小版本。
-- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改动后同步更新 AGENTS.md / CONTEXT.md 里受影响的描述。
+- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后同步更新 AGENTS.md / CONTEXT.md 里受影响的描述。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
@@ -876,7 +920,7 @@ export function buildSystemPrompt(ctx = {}) {
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
 - 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 AGENTS.md、CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
-- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须先读项目内的 AGENTS.md 与 CONTEXT.md，修改代码严格遵守其中约定**；改动完成后同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
+- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须先读项目内的 AGENTS.md 与 CONTEXT.md，修改代码严格遵守其中约定**；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），再同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
   }
   if (Array.isArray(ctx.skills) && ctx.skills.length) {

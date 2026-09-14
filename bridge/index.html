@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mazmot Bridge - 隔离预览</title>
+    <!-- 域名白名单守卫（经典脚本，解析期立即执行，先于下方一切模块 / 主题脚本）：
+         引导页只允许 *.dev.mazmot.noneos.com（本地开发 localhost）运行，其余域名
+         整页阻断——防止主站同源部署上的 /bridge/ 被恶意页面借 ?u= 注入任意代码。
+         canonical 实现在 ./host-guard.js，此内联副本须与之同步修改；
+         bridge.html 页面模块内还有第二道守卫（防其它入口绕过本页） -->
+    <script>
+      (function () {
+        var h = location.hostname.toLowerCase();
+        var ok =
+          h === "localhost" ||
+          h === "127.0.0.1" ||
+          h === "[::1]" ||
+          (h.endsWith(".dev.mazmot.noneos.com") &&
+            h.length > ".dev.mazmot.noneos.com".length);
+        if (ok) return;
+        window.__BRIDGE_HOST_BLOCKED = true;
+        try {
+          window.stop(); // 终止解析与后续资源加载
+        } catch (_) {}
+        document.title = "预览容器不可用";
+        document.documentElement.innerHTML =
+          '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>预览容器不可用</title>' +
+          '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:15px/1.8 -apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;background:#fef7ff;color:#1d1b20;padding:24px;box-sizing:border-box}' +
+          "@media (prefers-color-scheme:dark){body{background:#141218;color:#e6e0e9}}" +
+          "main{max-width:520px}h1{font-size:20px;margin:0 0 8px}p{margin:6px 0;opacity:.85;word-break:break-all}code{background:rgba(127,127,127,.16);padding:1px 6px;border-radius:6px}</style></head>" +
+          "<body><main><h1>⛔ 预览容器不可用</h1>" +
+          "<p>隔离预览引导页仅允许在 <code>*.dev.mazmot.noneos.com</code>（本地开发为 <code>localhost</code>）运行。</p>" +
+          "<p>当前域名：<code>" + h + "</code></p></main></body>";
+        throw new Error("[bridge] host not allowed: " + h);
+      })();
+    </script>
+    <!-- bridge 是 Core 引导入口（同 apps/run-app 例外）：页面可能在 Core SW
+         注册前渲染，/gh/、/nos/ 本地前缀不可用，ofa.js / senti-ui 走 jsdelivr 完整 URL -->
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
+      type="module"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
+      type="module"
+    ></script>
+    <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
+    <script src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          Segoe UI,
+          Microsoft Yahei,
+          Helvetica,
+          Arial,
+          sans-serif,
+          Apple Color Emoji,
+          Segoe UI Emoji;
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+      }
+    </style>
+  </head>
+
+  <body>
+    <o-router fix-body>
+      <o-app src="./app-config.js"></o-app>
+    </o-router>
+  </body>
+</html>

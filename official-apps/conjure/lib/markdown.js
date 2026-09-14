@@ -9,7 +9,37 @@
  * 支持块级：标题、段落（软换行渲染为 <br>，适配聊天阅读）、围栏代码块（流式未闭合时
  * 将余下内容按代码续渲）、无序/有序/任务列表（支持缩进嵌套）、引用块、分隔线、GFM 表格。
  * 行内：粗体 / 粗斜体 / 斜体 / 删除线、行内代码、链接、自动链接、图片。
+ *
+ * 代码高亮：highlight.js（`/npm/` 本地前缀由 NoneOS Core SW 拦截，离线可用）。
+ * 加载失败（如无 SW 的测试环境）自动退化为纯转义渲染，不阻塞模块加载。
  */
+
+// highlight.js ESM 自包含包（common 语言集已注册）；顶层 await 保证首个代码块
+// 渲染时高亮就绪，失败（无 SW / 离线首装）置 null 走纯转义
+let hljs = null;
+try {
+  hljs = (await import("/npm/@highlightjs/cdn-assets@11.11.1/es/highlight.min.js"))
+    .default;
+} catch {
+  /* 无 SW 环境：放弃高亮 */
+}
+
+// 超长代码不参与高亮（流式渲染每次 patch 都会重渲整条消息，防止卡顿）
+const HIGHLIGHT_MAX = 20000;
+
+/** 代码高亮：语言可识别则按语言高亮，未标注语言时自动探测；失败退化为纯转义。 */
+const highlightCode = (code, lang) => {
+  if (!hljs || code.length > HIGHLIGHT_MAX) return escapeHtml(code);
+  try {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    if (!lang) return hljs.highlightAuto(code).value;
+  } catch {
+    /* 高亮异常时退化为纯文本 */
+  }
+  return escapeHtml(code);
+};
 
 const escapeHtml = (s) =>
   s
@@ -114,12 +144,18 @@ const renderInline = (src) => {
   return text.replace(/\n/g, "<br>");
 };
 
+/** 复制图标（Material symbols 的 content_copy 路径）。 */
+const COPY_ICON =
+  `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">` +
+  `<path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h10v14z"/></svg>`;
+
 /** 围栏代码块：带语言标签栏与复制按钮（复制经页面层事件委托实现）。 */
 const codeBlock = (code, lang) =>
   `<div class="md-code">` +
   `<div class="md-code-head"><span class="md-lang">${escapeHtml(lang)}</span>` +
-  `<button class="md-copy" type="button" data-code="${escapeHtml(code)}">复制</button></div>` +
-  `<pre><code>${escapeHtml(code)}</code></pre></div>`;
+  `<button class="md-copy" type="button" title="复制代码" data-code="${escapeHtml(code)}">` +
+  `${COPY_ICON}<span class="md-copy-label">复制</span></button></div>` +
+  `<pre><code>${highlightCode(code, lang.toLowerCase())}</code></pre></div>`;
 
 /** 列表行 → 节点树（按缩进层级），再递归渲染。 */
 const renderListLines = (items) => {

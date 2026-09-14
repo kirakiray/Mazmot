@@ -47,7 +47,11 @@ Agent 通过 `read_skill` 工具查阅框架文档；技能**不打包在本应�
 
 ## 自动化测试规则
 
-本项目使用 **sibyl-test**（`.sb.html`）编写客户端测试，测试文件放在本目录 `test/` 下（如 `test/builder.sb.html` 对应 `lib/builder.js`）。
+本项目使用 **sibyl-test**（`.sb.html`）编写客户端测试，测试文件的位置约定：
+
+- **builder / store 层**：本目录 `test/` 下（如 `test/builder.sb.html` 对应 `lib/builder.js`）。
+- **工具包**：包目录内 `lib/tools/<tool>/test/<tool>.sb.html`，跑包内 `self-test.js` 导出的 `runSelfTest()`（同一模组同时服务于工具详情对话框的「内置测试」Tab）。
+- **虚拟空间（fake fs / storage / 目录句柄）**：一律取 `lib/test-space/virtual-space.js`（`createVirtualFs` / `createVirtualDir` / `createVirtualStorage` 等），**禁止在测试文件内再造内联 fake**；测试基座（`defineSelfTest` / `defineVisualSelfTest`）与约定见 `lib/test-space/README.md`。`test/` 目录不随应用分发，但 `lib/test-space/` 要分发（对话框内置测试在运行时加载它）。
 
 - **功能怎么变，测试就怎么改**：新增 / 删除 / 重构功能时，同步补 / 删 / 改对应测试，不留死测试。
 - **最小覆盖要求**：纯函数覆盖正常 / 非法输入路径；涉及 Core 的用例（VFS 写入端到端）标注需先访问 `/` 装好 Core 再进测试页。

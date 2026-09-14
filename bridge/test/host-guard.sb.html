@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge 域名白名单守卫测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="isBridgeHostAllowed 域名白名单">
+      <template>
+        <script type="module">
+          import { isBridgeHostAllowed, BRIDGE_HOST_SUFFIX } from "../host-guard.js";
+          {
+            const cases = {
+              // 线上预览域：任意子域放行
+              c1: isBridgeHostAllowed("c1.dev.mazmot.noneos.com") === true,
+              c2: isBridgeHostAllowed("preview.dev.mazmot.noneos.com") === true,
+              deep: isBridgeHostAllowed("a.b.dev.mazmot.noneos.com") === true,
+              // apex 即主站部署域名，必须拒绝（endsWith 后缀匹配不含自身）
+              apex: isBridgeHostAllowed("dev.mazmot.noneos.com") === false,
+              mazmotRoot: isBridgeHostAllowed("mazmot.noneos.com") === false,
+              // 本地开发
+              localhost: isBridgeHostAllowed("localhost") === true,
+              loopback: isBridgeHostAllowed("127.0.0.1") === true,
+              ipv6: isBridgeHostAllowed("[::1]") === true,
+              // 攻击者域名 / 后缀伪装
+              evil: isBridgeHostAllowed("evil.com") === false,
+              suffixSpoof: isBridgeHostAllowed("c1.dev.mazmot.noneos.com.evil.com") === false,
+              prefixSpoof: isBridgeHostAllowed("evil-dev.mazmot.noneos.com") === false,
+              localhostSpoof: isBridgeHostAllowed("localhost.evil.com") === false,
+              // 归一与边界
+              upper: isBridgeHostAllowed("C1.DEV.MAZMOT.NONEOS.COM") === true,
+              empty: isBridgeHostAllowed("") === false,
+              portFree: BRIDGE_HOST_SUFFIX === ".dev.mazmot.noneos.com",
+            };
+            return {
+              assert: Object.values(cases).every(Boolean),
+              content: { cases },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

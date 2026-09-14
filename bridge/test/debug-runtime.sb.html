@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge/debug-runtime.js 调试运行时 + dbg 结果协议测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：不依赖 NoneOS Core SW，直接以静态路径导入被测模块 -->
+
+    <sb-test name="compileEval - 单表达式自动成为返回值">
+      <template>
+        <script type="module">
+          import { compileEval } from "../debug-runtime.js";
+          const fn = compileEval("1 + 2");
+          const v1 = await fn();
+          const v2 = await compileEval("'a' + 'b'")();
+          return {
+            assert: v1 === 3 && v2 === "ab",
+            content: { v1, v2 },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="compileEval - 语句块末句表达式自动补 return">
+      <template>
+        <script type="module">
+          import { compileEval } from "../debug-runtime.js";
+          const v1 = await compileEval("const x = 2;\nx * 3")();
+          const v2 = await compileEval("let s = '';\nfor (let i = 0; i < 3; i++) s += i;\ns")();
+          const v3 = await compileEval("const y = 5")(); // 末句非表达式 → 不补 return
+          return {
+            assert: v1 === 6 && v2 === "012" && v3 === undefined,
+            content: { v1, v2, v3 },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="深度选择器 - 穿 shadow DOM 查询">
+      <template>
+        <script type="module">
+          import { deepQuery, deepQueryAll } from "../debug-runtime.js";
+          const host = document.createElement("div");
+          host.id = "dbg-shadow-host-1";
+          const shadow = host.attachShadow({ mode: "open" });
+          shadow.innerHTML =
+            '<div class="inner-deep">shadow 文本</div><span class="inner-deep">第二处</span>';
+          document.body.appendChild(host);
+          try {
+            const el = deepQuery(".inner-deep");
+            const list = deepQueryAll(".inner-deep");
+            const none = deepQuery(".no-such-thing-at-all");
+            return {
+              assert:
+                !!el &&
+                el.textContent === "shadow 文本" &&
+                list.length === 2 &&
+                none === null,
+              content: { found: !!el, count: list.length },
+            };
+          } finally {
+            host.remove();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="serializeValue - 对象/错误/循环引用/超长截断">
+      <template>
+        <script type="module">
+          import { serializeValue } from "../debug-runtime.js";
+          const objText = serializeValue({ a: 1, list: [1, "二", true] });
+          const errText = serializeValue(new TypeError("炸了"));
+          const circ = { name: "c" };
+          circ.self = circ;
+          const circText = serializeValue(circ);
+          const longText = serializeValue("x".repeat(50000));
+          return {
+            assert:
+              objText.includes("a: 1") &&
+              objText.includes("二") &&
+              errText.includes("TypeError") &&
+              errText.includes("炸了") &&
+              circText.includes("[Circular]") &&
+              longText.length <= 30010 + 20 &&
+              longText.includes("[截断]"),
+            content: { objText, errHead: errText.split("\n")[0], circText },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="domSnapshot - 几何/关键样式/文本/穿 shadow">
+      <template>
+        <script type="module">
+          import { domSnapshot } from "../debug-runtime.js";
+          const box = document.createElement("div");
+          box.id = "dbg-snap-box";
+          box.style.cssText =
+            "padding:4px;background-color:#ff0000;color:#00ff00;font-size:14px;";
+          box.innerHTML =
+            '<p class="snap-line">快照文本</p>';
+          document.body.appendChild(box);
+          const host = document.createElement("div");
+          host.id = "dbg-snap-host";
+          host.attachShadow({ mode: "open" }).innerHTML =
+            '<b class="snap-deep">深层文本</b>';
+          box.appendChild(host);
+          try {
+            const out = domSnapshot(box, { depth: 4, maxNodes: 20 });
+            const checks = {
+              hasId: out.includes("#dbg-snap-box"),
+              hasRect: out.includes("rect="),
+              hasBg: out.includes("background-color="),
+              hasColor: out.includes("color="),
+              hasText: out.includes("快照文本"),
+              hasShadowRoot: out.includes("#shadow-root"),
+              hasDeepText: out.includes("深层文本"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, preview: out.slice(0, 400) },
+            };
+          } finally {
+            box.remove();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="formatConsoleEntries - since 增量 / limit / latestTs">
+      <template>
+        <script type="module">
+          import { formatConsoleEntries } from "../debug-runtime.js";
+          const entries = [
+            { t: 1000, level: "log", text: "第一条" },
+            { t: 2000, level: "error", text: "出错了" },
+            { t: 3000, level: "warn", text: "警告A" },
+            { t: 3500, level: "warn", text: "警告B" },
+          ];
+          const all = formatConsoleEntries(entries, {});
+          const since = formatConsoleEntries(entries, { since: 1000 });
+          const limited = formatConsoleEntries(entries, { limit: 1 });
+          const empty = formatConsoleEntries(entries, { since: 9000 });
+          return {
+            assert:
+              all.count === 4 &&
+              all.text.includes("第一条") &&
+              all.text.includes("最新 ts: 3500") &&
+              since.count === 3 &&
+              !since.text.includes("第一条") &&
+              since.text.includes("出错了") &&
+              since.latestTs === 3500 &&
+              limited.count === 1 &&
+              limited.text.includes("警告B") &&
+              empty.count === 0,
+            content: { allHead: all.text.split("：")[0], sinceHead: since.text.split("：")[0] },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="runDebugCommand - text / click / type 指令">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          const wrap = document.createElement("div");
+          wrap.id = "dbg-cmd-wrap";
+          wrap.innerHTML = `
+            <p class="cmd-text">可读文本</p>
+            <button class="cmd-btn">点我</button>
+            <input class="cmd-input" />
+          `;
+          document.body.appendChild(wrap);
+          let clicks = 0;
+          wrap.querySelector(".cmd-btn").addEventListener("click", () => clicks++);
+          const inputEvents = [];
+          const input = wrap.querySelector(".cmd-input");
+          input.addEventListener("input", () => inputEvents.push("input"));
+          input.addEventListener("change", () => inputEvents.push("change"));
+          try {
+            const text = await runDebugCommand({ cmd: "text", args: { selector: ".cmd-text" }, capture: { entries: [] } });
+            const click = await runDebugCommand({ cmd: "click", args: { selector: ".cmd-btn" }, capture: { entries: [] } });
+            const typed = await runDebugCommand({ cmd: "type", args: { selector: ".cmd-input", text: "你好" }, capture: { entries: [] } });
+            return {
+              assert:
+                text.ok &&
+                text.result.includes("可读文本") &&
+                click.ok &&
+                clicks === 1 &&
+                typed.ok &&
+                input.value === "你好" &&
+                inputEvents.includes("input") &&
+                inputEvents.includes("change"),
+              content: { text: text.result, clicks, value: input.value, inputEvents },
+            };
+          } finally {
+            wrap.remove();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="runDebugCommand - eval 预置 $ 助手与未知指令报错">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          const target = document.createElement("div");
+          target.id = "dbg-eval-target";
+          target.textContent = "eval 目标";
+          document.body.appendChild(target);
+          try {
+            const ev = await runDebugCommand({
+              cmd: "eval",
+              args: { code: '$("#dbg-eval-target").textContent' },
+              capture: { entries: [] },
+            });
+            const bad = await runDebugCommand({ cmd: "no-such-cmd", args: {}, capture: { entries: [] } });
+            const thrown = await runDebugCommand({
+              cmd: "eval",
+              args: { code: "throw new Error('boom')" },
+              capture: { entries: [] },
+            });
+            return {
+              assert:
+                ev.ok &&
+                ev.result === "eval 目标" &&
+                bad.ok === false &&
+                bad.error.includes("未知调试指令") &&
+                thrown.ok === false &&
+                thrown.error.includes("boom"),
+              content: { ev: ev.result, bad: bad.error.split("\n")[0], thrown: thrown.error.split("\n")[0] },
+            };
+          } finally {
+            target.remove();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="runDebugCommand - wait 等元素出现与消失">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          const late = document.createElement("div");
+          late.className = "dbg-late-el";
+          setTimeout(() => document.body.appendChild(late), 250);
+          const appear = await runDebugCommand({
+            cmd: "wait",
+            args: { selector: ".dbg-late-el", timeoutMs: 4000 },
+            capture: { entries: [] },
+          });
+          setTimeout(() => late.remove(), 250);
+          const gone = await runDebugCommand({
+            cmd: "wait",
+            args: { selector: ".dbg-late-el", absent: true, timeoutMs: 4000 },
+            capture: { entries: [] },
+          });
+          const never = await runDebugCommand({
+            cmd: "wait",
+            args: { selector: ".dbg-never-exist", timeoutMs: 300 },
+            capture: { entries: [] },
+          });
+          return {
+            assert:
+              appear.ok &&
+              gone.ok &&
+              never.ok === false &&
+              never.error.includes("等待超时"),
+            content: { appear: appear.result, gone: gone.result, neverErr: never.error.split("\n")[0] },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="runDebugCommand - console 指令读捕获缓冲">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          const capture = {
+            entries: [
+              { t: 1, level: "log", text: "启动" },
+              { t: 2, level: "error", text: "ReferenceError: x is not defined" },
+            ],
+          };
+          const r = await runDebugCommand({ cmd: "console", args: {}, capture });
+          const empty = await runDebugCommand({
+            cmd: "console",
+            args: { since: 100 },
+            capture,
+          });
+          return {
+            assert:
+              r.ok &&
+              r.result.includes("ReferenceError") &&
+              r.meta.latestTs === 2 &&
+              empty.result.includes("暂无"),
+            content: { text: r.result, latestTs: r.meta.latestTs },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="runDebugCommand - shot 经合成捕获流出图（不弹授权框）">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          // 真实 getDisplayMedia 会弹原生授权框（不点会挂住测试，Firefox/WebKit
+          // 不会自动授权），用 canvas 合成流伪造——整条截图管线（video 取帧 →
+          // canvas 绘制 → JPEG base64 → 停轨道）照常执行且零交互
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            return { assert: true, content: { skipped: "无 getDisplayMedia，跳过" } };
+          }
+          const cvs = document.createElement("canvas");
+          if (typeof cvs.captureStream !== "function") {
+            return { assert: true, content: { skipped: "无 canvas.captureStream，跳过" } };
+          }
+          cvs.width = 320;
+          cvs.height = 160;
+          const ctx = cvs.getContext("2d");
+          ctx.fillStyle = "#4682ee";
+          ctx.fillRect(0, 0, 320, 160);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "20px sans-serif";
+          ctx.fillText("shot-test", 12, 40);
+          const stream = cvs.captureStream(30);
+          const track = stream.getVideoTracks()[0];
+          const orig = navigator.mediaDevices.getDisplayMedia;
+          let r;
+          try {
+            navigator.mediaDevices.getDisplayMedia = async () => stream;
+            r = await runDebugCommand({
+              cmd: "shot",
+              args: { maxSide: 320, quality: 0.5 },
+              capture: { entries: [] },
+            });
+          } finally {
+            navigator.mediaDevices.getDisplayMedia = orig;
+          }
+          return {
+            assert:
+              r.ok === true &&
+              typeof r.result === "string" &&
+              r.result.length > 100 &&
+              r.meta?.image?.mime === "image/jpeg" &&
+              r.meta?.image?.w > 0 &&
+              track.readyState === "ended", // 截完轨道已停，无残留共享状态
+            content: {
+              ok: r.ok,
+              resultLen: r.ok ? r.result.length : 0,
+              image: r.meta?.image || null,
+              trackState: track.readyState,
+              errorHead: r.ok ? null : String(r.error || "").split("\n")[0],
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildDbgResultMessages - 小结果单条直达">
+      <template>
+        <script type="module">
+          import { buildDbgResultMessages } from "../proto.js";
+          const ok = buildDbgResultMessages("req-1", { ok: true, result: "hello", meta: { ms: 3 } });
+          const err = buildDbgResultMessages("req-2", { ok: false, error: "炸了" });
+          return {
+            assert:
+              ok.length === 1 &&
+              ok[0].type === "dbg-result" &&
+              ok[0].ok === true &&
+              ok[0].result === "hello" &&
+              ok[0].meta.ms === 3 &&
+              err.length === 1 &&
+              err[0].ok === false &&
+              err[0].error === "炸了",
+            content: { ok, err },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildDbgResultMessages - 大结果分片且收集器可无损还原">
+      <template>
+        <script type="module">
+          import { buildDbgResultMessages, createDbgCollector } from "../proto.js";
+          const text = "调试内容🎉".repeat(30000); // > 96KB 字节预算
+          const msgs = buildDbgResultMessages("req-big", { ok: true, result: text, meta: null });
+          const chunks = msgs.filter((m) => m.type === "dbg-chunk");
+          const final = msgs[msgs.length - 1];
+          const collector = createDbgCollector();
+          let outcome = null;
+          for (const m of msgs) {
+            const r = collector.push(m);
+            if (r) outcome = r;
+          }
+          return {
+            assert:
+              chunks.length > 1 &&
+              chunks.every((c, i) => c.seq === i && c.total === chunks.length && c.reqId === "req-big") &&
+              final.type === "dbg-result" &&
+              final.ok === true &&
+              final.chunks === chunks.length &&
+              outcome.ok === true &&
+              outcome.result === text,
+            content: { chunks: chunks.length, bytes: text.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createDbgCollector - 乱序分片/缺片/重复片/错误直达">
+      <template>
+        <script type="module">
+          import { createDbgCollector } from "../proto.js";
+          const c1 = createDbgCollector();
+          c1.push({ type: "dbg-chunk", reqId: "a", seq: 1, total: 2, text: "B" });
+          c1.push({ type: "dbg-chunk", reqId: "a", seq: 0, total: 2, text: "A" });
+          const ok = c1.push({ type: "dbg-result", reqId: "a", ok: true, chunks: 2, meta: null });
+          const c2 = createDbgCollector();
+          c2.push({ type: "dbg-chunk", reqId: "b", seq: 0, total: 2, text: "A" });
+          const missing = c2.push({ type: "dbg-result", reqId: "b", ok: true, chunks: 2, meta: null });
+          const c3 = createDbgCollector();
+          c3.push({ type: "dbg-chunk", reqId: "c", seq: 0, total: 1, text: "A" });
+          let dupThrown = false;
+          try {
+            c3.push({ type: "dbg-chunk", reqId: "c", seq: 0, total: 1, text: "A" });
+          } catch (_) {
+            dupThrown = true;
+          }
+          const c4 = createDbgCollector();
+          const err = c4.push({ type: "dbg-result", reqId: "d", ok: false, error: "bad", meta: null });
+          return {
+            assert:
+              ok.ok === true &&
+              ok.result === "AB" &&
+              missing.ok === false &&
+              missing.error.includes("分片不完整") &&
+              dupThrown &&
+              err.ok === false &&
+              err.error === "bad",
+            content: { ok: ok.result, missing: missing.error, dupThrown, err: err.error },
+          };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="summarizeDbgArgs - 各指令的关键参数摘要">
+      <template>
+        <script type="module">
+          import { summarizeDbgArgs, DBG_TOOL_NAMES } from "../debug-runtime.js";
+          const s = (cmd, args) => summarizeDbgArgs(cmd, args);
+          const longCode = "const x = 1;\nsecondLine();";
+          const checks = {
+            statusEmpty: s("status", {}) === "",
+            consoleParams:
+              s("console", { limit: 50, since: 123 }) === "limit=50 since=123",
+            textDefault: s("text", {}) === "body",
+            typeSummary: s("type", { selector: "#in", text: "你好世界" }).includes("#in") &&
+              s("type", { selector: "#in", text: "你好世界" }).includes("你好世界"),
+            waitAbsent: s("wait", { selector: ".x", absent: true }).startsWith("等消失"),
+            waitCode: s("wait", { code: longCode }).includes("const x = 1;"),
+            domParams: s("dom", { selector: "#a", depth: 6 }).includes("depth=6"),
+            evalFirstLine: s("eval", { code: longCode }) === "const x = 1;" ||
+              s("eval", { code: longCode }).startsWith("const x = 1;"),
+            longTruncated: s("click", { selector: "." + "a".repeat(200) }).endsWith("…"),
+            toolNames: Object.entries({
+              status: "preview_status",
+              console: "preview_console",
+              text: "preview_text",
+              click: "preview_click",
+              type: "preview_type",
+              wait: "preview_wait",
+              dom: "preview_dom",
+              eval: "preview_eval",
+              shot: "preview_screenshot",
+            }).every(([c, name]) => DBG_TOOL_NAMES[c] === name),
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createOpLog - 记录/回填/分组持久化/上限/清空/订阅">
+      <template>
+        <script type="module">
+          import { createOpLog } from "../debug-runtime.js";
+          const mkStore = () => {
+            const m = new Map();
+            return {
+              getItem: (k) => (m.has(k) ? m.get(k) : null),
+              setItem: (k, v) => m.set(k, String(v)),
+            };
+          };
+          const store1 = mkStore();
+          const log1 = createOpLog(store1);
+          const events1 = [];
+          log1.subscribe(() => events1.push(1));
+          const id1 = log1.record("console", { limit: 50 });
+          const id2 = log1.record("eval", { code: "1+1" });
+          // sessions() 返回活引用：finish 前先取布尔值快照（不能存 entry 引用后再读）
+          const runningOk =
+            log1.sessions().at(-1).entries.find((e) => e.id === id1)?.ok;
+          log1.finish(id1, true, 12);
+          log1.finish(id2, false, 3, "Error: boom\n  at file.js:1:1");
+          const entries = log1.sessions().at(-1).entries;
+          // 同一 storage 再建一个实例：旧分组保留 + 新增一个「本次加载」分组
+          const log2 = createOpLog(store1);
+          log2.record("dom", { selector: "body" });
+          const sessions2 = log2.sessions();
+          // 上限：单组 100 条（record 120 次后剩 100）；分组上限 5
+          const store3 = mkStore();
+          const log3 = createOpLog(store3);
+          for (let i = 0; i < 120; i++) log3.record("status", {});
+          const capped = log3.sessions().at(-1).entries.length;
+          const store4 = mkStore();
+          for (let i = 0; i < 7; i++) createOpLog(store4);
+          const groups4 = createOpLog(store4).sessions().length;
+          log1.clear();
+          const checks = {
+            runningBeforeFinish: runningOk === null,
+            backfilledOk:
+              entries.find((e) => e.id === id1)?.ok === true &&
+              entries.find((e) => e.id === id1)?.ms === 12,
+            backfilledErr:
+              entries.find((e) => e.id === id2)?.ok === false &&
+              entries.find((e) => e.id === id2)?.err === "Error: boom",
+            subscribeFired: events1.length >= 4,
+            groupsOnReload: sessions2.length === 2,
+            newGroupHasNewCall:
+              sessions2.at(-1).entries.some((e) => e.cmd === "dom"),
+            oldGroupKept:
+              sessions2.at(-2).entries.some((e) => e.cmd === "eval"),
+            entriesCap: capped === 100,
+            sessionsCap: groups4 === 5,
+            clearWorks: log1.sessions().length === 1 && log1.sessions().at(-1).entries.length === 0,
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks, events1: events1.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="captureScreenshot - 截完即停止共享（不留常驻轨道）">
+      <template>
+        <script type="module">
+          import { captureScreenshot } from "../debug-runtime.js";
+          if (!navigator.mediaDevices) {
+            return { assert: true, content: { skipped: "无 mediaDevices，跳过" } };
+          }
+          const stopped = [];
+          const track = {
+            readyState: "live",
+            addEventListener() {},
+            getSettings: () => ({ width: 320, height: 160 }),
+            stop() {
+              stopped.push(1);
+              this.readyState = "ended";
+            },
+          };
+          const orig = navigator.mediaDevices.getDisplayMedia;
+          navigator.mediaDevices.getDisplayMedia = async () => ({
+            getVideoTracks: () => [track],
+            getTracks: () => [track],
+          });
+          let result = null;
+          let err = null;
+          try {
+            result = await captureScreenshot(undefined, { maxSide: 320, quality: 0.5 });
+          } catch (e) {
+            err = e; // 假流出不了帧，部分环境会走失败路径——两种路径都必须停止轨道
+          } finally {
+            navigator.mediaDevices.getDisplayMedia = orig;
+          }
+          return {
+            // 核心断言：无论成功（返回 base64）还是中途失败，轨道都恰好停止一次
+            assert:
+              stopped.length === 1 &&
+              (!!result?.base64 || !!err),
+            content: {
+              stopped: stopped.length,
+              ok: !!result,
+              errHead: err ? String(err.message).slice(0, 80) : null,
+            },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

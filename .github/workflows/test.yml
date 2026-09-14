@@ -5,11 +5,21 @@ on:
   pull_request:
     branches: [main, master]
 
+# 信令服务器本地化说明（bridge 隔离预览测试的关键基建）：
+# 依赖公网中继（hand3-*.noneos.com）跑跨用户通信测试时，双端可能被竞速
+# 分配到不同区域的中继（实测 jp1↔us1），跨区转发大帧会整窗丢失——WebKit
+# CI 曾因此稳定挂在 preview-flow 首个大分片。这里在每个任务里用 test-bin/
+# 下的 noneos-handshake 二进制起本地服务器（8081）：localhost 源下客户端
+# 默认服务器列表就含 ws://localhost:8081，且 proto.js 的
+# ensureServerConnected 会收敛到排序首位（ws: < wss:，本地必胜），
+# 双端同机同服务器，完全脱离公网抖动。
 jobs:
   test-chrome:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Start local noneos handshake server
+        run: .github/scripts/start-handshake.sh
       - uses: ofajs/sibyl-test@v1
         with:
           browsers: 'chrome'
@@ -18,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Start local noneos handshake server
+        run: .github/scripts/start-handshake.sh
       - uses: ofajs/sibyl-test@v1
         with:
           browsers: 'firefox'
@@ -26,6 +38,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Start local noneos handshake server
+        run: .github/scripts/start-handshake.sh
       - uses: ofajs/sibyl-test@v1
         with:
           browsers: 'webkit'

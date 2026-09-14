@@ -6,7 +6,13 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <!-- show-form 表单卡片的控件依赖（组件模板经 :html 生成，须全局预载） -->
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/radio/radio.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
+  <l-m src="../lib/tools/show-form/form-card.html"></l-m>
 
   <div class="app">
     <header class="topbar">
@@ -69,8 +75,18 @@
       </div>
       <div class="topbar-actions">
         <o-if :value="currentAppName !== ''">
-          <st-icon-button title="预览应用" on:click="openApp(currentAppName, currentAppMode)">
-            <n-icon icon="mdi:play-circle-outline"></n-icon>
+          <o-if :value="previewStatus">
+            <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
+          </o-if>
+          <st-icon-button
+            class:preview-live="previewOnline"
+            attr:title="previewOnline ? '预览窗口已打开 · 点击增量更新' : '预览应用（隔离域运行）'"
+            attr:disabled="previewBusy"
+            on:click="openAppRemote(currentAppName, currentAppMode)"
+          >
+            <n-icon
+              attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
+            ></n-icon>
           </st-icon-button>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
             <n-icon icon="mdi:backup-restore"></n-icon>
@@ -159,24 +175,40 @@
       <section class="chat-scroll" id="chatScroll" on:scroll="onChatScroll">
         <div class="column">
           <o-if :value="messages.length === 0 && !sending">
-            <div class="hero">
-              <div class="hero-icon">🪄</div>
-              <h2>描述你想要的应用</h2>
-              <p class="hero-sub">
-                AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
-              </p>
-              <div class="chips">
-                <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
-                  🍅 番茄钟
-                </button>
-                <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
-                  💰 记账本
-                </button>
-                <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
-                  🎯 随机点名
-                </button>
+            <!-- 草稿态：引导描述要生成的应用 -->
+            <o-if :value="currentAppName === ''">
+              <div class="hero">
+                <div class="hero-icon">🪄</div>
+                <h2>描述你想要的应用</h2>
+                <p class="hero-sub">
+                  AI 会生成完整的 ofa.js 应用并写入文件系统，完成后可直接预览
+                </p>
+                <div class="chips">
+                  <button class="chip" on:click="useChip('帮我生成一个番茄钟应用：25 分钟专注 + 5 分钟休息，可以自定义时长，记录今天完成的番茄数')">
+                    🍅 番茄钟
+                  </button>
+                  <button class="chip" on:click="useChip('帮我生成一个记账应用：添加收入/支出记录，按分类汇总，数据保存到本地')">
+                    💰 记账本
+                  </button>
+                  <button class="chip" on:click="useChip('帮我生成一个抽签点名应用：粘贴学生名单，随机抽取一人，避免重复')">
+                    🎯 随机点名
+                  </button>
+                </div>
               </div>
-            </div>
+            </o-if>
+            <!-- 已在应用内：新会话给出贴合当前应用的迭代话题 -->
+            <o-if :value="currentAppName !== ''">
+              <div class="hero">
+                <div class="hero-icon">{{currentAppIcon}}</div>
+                <h2>{{currentAppDisplay || currentAppName}}</h2>
+                <p class="hero-sub">继续迭代这个应用，可以试试下面的话题</p>
+                <div class="chips">
+                  <button class="chip" on:click="useChip('帮我检查当前应用还有哪些问题或可以优化的地方，发现后直接修复')">🔍 检查优化</button>
+                  <button class="chip" on:click="useChip('在现有基础上帮我增加一个实用的新功能，先给出方案再实现')">✨ 新增功能</button>
+                  <button class="chip" on:click="useChip('帮我优化应用的界面视觉与交互细节，让它更美观易用')">🎨 美化界面</button>
+                </div>
+              </div>
+            </o-if>
           </o-if>
 
           <o-fill :value="messages" fill-key="id">
@@ -193,7 +225,15 @@
                 <div class="user-bubble">{{$data.content}}</div>
               </o-if>
 
-              <o-if :value="$data.role === 'assistant'">
+              <!-- 视觉交互表单卡片（show-form 包的组件，ready 预载） -->
+              <o-if :value="$host.isFormMsg($data)">
+                <show-form-card
+                  :spec="$data.form"
+                  on:form-submit="$host.onFormSubmit($event, $data.id)"
+                ></show-form-card>
+              </o-if>
+
+              <o-if :value="$host.isAiMsg($data)">
                 <div class="ai-block">
                   <div class="ai-head">
                     <o-if :value="$host.aiModel($data) !== ''">
@@ -318,6 +358,19 @@
                 </div>
               </o-if>
 
+              <o-if :value="$data.role === 'image'">
+                <div class="shot-card">
+                  <div class="shot-head">
+                    <n-icon icon="mdi:camera-outline"></n-icon>
+                    <span>预览窗口截图</span>
+                    <o-if :value="$data.w > 0">
+                      <span class="shot-size">{{$data.w}} × {{$data.h}}</span>
+                    </o-if>
+                  </div>
+                  <img class="shot-img" attr:src="$data.src" attr:alt="'预览窗口截图 ' + $data.w + 'x' + $data.h" />
+                </div>
+              </o-if>
+
               <o-if :value="$data.role === 'app'">
                 <div class="app-card">
                   <div class="app-card-head">
@@ -330,7 +383,7 @@
                   <o-if :value="$data.ready">
                     <div class="app-card-actions">
                       <st-button
-                        on:click="$host.openApp($data.appName, $data.mode)"
+                        on:click="$host.openAppRemote($data.appName, $data.mode)"
                       >
                         ▶ 预览应用
                       </st-button>
@@ -348,7 +401,7 @@
 
           <o-if :value="sending">
             <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新） -->
-            <div class="turn-status">生成中… {{ turnLiveText(clock) }}</div>
+            <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
         </div>
       </section>
@@ -385,7 +438,7 @@
           id="inputer"
           sync:value="input"
           rows="1"
-          placeholder="描述你想生成的应用…"
+          attr:placeholder="inputPlaceholder"
           attr:disabled="sending"
           on:keydown="handleKeydown($event)"
         ></textarea>
@@ -643,11 +696,18 @@
         <st-button
           variant="filled"
           attr:disabled="backupBusy"
-          style="width: 100%"
           on:click="handleCreateBackup"
         >
-          <o-if :value="backupBusy">⏳ 正在打包…</o-if>
-          <o-if :value="!backupBusy">＋ 新增备份</o-if>
+          <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
+          <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
+        </st-button>
+        <st-button
+          variant="outlined"
+          attr:disabled="backupBusy"
+          on:click="handleSmartBackup"
+        >
+          <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
+          <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
         </st-button>
       </div>
       <div class="panel-body">
@@ -746,8 +806,15 @@
               <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
             </div>
             <o-fill :value="toolDefs" fill-key="name">
-              <div class="tool-def">
-                <span class="tool-def-name">{{$data.name}}</span>
+              <div class="tool-def" title="查看工具详情" on:click="$host.openToolDetail($data.name)">
+                <div class="tool-def-row">
+                  <span class="tool-def-name">{{$data.name}}</span>
+                  <o-if :value="$data.tags.includes('视觉')">
+                    <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                      <n-icon icon="mdi:eye"></n-icon>视觉
+                    </span>
+                  </o-if>
+                </div>
                 <span class="tool-def-desc">{{$data.desc}}</span>
               </div>
             </o-fill>
@@ -827,6 +894,123 @@
         </div>
       </div>
     </st-dialog>
+
+    <!-- 工具详情对话框：点工具列表项弹出；带内置测试的工具（视觉或纯插件）用
+         「工具信息 / 内置测试」双 Tab，无内置测试的工具用窄面板、无 Tab。
+         测试 Tab：左断言 list，右 iframe 实跑测试（视觉工具挂载被测组件，
+         纯插件工具显示断言运行记录） -->
+    <st-dialog
+      class="tool-detail"
+      class:narrow="toolDetail && !toolDetail.hasTabs"
+      sync:open="toolDetailOpen"
+      auto-close
+    >
+      <o-if :value="toolDetail">
+        <div class="tool-detail-panel">
+          <div class="tool-detail-title">
+            <span>{{toolDetail.name}}</span>
+            <o-if :value="toolDetail.isVisual">
+              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                <n-icon icon="mdi:eye"></n-icon>视觉
+              </span>
+            </o-if>
+          </div>
+
+          <!-- 有内置测试的工具：Tab 切换（信息 / 测试） -->
+          <o-if :value="toolDetail.hasTabs">
+            <st-tab-bar class="tool-detail-tabs">
+              <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
+                <span class="tab-label">工具信息</span>
+              </st-tab-item>
+              <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
+                <span class="tab-label">内置测试</span>
+              </st-tab-item>
+            </st-tab-bar>
+          </o-if>
+
+          <!-- Tab 1：工具信息（描述 + Schema；视觉工具右侧保留运行效果演示） -->
+          <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
+            <div class="tool-info-row">
+              <div class="tool-detail-main">
+                <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
+                <div class="tool-detail-label">参数 Schema</div>
+                <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+              </div>
+              <!-- 视觉工具：iframe 实时演示组件运行效果（pending 可交互） -->
+              <o-if :value="toolDetail.isVisual">
+                <div class="tool-demo-side">
+                  <div class="tool-demo-label">运行效果预览 · 可交互</div>
+                  <iframe
+                    class="tool-demo-frame"
+                    title="视觉工具组件演示"
+                    attr:srcdoc="toolDemoDoc"
+                  ></iframe>
+                </div>
+              </o-if>
+            </div>
+          </o-if>
+
+          <!-- Tab 2：内置测试（左断言 list | 右测试运行 iframe）。
+               不用 o-if 卸载：切 Tab 销毁 iframe 会让保留的 srcdoc 重挂载时
+               自动重跑；改为常驻 + display 切换，跑完的画面得以保留 -->
+          <o-if :value="toolDetail.hasTabs">
+            <div class="tool-test-grid" class:show="toolTab === 'test'">
+              <div class="tool-test-left">
+                <div class="tool-test-bar">
+                  <st-button
+                    variant="outlined"
+                    attr:disabled="toolTestRunning"
+                    on:click="runToolSelfTest"
+                  >
+                    <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                    <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
+                  </st-button>
+                  <o-if :value="toolTestDone">
+                    <span
+                      class="tool-test-verdict"
+                      class:pass="toolTestAllPass"
+                      class:fail="!toolTestAllPass"
+                    >
+                      {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                    </span>
+                  </o-if>
+                </div>
+                <div class="tool-test-cases">
+                  <!-- 测试计划（self-test.js 导出 testPlan）：进 Tab 即见待测清单，
+                       运行后逐条由 pending → pass / fail -->
+                  <o-fill :value="toolTestPlan" fill-key="name">
+                    <div class="tool-test-case">
+                      <o-if :value="$data.status === 'pending'">
+                        <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
+                      </o-if>
+                      <o-if :value="$data.status === 'pass'">
+                        <n-icon class="pass" icon="mdi:check-circle"></n-icon>
+                      </o-if>
+                      <o-if :value="$data.status === 'fail'">
+                        <n-icon class="fail" icon="mdi:close-circle"></n-icon>
+                      </o-if>
+                      <span class="tool-test-case-name">{{$data.name}}</span>
+                      <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
+                    </div>
+                  </o-fill>
+                </div>
+              </div>
+              <div class="tool-test-right">
+                <iframe
+                  class="tool-test-frame"
+                  title="内置测试运行画面"
+                  attr:srcdoc="toolTestDoc"
+                ></iframe>
+              </div>
+            </div>
+          </o-if>
+
+          <div class="backup-edit-actions">
+            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
+          </div>
+        </div>
+      </o-if>
+    </st-dialog>
   </div>
 
   <script>
@@ -855,10 +1039,143 @@
       const store = createBuilderStore({ fs, mazmotStore, selfStore, load });
 
       // 面板展示用的工具清单（取每个插件描述的第一句）
-      const toolDefs = TOOL_DEFS.map((d) => ({
-        name: d.name,
-        desc: (d.description || "").split("。")[0] + "。",
-      }));
+      const toolDefs = TOOL_DEFS.map((d) => {
+        let desc = (d.description || "").split(/。|；/)[0];
+        if (desc.length > 42) desc = desc.slice(0, 42) + "…";
+        return {
+          name: d.name,
+          desc: desc + "。",
+          tags: d.tags || [],
+        };
+      });
+
+      // 视觉工具 iframe 的 srcdoc 公共骨架：srcdoc 文档地址是 about:srcdoc，
+      // 无法解析 / 开头路径 → base 指向站点根；l-m 的 src 会被 ofa 以文档地址
+      // 为 base 解析，必须用完整绝对地址。script 标签首尾都拆开拼（字面量
+      // script 开闭标签都会让模板解析器提前断开页面脚本），内嵌脚本为单行、
+      // 注释只能用块注释（// 会吞掉行尾的闭合括号）
+      const toolDocPre = (note) =>
+        [
+          '<!doctype html><html><head><meta charset="utf-8">',
+          '<base href="' + location.origin + '/">',
+          "<style>",
+          "body{margin:0;padding:14px;color-scheme:light dark;",
+          "font-family:system-ui,-apple-system,'Segoe UI',sans-serif;",
+          "background:light-dark(#fdfcff,#111318);color:light-dark(#1b1b1f,#e3e2e6)}",
+          ".bench-note{font-size:12px;color:light-dark(#5f5f66,#c8c5d0);margin-bottom:10px}",
+          ".bench-note b{color:light-dark(#5256a1,#bac3ff)}",
+          ".show-form-card,.form-card{max-width:100% !important}",
+          "</style>",
+          "<" + 'script type="module" src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug">' + "</scr" + "ipt>",
+          "</head><body>",
+          '<div class="bench-note"><b>' + note[0] + "</b> · " + note[1] + "</div>",
+          '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
+        ].join("");
+      const toolDocSenti = () =>
+        ["input", "textarea", "select", "checkbox", "radio"]
+          .map(
+            (n) =>
+              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
+          )
+          .join("");
+
+      // 工具信息 Tab 的演示 iframe：加载包内配套组件，渲染一张可交互的
+      // 示例卡片，让用户直观看到工具在对话中的实际运行效果
+      const buildToolDemoDoc = (def) => {
+        const spec = {
+          title: "示例表单：选择部署方案",
+          description: "这张卡片就是该工具在对话中的实际渲染效果，可以填写体验。",
+          status: "pending",
+          data: null,
+          fields: [
+            { key: "appName", label: "应用名称", type: "text", placeholder: "todo-app", required: true },
+            { key: "plan", label: "部署方案", type: "radio", options: ["本地目录", "虚拟系统"] },
+            { key: "region", label: "区域", type: "select", options: ["华东", "华北", "海外"] },
+            { key: "notes", label: "备注", type: "textarea", placeholder: "补充说明（选填）" },
+            { key: "confirm", label: "我已确认以上配置", type: "checkbox", required: true },
+          ],
+        };
+        return (
+          toolDocPre(["演示", "源码 " + def.visual.split("/").slice(-2).join("/")]) +
+          '<l-m src="' + def.visual + '"></l-m>' +
+          toolDocSenti() +
+          [
+            '<div id="mount"></div>',
+            "<" + "script>",
+            "(async () => {",
+            "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
+            "  const card = document.createElement('show-form-card');",
+            "  document.getElementById('mount').appendChild(card);",
+            "  await wait(300);",
+            "  const p = window.$(card);",
+            "  p.spec = " + JSON.stringify(spec) + ";",
+            "  p.bodyHtml = p.renderFields(p.spec);",
+            "})();",
+            "</scr" + "ipt>",
+            "</body></html>",
+          ].join("")
+        );
+      };
+
+      // 内置测试 Tab 的运行 iframe：视觉工具加载组件 + self-test 模组实际执行
+      // 测试（被测组件实时挂载在画面上）；纯插件工具不预载组件，右侧逐条显示
+      // 断言运行记录。断言经 postMessage 逐条同步回左列 list
+      const buildToolTestDoc = (def) => {
+        const visual = !!def.visual;
+        const waitTags = def.testTags || [];
+        const extra = visual
+          ? toolDocSenti() + '<l-m src="' + def.visual + '"></l-m>' + '<div id="mount"></div>'
+          : [
+              "<style>",
+              ".t-case{font:13px/1.8 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;",
+              "padding:1px 0 1px 20px;position:relative;color:light-dark(#1b1b1f,#e3e2e6)}",
+              ".t-case.pass{color:light-dark(#1b7f3b,#7fd894)}",
+              ".t-case.fail{color:light-dark(#b3261e,#ffb4ab)}",
+              ".t-case::before{position:absolute;left:2px}",
+              ".t-case.pass::before{content:'✓'}.t-case.fail::before{content:'✗'}",
+              "</style>",
+            ].join("");
+        const logFn = visual
+          ? ""
+          : "const log=(c)=>{const d=document.createElement('div');d.className='t-case '+(c.pass?'pass':'fail');" +
+            "d.textContent=c.name+(c.info?' — '+c.info:'');document.body.appendChild(d);};";
+        const waitLoop = waitTags.length
+          ? "const t0 = Date.now();" +
+            "while (Date.now() - t0 < 8000 && !(" +
+            JSON.stringify(waitTags) +
+            ".every((t) => customElements.get(t)))) await wait(100);"
+          : "";
+        const onCase = visual
+          ? "(c) => parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*')"
+          : "(c) => { log(c); parent.postMessage({ type: 'conjure-tool-test-case', item: c }, '*'); }";
+        return (
+          toolDocPre(
+            visual
+              ? ["内置测试", "右侧实时挂载被测组件"]
+              : ["内置测试", "右侧为断言运行记录"],
+          ) +
+          extra +
+          [
+            "<" + "script>",
+            "(async () => {",
+            "  const wait = (ms) => new Promise((r) => setTimeout(r, ms));",
+            ...(logFn ? ["  " + logFn] : []),
+            ...(waitLoop
+              ? ["  /* 等被测组件与依赖控件注册完成（l-m 异步加载） */", "  " + waitLoop]
+              : []),
+            "  try {",
+            "    const mod = await import('" + def.selfTest + "');",
+            "    const res = await mod.runSelfTest(" + onCase + ");",
+            "    parent.postMessage({ type: 'conjure-tool-test-done', ok: res.ok }, '*');",
+            "  } catch (err) {",
+            "    parent.postMessage({ type: 'conjure-tool-test-error', info: String((err && err.message) || err) }, '*');",
+            "  }",
+            "})();",
+            "</scr" + "ipt>",
+            "</body></html>",
+          ].join("\n")
+        );
+      };
 
       // ---- 跨标签感知：哪些项目标签正打开（BroadcastChannel 广播存活状态） ----
       // aliveTabs 含本标签自己的项目名；openTabs 是它的页面投影（列表项「已打开」徽标）
@@ -927,16 +1244,30 @@
           backupDrawerOpen: false, // 右侧备份管理抽屉
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           backupBusy: false, // 正在打包备份
+          smartBackupBusy: false, // 智能备份的 AI 分析阶段
+          previewBusy: false, // 隔离预览推送中
+          previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
+          previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
+          toolDetailOpen: false, // 工具详情对话框
+          toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual / hasTabs）
+          toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
+          toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
+          toolTestDoc: "", // 内置测试运行 iframe 的 srcdoc
+          toolTestRunning: false, // 内置测试运行中
+          toolTestDone: false, // 内置测试已出结果
+          toolTestAllPass: false,
+          toolTestPlan: [], // 测试计划 [{ name, status: "pending"|"pass"|"fail", info }]
           openTabs: [], // 正在打开中的项目标签（跨标签感知）
           confirmingDelApp: "",
           apps: [],
           currentAppName: "", // "" = 新应用草稿
           currentAppDisplay: "",
           currentAppIcon: "📦",
+          inputPlaceholder: "", // 输入框占位文案（草稿 = 生成应用；应用内 = 迭代修改）
           currentAppMode: "vfs",
           currentAppSessions: [],
           clock: 0, // 计时心跳：AI 回复进行中每秒更新，驱动「生成中」实时用时
@@ -975,6 +1306,39 @@
 
         async ready() {
           page = this; // 供 BroadcastChannel 闭包回写 openTabs
+          // 测试 iframe → 左列 list 的断言进度（同源 srcdoc postMessage）
+          window.addEventListener("message", (e) => {
+            const d = e.data || {};
+            const p = page;
+            if (!p) return;
+            if (d.type === "conjure-tool-test-case") {
+              // 逐条打勾：按用例名回填状态（runSelfTest 完成一条回调一条）
+              const idx = p.toolTestPlan.findIndex((i) => i.name === d.item.name);
+              if (idx > -1) {
+                const plan = [...p.toolTestPlan];
+                plan[idx] = {
+                  ...plan[idx],
+                  status: d.item.pass ? "pass" : "fail",
+                  info: d.item.info || "",
+                };
+                p.toolTestPlan = plan;
+              }
+            } else if (d.type === "conjure-tool-test-done") {
+              p.toolTestAllPass = !!d.ok;
+              p.toolTestRunning = false;
+              p.toolTestDone = true;
+            } else if (d.type === "conjure-tool-test-error") {
+              p.toolTestPlan = [
+                ...p.toolTestPlan,
+                { name: "内置测试模组加载 / 运行失败", status: "fail", info: d.info || "" },
+              ];
+              p.toolTestAllPass = false;
+              p.toolTestRunning = false;
+              p.toolTestDone = true;
+            }
+          });
+          // 窗口尺寸变化：重算工具对话框内容区高度
+          window.addEventListener("resize", () => page?.syncToolDialogHeight?.());
           // 恢复会话栏宽度（150–400）
           try {
             const w = parseInt(sessionStorage.getItem("aib:side-width"), 10);
@@ -1034,6 +1398,8 @@
           });
           this.syncUrlParam();
           this.syncTabName();
+          this.syncDocTitle();
+          this.syncInputPlaceholder();
           announce(this.currentAppName); // 本标签项目就位，向其他标签广播
           this.followScroll(true);
         },
@@ -1042,6 +1408,41 @@
           input() {
             this.autoGrow();
           },
+          // 标签页标题跟随项目切换
+          currentAppName() {
+            this.syncDocTitle();
+            this.syncInputPlaceholder();
+          },
+        },
+
+        // ---- 生命周期（根级，proto 内的 attached 不会被调用）----
+        attached() {
+          // AI 回复进行中每秒心跳，驱动「生成中」右侧实时用时
+          this._durTimer = setInterval(() => {
+            if (this.sending) this.clock = Date.now();
+          }, 1000);
+          // 代码块复制：事件委托挂在聊天容器上，:html 重渲后依然有效
+          this.shadow.$("#chatScroll")?.on("click", async (event) => {
+            const btn = event.target?.closest?.(".md-copy");
+            if (!btn) return;
+            const label = btn.querySelector(".md-copy-label");
+            try {
+              await navigator.clipboard.writeText(btn.dataset.code || "");
+              if (!label) return;
+              btn.classList.add("copied");
+              label.textContent = "已复制";
+              clearTimeout(btn._copyTimer);
+              btn._copyTimer = setTimeout(() => {
+                btn.classList.remove("copied");
+                label.textContent = "复制";
+              }, 1500);
+            } catch {
+              if (label) label.textContent = "复制失败";
+            }
+          });
+        },
+        detached() {
+          clearInterval(this._durTimer);
         },
 
         proto: {
@@ -1132,6 +1533,8 @@
                 read_file: "mdi:file-document-outline",
                 list_files: "mdi:file-tree-outline",
                 read_skill: "mdi:book-open-variant",
+                show_form: "mdi:card-text-outline",
+                preview: "mdi:open-in-new",
               }[name] || "mdi:tools"
             );
           },
@@ -1182,16 +1585,6 @@
             return this.currentSessionId !== "" && !this.sending;
           },
 
-          // ---- 对话计时展示 ----
-          // AI 回复进行中每秒心跳一次，驱动用户气泡下「用时」实时刷新
-          attached() {
-            this._durTimer = setInterval(() => {
-              if (this.sending) this.clock = Date.now();
-            }, 1000);
-          },
-          detached() {
-            clearInterval(this._durTimer);
-          },
           fmtClock(ts) {
             const d = new Date(ts);
             const p = (n) => String(n).padStart(2, "0");
@@ -1221,10 +1614,56 @@
             }
             return text;
           },
-          // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖
+          // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖。
+          // 表单挂起期间计时暂停：累计挂起时长并在恢复后扣除
           turnLiveText() {
             if (!(this.turnStartTs > 0)) return "";
-            return "· " + this.fmtDurMs(Math.max(0, Date.now() - this.turnStartTs));
+            const now = Date.now();
+            if (this.formWaiting()) {
+              if (!this._formPauseStart) this._formPauseStart = now;
+            } else if (this._formPauseStart) {
+              this._formPauseMs =
+                (this._formPauseMs || 0) + (now - this._formPauseStart);
+              this._formPauseStart = 0;
+            }
+            const paused =
+              (this._formPauseMs || 0) +
+              (this._formPauseStart ? now - this._formPauseStart : 0);
+            return (
+              "· " + this.fmtDurMs(Math.max(0, now - this.turnStartTs - paused))
+            );
+          },
+
+          // 本轮是否有挂起中的表单（等待用户提交）：是则状态栏不显示倒计时
+          formWaiting() {
+            return this.messages.some(
+              (m) =>
+                m.role === "assistant" &&
+                m.type === "form" &&
+                m.form?.status === "pending",
+            );
+          },
+
+          // 回合状态文案：表单挂起 = 等待提交（倒计时暂停）；否则生成中 + 用时
+          turnStatusText() {
+            if (this.formWaiting()) {
+              return "⏸ 已展示表单，等待你提交后继续（计时已暂停）";
+            }
+            return "生成中… " + this.turnLiveText();
+          },
+
+          // ---- 视觉交互表单卡片（show-form 包组件的宿主接线） ----
+
+          isFormMsg(m) {
+            return m.role === "assistant" && m.type === "form" && !!m.form;
+          },
+          isAiMsg(m) {
+            return m.role === "assistant" && m.type !== "form";
+          },
+          // 组件提交冒泡：ofa emit 的载荷在 event.data（即表单值），交回仓库
+          // （落盘 + resolve 工具 Promise）
+          onFormSubmit(event, mid) {
+            store.submitForm(mid, event.data ?? {});
           },
 
           forkFrom(id) {
@@ -1327,6 +1766,10 @@
             store.openApp(appName, mode);
           },
 
+          openAppRemote(appName, mode) {
+            store.openAppRemote(appName, mode);
+          },
+
           async deleteSession(event, sid) {
             event?.stopPropagation?.();
             if (this.confirmingDelSession !== sid) {
@@ -1389,6 +1832,22 @@
           // "ai-builder-<name>"。标签复用靠 window.open(url, name) 命中同名标签；
           // 原地切换（草稿里生成落地 / 草稿里点项目）后若不同步名字，项目标签会
           // 顶着 draft 旧名，再点「新建项目」就会把这个项目标签本身导航回草稿
+          // 网页 title 跟随项目切换：草稿 =「新项目 - 妙造 Conjure」，
+          // 项目 =「项目名 - 妙造 Conjure」（会话不体现在 title 上）
+          syncDocTitle() {
+            const head =
+              this.currentAppName === "" ? "新项目" : this.currentAppDisplay;
+            document.title = `${head} - 妙造 Conjure`;
+          },
+
+          // 输入框占位跟随场景：草稿引导生成，应用内引导迭代
+          syncInputPlaceholder() {
+            this.inputPlaceholder =
+              this.currentAppName === ""
+                ? "描述你想生成的应用…"
+                : "向 AI 描述要如何迭代这个应用…";
+          },
+
           syncTabName() {
             const target =
               this.currentAppName === ""
@@ -1426,6 +1885,17 @@
 
           async handleCreateBackup() {
             const res = await store.createBackup();
+            if (res?.skipped) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              );
+              toast("内容未变化，已跳过重复备份");
+            }
+          },
+
+          // 智能备份：打包 + AI 对比上一版自动生成标题与备注
+          async handleSmartBackup() {
+            const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
                 "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
@@ -1474,6 +1944,117 @@
             }
             await store.setNote(id, note);
             this.backupEditOpen = false;
+          },
+
+          // ---- 工具详情对话框（视觉工具含「运行内置测试」） ----
+
+          openToolDetail(name) {
+            const def = TOOL_DEFS.find((d) => d.name === name);
+            if (!def) return;
+            // 描述按句拆行展示（工具描述是给模型看的连排长文本，直接渲染很乱）；
+            // 先转义再包 div，内容里的 <字段key> 等不会被当标签解析
+            const esc = (t) =>
+              String(t).replace(/[&<>"]/g, (c) => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+              })[c]);
+            const descHtml = (def.description || "")
+              // 先按句号分句，再在 "- " 条目边界处拆开（工具描述是连排文本，
+              // 条目之间没有句号），最后逐条转义成圆点行
+              .split(/。/)
+              .flatMap((s) => s.split(/(?=- )|(?=注意：)/))
+              .map((s) => s.trim().replace(/^- /, ""))
+              .filter(Boolean)
+              .map((s) => `<div class="tool-desc-line">• ${esc(s)}。</div>`)
+              .join("");
+            this.toolDetail = {
+              name: def.name,
+              descHtml,
+              schemaText: JSON.stringify(def.schema || {}, null, 2),
+              isVisual: !!def.visual,
+              hasTabs: !!def.visual || !!def.selfTest,
+            };
+            this.toolTab = "info";
+            this.toolDemoDoc = def.visual ? buildToolDemoDoc(def) : "";
+            this.toolTestDoc = "";
+            this.toolTestRunning = false; // 关闭对话框可能发生在运行中，重开时复位
+            this.toolTestDone = false;
+            this.toolTestPlan = [];
+            this.toolDetailOpen = true;
+            // 复位上个工具遗留的内容区高度（带 Tab 的工具会在 sync 里重新设置）
+            const panelEle = this.shadow
+              .$("st-dialog.tool-detail")
+              ?.ele?.querySelector(".tool-detail-panel");
+            if (panelEle) panelEle.style.height = "";
+            this.syncToolDialogHeight();
+            // 预载测试计划：进「内置测试」Tab 前就能看到待测清单
+            if (def.selfTest) {
+              import(def.selfTest)
+                .then((m) => {
+                  // 异步回填时可能已切到别的工具，校验一下
+                  if (this.toolDetail?.name !== def.name) return;
+                  this.toolTestPlan = (m.testPlan || []).map((n) => ({
+                    name: n,
+                    status: "pending",
+                    info: "",
+                  }));
+                  this.syncToolDialogHeight();
+                })
+                .catch(() => {});
+            }
+          },
+
+          closeToolDetail() {
+            this.toolDetailOpen = false;
+          },
+
+          // st-dialog 的 body 包裹层不会自动伸展（flex: 0 1 auto），CSS 够不到
+          // shadow 内部；带 Tab 的工具面板是定高的（90vh / max 1040），直接把内容区
+          // 高度同步为「面板 clientHeight − 上下 padding」，让「关闭」固定在
+          // 底部、中间区域撑满（超出滚动）。窄面板高度随内容，不处理
+          syncToolDialogHeight() {
+            if (!this.toolDetail?.hasTabs) return;
+            requestAnimationFrame(() => {
+              const dlg = this.shadow.$("st-dialog.tool-detail")?.ele;
+              const mine = dlg?.querySelector(".tool-detail-panel");
+              const panel = dlg?.shadowRoot?.querySelector('[part="panel"]');
+              if (!dlg || !mine || !panel) return;
+              const cs = getComputedStyle(panel);
+              const avail =
+                panel.clientHeight -
+                (parseFloat(cs.paddingTop) || 0) -
+                (parseFloat(cs.paddingBottom) || 0);
+              if (avail > 100) mine.style.height = `${Math.floor(avail)}px`;
+            });
+          },
+
+          setToolTab(tab) {
+            // 测试 iframe 常驻不卸载，切 Tab 不影响进行中的运行；
+            // 中途切走再回来，运行继续、结果照常同步
+            this.toolTab = tab;
+            this.syncToolDialogHeight();
+          },
+
+          // 运行工具包的内置测试模组（约定：包目录下 self-test.js 导出
+          // runSelfTest）。仅在测试 Tab 点击「运行测试」时才执行：测试在右侧
+          // iframe 里实际运行（视觉工具实时挂载被测组件，纯插件工具显示断言
+          // 运行记录），断言经 postMessage 逐条同步回左列 list
+          async runToolSelfTest() {
+            if (this.toolTestRunning) return;
+            const def = TOOL_DEFS.find((d) => d.name === this.toolDetail?.name);
+            if (!def?.selfTest) return;
+            this.toolTestRunning = true;
+            // 全部回到待测态，运行中逐条打勾
+            this.toolTestPlan = this.toolTestPlan.map((i) => ({
+              ...i,
+              status: "pending",
+              info: "",
+            }));
+            this.toolTestDone = false;
+            // 先归空再加载：两次运行的 srcdoc 内容相同，若上一次文档还挂着，
+            // 同值属性不会触发 iframe 重新导航，测试会「点了没反应」
+            this.toolTestDoc = "";
+            await new Promise((r) => setTimeout(r, 60));
+            this.toolTestDoc = buildToolTestDoc(def);
           },
 
           // ---- 会话拖拽排序（顺序持久化到 registry 的 sessionOrder） ----
@@ -1690,6 +2271,9 @@
             this.autoGrow();
             this.atBottom = true;
             this.followScroll(true);
+            // 新回合：清零表单挂起的计时暂停累计
+            this._formPauseMs = 0;
+            this._formPauseStart = 0;
             await store.send(text);
           },
 

@@ -6,6 +6,10 @@ import { Assistant } from "./assistant.js";
 const PAAS_BASE = "https://open.bigmodel.cn/api/paas/v4";
 const CODING_BASE = "https://open.bigmodel.cn/api/coding/paas/v4";
 
+// GLM-5.3 起（模型名 glm-5 开头）：思考不可关闭、不再支持 thinking 开关，
+// 改用 reasoning_effort 控制思考档位（low / high / max）
+const isGlm5Model = (model) => typeof model === "string" && model.startsWith("glm-5");
+
 export class GlmAssistant extends Assistant {
   BASE_URL = PAAS_BASE;
   providerName = "glm";
@@ -13,6 +17,7 @@ export class GlmAssistant extends Assistant {
   async chat({
     thinking = false,
     model = "glm-5.3-flash",
+    reasoningEffort = null, // GLM-5.3+ 思考档位："low" / "high" / "max"，显式传值优先
     stream = false,
     messages,
     onStream = null,
@@ -24,9 +29,16 @@ export class GlmAssistant extends Assistant {
       model,
       stream,
       messages,
-      // GLM 默认开启思考，显式传 thinking 保持与入参一致
-      thinking: { type: thinking ? "enabled" : "disabled" },
     };
+
+    if (isGlm5Model(model)) {
+      // GLM-5.3+ 思考不可关闭：thinking:false 映射为官方迁移路径的最低档 low；
+      // thinking:true 与 DeepSeek / Kimi 默认一致取 high；显式 reasoningEffort 原样透传
+      requestBody.reasoning_effort = reasoningEffort ?? (thinking ? "high" : "low");
+    } else {
+      // GLM-4.x：默认开启思考，显式传 thinking 保持与入参一致
+      requestBody.thinking = { type: thinking ? "enabled" : "disabled" };
+    }
 
     if (tools?.length) {
       requestBody.tools = tools;

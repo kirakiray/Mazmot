@@ -549,6 +549,64 @@
     </template>
   </sb-test>
 
+  <sb-test name="GLM: 思考参数按模型分支构建">
+    <template>
+      <script type="module">
+        return (async () => {
+          const { GlmAssistant } = await import("../supplier/glm.js");
+
+          // 分支构建逻辑不消耗配额：key 仅作构造参数，fetch 被拦截不会真正发请求，
+          // 因此不依赖 test-api-keys.json，任何环境都能跑
+          const capturedBodies_glm = [];
+          const originalFetch_glm = globalThis.fetch;
+          globalThis.fetch = async (url, opts) => {
+            if (opts?.body) {
+              capturedBodies_glm.push({ url, body: JSON.parse(opts.body) });
+            }
+            return new Response(JSON.stringify({
+              choices: [{ message: { content: "ok", reasoning_content: "thinking" } }],
+              model: "test",
+              usage: {},
+            }), { status: 200, headers: { "Content-Type": "application/json" } });
+          };
+
+          try {
+            const glmA = new GlmAssistant("test-glm-branch", "mock-key");
+            // GLM-5.3+：不发 thinking 开关，用 reasoning_effort 三档
+            await glmA.chat({ model: "glm-5.3-flash", messages: [{ role: "user", content: "hi" }] });
+            await glmA.chat({ model: "glm-5.3-flash", thinking: true, messages: [{ role: "user", content: "hi" }] });
+            await glmA.chat({ model: "glm-5.3-flash", thinking: true, reasoningEffort: "max", messages: [{ role: "user", content: "hi" }] });
+            await glmA.chat({ model: "glm-5.3", reasoningEffort: "low", messages: [{ role: "user", content: "hi" }] });
+            // GLM-4.x：保持 thinking 开关，reasoningEffort 不下发
+            await glmA.chat({ model: "glm-4.7", thinking: false, reasoningEffort: "low", messages: [{ role: "user", content: "hi" }] });
+            await glmA.chat({ model: "glm-4.7-flash", thinking: true, messages: [{ role: "user", content: "hi" }] });
+          } finally {
+            globalThis.fetch = originalFetch_glm;
+          }
+
+          const [f53Default, f53High, f53Max, f53Explicit, g47Off, g47On] =
+            capturedBodies_glm.map((c) => c.body);
+
+          const checks = {
+            f53_defaultLowEffort: f53Default.reasoning_effort === "low",
+            f53_noThinkingSwitch: f53Default.thinking === undefined,
+            f53_thinkingHighEffort: f53High.reasoning_effort === "high",
+            f53_explicitMaxEffort: f53Max.reasoning_effort === "max",
+            f53_explicitLowEffort: f53Explicit.reasoning_effort === "low",
+            g47_offUsesThinkingSwitch:
+              g47Off.thinking?.type === "disabled" && g47Off.reasoning_effort === undefined,
+            g47_onUsesThinkingSwitch: g47On.thinking?.type === "enabled",
+          };
+
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { capturedBodies: capturedBodies_glm, checks },
+          };
+        })();
+      </script>
+    </template>
+  </sb-test>
+
   <!-- ============================== -->
   <!-- main.js: API Key 管理接口测试   -->
   <!-- 以下测试无需真实 API Key         -->
