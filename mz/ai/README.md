@@ -8,7 +8,7 @@
 |--------|------|----------|----------|
 | DeepSeek | deepseek-v4-flash, deepseek-v4-pro | ✅ | ✅ |
 | Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
-| GLM | glm-4.7, glm-4.7-flash 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
+| GLM | glm-5.3 / glm-5.3-flash / glm-4.7 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
 
 > 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
@@ -191,11 +191,11 @@ const response = await assistant.chat({
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | messages | array | - | 消息数组，包含 role 和 content |
-| thinking | boolean | false | 是否启用思考模式（DeepSeek / GLM / Kimi k2.6 / k2.5 生效） |
+| thinking | boolean | false | 是否启用思考模式（DeepSeek / GLM / Kimi k2.6 / k2.5 生效；GLM-5.3+ 思考不可关闭，仅影响默认档位，见下方 GLM 节） |
 | stream | boolean | false | 是否启用流式输出 |
 | model | string | - | 模型名称 |
 | onStream | function | null | 流式输出回调 |
-| reasoningEffort | string | "high" | DeepSeek / Kimi `kimi-k3` 专用，推理强度（DeepSeek：`high` / `max`；kimi-k3：`low` / `high` / `max`） |
+| reasoningEffort | string | "high" | 推理强度。DeepSeek：`low` / `high` / `max`（官方另接受 `minimal` / `medium` / `xhigh` / `ultra` 并自动映射到三档）；kimi-k3：`low` / `high` / `max`；GLM-5.3+：`low` / `high` / `max`（见下方 GLM 思考模式） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
 | signal | AbortSignal | null | 传入 `AbortSignal` 用于取消请求；abort 后 `chat` 会抛出 `AbortError`，底层连接和流读取立即释放 |
 | tools | array | null | OpenAI 风格函数定义（function calling）：`[{ type: "function", function: { name, description, parameters } }]`，一般由 [chain 层](./chain/README.md) 的 `tool().toWire()` 生成 |
@@ -254,7 +254,7 @@ await assistant.chat({
 });
 ```
 
-> DeepSeek 官方仅接受 `high` / `max`。出于兼容考虑，传入 `low` / `medium` 会被映射为 `high`，`xhigh` 会被映射为 `max`。
+> DeepSeek 官方按 `low` / `high` / `max` 三档执行思考强度；请求还可传 `minimal` / `medium` / `xhigh` / `ultra`，由官方自动映射（minimal/low → low，medium/high/xhigh → high，max/ultra → max）。本库原样透传 `reasoningEffort`，不做本地映射。
 
 ### Kimi
 
@@ -292,14 +292,21 @@ await assistant.chat({
 
 ### GLM
 
-GLM（智谱 bigmodel.cn）通过 `thinking: { type: "enabled" | "disabled" }` 控制思考，`glm-4.7` 系列默认开启思考，需要非思考响应时显式传 `thinking: false`。GLM 不支持 `reasoningEffort`，该参数会被忽略。
+GLM（智谱 bigmodel.cn）按模型版本分两种思考控制方式：
+
+- **GLM-4.x（如 `glm-4.7`）**：通过 `thinking: { type: "enabled" | "disabled" }` 开关控制思考，4.7 系列默认开启思考，需要非思考响应时显式传 `thinking: false`。不支持 `reasoningEffort`，传入会被忽略。
+- **GLM-5.3+（`glm-5.3` / `glm-5.3-flash` 等，模型名 `glm-5` 开头）**：思考**不可关闭**，官方不再支持 `thinking` 开关，改用 `reasoning_effort` 三档（`low` / `high` / `max`）控制思考深度。本库不再发 `thinking` 参数，档位取值规则：
+  - 显式传 `reasoningEffort`：原样透传，优先级最高
+  - `thinking: true` 且未传档位：取 `"high"`（与 DeepSeek / Kimi 默认一致）
+  - `thinking: false`（默认）且未传档位：取 `"low"`（官方迁移路径：原「关闭思考」场景改用最低档）
 
 ```javascript
-// GLM 常规 Key（provider "glm"）或 Coding Plan Key（provider "glm-coding"）
+// GLM-5.3-flash 深度思考
 await assistant.chat({
-  model: "glm-4.7",
+  model: "glm-5.3-flash",
   messages: [{ role: "user", content: "解释相对论" }],
   thinking: true,
+  reasoningEffort: "max",
 });
 ```
 
@@ -397,6 +404,7 @@ npm run test-ai -- --browsers chrome  # 仅 Chrome
 
 - DeepSeek / Kimi 的普通对话、思考模式、流式输出、模型列表、余额查询
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
+- GLM 按模型版本的思考参数分支构建逻辑（5.3+ 用 `reasoning_effort` / 4.x 用 `thinking` 开关，不消耗 API 配额）
 - Assistant 基类的错误处理与流式 tool_calls 累积
 - Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）
 
