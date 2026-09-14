@@ -59,6 +59,15 @@
           enableServerAutoReconnect(bridgeUser);
           await Promise.all([ensureServer(conjureUser), ensureServer(bridgeUser)]);
 
+          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）；
+          // linkEvents 收集可靠链路的协议级事件（attempt/sent/capped/reconnect/ack…）
+          const diag = { sends: [], recvs: [], linkEvents: [] };
+          const onEvt = (side) => (e) => {
+            try {
+              diag.linkEvents.push({ side, ...e });
+            } catch (_) {}
+          };
+
           // 接收端（bridge）：可靠链路 + receiver 写 VFS（conjureId 与真实 bridge 页一致）
           const receiver = createPreviewReceiver({ conjureId: conjureUser.userId });
           let bridgeRemote = null;
@@ -71,9 +80,8 @@
                 : Promise.resolve([{ status: "error" }]),
             // 中继通道掉线时主动重连本侧信令，别让重试窗口干等耗尽
             onOffline: () => ensureServer(bridgeUser),
+            onEvent: onEvt("bridge"),
           });
-          // 双向投递诊断（失败时随 content 输出，区分「数据去程丢失」与「ACK 回程丢失」）
-          const diag = { sends: [], recvs: [] };
           let donePayload = null;
           const donePromise = new Promise((r) => {
             donePayload = r;
@@ -122,6 +130,7 @@
           let senderRemote = null;
           const senderLink = createReliableLink({
             onOffline: () => ensureServer(conjureUser),
+            onEvent: onEvt("conjure"),
             sendTo: (env) => {
               const p = env?.payload;
               if (p && p.type === "file" && p.path === "index.html") {
@@ -186,7 +195,7 @@
 
           // conjure → bridge：推送应用文件（含大文件分片与中文内容）
           const appName = "it-flow-app";
-          const bigText = "妙造隔离预览🎉\n".repeat(12000); // >64KB，触发多分片
+          const bigText = "妙造隔离预览🎉\n".repeat(12000); // ~276KB，64KB 预算下 5 片
           const files = [
             { path: "index.html", text: "<h1>it-flow</h1><script>/* 中文 ok */</" + "script>" },
             { path: "app.json", text: JSON.stringify({ name: appName, version: "0.1.0" }) },
@@ -212,16 +221,35 @@
                 error: pushErr.message,
                 diagSends: diag.sends,
                 diagRecvs: diag.recvs,
+                linkEvents: diag.linkEvents.filter((e) =>
+                  ["attempt", "sent", "send-capped", "send-throw", "reconnect", "ack", "retry", "rejected"].includes(e.phase),
+                ),
               },
             };
           }
 
-          const done = await Promise.race([
-            donePromise,
-            new Promise((_, rej) =>
-              setTimeout(() => rej(new Error("等待 done 超时")), 40000),
-            ),
-          ]);
+          let done;
+          try {
+            done = await Promise.race([
+              donePromise,
+              new Promise((_, rej) =>
+                setTimeout(() => rej(new Error("等待 done 超时")), 40000),
+              ),
+            ]);
+          } catch (doneErr) {
+            // done 超时同样带双向诊断输出（文件可能已收齐但回程 done 丢失）
+            return {
+              assert: false,
+              content: {
+                error: doneErr.message,
+                diagSends: diag.sends,
+                diagRecvs: diag.recvs,
+                linkEvents: diag.linkEvents.filter((e) =>
+                  ["attempt", "sent", "send-capped", "send-throw", "reconnect", "ack", "retry", "rejected"].includes(e.phase),
+                ),
+              },
+            };
+          }
 
           // VFS URL 经 SW 可访问且内容一致
           const ok = await waitUrlReady(done.url, 10000);

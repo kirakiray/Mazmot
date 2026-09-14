@@ -30,21 +30,68 @@
       <template>
         <script type="module">
           import { chunkText, byteSize } from "../proto.js";
-          // 混合 ASCII / 中文 / emoji，构造超过单片预算（32KB）的文本
+          // 混合 ASCII / 中文 / emoji，构造超过单片预算（64KB）的文本
           const unit = "a字🎉";
           const text = unit.repeat(40000);
-          const parts = chunkText(text);
-          const rejoined = parts.join("");
-          const eachWithinBudget = parts.every((p) => byteSize(p) <= 32 * 1024);
+          const bigParts = chunkText(text);
+          const rejoined = bigParts.join("");
+          const eachWithinBudget = bigParts.every((p) => byteSize(p) <= 64 * 1024);
           return {
             assert:
-              parts.length > 1 && eachWithinBudget && rejoined === text,
+              bigParts.length > 1 && eachWithinBudget && rejoined === text,
             content: {
-              parts: parts.length,
+              parts: bigParts.length,
               totalBytes: byteSize(text),
-              maxChunkBytes: Math.max(...parts.map(byteSize)),
+              maxChunkBytes: Math.max(...bigParts.map(byteSize)),
             },
           };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chunkText - 代理对安全（切点不劈开 emoji，重编码无损）">
+      <template>
+        <script type="module">
+          import { chunkText, byteSize } from "../proto.js";
+          {
+            // 历史缺陷：切点落在代理对中间 → 分片含孤立代理项，TextEncoder
+            // （E2EE 必经）替换成 U+FFFD 不可逆损坏，WebKit 传输链直接丢消息
+            //（CI 稳定挂在固定分片的真正根因）。本用例锁死该行为。
+            const hasLoneSurrogate = (s) => {
+              for (let i = 0; i < s.length; i++) {
+                const c = s.charCodeAt(i);
+                const hi = c >= 0xd800 && c <= 0xdbff;
+                const lo = c >= 0xdc00 && c <= 0xdfff;
+                if (hi && !(i + 1 < s.length && s.charCodeAt(i + 1) >= 0xdc00 && s.charCodeAt(i + 1) <= 0xdfff)) return true;
+                if (lo && !(i > 0 && s.charCodeAt(i - 1) >= 0xd800 && s.charCodeAt(i - 1) <= 0xdbff)) return true;
+              }
+              return false;
+            };
+            const samples = {
+              emojiDense: "妙造隔离预览🎉\n".repeat(12000),
+              pureEmoji: "🎉".repeat(50000),
+              mixed: "ab🎉cd😀\n".repeat(20000),
+              ascii: "x".repeat(200000),
+            };
+            const checks = {};
+            for (const [k, sampleText] of Object.entries(samples)) {
+              const sampleParts = chunkText(sampleText);
+              checks[k] =
+                sampleParts.length >= 1 &&
+                !sampleParts.some(hasLoneSurrogate) &&
+                sampleParts.every((p) => byteSize(p) <= 64 * 1024) &&
+                sampleParts.join("") === sampleText &&
+                // E2EE 关键性质：每片单独 TextEncoder/Decoder 往返无损
+                sampleParts.every(
+                  (p) =>
+                    new TextDecoder().decode(new TextEncoder().encode(p)) === p,
+                );
+            }
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
         </script>
       </template>
     </sb-test>
@@ -77,16 +124,16 @@
       <template>
         <script type="module">
           import { createFileAssembler } from "../proto.js";
-          const asm = createFileAssembler();
-          const r1 = asm.push({ path: "a.js", seq: 1, total: 2, text: "BB" });
-          const r2 = asm.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          const asmReorder = createFileAssembler();
+          const r1 = asmReorder.push({ path: "a.js", seq: 1, total: 2, text: "BB" });
+          const r2 = asmReorder.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
           // 收齐后的迟到重复分片：静默忽略（entry 已删，不得新建僵尸 entry）
-          const late = asm.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
+          const late = asmReorder.push({ path: "a.js", seq: 0, total: 2, text: "AA" });
           // 未收齐时的重复 seq：非法分片，抛错
           let dupThrows = false;
           try {
-            asm.push({ path: "b.js", seq: 0, total: 2, text: "X" });
-            asm.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+            asmReorder.push({ path: "b.js", seq: 0, total: 2, text: "X" });
+            asmReorder.push({ path: "b.js", seq: 0, total: 2, text: "X" });
           } catch (_) {
             dupThrows = true;
           }
@@ -98,7 +145,7 @@
               r2.path === "a.js" &&
               late === null &&
               dupThrows &&
-              asm.pendingCount() === 1,
+              asmReorder.pendingCount() === 1,
             content: { r2, late: late === null, dupThrows },
           };
         </script>
@@ -109,9 +156,9 @@
       <template>
         <script type="module">
           import { createFileAssembler } from "../proto.js";
-          const asm = createFileAssembler();
+          const asmBadSeq = createFileAssembler();
           try {
-            asm.push({ path: "a.js", seq: 5, total: 2, text: "X" });
+            asmBadSeq.push({ path: "a.js", seq: 5, total: 2, text: "X" });
             return { assert: false, content: "未抛错" };
           } catch (err) {
             return { assert: /非法文件分片/.test(err.message), content: err.message };
@@ -129,17 +176,17 @@
           const peer = createReliableLink({
             sendTo: async (env) => {
               sent.push(env);
-              link.receive(env, (ackEnv) => {
-                queueMicrotask(() => link.receive(ackEnv));
+              linkAck.receive(env, (ackEnv) => {
+                queueMicrotask(() => linkAck.receive(ackEnv));
               });
               return [{ status: "ok" }];
             },
           });
-          const link = peer;
+          const linkAck = peer;
           const order = [];
-          await link.send({ type: "app-begin", n: 1 }, "k");
+          await linkAck.send({ type: "app-begin", n: 1 }, "k");
           order.push(1);
-          await link.send({ type: "app-end", n: 2 }, "k");
+          await linkAck.send({ type: "app-end", n: 2 }, "k");
           order.push(2);
           return {
             assert:
@@ -157,12 +204,12 @@
       <template>
         <script type="module">
           import { createReliableLink } from "../proto.js";
-          const link = createReliableLink({ sendTo: async () => [{ status: "ok" }] });
+          const linkDedup = createReliableLink({ sendTo: async () => [{ status: "ok" }] });
           const acks = [];
           const reply = (env) => acks.push(env);
           const env = { msgId: "m-test-dup", kind: "data", payload: { type: "file" } };
-          const first = link.receive(env, reply);
-          const second = link.receive(env, reply); // 重发产生的重复
+          const first = linkDedup.receive(env, reply);
+          const second = linkDedup.receive(env, reply); // 重发产生的重复
           return {
             assert:
               first &&
@@ -181,20 +228,20 @@
         <script type="module">
           import { createReliableLink } from "../proto.js";
           let attempts = 0;
-          const link = createReliableLink({
+          const linkRetry = createReliableLink({
             sendTo: async (env) => {
               attempts++;
               // 第一次通道失败（no_receiver），重发成功并回 ACK
               if (attempts === 1) return [{ status: "no_receiver" }];
               queueMicrotask(() =>
-                link.receive({ msgId: env.msgId, kind: "ack" }),
+                linkRetry.receive({ msgId: env.msgId, kind: "ack" }),
               );
               return [{ status: "ok" }];
             },
             ackTimeout: 20,
             maxRetry: 5,
           });
-          await link.send({ type: "hello", userId: "u1" });
+          await linkRetry.send({ type: "hello", userId: "u1" });
           return {
             assert: attempts === 2,
             content: { attempts },
