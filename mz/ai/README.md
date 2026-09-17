@@ -10,6 +10,7 @@
 | Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
 | GLM | glm-5.3 / glm-5.3-flash / glm-4.7 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
+| Relay（转发服务器） | 取决于服务器分配的上游（`glm-*` / `deepseek-*` 前缀），Bearer 为邀请码 bearkey | 透传 | ✅ |
 
 > 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
 
@@ -31,7 +32,7 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey, setKeyDi
 
 保存 API Key 并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
 
-- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）
+- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）/ `"relay"`（转发服务器邀请码，见下节）
 
 ```javascript
 const assistant = await saveKey("sk-xxx", "deepseek");
@@ -99,6 +100,22 @@ const unsub = onApiKeysChange((keys) => {
 });
 // 组件销毁时
 unsub();
+```
+
+### Relay 转发服务器（provider: "relay"）
+
+对接自建 AI API 转发服务器（`server/ai-relay/`，见其 CONTEXT.md）。`apiKey` 字段保存的不是明文 key，而是服务器签发的**完整邀请码**（URL-safe Base64 的 JSON `{"u": serverUrl, "k": bearkey}`）；`RelayAssistant` 内部解出服务器地址与 bearkey，以 OpenAI 兼容接口访问 `/v1/*`。服务器端按模型名前缀路由上游（`glm-*` / `deepseek-*`），token 按用户累计配额统计。
+
+```javascript
+import { saveKey, testApiKey, getAssistant } from "/mz/ai/main.js";
+
+// 邀请码同样走 testApiKey 验证（对转发服务器 /v1/models 探测）
+const { valid, message } = await testApiKey(inviteCode, "relay");
+if (valid) saveKey(inviteCode, "relay");
+
+const assistant = getAssistant();
+assistant.baseUrl; // 邀请码解析出的服务器地址
+await assistant.getRemaining(); // token 配额视角：balances[0] = { currency: "tokens", amount: 剩余 }
 ```
 
 ### testApiKey(apiKey, provider)
@@ -374,7 +391,7 @@ import { createAgent, tool, MemorySaver } from "/mz/ai/chain/main.js";
 
 ### 准备工作
 
-1. 在 [test-api-keys.json](./test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
+1. 在项目根目录 [test-api-keys.json](../../test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
 
    ```json
    {
@@ -406,7 +423,7 @@ npm run test-ai -- --browsers chrome  # 仅 Chrome
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
 - GLM 按模型版本的思考参数分支构建逻辑（5.3+ 用 `reasoning_effort` / 4.x 用 `thinking` 开关，不消耗 API 配额）
 - Assistant 基类的错误处理与流式 tool_calls 累积
-- Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）
+- Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在项目根目录 `test-api-keys.json` 填 key）
 
 ## Demo
 
@@ -432,7 +449,6 @@ npx serve .
 ```
 mz/ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
-├── test-api-keys.json       # 测试用 API Key（已 gitignore）
 ├── README.md
 ├── supplier/                # AI 提供商实现
 │   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）

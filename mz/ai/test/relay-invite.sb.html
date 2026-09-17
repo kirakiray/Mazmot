@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>relay supplier 邀请码与请求测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 mz/ai/supplier/relay.js：
+      - decodeInvite 编解码（URL-safe Base64 的 JSON {"u","k"}）
+      - RelayAssistant 邀请码解析 / 非法邀请码拒绝
+      - chat / getModels / getRemaining 的请求路径、鉴权头与返回值映射（mock fetch）
+    -->
+
+    <sb-test name="decodeInvite 往返编解码">
+      <template>
+        <script type="module">
+          const { decodeInvite } = await import("/mz/ai/supplier/relay.js");
+          // 含 URL-safe 字符（-_）的地址，验证 padding 缺省也能解
+          const code = btoa(
+            JSON.stringify({ u: "https://relay.example.com/a-b_c", k: "ar-bearkey123" }),
+          )
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
+          const result = decodeInvite(code);
+          return {
+            assert:
+              !!result &&
+              result.baseUrl === "https://relay.example.com/a-b_c" &&
+              result.bearkey === "ar-bearkey123",
+            content: { code, result },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="decodeInvite 拒绝垃圾输入" parallel>
+      <template>
+        <script type="module">
+          const { decodeInvite } = await import("/mz/ai/supplier/relay.js");
+          const notBase64 = decodeInvite("不是邀请码!!!");
+          const badJson = decodeInvite(btoa("plain text"));
+          const missingField = decodeInvite(btoa(JSON.stringify({ u: "https://x.com" })));
+          const empty = decodeInvite("");
+          return {
+            assert: !notBase64 && !badJson && !missingField && !empty,
+            content: { notBase64, badJson, missingField, empty },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="decodeInvite baseUrl 去尾部斜杠">
+      <template>
+        <script type="module">
+          const { decodeInvite } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://x.com/", k: "k1" }));
+          const result = decodeInvite(code);
+          return {
+            assert: result.baseUrl === "https://x.com",
+            content: result,
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="RelayAssistant 非法邀请码构造即抛错">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          let threw = false;
+          let msg = "";
+          try {
+            new RelayAssistant(null, "garbage");
+          } catch (error) {
+            threw = true;
+            msg = error.message;
+          }
+          return { assert: threw, content: { threw, msg } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chat 非流式：请求路径 / 鉴权头 / 返回映射">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-abc" }));
+          const assistant = new RelayAssistant("key-id-1", code);
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                model: "deepseek-v4-flash",
+                choices: [{ message: { content: "你好", reasoning_content: "想" } }],
+                usage: { prompt_tokens: 3, completion_tokens: 5 },
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const result = await assistant.chat({
+              messages: [{ role: "user", content: "hi" }],
+              model: "deepseek-v4-flash",
+            });
+            const urlOk = capturedUrl === "https://relay.example.com/v1/chat/completions";
+            const authOk =
+              capturedOptions?.headers?.Authorization === "Bearer bk-abc";
+            const bodyOk = JSON.parse(capturedOptions.body).model === "deepseek-v4-flash";
+            const mapOk =
+              result.content === "你好" &&
+              result.reasoningContent === "想" &&
+              result.usage?.prompt_tokens === 3;
+            return {
+              assert: urlOk && authOk && bodyOk && mapOk,
+              content: { urlOk, authOk, bodyOk, mapOk, capturedUrl, result },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="getModels 合并 data 数组">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-abc" }));
+          const assistant = new RelayAssistant(null, code);
+
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options) => {
+            if (!url.endsWith("/v1/models")) throw new Error("unexpected url: " + url);
+            globalThis.__relay_models_auth = options.headers.Authorization;
+            return new Response(
+              JSON.stringify({
+                data: [{ id: "glm-5.3" }, { id: "deepseek-v4-flash" }],
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const models = await assistant.getModels();
+            const authOk = globalThis.__relay_models_auth === "Bearer bk-abc";
+            return {
+              assert: authOk && models.length === 2 && models[0].id === "glm-5.3",
+              content: { authOk, models },
+            };
+          } finally {
+            window.fetch = originalFetch;
+            delete globalThis.__relay_models_auth;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="getRemaining 配额视角（有限 / 无限）">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-abc" }));
+          const assistant = new RelayAssistant(null, code);
+
+          const originalFetch = window.fetch;
+          window.fetch = async (url) => {
+            if (!url.endsWith("/v1/usage")) throw new Error("unexpected url: " + url);
+            return new Response(
+              JSON.stringify({ quotaTokens: 1000, usedTokens: 420 }),
+              { status: 200 },
+            );
+          };
+          try {
+            const limited = await assistant.getRemaining();
+            window.fetch = async (url) =>
+              new Response(JSON.stringify({ quotaTokens: null, usedTokens: 99 }), {
+                status: 200,
+              });
+            const unlimited = await assistant.getRemaining();
+            return {
+              assert:
+                limited.balances[0].amount === 580 &&
+                limited.balances[0].currency === "tokens" &&
+                unlimited.balances[0].amount === null,
+              content: { limited, unlimited },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chat 上游错误透传为 Error">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-abc" }));
+          const assistant = new RelayAssistant(null, code);
+
+          const originalFetch = window.fetch;
+          window.fetch = async () =>
+            new Response(JSON.stringify({ error: { message: "quota exceeded" } }), {
+              status: 402,
+              statusText: "Payment Required",
+            });
+          try {
+            let msg = "";
+            let threw = false;
+            try {
+              await assistant.chat({ messages: [{ role: "user", content: "hi" }] });
+            } catch (error) {
+              threw = true;
+              msg = error.message;
+            }
+            return {
+              assert: threw && msg.includes("402"),
+              content: { threw, msg },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

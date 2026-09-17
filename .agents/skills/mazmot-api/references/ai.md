@@ -20,15 +20,15 @@ const { content } = await assistant.chat({
 
 ## 应用侧常用 API
 
-由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` / `new GlmAssistant(id, apiKey)` / `new GlmCodingAssistant(id, apiKey)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js` / `glm.js`。
+由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` / `new GlmAssistant(id, apiKey)` / `new GlmCodingAssistant(id, apiKey)` / `new RelayAssistant(id, inviteCode)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js` / `glm.js` / `relay.js`。
 
 ### assistant.providerName
 
-只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
 
 ```js
 const assistant = getAssistant();
-console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding"
+console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding" / "relay"
 ```
 
 ### chat(options)
@@ -116,7 +116,7 @@ import {
 
 保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到本地存储（nos storage）并通知订阅者。
 
-- `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"`
+- `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"`（relay 时 apiKey 传服务器签发的完整邀请码）
 
 ```js
 const keyObj = saveKey("sk-xxx", "deepseek");
@@ -156,7 +156,7 @@ const anyAssistant = getAssistant(); // 随机取
 | 字段 | 说明 |
 |------|------|
 | `id` | 内部唯一 id |
-| `provider` | `"deepseek"` / `"kimi"` |
+| `provider` | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"` |
 | `apiKey` | 原始 key（敏感，UI 展示用 `maskedKey`） |
 | `maskedKey` | 脱敏串，如 `sk-abcd...wxyz` |
 | `disabled` | 是否被临时禁用（boolean） |
@@ -308,7 +308,7 @@ try {
 
 ```bash
 # 填入真实 key（已 gitignore）
-# mz/ai/test-api-keys.json: { "deepseek": "sk-...", "kimi": "sk-..." }
+# test-api-keys.json: { "deepseek": "sk-...", "kimi": "sk-..." }
 
 npx sb-test -f ai/test/ai-supplier-sb.html --browsers chrome
 ```
@@ -324,10 +324,12 @@ ai/
 │   ├── assistant.js              # Assistant 基类（handleStreamResponse / _buildError）
 │   ├── deepseek.js               # DeepSeek 实现
 │   ├── kimi.js                   # Kimi 实现
-│   └── glm.js                    # GLM 实现（含 Coding Plan 子类）
+│   ├── glm.js                    # GLM 实现（含 Coding Plan 子类）
+│   └── relay.js                  # ai-relay 转发服务器实现（邀请码即 apiKey，decodeInvite 解出服务器地址+bearkey）
 ├── chain/                        # Agent 封装（见 ai-chain.md）
 ├── test/
 │   ├── ai-supplier-sb.html       # supplier 层测试（sibyl-test）
 │   └── ai-chain-sb.html          # Agent 循环测试（真实 deepseek-v4-flash）
-└── test-api-keys.json            # 本地测试 key（gitignore）
+
+根目录 test-api-keys.json      # 本地测试 key（gitignore）
 ```

@@ -259,4 +259,4 @@ const agent = createAgent({ assistant: getAssistant(), checkpointer: persistSave
 
 ## 测试
 
-测试文件为 `ai/test/ai-chain-sb.html`（`-sb.html` 后缀，不进 CI；Agent 行为用真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）。运行方式见 [../README.md 测试章节](../README.md#测试)。
+测试文件为 `ai/test/ai-chain-sb.html`（`-sb.html` 后缀，不进 CI；Agent 行为用真实 `deepseek-v4-flash`，需在项目根目录 `test-api-keys.json` 填 key）。运行方式见 [../README.md 测试章节](../README.md#测试)。

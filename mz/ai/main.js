@@ -1,6 +1,7 @@
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 import { GlmAssistant, GlmCodingAssistant } from "./supplier/glm.js";
+import RelayAssistant from "./supplier/relay.js";
 
 // /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
 // 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
@@ -43,6 +44,9 @@ const _createAssistant = (provider, id, apiKey) => {
       return new GlmAssistant(id, apiKey);
     case "glm-coding":
       return new GlmCodingAssistant(id, apiKey);
+    case "relay":
+      // apiKey 字段存的是服务器签发的完整邀请码
+      return new RelayAssistant(id, apiKey);
     default:
       throw new Error(`provider not supported: ${provider}`);
   }

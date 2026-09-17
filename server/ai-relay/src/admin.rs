@@ -1,0 +1,469 @@
+//! 管理 API：Bearer Token 鉴权（AI_RELAY_ADMIN_TOKEN）。
+//! 未配置令牌时路由虽注册但一律 404（不暴露管理面存在），仿 cred-hub。
+
+use axum::{
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    Json,
+};
+use serde::Deserialize;
+use serde_json::Value;
+use std::collections::HashMap;
+
+use crate::store::{self, ApiKeyRec, Provider, UsageRec, UserRec};
+use crate::{api_error, bearer_matches, AppState};
+
+/// 管理鉴权门：未配置 token 或不匹配分别 404 / 401
+fn gate(state: &AppState, headers: &HeaderMap) -> Option<(StatusCode, Json<Value>)> {
+    if state.admin_token.is_none() {
+        return Some((StatusCode::NOT_FOUND, Json(serde_json::json!({"ok": false}))));
+    }
+    if !bearer_matches(headers, state.admin_token.as_deref().unwrap()) {
+        return Some((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"ok": false, "error": "无效的管理员令牌"})),
+        ));
+    }
+    None
+}
+
+fn ok_json(v: Value) -> Json<Value> {
+    Json(serde_json::json!({ "ok": true, "data": v }))
+}
+
+// ———— 上游 apikey ————
+
+fn apikey_public(k: &ApiKeyRec) -> Value {
+    serde_json::json!({
+        "id": k.id,
+        "provider": k.provider,
+        "label": k.label,
+        "maskedKey": k.masked_key,
+        "disabled": k.disabled,
+        "createdAt": k.created_at,
+    })
+}
+
+pub(crate) async fn list_apikeys(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut keys: Vec<Value> = state
+        .apikeys
+        .read()
+        .await
+        .values()
+        .map(apikey_public)
+        .collect();
+    keys.sort_by(|a, b| a["createdAt"].as_i64().cmp(&b["createdAt"].as_i64()));
+    Ok(ok_json(serde_json::json!({ "apikeys": keys })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct CreateApikeyReq {
+    provider: String,
+    #[serde(default)]
+    label: String,
+    #[serde(rename = "apiKey")]
+    api_key: String,
+}
+
+pub(crate) async fn create_apikey(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateApikeyReq>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let Some(provider) = Provider::parse(&req.provider) else {
+        return Err(api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("provider 不支持: {}（仅 deepseek / glm）", req.provider),
+        ));
+    };
+    if req.api_key.trim().is_empty() {
+        return Err(api_error(StatusCode::UNPROCESSABLE_ENTITY, "apiKey 不能为空"));
+    }
+    let key = ApiKeyRec {
+        id: store::random_token(12),
+        provider,
+        label: req.label.trim().to_string(),
+        api_key: req.api_key.trim().to_string(),
+        masked_key: store::mask_key(req.api_key.trim()),
+        disabled: false,
+        created_at: store::now_ms(),
+    };
+    state.save_apikey(&key).await.map_err(api_error_db)?;
+    Ok((StatusCode::CREATED, ok_json(apikey_public(&key))))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct UpdateApikeyReq {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    disabled: Option<bool>,
+}
+
+pub(crate) async fn update_apikey(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateApikeyReq>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut key = state
+        .apikeys
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "apikey 不存在"))?;
+    if let Some(label) = req.label {
+        key.label = label.trim().to_string();
+    }
+    if let Some(disabled) = req.disabled {
+        key.disabled = disabled;
+    }
+    state.save_apikey(&key).await.map_err(api_error_db)?;
+    Ok(ok_json(apikey_public(&key)))
+}
+
+pub(crate) async fn delete_apikey(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    // 还有用户绑着这个 key 时拒绝删除，避免产生悬空引用
+    let bound: Vec<String> = state
+        .users
+        .read()
+        .await
+        .values()
+        .filter(|u| u.api_key_ids.iter().any(|k| k == &id))
+        .map(|u| u.name.clone())
+        .collect();
+    if !bound.is_empty() {
+        return Err(api_error(
+            StatusCode::CONFLICT,
+            format!("apikey 仍被用户绑定: {}", bound.join(", ")),
+        ));
+    }
+    state.delete_apikey(&id).await;
+    Ok(ok_json(serde_json::json!({ "id": id })))
+}
+
+// ———— 用户 ————
+
+fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
+    let mut v = serde_json::json!({
+        "id": u.id,
+        "name": u.name,
+        "note": u.note,
+        "quotaTokens": u.quota_tokens,
+        "usedTokens": u.used_tokens,
+        "disabled": u.disabled,
+        "createdAt": u.created_at,
+        "apiKeyIds": u.api_key_ids,
+    });
+    if include_bearkey {
+        v["bearkey"] = Value::String(u.bearkey.clone());
+    }
+    v
+}
+
+pub(crate) async fn list_users(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut users: Vec<Value> = state
+        .users
+        .read()
+        .await
+        .values()
+        .map(|u| user_public(u, false))
+        .collect();
+    users.sort_by(|a, b| a["createdAt"].as_i64().cmp(&b["createdAt"].as_i64()));
+    Ok(ok_json(serde_json::json!({ "users": users })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct CreateUserReq {
+    name: String,
+    #[serde(default)]
+    note: String,
+    #[serde(rename = "quotaTokens")]
+    quota_tokens: Option<i64>,
+    #[serde(default, rename = "apiKeyIds")]
+    api_key_ids: Vec<String>,
+}
+
+pub(crate) async fn create_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateUserReq>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(api_error(StatusCode::UNPROCESSABLE_ENTITY, "用户名不能为空"));
+    }
+    if req.quota_tokens.map(|q| q <= 0).unwrap_or(false) {
+        return Err(api_error(StatusCode::UNPROCESSABLE_ENTITY, "配额必须为正数"));
+    }
+    // 只接受真实存在的 apikey id
+    let keys = state.apikeys.read().await;
+    let api_key_ids: Vec<String> = req
+        .api_key_ids
+        .into_iter()
+        .filter(|id| keys.contains_key(id))
+        .collect();
+    drop(keys);
+
+    let user = UserRec {
+        id: store::random_token(10),
+        name,
+        note: req.note.trim().to_string(),
+        quota_tokens: req.quota_tokens,
+        used_tokens: 0,
+        bearkey: format!("ar-{}", store::random_token(32)),
+        disabled: false,
+        created_at: store::now_ms(),
+        api_key_ids,
+    };
+    state.save_user(&user).await.map_err(api_error_db)?;
+    Ok((StatusCode::CREATED, ok_json(user_public(&user, true))))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct UpdateUserReq {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+    /// null = 改为无限
+    #[serde(default, rename = "quotaTokens", skip_serializing_if = "Option::is_none")]
+    quota_tokens: Option<Option<i64>>,
+    #[serde(default, rename = "apiKeyIds", skip_serializing_if = "Option::is_none")]
+    api_key_ids: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    disabled: Option<bool>,
+}
+
+pub(crate) async fn update_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateUserReq>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    if let Some(name) = req.name {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err(api_error(StatusCode::UNPROCESSABLE_ENTITY, "用户名不能为空"));
+        }
+        user.name = name;
+    }
+    if let Some(note) = req.note {
+        user.note = note.trim().to_string();
+    }
+    if let Some(quota) = req.quota_tokens {
+        if quota.map(|q| q <= 0).unwrap_or(false) {
+            return Err(api_error(StatusCode::UNPROCESSABLE_ENTITY, "配额必须为正数"));
+        }
+        user.quota_tokens = quota;
+    }
+    if let Some(ids) = req.api_key_ids {
+        let keys = state.apikeys.read().await;
+        user.api_key_ids = ids.into_iter().filter(|id| keys.contains_key(id)).collect();
+    }
+    if let Some(disabled) = req.disabled {
+        user.disabled = disabled;
+    }
+    state.save_user(&user).await.map_err(api_error_db)?;
+    Ok(ok_json(user_public(&user, false)))
+}
+
+pub(crate) async fn delete_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    state.delete_user(&id).await;
+    Ok(ok_json(serde_json::json!({ "id": id })))
+}
+
+// ———— 邀请码 / bearkey ————
+
+/// 邀请码里的服务器地址：AI_RELAY_PUBLIC_URL 优先，否则按请求 Host 推导
+fn server_url_of(state: &AppState, headers: &HeaderMap) -> String {
+    if let Some(url) = &state.public_url {
+        return url.clone();
+    }
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("http");
+    format!("{scheme}://{host}")
+}
+
+fn invite_payload(state: &AppState, headers: &HeaderMap, user: &UserRec) -> Value {
+    let server_url = server_url_of(state, headers);
+    let code = store::encode_invite(&server_url, &user.bearkey);
+    serde_json::json!({ "code": code, "serverUrl": server_url, "bearkey": user.bearkey })
+}
+
+/// GET /admin/users/{id}/invite —— 当前 bearkey 对应的邀请码
+pub(crate) async fn get_invite(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    Ok(ok_json(invite_payload(&state, &headers, &user)))
+}
+
+/// POST /admin/users/{id}/reset-bearkey —— 作废旧 bearkey 并签发新的
+pub(crate) async fn reset_bearkey(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    user.bearkey = format!("ar-{}", store::random_token(32));
+    state.save_user(&user).await.map_err(api_error_db)?;
+    Ok(ok_json(invite_payload(&state, &headers, &user)))
+}
+
+// ———— 用量 ————
+
+/// POST /admin/users/{id}/reset-usage —— 清零累计用量（流水保留，仅计数归零）
+pub(crate) async fn reset_usage(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    user.used_tokens = 0;
+    state.save_user(&user).await.map_err(api_error_db)?;
+    Ok(ok_json(user_public(&user, false)))
+}
+
+/// GET /admin/usage?userId=&limit= —— 用量流水（时间倒序）
+pub(crate) async fn list_usage(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(100)
+        .clamp(1, 1000);
+    let user_filter = params.get("userId");
+    let usage = state.usage.read().await;
+    let mut items: Vec<&UsageRec> = usage
+        .iter()
+        .filter(|u| user_filter.map(|f| &u.user_id == f).unwrap_or(true))
+        .collect();
+    items.sort_by(|a, b| b.ts.cmp(&a.ts));
+    items.truncate(limit);
+    Ok(ok_json(serde_json::json!({
+        "items": items
+            .iter()
+            .map(|u| serde_json::json!({
+                "userId": u.user_id,
+                "ts": u.ts,
+                "model": u.model,
+                "promptTokens": u.prompt_tokens,
+                "completionTokens": u.completion_tokens,
+                "keyId": u.key_id,
+            }))
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// GET /admin/overview —— 总览
+pub(crate) async fn overview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let (users, keys) = (state.users.read().await, state.apikeys.read().await);
+    let total_used: i64 = users.values().map(|u| u.used_tokens).sum();
+    Ok(ok_json(serde_json::json!({
+        "users": { "total": users.len(), "disabled": users.values().filter(|u| u.disabled).count() },
+        "apikeys": { "total": keys.len(), "disabled": keys.values().filter(|k| k.disabled).count() },
+        "totalUsedTokens": total_used,
+        "usageRecords": state.usage.read().await.len(),
+    })))
+}
+
+fn api_error_db(e: String) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "ok": false, "error": e })),
+    )
+}
