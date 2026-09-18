@@ -97,6 +97,11 @@ pub(crate) async fn create_apikey(
         disabled: false,
         created_at: store::now_ms(),
     };
+    // 添加前先向上游探测 key 可用性，失败不落库
+    crate::proxy::probe_key(&state.http, &key)
+        .await
+        .map_err(|e| api_error(StatusCode::UNPROCESSABLE_ENTITY, e))?;
+
     state.save_apikey(&key).await.map_err(api_error_db)?;
     Ok((StatusCode::CREATED, ok_json(apikey_public(&key))))
 }
@@ -162,6 +167,28 @@ pub(crate) async fn delete_apikey(
     Ok(ok_json(serde_json::json!({ "id": id })))
 }
 
+/// POST /admin/apikeys/{id}/test —— 实时探测该 key 当前是否可用（同创建时探测逻辑）
+pub(crate) async fn test_apikey(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let key = state
+        .apikeys
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "apikey 不存在"))?;
+    crate::proxy::probe_key(&state.http, &key)
+        .await
+        .map_err(|e| api_error(StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    Ok(ok_json(serde_json::json!({ "id": id, "provider": key.provider })))
+}
+
 // ———— 用户 ————
 
 fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
@@ -171,6 +198,7 @@ fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
         "note": u.note,
         "quotaTokens": u.quota_tokens,
         "usedTokens": u.used_tokens,
+        "totalRequests": u.total_requests,
         "disabled": u.disabled,
         "createdAt": u.created_at,
         "apiKeyIds": u.api_key_ids,
@@ -240,6 +268,7 @@ pub(crate) async fn create_user(
         note: req.note.trim().to_string(),
         quota_tokens: req.quota_tokens,
         used_tokens: 0,
+        total_requests: 0,
         bearkey: format!("ar-{}", store::random_token(32)),
         disabled: false,
         created_at: store::now_ms(),
@@ -402,6 +431,7 @@ pub(crate) async fn reset_usage(
         .cloned()
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
     user.used_tokens = 0;
+    user.total_requests = 0;
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok(ok_json(user_public(&user, false)))
 }
@@ -437,6 +467,9 @@ pub(crate) async fn list_usage(
                 "model": u.model,
                 "promptTokens": u.prompt_tokens,
                 "completionTokens": u.completion_tokens,
+                "totalTokens": u.total_tokens(),
+                "cacheHitTokens": u.cache_hit_tokens,
+                "cacheMissTokens": u.cache_miss_tokens,
                 "keyId": u.key_id,
             }))
             .collect::<Vec<_>>(),

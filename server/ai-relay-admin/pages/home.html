@@ -226,6 +226,26 @@
 
 
 
+    .quota-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .quota-row st-input {
+      flex: 1;
+    }
+
+    .quota-row st-select {
+      flex: 0 0 110px;
+    }
+
+    .quota-converted {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      margin: 4px 0 0;
+    }
+
     .checkbox-group {
       display: flex;
       flex-direction: column;
@@ -323,7 +343,7 @@
       </div>
       <div class="brand-text">
         <h1><locale-text><span lang="cn">AI 转发管理台</span><span lang="en">AI Relay Admin</span></locale-text></h1>
-        <p>{{serverUrl || $host.t("connectHint")}}</p>
+        <p>{{serverUrl || t("connectHint")}}</p>
       </div>
       <o-if :value="view === 'panel'">
         <st-icon-button
@@ -397,38 +417,15 @@
       <!-- ===== API Keys ===== -->
       <o-if :value="tab === 'keys'">
         <section class="card">
-          <h2 class="section-title"><locale-text><span lang="cn">添加上游 API Key</span><span lang="en">Add Upstream Key</span></locale-text></h2>
-          <div class="field">
-            <label class="field-label"><locale-text><span lang="cn">提供商</span><span lang="en">Provider</span></locale-text></label>
-            <st-select sync:value="newKey.provider">
-              <option value="deepseek">DeepSeek</option>
-              <option value="glm">GLM</option>
-            </st-select>
-          </div>
-          <div class="field">
-            <label class="field-label"><locale-text><span lang="cn">备注</span><span lang="en">Label</span></locale-text></label>
-            <st-input sync:value="newKey.label" attr:placeholder="t('keyLabelPlaceholder')"></st-input>
-          </div>
-          <div class="field">
-            <label class="field-label">API Key</label>
-            <st-input sync:value="newKey.apiKey" attr:placeholder="t('inputKeyPlaceholder')"></st-input>
-          </div>
-          <div class="form-actions">
-            <st-button
-              style="font-size: 13px"
-              attr:disabled="!newKey.apiKey || savingKey"
-              on:click="addApiKey"
-            >
-              <span slot="prefix"><n-icon icon="mdi:plus"></n-icon></span>
-              <locale-text><span lang="cn">添加</span><span lang="en">Add</span></locale-text>
-            </st-button>
-          </div>
-        </section>
-
-        <section class="card">
           <div class="section-header">
-            <h2 class="section-title"><locale-text><span lang="cn">已保存的上游 Key</span><span lang="en">Saved Upstream Keys</span></locale-text></h2>
-            <span class="count-badge">{{apikeys.length}}</span>
+            <h2 class="section-title"><locale-text><span lang="cn">上游 API Key</span><span lang="en">Upstream Keys</span></locale-text></h2>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="count-badge">{{apikeys.length}}</span>
+              <st-button style="font-size: 13px" on:click="openKeyDialog">
+                <span slot="prefix"><n-icon icon="mdi:key-plus"></n-icon></span>
+                <locale-text><span lang="cn">添加 Key</span><span lang="en">Add Key</span></locale-text>
+              </st-button>
+            </div>
           </div>
           <o-if :value="apikeys.length === 0">
             <div class="empty-state">
@@ -453,6 +450,11 @@
                   <div class="item-sub">{{$data.label}}</div>
                 </div>
                 <div slot="suffix" class="item-actions">
+                  <st-icon-button
+                    style="font-size: 13px"
+                    attr:title="$host.t('testKey')"
+                    on:click="$host.handleTestKey($data.id)"
+                  ><n-icon icon="mdi:cloud-check-outline"></n-icon></st-icon-button>
                   <st-icon-button
                     style="font-size: 13px"
                     on:click="$host.handleToggleKey($data.id, $data.disabled)"
@@ -500,6 +502,7 @@
                   <div style="font-size: 14px; font-weight: 500">{{$data.name}}</div>
                   <div class="item-sub">{{$data.note}}</div>
                   <div class="quota-text" class:over="$host.isOver($data)">{{$host.quotaText($data)}}</div>
+                  <div class="item-sub">{{$host.roundsText($data)}}</div>
                   <o-if :value="$data.disabled">
                     <span class="disabled-badge">
                       <n-icon icon="mdi:pause-circle-outline"></n-icon>
@@ -539,6 +542,38 @@
     </o-if>
   </main>
 
+  <!-- ============ 添加上游 Key 弹窗 ============ -->
+  <st-dialog class="dlg-key" sync:open="keyDialogOpen" auto-close>
+    <h2 slot="headline"><locale-text><span lang="cn">添加上游 API Key</span><span lang="en">Add Upstream Key</span></locale-text></h2>
+    <div class="field">
+      <label class="field-label"><locale-text><span lang="cn">提供商</span><span lang="en">Provider</span></locale-text></label>
+      <st-select sync:value="newKey.provider">
+        <option value="deepseek">DeepSeek</option>
+        <option value="glm">GLM</option>
+        <option value="glm-coding">GLM Coding Plan</option>
+      </st-select>
+    </div>
+    <div class="field">
+      <label class="field-label"><locale-text><span lang="cn">备注</span><span lang="en">Label</span></locale-text></label>
+      <st-input sync:value="newKey.label" attr:placeholder="t('keyLabelPlaceholder')"></st-input>
+    </div>
+    <div class="field">
+      <label class="field-label">API Key</label>
+      <st-input sync:value="newKey.apiKey" attr:placeholder="t('inputKeyPlaceholder')"></st-input>
+    </div>
+    <div slot="actions">
+      <st-button variant="outlined" on:click="keyDialogOpen = false">
+        <locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text>
+      </st-button>
+      <st-button
+        attr:disabled="!newKey.apiKey || savingKey"
+        on:click="addApiKey"
+      >
+        <locale-text><span lang="cn">添加</span><span lang="en">Add</span></locale-text>
+      </st-button>
+    </div>
+  </st-dialog>
+
   <!-- ============ 新建 / 编辑用户弹窗 ============ -->
   <st-dialog class="dlg-user" sync:open="userDialogOpen" auto-close>
     <h2 slot="headline"><locale-text><span lang="cn">新建用户</span><span lang="en">New User</span></locale-text></h2>
@@ -552,7 +587,15 @@
     </div>
     <div class="field">
       <label class="field-label"><locale-text><span lang="cn">Token 配额（留空为无限）</span><span lang="en">Token quota (empty = unlimited)</span></locale-text></label>
-      <st-input sync:value="newUser.quota" attr:type="'number'" attr:placeholder="t('quotaPlaceholder')"></st-input>
+      <div class="quota-row">
+        <st-input sync:value="newUser.quota" attr:type="'number'" attr:placeholder="t('quotaPlaceholder')"></st-input>
+        <st-select sync:value="newUserQuotaUnit" on:change="onQuotaUnitChange('newUser', $event)">
+          <option value="token">token</option>
+          <option value="k">k (1k = 1,000)</option>
+          <option value="m">M (1M = 1,000,000)</option>
+        </st-select>
+      </div>
+      <p class="quota-converted">{{convertedQuotaText(newUser.quota, newUserQuotaUnit)}}</p>
     </div>
     <div class="field">
       <label class="field-label"><locale-text><span lang="cn">可用上游 Key</span><span lang="en">Allowed upstream keys</span></locale-text></label>
@@ -565,7 +608,7 @@
         <div class="checkbox-group">
           <o-fill :value="apikeys" fill-key="id">
             <st-checkbox
-              attr:checked="newUser.keyIds.indexOf($data.id) !== -1"
+              attr:checked="$host.newUserHasKey($data.id)"
               on:change="$host.toggleNewUserKey($data.id)"
             >
               {{$host.providerLabel($data.provider)}} · {{$data.label || $data.maskedKey}}
@@ -592,7 +635,54 @@
     <h2 slot="headline">{{detailUser ? detailUser.name : ''}}</h2>
     <div class="detail-row" style="margin-bottom: 12px;">
       <span class="detail-label"><locale-text><span lang="cn">用量</span><span lang="en">Usage</span></locale-text></span>
-      <span class="quota-text">{{detailUser ? $host.quotaText(detailUser) : ''}}</span>
+      <span class="quota-text">{{detailUser ? quotaText(detailUser) : ''}}</span>
+    </div>
+    <div class="detail-row" style="margin-bottom: 12px;">
+      <span class="detail-label"><locale-text><span lang="cn">对话轮数</span><span lang="en">Requests</span></locale-text></span>
+      <span class="quota-text">{{detailUser ? roundsText(detailUser) : ''}}</span>
+    </div>
+
+    <div class="field" style="margin-bottom: 12px;">
+      <label class="field-label"><locale-text><span lang="cn">Token 配额（留空为无限）</span><span lang="en">Token quota (empty = unlimited)</span></locale-text></label>
+      <div class="quota-row">
+        <st-input sync:value="detailQuota" attr:type="'number'" attr:placeholder="t('quotaPlaceholder')"></st-input>
+        <st-select sync:value="detailQuotaUnit" on:change="onQuotaUnitChange('detail', $event)">
+          <option value="token">token</option>
+          <option value="k">k (1k = 1,000)</option>
+          <option value="m">M (1M = 1,000,000)</option>
+        </st-select>
+      </div>
+      <p class="quota-converted">{{convertedQuotaText(detailQuota, detailQuotaUnit)}}</p>
+    </div>
+    <div class="field">
+      <label class="field-label"><locale-text><span lang="cn">可用上游 Key</span><span lang="en">Allowed upstream keys</span></locale-text></label>
+      <o-if :value="apikeys.length === 0">
+        <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); margin: 0;">
+          <locale-text><span lang="cn">还没有上游 Key，请先在「上游 API Key」页添加。</span><span lang="en">No upstream keys yet — add some on the Upstream Keys tab first.</span></locale-text>
+        </p>
+      </o-if>
+      <o-if :value="apikeys.length > 0">
+        <div class="checkbox-group">
+          <o-fill :value="apikeys" fill-key="id">
+            <st-checkbox
+              attr:checked="$host.detailUserHasKey($data.id)"
+              on:change="$host.toggleDetailUserKey($data.id)"
+            >
+              {{$host.providerLabel($data.provider)}} · {{$data.label || $data.maskedKey}}
+            </st-checkbox>
+          </o-fill>
+        </div>
+      </o-if>
+    </div>
+    <div class="form-actions" style="justify-content: flex-start; margin-bottom: 16px;">
+      <st-button
+        style="font-size: 12px"
+        attr:disabled="savingDetail"
+        on:click="saveUserEdit"
+      >
+        <span slot="prefix"><n-icon icon="mdi:content-save-outline"></n-icon></span>
+        <locale-text><span lang="cn">保存修改</span><span lang="en">Save changes</span></locale-text>
+      </st-button>
     </div>
 
     <label class="field-label"><locale-text><span lang="cn">邀请码（发给用户即可使用）</span><span lang="en">Invitation code (share with the user)</span></locale-text></label>
@@ -658,6 +748,7 @@
         disable: { cn: "禁用", en: "Disable" },
         enable: { cn: "启用", en: "Enable" },
         detail: { cn: "详情 / 邀请码", en: "Details / invite" },
+        testKey: { cn: "测试 key 是否可用", en: "Test this key" },
         resetUsage: { cn: "清零用量", en: "Reset usage" },
         keyLabelPlaceholder: { cn: "可选，便于识别", en: "Optional, for identification" },
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
@@ -683,13 +774,18 @@
           users: [],
           newKey: { provider: "deepseek", label: "", apiKey: "" },
           savingKey: false,
+          keyDialogOpen: false,
           userDialogOpen: false,
           newUser: { name: "", note: "", quota: "", keyIds: [] },
+          newUserQuotaUnit: "token",
           savingUser: false,
           detailOpen: false,
           detailUser: null,
           detailInvite: null,
           detailUsage: [],
+          detailQuota: "",
+          detailQuotaUnit: "token",
+          savingDetail: false,
         },
 
         proto: {
@@ -698,11 +794,17 @@
           },
 
           providerLabel(provider) {
-            return provider === "glm" ? "GLM" : "DeepSeek";
+            return provider === "glm"
+              ? "GLM"
+              : provider === "glm-coding"
+                ? "GLM Coding"
+                : "DeepSeek";
           },
 
           providerIcon(provider) {
-            return provider === "glm" ? "simple-icons:zai" : "simple-icons:deepseek";
+            return provider === "deepseek"
+              ? "simple-icons:deepseek"
+              : "simple-icons:zdotai";
           },
 
           /** 统一管理 API 请求；非 2xx 抛错（带服务器错误信息） */
@@ -806,6 +908,11 @@
 
           // ———— 上游 apikey ————
 
+          openKeyDialog() {
+            this.newKey = { provider: "deepseek", label: "", apiKey: "" };
+            this.keyDialogOpen = true;
+          },
+
           async addApiKey() {
             const key = this.newKey.apiKey.trim();
             if (!key) return;
@@ -819,14 +926,29 @@
                   apiKey: key,
                 }),
               });
-              this.newKey.apiKey = "";
-              this.newKey.label = "";
+              this.keyDialogOpen = false;
               await this.loadApikeys();
               toast({ message: getLocaleText({ cn: "已添加", en: "Added" }), color: "success" });
             } catch (error) {
               toast({ message: error.message, color: "error" });
             } finally {
               this.savingKey = false;
+            }
+          },
+
+          /** 单 key 实时上游探测 */
+          async handleTestKey(id) {
+            try {
+              await this.api(`/admin/apikeys/${id}/test`, { method: "POST" });
+              toast({
+                message: getLocaleText({ cn: "Key 可用（上游连通正常）", en: "Key works (upstream OK)" }),
+                color: "success",
+              });
+            } catch (error) {
+              toast({
+                message: getLocaleText({ cn: "Key 不可用：{msg}", en: "Key not working: {msg}" }, { msg: error.message }),
+                color: "error",
+              });
             }
           },
 
@@ -863,8 +985,63 @@
 
           openUserDialog() {
             this.newUser = { name: "", note: "", quota: "", keyIds: [] };
+            this.newUserQuotaUnit = "token";
+            this._prevNewUserUnit = "token";
             this.loadApikeys();
             this.userDialogOpen = true;
+          },
+
+          /**
+           * 切换配额单位时换算输入框数值，保持绝对 token 量不变。
+           * _prevXxxQuotaUnit 记录上一次单位（实例字段，不参与渲染）。
+           */
+          onQuotaUnitChange(which, event) {
+            const newUnit =
+              event?.target?.value ??
+              (which === "newUser" ? this.newUserQuotaUnit : this.detailQuotaUnit);
+            const prevUnit =
+              which === "newUser" ? this._prevNewUserUnit : this._prevDetailUnit;
+            const input = which === "newUser" ? this.newUser.quota : this.detailQuota;
+            const tokens = this.quotaToTokens(input, prevUnit);
+            if (tokens != null) {
+              const mult = newUnit === "k" ? 1e3 : newUnit === "m" ? 1e6 : 1;
+              const shown = tokens / mult;
+              const text = Number.isInteger(shown)
+                ? String(shown)
+                : String(Number(shown.toFixed(6)));
+              if (which === "newUser") {
+                this.newUser.quota = text;
+              } else {
+                this.detailQuota = text;
+              }
+            }
+            if (which === "newUser") {
+              this._prevNewUserUnit = newUnit;
+            } else {
+              this._prevDetailUnit = newUnit;
+            }
+          },
+
+          /** 按单位把配额输入换算为原始 token 数；非法输入返回 null */
+          quotaToTokens(str, unit) {
+            const n = Number(String(str ?? "").trim());
+            if (!Number.isFinite(n) || n <= 0) return null;
+            const mult = unit === "k" ? 1e3 : unit === "m" ? 1e6 : 1;
+            return Math.round(n * mult);
+          },
+
+          /** 输入框下方的换算提示 */
+          convertedQuotaText(str, unit) {
+            const tokens = this.quotaToTokens(str, unit);
+            if (tokens == null) return "";
+            return getLocaleText(
+              { cn: "= {n} token", en: "= {n} tokens" },
+              { n: tokens.toLocaleString() },
+            );
+          },
+
+          newUserHasKey(id) {
+            return this.newUser.keyIds.indexOf(id) !== -1;
           },
 
           toggleNewUserKey(id) {
@@ -882,13 +1059,15 @@
             if (!name) return;
             this.savingUser = true;
             try {
-              const quota = Number(this.newUser.quota);
               await this.api("/admin/users", {
                 method: "POST",
                 body: JSON.stringify({
                   name,
                   note: this.newUser.note.trim(),
-                  quotaTokens: this.newUser.quota.trim() && quota > 0 ? quota : null,
+                  quotaTokens: this.quotaToTokens(
+                    this.newUser.quota,
+                    this.newUserQuotaUnit,
+                  ),
                   apiKeyIds: [...this.newUser.keyIds],
                 }),
               });
@@ -950,10 +1129,72 @@
 
           // ———— 详情 / 邀请码 ————
 
+          detailUserHasKey(id) {
+            return this.detailUser
+              ? this.detailUser.apiKeyIds.indexOf(id) !== -1
+              : false;
+          },
+
+          toggleDetailUserKey(id) {
+            if (!this.detailUser) return;
+            const ids = this.detailUser.apiKeyIds;
+            const idx = ids.indexOf(id);
+            if (idx === -1) {
+              ids.push(id);
+            } else {
+              ids.splice(idx, 1);
+            }
+          },
+
+          /** 保存详情弹窗里的配额 / 可用 key 池修改 */
+          async saveUserEdit() {
+            if (!this.detailUser) return;
+            this.savingDetail = true;
+            try {
+              await this.api(`/admin/users/${this.detailUser.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  quotaTokens: this.quotaToTokens(
+                    this.detailQuota,
+                    this.detailQuotaUnit,
+                  ),
+                  apiKeyIds: [...this.detailUser.apiKeyIds],
+                }),
+              });
+              await this.loadUsers();
+              this.detailUser = this.users.find(
+                (u) => u.id === this.detailUser.id,
+              );
+              toast({ message: getLocaleText({ cn: "已保存", en: "Saved" }), color: "success" });
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+            } finally {
+              this.savingDetail = false;
+            }
+          },
+
           async openDetail(id) {
             this.detailUser = this.users.find((u) => u.id === id) || null;
             this.detailInvite = null;
             this.detailUsage = [];
+            if (this.detailUser && this.detailUser.quotaTokens != null) {
+              const q = this.detailUser.quotaTokens;
+              if (q >= 1e6 && q % 1e6 === 0) {
+                this.detailQuota = String(q / 1e6);
+                this.detailQuotaUnit = "m";
+              } else if (q >= 1e3 && q % 1e3 === 0) {
+                this.detailQuota = String(q / 1e3);
+                this.detailQuotaUnit = "k";
+              } else {
+                this.detailQuota = String(q);
+                this.detailQuotaUnit = "token";
+              }
+            } else {
+              this.detailQuota = "";
+              this.detailQuotaUnit = "token";
+            }
+            this._prevDetailUnit = this.detailQuotaUnit;
+            this.loadApikeys();
             this.detailOpen = true;
             try {
               const [invite, usage] = await Promise.all([
@@ -1019,7 +1260,18 @@
 
           usageLineText(item) {
             const total = item.promptTokens + item.completionTokens;
-            return `${total.toLocaleString()} tok · ${new Date(item.ts).toLocaleString()}`;
+            const cache =
+              item.cacheHitTokens > 0
+                ? getLocaleText({ cn: `，命中 ${item.cacheHitTokens.toLocaleString()}`, en: `, ${item.cacheHitTokens.toLocaleString()} cached` })
+                : "";
+            return `${total.toLocaleString()} tok (↑${item.promptTokens.toLocaleString()} ↓${item.completionTokens.toLocaleString()}${cache}) · ${new Date(item.ts).toLocaleString()}`;
+          },
+
+          roundsText(user) {
+            return getLocaleText(
+              { cn: `{n} 轮对话`, en: "{n} requests" },
+              { n: Number(user.totalRequests || 0).toLocaleString() },
+            );
           },
         },
 

@@ -4,6 +4,9 @@
 //   服务器 API 交叉校验）→ 清零用量 → 删除用户 → 断开连接。
 // 不打真实 AI 上游（管理台操作不触发 chat），可离线跑（装 Core 需要网络，可挂 E2E_PROXY）。
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const STATIC = "http://127.0.0.1:18975";
 const RELAY = "http://127.0.0.1:18974";
@@ -11,9 +14,15 @@ const ADMIN_PAGE = `${STATIC}/server/ai-relay-admin/`;
 const TOKEN = "e2e-ui-admin-token";
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 
+// 添加上游 key 现在会做真实上游探测，必须用真 key（根目录 test-api-keys.json）
+const { deepseek: REAL_KEY, glmcodingplan: GLM_CODING_KEY } = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "test-api-keys.json"), "utf8"),
+);
+const REAL_MASKED = `${REAL_KEY.slice(0, 4)}...${REAL_KEY.slice(-4)}`;
+
 const RUN = Date.now().toString(36); // 每轮唯一后缀，数据文件跨轮保留也不冲突
 const KEY_LABEL = `e2eui-key-${RUN}`;
-const KEY_VALUE = "sk-e2e-ui-fake-key-00000000000000D34d";
+const KEY_VALUE = REAL_KEY;
 const USER_NAME = `e2eui-user-${RUN}`;
 
 
@@ -77,17 +86,19 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     await expect(page.locator(".brand-text p")).toHaveText(RELAY);
   });
 
-  test("添加上游 API Key（masked 展示，不回明文）", async () => {
-    const keyInputs = page.locator(".card st-input input");
-    await keyInputs.nth(0).fill(KEY_LABEL);
-    await keyInputs.nth(1).fill(KEY_VALUE);
-    await page.locator("st-button", { hasText: "添加" }).click();
+  test("添加上游 API Key（弹窗内添加，masked 展示不回明文）", async () => {
+    // 列表卡片右上角「添加 Key」按钮 → 弹窗内填写
+    await page.locator("st-button", { hasText: /添加 Key|Add Key/ }).click();
+    const dialog = page.locator("st-dialog.dlg-key");
+    await dialog.locator("st-input input").nth(0).fill(KEY_LABEL);
+    await dialog.locator("st-input input").nth(1).fill(KEY_VALUE);
+    await dialog.locator("st-button", { hasText: /添加|Add/ }).click();
 
     await expect(
       page.locator("st-list-item", { hasText: KEY_LABEL }),
     ).toBeVisible();
     await expect(
-      page.locator("st-list-item", { hasText: "sk-e...D34d" }).first(),
+      page.locator("st-list-item", { hasText: REAL_MASKED }).first(),
     ).toBeVisible();
   });
 
@@ -98,7 +109,18 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     const dialog = page.locator("st-dialog.dlg-user");
     await dialog.locator("st-input input").nth(0).fill(USER_NAME);
     await dialog.locator("st-input input").nth(1).fill("e2e ui user");
-    await dialog.locator("st-input input").nth(2).fill("500000");
+    // 配额带单位：先填 500 token，切 k 后输入框应自动换算为 0.5（绝对量不变）
+    await dialog.locator("st-input input").nth(2).fill("500");
+    await dialog
+      .locator("st-select")
+      .first()
+      .evaluate((el) => {
+        el.value = "k";
+        el.dispatchEvent(new Event("change"));
+      });
+    await expect(dialog.locator("st-input input").nth(2)).toHaveValue("0.5");
+    // 再填 500 → 500 k = 500,000 token
+    await dialog.locator("st-input input").nth(2).fill("500");
     // 勾选唯一可选的上游 key
     await dialog.locator("st-checkbox").first().click();
     await dialog.locator("st-button", { hasText: "创建" }).click();
@@ -144,6 +166,57 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     // 最近用量区已渲染（暂无记录）
     await expect(page.locator(".invite-code-box")).toBeVisible();
     await page.locator("st-dialog.dlg-invite st-button", { hasText: "关闭" }).click();
+  });
+
+  test("详情弹窗内编辑配额与可用 key 池并保存", async () => {
+    // 服务器侧再加一个上游 key，形成「勾选切换」的空间
+    const mk = await fetch(`${RELAY}/admin/apikeys`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ provider: "glm-coding", label: `e2eui-key2-${RUN}`, apiKey: GLM_CODING_KEY }),
+    });
+    const key2Id = (await mk.json()).data.id;
+
+    await page
+      .locator("st-list-item", { hasText: USER_NAME })
+      .first()
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon*="text-box-search"]'),
+      })
+      .click();
+    const dialog = page.locator("st-dialog.dlg-invite");
+    await expect(dialog).toBeVisible();
+
+    // 改配额：详情回填为 500k，切回 token 单位应自动换算为 500000，再改填 777
+    await dialog
+      .locator("st-select")
+      .first()
+      .evaluate((el) => {
+        el.value = "token";
+        el.dispatchEvent(new Event("change"));
+      });
+    await expect(dialog.locator("st-input input").nth(0)).toHaveValue("500000");
+    await dialog.locator("st-input input").nth(0).fill("777");
+
+    // 换绑：取消勾选 key1，勾选 key2
+    const boxes = dialog.locator("st-checkbox");
+    await expect(boxes).toHaveCount(2);
+    await boxes.nth(0).click(); // 取消 key1
+    await boxes.nth(1).click(); // 勾选 key2
+
+    await dialog.locator("st-button", { hasText: /保存修改|Save changes/ }).click();
+
+    // 服务器侧校验
+    let user;
+    for (let i = 0; i < 10; i++) {
+      const res = await fetch(`${RELAY}/admin/users`, { headers: AUTH });
+      user = (await res.json()).data.users.find((u) => u.name === USER_NAME);
+      if (user.quotaTokens === 777) break;
+      await page.waitForTimeout(300);
+    }
+    expect(user.quotaTokens).toBe(777);
+    expect(user.apiKeyIds).toEqual([key2Id]);
+    await dialog.locator("st-button", { hasText: /关闭|Close/ }).click();
   });
 
   test("清零用量：确认弹窗后用户用量归零", async () => {

@@ -41,14 +41,17 @@ pub(crate) fn random_token(len: usize) -> String {
 pub(crate) enum Provider {
     Deepseek,
     Glm,
+    #[serde(rename = "glm-coding")]
+    GlmCoding,
 }
 
 impl Provider {
-    /// OpenAI 兼容上游基址（与 mz/ai/supplier 保持一致）
+    /// OpenAI 兼容上游基址（与 mz/ai/supplier 保持一致；Coding Plan 走订阅端点）
     pub(crate) fn upstream_base(&self) -> &'static str {
         match self {
             Provider::Deepseek => "https://api.deepseek.com",
             Provider::Glm => "https://open.bigmodel.cn/api/paas/v4",
+            Provider::GlmCoding => "https://open.bigmodel.cn/api/coding/paas/v4",
         }
     }
 
@@ -56,18 +59,20 @@ impl Provider {
         match s {
             "deepseek" => Some(Provider::Deepseek),
             "glm" => Some(Provider::Glm),
+            "glm-coding" => Some(Provider::GlmCoding),
             _ => None,
         }
     }
 
-    /// 按模型名前缀路由上游；不匹配返回 None
-    pub(crate) fn of_model(model: &str) -> Option<Self> {
+    /// 按模型名前缀判定某个 provider 能否服务该模型：
+    /// deepseek-* → Deepseek；glm-* → Glm / GlmCoding 都可（Coding Plan 同为 glm 系）
+    pub(crate) fn serves_model(&self, model: &str) -> bool {
         if model.starts_with("deepseek") {
-            Some(Provider::Deepseek)
+            *self == Provider::Deepseek
         } else if model.starts_with("glm") {
-            Some(Provider::Glm)
+            matches!(*self, Provider::Glm | Provider::GlmCoding)
         } else {
-            None
+            false
         }
     }
 }
@@ -86,6 +91,9 @@ pub(crate) struct ApiKeyRec {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct UserRec {
+    /// 累计对话轮数（成功转发并记账的请求数）
+    #[serde(default)]
+    pub(crate) total_requests: i64,
     pub(crate) id: String,
     pub(crate) name: String,
     #[serde(default)]
@@ -107,7 +115,18 @@ pub(crate) struct UsageRec {
     pub(crate) model: String,
     pub(crate) prompt_tokens: i64,
     pub(crate) completion_tokens: i64,
+    /// 上游返回的缓存命中 / 未命中 prompt token（DeepSeek 有，无则记 0）
+    #[serde(default)]
+    pub(crate) cache_hit_tokens: i64,
+    #[serde(default)]
+    pub(crate) cache_miss_tokens: i64,
     pub(crate) key_id: String,
+}
+
+impl UsageRec {
+    pub(crate) fn total_tokens(&self) -> i64 {
+        self.prompt_tokens + self.completion_tokens
+    }
 }
 
 pub(crate) fn mask_key(key: &str) -> String {
@@ -231,9 +250,12 @@ mod tests {
 
     #[test]
     fn provider_routes_by_model_prefix() {
-        assert_eq!(Provider::of_model("glm-5.3"), Some(Provider::Glm));
-        assert_eq!(Provider::of_model("deepseek-v4-flash"), Some(Provider::Deepseek));
-        assert_eq!(Provider::of_model("gpt-4o"), None);
+        assert!(Provider::Glm.serves_model("glm-5.3"));
+        assert!(Provider::GlmCoding.serves_model("glm-5.3"));
+        assert!(Provider::GlmCoding.serves_model("glm-x"));
+        assert!(Provider::Deepseek.serves_model("deepseek-v4-flash"));
+        assert!(!Provider::Glm.serves_model("deepseek-chat"));
+        assert!(!Provider::Deepseek.serves_model("gpt-4o"));
     }
 
     #[test]
@@ -252,6 +274,7 @@ mod tests {
             note: String::new(),
             quota_tokens: Some(1000),
             used_tokens: 42,
+            total_requests: 3,
             bearkey: "bk".into(),
             disabled: false,
             created_at: 1,
@@ -264,6 +287,8 @@ mod tests {
             model: "glm-5.3".into(),
             prompt_tokens: 10,
             completion_tokens: 20,
+            cache_hit_tokens: 4,
+            cache_miss_tokens: 6,
             key_id: "k1".into(),
         };
         put_row(
@@ -280,5 +305,7 @@ mod tests {
         assert!(apikeys.is_empty());
         assert_eq!(usage.len(), 1);
         assert_eq!(usage[0].completion_tokens, 20);
+        assert_eq!(usage[0].cache_hit_tokens, 4);
+        assert_eq!(usage[0].total_tokens(), 30);
     }
 }

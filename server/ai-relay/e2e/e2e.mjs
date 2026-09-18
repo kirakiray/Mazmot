@@ -79,7 +79,7 @@ try {
   await waitForHealth();
   console.log("服务器已启动");
 
-  const { deepseek: realKey } = JSON.parse(
+  const { deepseek: realKey, glmcodingplan: glmCodingKey } = JSON.parse(
     readFileSync(join(ROOT, "test-api-keys.json"), "utf8"),
   );
   if (!realKey) throw new Error("根目录 test-api-keys.json 缺少 deepseek key");
@@ -95,6 +95,26 @@ try {
     `maskedKey=${mk.data?.data?.maskedKey}`);
 
   const keyId = mk.data.data.id;
+
+  // 假 key 应被上游探测拒绝（422），且不落库
+  const mf = await request("/admin/apikeys", {
+    method: "POST",
+    token: ADMIN_TOKEN,
+    body: { provider: "deepseek", label: "e2e-fake", apiKey: "sk-e2e-fake-key" },
+  });
+  const listAfterFake = await request("/admin/apikeys", { token: ADMIN_TOKEN });
+  const mt = await request(`/admin/apikeys/${keyId}/test`, { method: "POST", token: ADMIN_TOKEN });
+  check("POST /admin/apikeys/{id}/test 实时探测真 key 可用",
+    mt.status === 200 && mt.data.ok === true, `status=${mt.status}`);
+
+  const mt404 = await request("/admin/apikeys/no-such-id/test", { method: "POST", token: ADMIN_TOKEN });
+  check("test 端点对不存在的 key 返回 404", mt404.status === 404);
+
+  check("假 key 被上游探测拒绝（422 且不落库）",
+    mf.status === 422 &&
+      !(listAfterFake.data?.data?.apikeys || []).some((k) => k.label === "e2e-fake"),
+    `status=${mf.status}`);
+
 
   const unauth = await request("/admin/overview");
   check("无令牌访问管理 API 返回 401", unauth.status === 401);
@@ -158,13 +178,76 @@ try {
     (sum, r) => sum + r.promptTokens + r.completionTokens,
     0,
   );
-  check("非流式对话后用量流水落账（token > 0）",
-    rec1.length === 1 && total1 > 0, `records=${rec1.length} tokens=${total1}`);
+  const rec1ok =
+    rec1.length === 1 &&
+    typeof rec1[0].cacheHitTokens === "number" &&
+    typeof rec1[0].cacheMissTokens === "number" &&
+    rec1[0].promptTokens > 0;
+  check("非流式对话后用量流水落账（含输入/输出/缓存明细）",
+    rec1ok, `records=${rec1.length} tokens=${total1} hit=${rec1[0]?.cacheHitTokens} miss=${rec1[0]?.cacheMissTokens}`);
 
   const uAfter = await request("/admin/users", { token: ADMIN_TOKEN });
   const userAfter = (uAfter.data?.data?.users || []).find((u) => u.id === user.id);
-  check("用户 usedTokens 已累计", userAfter?.usedTokens === total1,
-    `usedTokens=${userAfter?.usedTokens}`);
+  check("用户 usedTokens 与对话轮数已累计",
+    userAfter?.usedTokens === total1 && userAfter?.totalRequests === rec1.length,
+    `usedTokens=${userAfter?.usedTokens} totalRequests=${userAfter?.totalRequests}`);
+
+  // ———— 2.5 GLM Coding Plan：glm-* 模型转发 + 缓存记账 ————
+  if (glmCodingKey) {
+    const mgc = await request("/admin/apikeys", {
+      method: "POST",
+      token: ADMIN_TOKEN,
+      body: { provider: "glm-coding", label: "e2e-glm-coding", apiKey: glmCodingKey },
+    });
+    check("glm-coding 上游 key 可登记", mgc.status === 201);
+    const codingKeyId = mgc.data?.data?.id;
+
+    const mgcu = await request("/admin/users", {
+      method: "POST",
+      token: ADMIN_TOKEN,
+      body: { name: "e2e-glm-user", apiKeyIds: [codingKeyId] },
+    });
+    const glmUser = mgcu.data?.data;
+    check("glm-coding 用户创建成功", mgcu.status === 201);
+
+    // 与 deepseek key 池隔离：glm 用户只能服务 glm-* 模型
+    const crossModels = await request("/v1/models", { token: glmUser.bearkey });
+    const crossIds = (crossModels.data?.data || []).map((m) => m.id);
+    check("glm-coding 用户模型列表不含 deepseek（池隔离）",
+      crossModels.status === 200 && crossIds.every((id) => !id.startsWith("deepseek")),
+      `${crossIds.length} 个模型`);
+
+    const glmChat = await request("/v1/chat/completions", {
+      method: "POST",
+      token: glmUser.bearkey,
+      body: {
+        model: "glm-4.7",
+        messages: [{ role: "user", content: "回复两个字：你好" }],
+        max_tokens: 64,
+        thinking: { type: "disabled" },
+      },
+    });
+    // 思考型模型偶发把输出全放进 reasoning_content 且被 max_tokens 截断，
+    // 转发成功的本质判据：200 + usage 有 completion 消耗
+    check("glm-coding 用户 glm-4.7 对话成功",
+      glmChat.status === 200 &&
+        ((glmChat.data?.choices?.[0]?.message?.content || "").length > 0 ||
+          (glmChat.data?.usage?.completion_tokens ?? 0) > 0),
+      `content=${JSON.stringify(glmChat.data?.choices?.[0]?.message?.content)?.slice(0, 40)} usage=${JSON.stringify(glmChat.data?.usage)?.slice(0, 60)}`);
+
+    const gu = await request(`/admin/usage?userId=${glmUser.id}`, { token: ADMIN_TOKEN });
+    const grec = (gu.data?.data?.items || [])[0] || {};
+    const hitOk =
+      typeof grec.cacheHitTokens === "number" &&
+      grec.cacheHitTokens >= 0 &&
+      typeof grec.cacheMissTokens === "number" &&
+      grec.cacheHitTokens + grec.cacheMissTokens === grec.promptTokens;
+    check("glm-coding 用量流水缓存记账自洽（命中+未命中=输入）",
+      hitOk && grec.promptTokens > 0,
+      `prompt=${grec.promptTokens} hit=${grec.cacheHitTokens} miss=${grec.cacheMissTokens}`);
+  } else {
+    check("glm-coding 缓存记账（根目录 test-api-keys.json 无 glmcodingplan key，跳过）", true);
+  }
 
   // ———— 3. 流式 ————
   const streamResp = await fetch(`${BASE}/v1/chat/completions`, {
@@ -197,7 +280,7 @@ try {
   const rec2 = usage2.data?.data?.items || [];
   check("流式对话后第二条用量流水落账",
     rec2.length === 2 && rec2[0].promptTokens + rec2[0].completionTokens > 0,
-    `records=${rec2.length}`);
+    `records=${rec2.length} hit=${rec2[0]?.cacheHitTokens} miss=${rec2[0]?.cacheMissTokens}`);
 
   // ———— 4. 配额拦截 ————
   // 配额语义：用满即拒（used >= quota 时拒绝），首次请求前 used=0 必然放行，

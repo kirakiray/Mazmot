@@ -41,25 +41,25 @@ fn quota_exceeded(user: &UserRec) -> bool {
     user.quota_tokens.map(|q| user.used_tokens >= q).unwrap_or(false)
 }
 
-/// 从用户 key 池里挑一个可用 key：先按 provider 过滤，再随机取一个
+/// 从用户 key 池里挑一个能服务该模型的可用 key（随机取一个）
 async fn pick_upstream_key(
     state: &AppState,
     user: &UserRec,
-    provider: Provider,
+    model: &str,
 ) -> Result<crate::store::ApiKeyRec, (StatusCode, Json<Value>)> {
     let keys = state.apikeys.read().await;
     let mut pool: Vec<crate::store::ApiKeyRec> = user
         .api_key_ids
         .iter()
         .filter_map(|id| keys.get(id))
-        .filter(|k| k.provider == provider && !k.disabled)
+        .filter(|k| !k.disabled && k.provider.serves_model(model))
         .cloned()
         .collect();
     drop(keys);
     if pool.is_empty() {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
-            format!("该用户的 key 池中没有可用的 {provider:?} 上游 key（或模型不在其 key 池覆盖范围）"),
+            format!("该用户的 key 池中没有可服务模型 {model} 的可用上游 key"),
         ));
     }
     use rand::Rng;
@@ -67,16 +67,33 @@ async fn pick_upstream_key(
     Ok(pool.swap_remove(idx))
 }
 
-/// 从 OpenAI 风格 usage 对象里取 prompt/completion tokens
-fn tokens_of(usage: &Value) -> Option<(i64, i64)> {
-    Some((
-        usage.get("prompt_tokens")?.as_i64()?,
-        usage.get("completion_tokens")?.as_i64()?,
-    ))
+/// 从 OpenAI 风格 usage 对象取 token 明细：
+/// (prompt, completion, cache_hit, cache_miss)。
+/// 缓存命中两家字段不同：DeepSeek 扁平 prompt_cache_hit_tokens / prompt_cache_miss_tokens，
+/// GLM（含 Coding Plan）走 OpenAI 风格 usage.prompt_tokens_details.cached_tokens；
+/// 只有命中没有未命中字段时按 输入 - 命中 推导，全无则记 0
+fn tokens_of(usage: &Value) -> Option<(i64, i64, i64, i64)> {
+    let prompt = usage.get("prompt_tokens")?.as_i64()?;
+    let completion = usage.get("completion_tokens")?.as_i64()?;
+    let hit = usage
+        .get("prompt_cache_hit_tokens")
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            usage
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|v| v.as_i64())
+        })
+        .unwrap_or(0);
+    let miss = usage
+        .get("prompt_cache_miss_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_else(|| (prompt - hit).max(0));
+    Some((prompt, completion, hit, miss))
 }
 
 /// 在 SSE 文本里找最后一个带 usage 的 data chunk
-fn extract_sse_usage(buffer: &str) -> Option<(i64, i64)> {
+fn extract_sse_usage(buffer: &str) -> Option<(i64, i64, i64, i64)> {
     let mut found = None;
     for line in buffer.lines() {
         let Some(data) = line.strip_prefix("data: ") else { continue };
@@ -90,6 +107,53 @@ fn extract_sse_usage(buffer: &str) -> Option<(i64, i64)> {
         }
     }
     found
+}
+
+/// 上游 key 可用性探测：GET /models；端点不提供 models（404/405）时
+/// 降级为 1 token 最小对话探测（GLM Coding Plan 等订阅端点的兼容路径）
+pub(crate) async fn probe_key(
+    http: &reqwest::Client,
+    key: &crate::store::ApiKeyRec,
+) -> Result<(), String> {
+    let base = key.provider.upstream_base();
+    let fallback_model = if key.provider == Provider::Deepseek {
+        "deepseek-chat"
+    } else {
+        "glm-4.7"
+    };
+
+    let resp = http
+        .get(format!("{base}/models"))
+        .bearer_auth(&key.api_key)
+        .send()
+        .await
+        .map_err(|e| format!("无法连接上游: {e}"))?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    if !matches!(resp.status().as_u16(), 404 | 405) {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "上游探测失败: {status} {}",
+            body.chars().take(200).collect::<String>()
+        ));
+    }
+    let resp = http
+        .post(format!("{base}/chat/completions"))
+        .bearer_auth(&key.api_key)
+        .json(&serde_json::json!({
+            "model": fallback_model,
+            "messages": [{ "role": "user", "content": "hi" }],
+            "max_tokens": 1,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("无法连接上游: {e}"))?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    Err(format!("上游探测失败（对话探测）: {}", resp.status()))
 }
 
 /// POST /v1/chat/completions
@@ -121,13 +185,15 @@ pub(crate) async fn chat_completions(
         return Err(api_error(StatusCode::BAD_REQUEST, "缺少 model 字段"));
     }
     let is_stream = payload.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
-    let Some(provider) = Provider::of_model(&model) else {
+    if Provider::Deepseek.serves_model(&model) || Provider::Glm.serves_model(&model) {
+        // 支持的前缀，继续挑 key
+    } else {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             format!("无法从模型名 {model} 识别上游（支持 glm-* / deepseek-*）"),
         ));
-    };
-    let upstream_key = pick_upstream_key(&state, &user, provider).await?;
+    }
+    let upstream_key = pick_upstream_key(&state, &user, &model).await?;
 
     // 流式请求注入 include_usage，上游末 chunk 才会带 usage 供统计
     let mut upstream_body = payload.clone();
@@ -137,7 +203,7 @@ pub(crate) async fn chat_completions(
             .or_insert_with(|| serde_json::json!({ "include_usage": true }));
     }
 
-    let url = format!("{}/chat/completions", provider.upstream_base());
+    let url = format!("{}/chat/completions", upstream_key.provider.upstream_base());
     let response = state
         .http
         .post(&url)
@@ -165,7 +231,7 @@ pub(crate) async fn chat_completions(
             .await
             .map_err(|e| api_error(StatusCode::BAD_GATEWAY, format!("上游响应解析失败: {e}")))?;
         let usage = data.get("usage").filter(|u| !u.is_null()).and_then(tokens_of);
-        let (prompt, completion) = usage.unwrap_or((0, 0));
+        let (prompt, completion, cache_hit, cache_miss) = usage.unwrap_or((0, 0, 0, 0));
         state
             .record_usage(UsageRec {
                 user_id: user.id.clone(),
@@ -173,6 +239,8 @@ pub(crate) async fn chat_completions(
                 model: model.clone(),
                 prompt_tokens: prompt,
                 completion_tokens: completion,
+                cache_hit_tokens: cache_hit,
+                cache_miss_tokens: cache_miss,
                 key_id: upstream_key.id.clone(),
             })
             .await;
@@ -203,7 +271,8 @@ pub(crate) async fn chat_completions(
                 }
             }
         }
-        let (prompt, completion) = extract_sse_usage(&buffer).unwrap_or((0, 0));
+        let (prompt, completion, cache_hit, cache_miss) =
+            extract_sse_usage(&buffer).unwrap_or((0, 0, 0, 0));
         relay_state
             .record_usage(UsageRec {
                 user_id,
@@ -211,6 +280,8 @@ pub(crate) async fn chat_completions(
                 model: model2,
                 prompt_tokens: prompt,
                 completion_tokens: completion,
+                cache_hit_tokens: cache_hit,
+                cache_miss_tokens: cache_miss,
                 key_id,
             })
             .await;
@@ -284,6 +355,7 @@ pub(crate) async fn usage(
         "name": user.name,
         "quotaTokens": user.quota_tokens,
         "usedTokens": user.used_tokens,
+        "totalRequests": user.total_requests,
         "remainingTokens": user.quota_tokens.map(|q| (q - user.used_tokens).max(0)),
     })))
 }

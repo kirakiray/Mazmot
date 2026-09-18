@@ -88,6 +88,7 @@ impl AppState {
         let Some(mut user) = users.get(&rec.user_id).cloned() else { return };
         drop(users);
         user.used_tokens += user_delta;
+        user.total_requests += 1;
         if let Err(e) = self.save_user(&user).await {
             eprintln!("累计用户用量失败: {e}");
         }
@@ -211,6 +212,7 @@ async fn main() {
             "/admin/apikeys/{id}",
             patch(admin::update_apikey).delete(admin::delete_apikey),
         )
+        .route("/admin/apikeys/{id}/test", post(admin::test_apikey))
         .route("/admin/users", get(admin::list_users).post(admin::create_user))
         .route(
             "/admin/users/{id}",
