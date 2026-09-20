@@ -95,7 +95,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
-    activeModelId: "", // 手动选中的模型（"" = 供应商默认；须属于当前 key 的供应商）
+    activeModelId: "", // 手动选中的模型（"" = 供应商默认；须属于当前 key 可用清单）
+    modelOptions: [], // 当前选中 key 的可选项（[{id,label}]，经 getModels 动态获取）
   };
 
   const listeners = new Set();
@@ -290,11 +291,21 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
     }
 
-    // 模型选择：手动选中的模型（须属于该 key 的供应商）优先；
-    // 否则 deepseek 走代码生成专属模型名，其余跟随供应商默认
-    const providerModels = key ? MODEL_OPTIONS[key.provider] || [] : [];
+    // 模型选择：手动选中的模型优先，但须在已知可用清单里——清单来自
+    // getModels 动态拉取（缓存数组）；拉取失败用内置表校验（缓存 null）；
+    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则放行，交由 API 报错兜底
+    const cached = key ? modelOptionsCache.get(key.id) : undefined;
+    const knownModels = Array.isArray(cached)
+      ? cached.map((o) => o.id)
+      : cached === null
+        ? MODEL_OPTIONS[key.provider] || []
+        : null;
     let model;
-    if (key && state.activeModelId && providerModels.includes(state.activeModelId)) {
+    if (
+      key &&
+      state.activeModelId &&
+      (knownModels === null || knownModels.includes(state.activeModelId))
+    ) {
       model = state.activeModelId;
     } else if (key?.provider === "deepseek") {
       model = "deepseek-flash";
@@ -1003,6 +1014,46 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   const API_KEY_LIST_KEY = "pref:active-key";
 
+  // 各 key 的可用模型缓存：keyId → [{id,label}]（getModels 成功）/ null（失败，
+  // 校验与展示回退 MODEL_OPTIONS 内置表）/ 无记录（未拉取）
+  const modelOptionsCache = new Map();
+  let modelOptionsSeq = 0; // 串行化竞态：仅最后一次拉取允许写入 state
+
+  const staticModelOptions = (key) =>
+    (MODEL_OPTIONS[key?.provider] || []).map((id) => ({ id, label: id }));
+
+  // 拉取当前选中 key 的可用模型（getModels，relay 供应商即 /v1/models），
+  // 写入 state.modelOptions 供输入区气泡展示；自动 Key（activeKeyId 为 ""）
+  // 不拉取，模型 select 维持禁用（跟随供应商默认）
+  async function refreshModelOptions() {
+    const seq = ++modelOptionsSeq;
+    const key = state.apiKeys.find((k) => k.id === state.activeKeyId);
+    if (!key || !aiModules?.getAssistant) {
+      set("modelOptions", []);
+      return;
+    }
+    const cached = modelOptionsCache.get(key.id);
+    if (cached !== undefined) {
+      set("modelOptions", cached === null ? staticModelOptions(key) : cached);
+      return;
+    }
+    modelOptionsCache.set(key.id, null); // 占位防并发重复拉取
+    try {
+      const assistant = aiModules.getAssistant(key.id);
+      const models = await assistant.getModels();
+      const list = (Array.isArray(models) ? models : [])
+        .map((m) => (typeof m === "string" ? m : m?.id || m?.name))
+        .filter((id) => typeof id === "string" && id)
+        .map((id) => ({ id, label: id }));
+      modelOptionsCache.set(key.id, list);
+      if (seq === modelOptionsSeq) set("modelOptions", list);
+    } catch (err) {
+      console.warn("获取模型列表失败，回退内置清单：", err?.message ?? err);
+      modelOptionsCache.delete(key.id); // 不缓存失败结果，下次切换重试
+      if (seq === modelOptionsSeq) set("modelOptions", staticModelOptions(key));
+    }
+  }
+
   // 把 /mz/ai 的 key 列表镜像进 state（只留展示所需字段）
   function syncApiKeyList(keys) {
     set(
@@ -1015,6 +1066,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (state.activeKeyId && !keys?.some((k) => k.id === state.activeKeyId && !k.disabled)) {
       selectApiKey("");
     }
+    refreshModelOptions();
   }
 
   // 切换对话模型（"" = 供应商默认）；切换即 invalidateAgent 下一回合生效
@@ -1036,6 +1088,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (state.activeKeyId === id) return;
     set("activeKeyId", id);
     invalidateAgent();
+    refreshModelOptions();
     if (selfStore) {
       try {
         await selfStore.setItem(API_KEY_LIST_KEY, id);

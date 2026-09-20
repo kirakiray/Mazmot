@@ -1025,7 +1025,7 @@
       const { renderMarkdown } = await load("../lib/markdown.js");
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
-      const { contextInfo, MODEL_OPTIONS } = await load("../lib/builder.js");
+      const { contextInfo } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
       // 句柄等类实例由仓库闭包持有，不进入响应式数据
@@ -1377,8 +1377,12 @@
                 if (key === "nextId") continue; // 内部计数，页面不需要
                 this[key] = value;
               }
-              // Key 列表 / 选中项变化：刷新选择器展示文案
-              if ("apiKeys" in evt.data || "activeKeyId" in evt.data) {
+              // Key 列表 / 选中项 / 可用模型清单变化：刷新选择器展示文案
+              if (
+                "apiKeys" in evt.data ||
+                "activeKeyId" in evt.data ||
+                "modelOptions" in evt.data
+              ) {
                 this.syncActiveKeyText();
               }
               // 当前项目变化时同步 URL 的 p 参数（刷新 / 分享可回到当前项目）
@@ -1470,15 +1474,16 @@
             this.syncCtx();
           },
 
-          // API Key 选择器的当前展示文案 + 模型可选项（key 列表或选中项变化时刷新）
+          // API Key 选择器的当前展示文案 + 模型清单合法性（清单由仓库经
+          // getModels 动态拉取，随 patch 事件到达本页 modelOptions）
           syncActiveKeyText() {
             const hit = this.apiKeys.find((k) => k.id === this.activeKeyId);
             this.activeKeyText = hit ? `${hit.provider} · ${hit.maskedKey}` : "自动选择";
-            // 模型选项跟随选中 Key 的供应商；自动 Key 不提供手动模型
-            const list = hit ? MODEL_OPTIONS[hit.provider] || [] : [];
-            this.modelOptions = list.map((m) => ({ id: m, label: m }));
-            // 选中的模型不属于当前供应商：重置为自动
-            if (this.activeModelId && !list.includes(this.activeModelId)) {
+            // 选中的模型不在当前可用清单里（key 已切换 / 清单已刷新）：重置为自动
+            if (
+              this.activeModelId &&
+              !this.modelOptions.some((m) => m.id === this.activeModelId)
+            ) {
               this.activeModelId = "";
               store.selectModel("");
             }
