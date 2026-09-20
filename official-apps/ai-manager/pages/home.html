@@ -537,7 +537,7 @@
                   <n-icon
                     attr:icon="$host.providerIcon($data.provider)"
                   ></n-icon>
-                  <span>{{$host.providerLabel($data.provider)}}</span>
+                  <span>{{$host.providerLabel($data.provider, $data.serverName)}}</span>
                 </span>
               </span>
 
@@ -571,10 +571,10 @@
                     <n-icon icon="mdi:server-network"></n-icon>
                   </span>
                   <div class="detail-row">
-                    <span class="detail-label"><locale-text><span lang="cn">服务地址</span><span lang="en">Server</span></locale-text></span>
+                    <span class="detail-label"><locale-text><span lang="cn">中转服务器</span><span lang="en">Relay server</span></locale-text></span>
                     <span class="detail-value-wrap">
                       <o-if :value="$data.provider === 'relay'">
-                        <span class="detail-value">{{$host.relayHost($data)}}</span>
+                        <span class="detail-value">{{$data.serverName || "Relay"}} · {{$host.relayHost($data)}}</span>
                       </o-if>
                       <o-if :value="$data.provider !== 'relay'">
                         <span class="detail-value">—</span>
@@ -714,6 +714,7 @@
       const {
         saveKey,
         removeKey,
+        updateKey,
         setKeyDisabled,
         getApiKeys,
         onApiKeysChange,
@@ -729,7 +730,9 @@
       const { getLocaleText } = await load(
         "/nos/locale-text/get-locale-text.js",
       );
-      const { decodeInvite } = await load("/mz/ai/supplier/relay.js");
+      const { decodeInvite, fetchServerInfo } = await load(
+        "/mz/ai/supplier/relay.js",
+      );
 
       const L10N = {
         inputPlaceholder: { cn: "请输入 API Key / 邀请码", en: "Enter API Key / invite code" },
@@ -765,12 +768,15 @@
             return t(key);
           },
 
-          providerLabel(provider) {
+          providerLabel(provider, serverName) {
+            if (provider === "relay") {
+              // 中转服务器显示自定义命名（旧 key 无命名则回退 Relay）
+              return serverName || "Relay";
+            }
             const labels = {
               kimi: "Kimi",
               glm: "GLM",
               "glm-coding": "GLM Coding Plan",
-              relay: "Relay",
             };
             return labels[provider] || "DeepSeek";
           },
@@ -833,7 +839,20 @@
                 return;
               }
 
-              saveKey(key, this.provider);
+              // relay 邀请码：拉取服务器命名随 key 持久化（拉取失败不阻塞保存）
+              let extra = {};
+              if (this.provider === "relay") {
+                const invite = decodeInvite(key);
+                if (invite) {
+                  try {
+                    const info = await fetchServerInfo(invite.baseUrl);
+                    extra = { serverName: info.name };
+                  } catch {
+                    /* 无命名信息也允许保存 */
+                  }
+                }
+              }
+              saveKey(key, this.provider, extra);
               this.apiKey = "";
               toast({ message: getLocaleText({ cn: "API Key 保存成功", en: "API Key saved" }), color: "success" });
             } catch (error) {
@@ -940,6 +959,18 @@
           this._unsub = onApiKeysChange((keys) => {
             this.apiKeys = keys;
           });
+
+          // relay key 缺服务器命名时后台静默回填（旧数据兼容；失败不打扰）
+          for (const key of this.apiKeys) {
+            if (key.provider !== "relay" || key.serverName) continue;
+            const invite = decodeInvite(key.apiKey);
+            if (!invite) continue;
+            fetchServerInfo(invite.baseUrl)
+              .then((info) => {
+                if (info?.name) updateKey(key.id, { serverName: info.name });
+              })
+              .catch(() => {});
+          }
 
           for (const key of this.apiKeys) {
             const cached = sessionStorage.getItem(

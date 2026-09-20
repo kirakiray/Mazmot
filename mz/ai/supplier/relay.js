@@ -27,6 +27,18 @@ export const decodeInvite = (code) => {
   }
 };
 
+/**
+ * 拉取转发服务器公开信息（命名）。
+ * ai-manager 添加邀请码时调用，把命名随 key 持久化，供各应用选择 provider 时展示。
+ */
+export const fetchServerInfo = async (baseUrl) => {
+  const resp = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/server`);
+  if (!resp.ok) {
+    throw new Error(`server info error: ${resp.status}`);
+  }
+  return resp.json(); // { name }
+};
+
 export class RelayAssistant extends Assistant {
   providerName = "relay";
   /** 邀请码解析结果（构造时填充） */

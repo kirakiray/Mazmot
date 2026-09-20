@@ -350,6 +350,24 @@ try {
   });
   check("伪造 bearkey 被拒绝", unbound.status === 401);
 
+  // ———— 4.5 服务器自定义命名 ————
+  const mset = await request("/admin/settings", {
+    method: "PATCH",
+    token: ADMIN_TOKEN,
+    body: { serverName: "E2E 中转站" },
+  });
+  check("PATCH /admin/settings 服务器命名生效",
+    mset.status === 200 && mset.data.data.serverName === "E2E 中转站");
+
+  const sinfo = await request("/v1/server");
+  check("GET /v1/server 公开返回命名（无需鉴权）",
+    sinfo.status === 200 && sinfo.data.name === "E2E 中转站",
+    `name=${sinfo.data?.name}`);
+
+  const usageInfo = await request("/v1/usage", { token: user.bearkey });
+  check("/v1/usage 携带服务器命名",
+    usageInfo.data?.serverName === "E2E 中转站");
+
   // ———— 5. 重置 bearkey 后旧码作废 ————
   const reset = await request(`/admin/users/${user.id}/reset-bearkey`, {
     method: "POST",

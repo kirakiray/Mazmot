@@ -368,13 +368,19 @@
       </div>
       <div class="brand-text">
         <h1><locale-text><span lang="cn">AI 转发管理台</span><span lang="en">AI Relay Admin</span></locale-text></h1>
-        <p>{{serverUrl || t("connectHint")}}</p>
+        <p>{{view === "panel" ? (serverName ? serverName + " · " + serverUrl : serverUrl) : (serverUrl || t("connectHint"))}}</p>
       </div>
       <o-if :value="view === 'panel'">
-        <st-icon-button
-          attr:title="t('disconnect')"
-          on:click="disconnect"
-        ><n-icon icon="mdi:link-off"></n-icon></st-icon-button>
+        <div style="display: flex; gap: 4px;">
+          <st-icon-button
+            attr:title="t('serverSettings')"
+            on:click="openSettings"
+          ><n-icon icon="mdi:cog-outline"></n-icon></st-icon-button>
+          <st-icon-button
+            attr:title="t('disconnect')"
+            on:click="disconnect"
+          ><n-icon icon="mdi:link-off"></n-icon></st-icon-button>
+        </div>
       </o-if>
     </header>
 
@@ -566,6 +572,23 @@
       </o-if>
     </o-if>
   </main>
+
+  <!-- ============ 服务器设置弹窗 ============ -->
+  <st-dialog class="dlg-settings" sync:open="settingsOpen" auto-close>
+    <h2 slot="headline"><locale-text><span lang="cn">服务器设置</span><span lang="en">Server Settings</span></locale-text></h2>
+    <div class="field">
+      <label class="field-label"><locale-text><span lang="cn">服务器命名（客户端选择 provider 时展示）</span><span lang="en">Server name (shown to clients as provider label)</span></locale-text></label>
+      <st-input sync:value="settingsName" attr:placeholder="t('serverNamePlaceholder')" attr:maxlength="'64'"></st-input>
+    </div>
+    <div slot="actions">
+      <st-button variant="outlined" on:click="settingsOpen = false">
+        <locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text>
+      </st-button>
+      <st-button attr:disabled="!settingsName || savingSettings" on:click="saveSettings">
+        <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+      </st-button>
+    </div>
+  </st-dialog>
 
   <!-- ============ 添加上游 Key 弹窗 ============ -->
   <st-dialog class="dlg-key" sync:open="keyDialogOpen" auto-close>
@@ -798,6 +821,8 @@
         detail: { cn: "详情 / 邀请码", en: "Details / invite" },
         testKey: { cn: "测试 key 是否可用", en: "Test this key" },
         resetUsage: { cn: "清零用量", en: "Reset usage" },
+        serverSettings: { cn: "服务器设置", en: "Server settings" },
+        serverNamePlaceholder: { cn: "如：团队共享中转", en: "e.g. Team relay" },
         modelsPlaceholder: { cn: "如 glm-5*, deepseek-chat；留空 = 不限制", en: "e.g. glm-5*, deepseek-chat; empty = unlimited" },
         keyLabelPlaceholder: { cn: "可选，便于识别", en: "Optional, for identification" },
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
@@ -834,6 +859,10 @@
           detailUsage: [],
           detailQuota: "",
           detailQuotaUnit: "token",
+          serverName: "",
+          settingsOpen: false,
+          settingsName: "",
+          savingSettings: false,
           detailModels: "",
           detailModelOptions: [],
           loadingModels: false,
@@ -885,13 +914,44 @@
             return data?.data !== undefined ? data.data : data;
           },
 
+          /** 打开服务器设置（回填当前命名） */
+          async openSettings() {
+            try {
+              const data = await this.api("/admin/settings");
+              this.serverName = data.serverName || "";
+            } catch {
+              /* 保持现有显示 */
+            }
+            this.settingsName = this.serverName;
+            this.settingsOpen = true;
+          },
+
+          async saveSettings() {
+            const name = this.settingsName.trim();
+            if (!name) return;
+            this.savingSettings = true;
+            try {
+              await this.api("/admin/settings", {
+                method: "PATCH",
+                body: JSON.stringify({ serverName: name }),
+              });
+              this.serverName = name;
+              await store.setItem("serverName", name);
+              this.settingsOpen = false;
+              toast({ message: getLocaleText({ cn: "已保存", en: "Saved" }), color: "success" });
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+            } finally {
+              this.savingSettings = false;
+            }
+          },
+
           toggleTokenVisibility() {
             this.showToken = !this.showToken;
           },
 
           async testConnection() {
-            const overview = await this.api("/admin/overview");
-            return overview;
+            return this.api("/admin/overview");
           },
 
           async connect() {
@@ -900,7 +960,9 @@
             if (!this.serverUrl || !this.adminToken) return;
             this.connecting = true;
             try {
-              await this.testConnection();
+              const overview = await this.testConnection();
+              this.serverName = overview?.serverName || "";
+              await store.setItem("serverName", this.serverName);
               await store.setItem("serverUrl", this.serverUrl);
               await store.setItem("adminToken", this.adminToken);
               this.view = "panel";
@@ -919,6 +981,8 @@
           async disconnect() {
             await store.removeItem("serverUrl");
             await store.removeItem("adminToken");
+            await store.removeItem("serverName");
+            this.serverName = "";
             this.view = "connect";
             this.serverUrl = "";
             this.adminToken = "";
@@ -1381,7 +1445,8 @@
             this.serverUrl = savedUrl;
             this.adminToken = savedToken;
             try {
-              await this.testConnection();
+              const overview = await this.testConnection();
+              this.serverName = overview?.serverName || "";
               this.view = "panel";
               await this.refreshAll();
             } catch {

@@ -363,6 +363,12 @@ pub(crate) async fn models(
     })))
 }
 
+/// GET /v1/server —— 服务器公开信息（命名；无需鉴权，客户端展示用）
+pub(crate) async fn server_info(State(state): State<AppState>) -> Json<Value> {
+    let name = state.server_name.read().await.clone();
+    Json(serde_json::json!({ "name": name }))
+}
+
 /// GET /v1/usage —— 该用户自身的配额 / 已用 / 剩余
 pub(crate) async fn usage(
     State(state): State<AppState>,
@@ -370,6 +376,7 @@ pub(crate) async fn usage(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user = auth_user(&state, &headers).await?;
     Ok(Json(serde_json::json!({
+        "serverName": state.server_name.read().await.clone(),
         "userId": user.id,
         "name": user.name,
         "quotaTokens": user.quota_tokens,

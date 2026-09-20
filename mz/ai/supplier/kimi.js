@@ -10,7 +10,7 @@ export class KimiAssistant extends Assistant {
   async chat({
     thinking = false,
     model = "kimi-k3",
-    reasoningEffort = "high", // kimi-k3 专用："low" / "high" / "max"
+    reasoningEffort = "low", // kimi-k3 专用："low" / "high" / "max"
     stream = false,
     messages,
     onStream = null,

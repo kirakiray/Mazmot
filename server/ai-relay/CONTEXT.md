@@ -39,11 +39,13 @@ server/ai-relay/
   - `GET|POST /admin/users`；`PATCH|DELETE /admin/users/{id}`（含 `allowedModels` 白名单编辑）；`POST /admin/users/{id}/reset-usage`；`GET /admin/users/{id}/models`（key 池聚合模型清单，不过滤白名单，供管理台点选）
   - `GET /admin/users/{id}/invite`（返回 `{ code, serverUrl, bearkey }`）；`POST /admin/users/{id}/reset-bearkey`（作废旧码）
   - `GET /admin/usage?userId=&limit=`（每条含 `totalTokens` = 输入+输出）
+  - `GET|PATCH /admin/settings`（`serverName` 服务器自定义命名，持久化 settings 表；env `AI_RELAY_SERVER_NAME` 仅作初始值）
   - 创建后 apikey 明文不再可读，只回 `maskedKey`
 - 用户 `/v1/*`（OpenAI 兼容，Bearer = 用户 bearkey）：
   - `POST /v1/chat/completions`：按模型名前缀从 key 池内选可用上游（`deepseek-*` → api.deepseek.com，`glm-*` → glm 按量 key 或 glm-coding 订阅 key（open.bigmodel.cn/api/[coding/]paas/v4，见 `Provider::serves_model` / `upstream_base`））随机选取；流式请求注入 `stream_options.include_usage` 并边透传边扫末 chunk usage 落账（含 prompt/completion/cache_hit/cache_miss 明细），每条流水同时给用户累计 used_tokens 与 total_requests；非流式直接读 usage。超额 402，禁用 403，无匹配 key 400，上游错误原样透传状态码与响应体。
   - `GET /v1/models`：合并 key 池各上游模型（去重 + 按白名单过滤）；chat 对白名单外模型返回 403
-  - `GET /v1/usage`：`{ quotaTokens, usedTokens, totalRequests, remainingTokens }`
+  - `GET /v1/usage`：`{ serverName, quotaTokens, usedTokens, totalRequests, remainingTokens }`
+  - `GET /v1/server`：`{ name }` 服务器命名（公开、无需鉴权，客户端展示用）
 
 ## 部署 / 测试
 

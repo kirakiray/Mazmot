@@ -32,9 +32,9 @@ export class GlmAssistant extends Assistant {
     };
 
     if (isGlm5Model(model)) {
-      // GLM-5.3+ 思考不可关闭：thinking:false 映射为官方迁移路径的最低档 low；
-      // thinking:true 与 DeepSeek / Kimi 默认一致取 high；显式 reasoningEffort 原样透传
-      requestBody.reasoning_effort = reasoningEffort ?? (thinking ? "high" : "low");
+      // GLM-5.3+ 思考不可关闭：统一默认最低档 low（省 token、低延迟），
+      // 显式 reasoningEffort 原样透传
+      requestBody.reasoning_effort = reasoningEffort ?? "low";
     } else {
       // GLM-4.x：默认开启思考，显式传 thinking 保持与入参一致
       requestBody.thinking = { type: thinking ? "enabled" : "disabled" };

@@ -18,6 +18,17 @@ pub(crate) const USERS_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDe
 pub(crate) const APIKEYS_TABLE: redb::TableDefinition<&str, &[u8]> =
     redb::TableDefinition::new("apikeys");
 pub(crate) const USAGE_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("usage");
+pub(crate) const SETTINGS_TABLE: redb::TableDefinition<&str, &[u8]> =
+    redb::TableDefinition::new("settings");
+
+/// 服务器设置（单行，key = "server"）
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub(crate) struct SettingsRec {
+    #[serde(default)]
+    pub(crate) server_name: String,
+}
+
+pub(crate) const SETTINGS_KEY: &str = "server";
 
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -157,6 +168,7 @@ pub(crate) fn load_all(
         HashMap<String, UserRec>,
         HashMap<String, ApiKeyRec>,
         Vec<UsageRec>,
+        SettingsRec,
     ),
     String,
 > {
@@ -190,7 +202,16 @@ pub(crate) fn load_all(
         }
     }
     usage.sort_by_key(|u| u.ts);
-    Ok((users, apikeys, usage))
+    let settings = read_tx
+        .open_table(SETTINGS_TABLE)
+        .ok()
+        .and_then(|t| {
+            t.get(SETTINGS_KEY)
+                .ok()?
+                .and_then(|v| serde_json::from_slice::<SettingsRec>(v.value()).ok())
+        })
+        .unwrap_or_default();
+    Ok((users, apikeys, usage, settings))
 }
 
 // ———— 单行持久化辅助（阻塞 IO，调用方须放在 spawn_blocking 内） ————
@@ -315,7 +336,7 @@ mod tests {
         )
         .unwrap();
 
-        let (users, apikeys, usage) = load_all(&db).unwrap();
+        let (users, apikeys, usage, _settings) = load_all(&db).unwrap();
         assert_eq!(users["u1"].name, "alice");
         assert_eq!(users["u1"].used_tokens, 42);
         assert!(apikeys.is_empty());

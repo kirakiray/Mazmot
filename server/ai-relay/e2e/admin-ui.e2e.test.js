@@ -83,7 +83,7 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
 
     // 连接成功后连接表单消失、品牌区显示服务器地址、tab 面板出现
     await expect(page.locator("st-button", { hasText: "上游 API Key" })).toBeVisible();
-    await expect(page.locator(".brand-text p")).toHaveText(RELAY);
+    await expect(page.locator(".brand-text p")).toContainText(RELAY);
   });
 
   test("添加上游 API Key（弹窗内添加，masked 展示不回明文）", async () => {
@@ -262,6 +262,22 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     const res = await fetch(`${RELAY}/admin/users`, { headers: AUTH });
     const users = (await res.json()).data.users;
     expect(users.find((u) => u.name === USER_NAME)).toBeUndefined();
+  });
+
+  test("服务器设置弹窗改名并同步服务端", async () => {
+    await page.locator('st-icon-button', {
+      has: page.locator('n-icon[icon="mdi:cog-outline"]'),
+    }).click();
+    const dlg = page.locator("st-dialog.dlg-settings");
+    await expect(dlg).toBeVisible();
+    const name = `UI Relay ${RUN}`;
+    await dlg.locator("st-input input").fill(name);
+    await dlg.locator("st-button", { hasText: /保存|Save/ }).click();
+
+    // 品牌副标题展示新命名；服务端 /v1/server 一致
+    await expect(page.locator(".brand-text p")).toContainText(name);
+    const info = await fetch(`${RELAY}/v1/server`).then((r) => r.json());
+    expect(info.name).toBe(name);
   });
 
   test("断开连接回到连接页并清空本地凭据", async ({ }, testInfo) => {

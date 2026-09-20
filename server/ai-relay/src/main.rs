@@ -39,6 +39,8 @@ pub(crate) struct AppState {
     admin_token: Option<String>,
     /// 邀请码里 "u" 字段的优先取值（AI_RELAY_PUBLIC_URL）；未配置时按请求 Host 动态推导
     public_url: Option<String>,
+    /// 服务器自定义命名（settings 表持久化；初始值取 AI_RELAY_SERVER_NAME env/toml）
+    server_name: Arc<RwLock<String>>,
 }
 
 impl AppState {
@@ -178,6 +180,8 @@ async fn main() {
         PathBuf::from(resolve_str("AI_RELAY_DATA", &file_cfg.vars).unwrap_or_else(|| "data/ai-relay.redb".into()));
     let admin_token = resolve_str("AI_RELAY_ADMIN_TOKEN", &file_cfg.vars);
     let public_url = resolve_str("AI_RELAY_PUBLIC_URL", &file_cfg.vars);
+    let server_name = resolve_str("AI_RELAY_SERVER_NAME", &file_cfg.vars)
+        .unwrap_or_else(|| "AI Relay".into());
     // 浏览器直连是主场景，默认放行；反代部署时可关闭交给 nginx
     let cors = resolve_str("AI_RELAY_CORS", &file_cfg.vars).unwrap_or_else(|| "1".into());
     let enable_cors = cors == "1" || cors.eq_ignore_ascii_case("true");
@@ -186,7 +190,7 @@ async fn main() {
         let _ = std::fs::create_dir_all(parent);
     }
     let db = redb::Database::create(&data_path).expect("打开存储失败");
-    let (users, apikeys, usage) = store::load_all(&db).expect("加载存储失败");
+    let (users, apikeys, usage, settings) = store::load_all(&db).expect("加载存储失败");
     println!(
         "ai-relay: {} users, {} apikeys, {} usage records",
         users.len(),
@@ -202,6 +206,9 @@ async fn main() {
         http: reqwest::Client::new(),
         admin_token,
         public_url,
+        server_name: Arc::new(RwLock::new(
+            if settings.server_name.is_empty() { server_name } else { settings.server_name },
+        )),
     };
 
     let app = Router::new()
@@ -223,10 +230,15 @@ async fn main() {
         .route("/admin/users/{id}/reset-bearkey", post(admin::reset_bearkey))
         .route("/admin/users/{id}/reset-usage", post(admin::reset_usage))
         .route("/admin/usage", get(admin::list_usage))
+        .route(
+            "/admin/settings",
+            get(admin::get_settings).patch(admin::update_settings),
+        )
         // 用户 API（OpenAI 兼容）
         .route("/v1/chat/completions", post(proxy::chat_completions))
         .route("/v1/models", get(proxy::models))
         .route("/v1/usage", get(proxy::usage))
+        .route("/v1/server", get(proxy::server_info))
         .route("/health", get(|| async { "ok" }))
         .with_state(state);
     let app = if enable_cors {

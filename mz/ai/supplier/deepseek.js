@@ -7,7 +7,7 @@ export class DeepseekAssistant extends Assistant {
   async chat({
     thinking = false,
     model = "deepseek-flash",
-    reasoningEffort = "high",
+    reasoningEffort = "low",
     stream = false,
     messages,
     onStream = null,

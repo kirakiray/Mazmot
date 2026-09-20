@@ -54,7 +54,7 @@ const response = await assistant.chat({
 | `stream` | boolean | false | 是否启用流式输出 |
 | `model` | string | - | 模型名称 |
 | `onStream` | function | null | 流式输出回调 |
-| `reasoningEffort` | string | "high" | 推理强度。DeepSeek：`low`/`high`/`max`（官方另接受 `minimal`/`medium`/`xhigh`/`ultra` 并自动映射三档）；kimi-k3：`low`/`high`/`max`；GLM-5.3+：`low`/`high`/`max`（见「思考模式 → GLM」） |
+| `reasoningEffort` | string | "low" | 推理强度。DeepSeek：`low`/`high`/`max`（官方另接受 `minimal`/`medium`/`xhigh`/`ultra` 并自动映射三档）；kimi-k3：`low`/`high`/`max`；GLM-5.3+：`low`/`high`/`max`（见「思考模式 → GLM」） |
 | `thinkingKeep` | string | null | 仅 `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
 | `signal` | AbortSignal | null | 传入用于取消请求；abort 后抛 `AbortError` |
 
@@ -117,6 +117,7 @@ import {
 保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到本地存储（nos storage）并通知订阅者。
 
 - `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"`（relay 时 apiKey 传服务器签发的完整邀请码）
+- `extra`（可选）：附加字段合并进 key 对象，如 `{ serverName: "团队中转" }`（relay 添加时经 `fetchServerInfo(baseUrl)` 拉取服务器命名，`/mz/ai/supplier/relay.js` 导出）
 
 ```js
 const keyObj = saveKey("sk-xxx", "deepseek");
@@ -172,6 +173,10 @@ const unsub = onApiKeysChange((keys) => renderKeyList(keys));
 // 销毁时
 unsub();
 ```
+
+### updateKey(id, extra)
+
+按 id 合并更新 key 附加字段（持久化 + 通知 `onApiKeysChange`）。旧 relay key 补 `serverName` 用。
 
 ### testApiKey(apiKey, provider)
 
@@ -245,7 +250,7 @@ await assistant.chat({
 GLM-5.3+ 的档位取值规则（`glm.js` 内实现）：
 
 - 显式传 `reasoningEffort`：原样透传，优先级最高
-- `thinking: true` 且未传档位：取 `"high"`（与 DeepSeek / Kimi 默认一致）
+- 未传档位：取 `"low"`（与 DeepSeek / Kimi 默认一致）
 - `thinking: false`（默认）且未传档位：取 `"low"`（官方迁移路径：原「关闭思考」场景改用最低档）
 
 ```js

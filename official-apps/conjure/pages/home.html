@@ -474,33 +474,25 @@
               <span class="ctx-pop">
                 <span class="ctx-pop-row">
                   <span class="ctx-pop-label">模型</span>
-                  <select
+                  <st-select
                     class="ctx-select key-select model-select"
                     attr:title="'对话使用的模型（当前：' + (activeModelId || '供应商默认') + '）'"
-                    :value="activeModelId"
+                    :options="modelSelectOptions"
+                    sync:value="activeModelId"
                     attr:disabled="modelOptions.length === 0"
                     on:change="selectModel($event)"
-                  >
-                    <option value="">自动（供应商默认）</option>
-                    <o-fill :value="modelOptions" fill-key="id">
-                      <option attr:value="$data.id">{{$data.label}}</option>
-                    </o-fill>
-                  </select>
+                  ></st-select>
                 </span>
                 <span class="ctx-pop-row">
                   <span class="ctx-pop-label">Key</span>
                   <o-if :value="apiKeys.length > 0">
-                    <select
+                    <st-select
                       class="ctx-select key-select"
                       attr:title="'对话使用的 API Key（当前：' + activeKeyText + '）'"
-                      :value="activeKeyId"
+                      :options="apiSelectOptions"
+                      sync:value="activeKeyId"
                       on:change="selectApiKey($event)"
-                    >
-                      <option value="">自动选择</option>
-                      <o-fill :value="apiKeys" fill-key="id">
-                        <option attr:value="$data.id">{{$data.provider}} · {{$data.maskedKey}}</option>
-                      </o-fill>
-                    </select>
+                    ></st-select>
                   </o-if>
                   <o-if :value="apiKeys.length === 0">
                     <span class="ctx-pop-value">未配置（去密钥管理器添加）</span>
@@ -508,18 +500,13 @@
                 </span>
                 <span class="ctx-pop-row">
                   <span class="ctx-pop-label">窗口</span>
-                  <select
+                  <st-select
                     class="ctx-select"
                     attr:title="'会话最大上下文窗口（当前 ' + ctxWindowText + '）'"
-                    :value="ctxWindow"
+                    :options="ctxOptions"
+                    sync:value="ctxWindow"
                     on:change="setCtxWindow($event)"
-                  >
-                    <option value="131072">128k</option>
-                    <option value="262144">256k</option>
-                    <option value="524288">512k</option>
-                    <option value="786432">768k</option>
-                    <option value="1048576">1mb</option>
-                  </select>
+                  ></st-select>
                 </span>
               </span>
             </span>
@@ -1300,6 +1287,15 @@
           compacting: false,
           // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
           apiKeys: [],
+          modelSelectOptions: [{ value: "", label: "自动（供应商默认）" }],
+          apiSelectOptions: [{ value: "", label: "自动选择" }],
+          ctxOptions: [
+            { value: "131072", label: "128k" },
+            { value: "262144", label: "256k" },
+            { value: "524288", label: "512k" },
+            { value: "786432", label: "768k" },
+            { value: "1048576", label: "1mb" },
+          ],
           activeKeyId: "",
           activeKeyText: "自动选择",
           // 当前 Agent 模型标识（仓库 patch，悬停气泡展示）
@@ -1478,7 +1474,9 @@
           // getModels 动态拉取，随 patch 事件到达本页 modelOptions）
           syncActiveKeyText() {
             const hit = this.apiKeys.find((k) => k.id === this.activeKeyId);
-            this.activeKeyText = hit ? `${hit.provider} · ${hit.maskedKey}` : "自动选择";
+            this.activeKeyText = hit
+              ? `${hit.provider === "relay" ? hit.serverName || "Relay" : hit.provider} · ${hit.maskedKey}`
+              : "自动选择";
             // 选中的模型不在当前可用清单里（key 已切换 / 清单已刷新）：重置为自动
             if (
               this.activeModelId &&
@@ -1522,8 +1520,8 @@
           // 切换最大上下文窗口：立即重算进度并持久化偏好
           setCtxWindow(event) {
             this.ctxWindow = event.target.value;
-            const opt = event.target.selectedOptions?.[0];
-            this.ctxWindowText = opt ? opt.textContent.trim() : "128k";
+            const opt = this.ctxOptions.find((o) => o.value === this.ctxWindow);
+            this.ctxWindowText = opt ? opt.label : "128k";
             this.syncCtx();
             store.setContextWindow(Number(this.ctxWindow));
           this.syncActiveKeyText();
@@ -1691,7 +1689,9 @@
             const id = event.target.value;
             store.selectApiKey(id);
             const hit = this.apiKeys.find((k) => k.id === id);
-            this.activeKeyText = hit ? `${hit.provider} · ${hit.maskedKey}` : "自动选择";
+            this.activeKeyText = hit
+              ? `${hit.provider === "relay" ? hit.serverName || "Relay" : hit.provider} · ${hit.maskedKey}`
+              : "自动选择";
           },
 
           // 手动压缩当前会话上下文（点击进度圆圈触发）

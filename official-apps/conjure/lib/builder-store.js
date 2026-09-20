@@ -257,19 +257,27 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     return rec?.handle || null;
   };
 
+  // 参数值的展示文本：长字符串（如 code）截断省略并标注长度；对象/数组展开为紧凑 JSON 再截断
+  const prettyValue = (v) => {
+    let text = typeof v === "string" ? v : JSON.stringify(v) ?? String(v);
+    if (text.length > 80) text = `${text.slice(0, 80)}…(${text.length} 字符)`;
+    return text;
+  };
+
   const prettyArgs = (raw) => {
-    try {
-      const obj = JSON.parse(raw);
-      const text = Object.entries(obj)
-        .map(([k, v]) => {
-          const vText = String(v);
-          return `${k} = ${vText.length > 60 ? vText.slice(0, 60) + "…" : vText}`;
-        })
-        .join("，");
-      return text || raw;
-    } catch {
-      return raw;
+    let obj = raw;
+    if (typeof raw === "string") {
+      try {
+        obj = JSON.parse(raw);
+      } catch {
+        return raw;
+      }
     }
+    if (!obj || typeof obj !== "object") return String(obj);
+    const text = Object.entries(obj)
+      .map(([k, v]) => `${k} = ${prettyValue(v)}`)
+      .join("，");
+    return text || JSON.stringify(obj);
   };
 
   /* ---------- Agent ---------- */
@@ -1022,6 +1030,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   const staticModelOptions = (key) =>
     (MODEL_OPTIONS[key?.provider] || []).map((id) => ({ id, label: id }));
 
+  // 模型下拉数据源（st-select :options）：头部恒置「自动」项
+  const applyModelOptions = (list) => {
+    set("modelOptions", list);
+    set("modelSelectOptions", [
+      { value: "", label: "自动（供应商默认）" },
+      ...list,
+    ]);
+  };
+
   // 拉取当前选中 key 的可用模型（getModels，relay 供应商即 /v1/models），
   // 写入 state.modelOptions 供输入区气泡展示；自动 Key（activeKeyId 为 ""）
   // 不拉取，模型 select 维持禁用（跟随供应商默认）
@@ -1034,7 +1051,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
     const cached = modelOptionsCache.get(key.id);
     if (cached !== undefined) {
-      set("modelOptions", cached === null ? staticModelOptions(key) : cached);
+      applyModelOptions(cached === null ? staticModelOptions(key) : cached);
       return;
     }
     modelOptionsCache.set(key.id, null); // 占位防并发重复拉取
@@ -1046,21 +1063,36 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         .filter((id) => typeof id === "string" && id)
         .map((id) => ({ id, label: id }));
       modelOptionsCache.set(key.id, list);
-      if (seq === modelOptionsSeq) set("modelOptions", list);
+      if (seq === modelOptionsSeq) applyModelOptions(list);
     } catch (err) {
       console.warn("获取模型列表失败，回退内置清单：", err?.message ?? err);
       modelOptionsCache.delete(key.id); // 不缓存失败结果，下次切换重试
-      if (seq === modelOptionsSeq) set("modelOptions", staticModelOptions(key));
+      if (seq === modelOptionsSeq) applyModelOptions(staticModelOptions(key));
     }
   }
 
   // 把 /mz/ai 的 key 列表镜像进 state（只留展示所需字段）
   function syncApiKeyList(keys) {
+    const active = (keys || []).filter((k) => !k.disabled);
     set(
       "apiKeys",
-      (keys || [])
-        .filter((k) => !k.disabled)
-        .map((k) => ({ id: k.id, provider: k.provider, maskedKey: k.maskedKey })),
+      active.map((k) => ({
+        id: k.id,
+        provider: k.provider,
+        maskedKey: k.maskedKey,
+        // relay 中转服务器的自定义命名（选择 provider 时展示）
+        serverName: k.serverName,
+      })),
+    );
+    set(
+      "apiSelectOptions",
+      [
+        { value: "", label: "自动选择" },
+        ...active.map((k) => ({
+          value: k.id,
+          label: `${k.provider === "relay" ? k.serverName || "Relay" : k.provider} · ${k.maskedKey}`,
+        })),
+      ],
     );
     // 选中的 key 已被删/禁用：回退自动
     if (state.activeKeyId && !keys?.some((k) => k.id === state.activeKeyId && !k.disabled)) {
@@ -1452,13 +1484,23 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       activeBubble = null;
       for (const call of ev.toolCalls) {
-        const args = call.function?.arguments ?? call.args ?? "{}";
+        // args 可能是字符串（OpenAI 风格）或对象（部分供应商），统一转成
+        // 展示用文本，避免模板直接渲染出 [object Object]
+        const rawArgs = call.function?.arguments ?? call.args ?? "{}";
+        let argsText = rawArgs;
+        if (typeof rawArgs !== "string") {
+          try {
+            argsText = JSON.stringify(rawArgs, null, 2);
+          } catch {
+            argsText = String(rawArgs);
+          }
+        }
         pushMessage({
           id: state.nextId++,
           role: "tool",
           name: call.function?.name ?? call.name,
-          args,
-          summary: prettyArgs(args),
+          args: argsText,
+          summary: prettyArgs(argsText),
           result: "",
           pending: true,
           open: false,

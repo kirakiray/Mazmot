@@ -452,6 +452,57 @@ pub(crate) async fn user_models(
     Ok(ok_json(serde_json::json!({ "models": ids })))
 }
 
+// ———— 服务器设置 ————
+
+/// GET /admin/settings 请求体
+#[derive(Deserialize)]
+pub(crate) struct UpdateSettingsReq {
+    #[serde(rename = "serverName")]
+    server_name: String,
+}
+
+/// GET /admin/settings
+pub(crate) async fn get_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let name = state.server_name.read().await.clone();
+    Ok(ok_json(serde_json::json!({ "serverName": name })))
+}
+
+/// PATCH /admin/settings —— 服务器自定义命名（持久化 settings 表；env 仅作初始值）
+pub(crate) async fn update_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateSettingsReq>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let name = req.server_name.trim().to_string();
+    if name.is_empty() || name.len() > 64 {
+        return Err(api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "serverName 需为 1-64 字符",
+        ));
+    }
+    {
+        let mut cur = state.server_name.write().await;
+        *cur = name.clone();
+    }
+    let rec = store::SettingsRec { server_name: name };
+    let db = state.db.clone();
+    let json = serde_json::to_vec(&rec).map_err(|e| api_error_db(e.to_string()))?;
+    let _ = tokio::task::spawn_blocking(move || {
+        store::put_row(&db, store::SETTINGS_TABLE, store::SETTINGS_KEY, &json)
+    })
+    .await;
+    Ok(ok_json(serde_json::json!({ "serverName": rec.server_name })))
+}
+
 // ———— 用量 ————
 
 /// POST /admin/users/{id}/reset-usage —— 清零累计用量（流水保留，仅计数归零）
@@ -524,9 +575,11 @@ pub(crate) async fn overview(
     if let Some(err) = gate(&state, &headers) {
         return Err(err);
     }
+    let server_name = state.server_name.read().await.clone();
     let (users, keys) = (state.users.read().await, state.apikeys.read().await);
     let total_used: i64 = users.values().map(|u| u.used_tokens).sum();
     Ok(ok_json(serde_json::json!({
+        "serverName": server_name,
         "users": { "total": users.len(), "disabled": users.values().filter(|u| u.disabled).count() },
         "apikeys": { "total": keys.len(), "disabled": keys.values().filter(|k| k.disabled).count() },
         "totalUsedTokens": total_used,
