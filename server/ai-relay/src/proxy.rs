@@ -193,6 +193,13 @@ pub(crate) async fn chat_completions(
             format!("无法从模型名 {model} 识别上游（支持 glm-* / deepseek-*）"),
         ));
     }
+    // 用户级模型白名单（空 = 不限制）
+    if !store::model_allowed(&user.allowed_models, &model) {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            format!("模型 {model} 不在该用户的可用模型范围内"),
+        ));
+    }
     let upstream_key = pick_upstream_key(&state, &user, &model).await?;
 
     // 流式请求注入 include_usage，上游末 chunk 才会带 usage 供统计
@@ -295,7 +302,35 @@ pub(crate) async fn chat_completions(
         .unwrap())
 }
 
-/// GET /v1/models —— 合并用户 key 池内各上游的模型列表
+/// 聚合 key 池内各上游的模型 id（去重；单个上游失败跳过，全部失败返回 None）
+pub(crate) async fn pool_models(
+    http: &reqwest::Client,
+    pool: &[crate::store::ApiKeyRec],
+) -> Option<Vec<String>> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut any_ok = false;
+    for key in pool {
+        let url = format!("{}/models", key.provider.upstream_base());
+        let Ok(resp) = http.get(&url).bearer_auth(&key.api_key).send().await else {
+            continue;
+        };
+        if let Ok(data) = resp.json::<Value>().await {
+            if let Some(list) = data.get("data").and_then(|d| d.as_array()) {
+                for m in list {
+                    if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
+                        if !ids.iter().any(|x| x == id) {
+                            ids.push(id.to_string());
+                        }
+                    }
+                }
+                any_ok = true;
+            }
+        }
+    }
+    if any_ok { Some(ids) } else { None }
+}
+
+/// GET /v1/models —— 合并用户 key 池内各上游的模型列表（按白名单过滤）
 pub(crate) async fn models(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -315,29 +350,13 @@ pub(crate) async fn models(
         return Err(api_error(StatusCode::BAD_REQUEST, "该用户未配置任何可用上游 key"));
     }
 
-    let mut ids: Vec<String> = Vec::new();
-    let mut any_ok = false;
-    for key in &pool {
-        let url = format!("{}/models", key.provider.upstream_base());
-        let Ok(resp) = state.http.get(&url).bearer_auth(&key.api_key).send().await else {
-            continue;
-        };
-        if let Ok(data) = resp.json::<Value>().await {
-            if let Some(list) = data.get("data").and_then(|d| d.as_array()) {
-                for m in list {
-                    if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
-                        if !ids.iter().any(|x| x == id) {
-                            ids.push(id.to_string());
-                        }
-                    }
-                }
-                any_ok = true;
-            }
-        }
-    }
-    if !any_ok {
-        return Err(api_error(StatusCode::BAD_GATEWAY, "所有上游模型列表查询失败"));
-    }
+    let ids = pool_models(&state.http, &pool)
+        .await
+        .ok_or_else(|| api_error(StatusCode::BAD_GATEWAY, "所有上游模型列表查询失败"))?;
+    let ids: Vec<String> = ids
+        .into_iter()
+        .filter(|id| store::model_allowed(&user.allowed_models, id))
+        .collect();
     Ok(Json(serde_json::json!({
         "object": "list",
         "data": ids.into_iter().map(|id| serde_json::json!({ "id": id, "object": "model" })).collect::<Vec<_>>(),

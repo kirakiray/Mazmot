@@ -219,6 +219,7 @@ async fn main() {
             patch(admin::update_user).delete(admin::delete_user),
         )
         .route("/admin/users/{id}/invite", get(admin::get_invite))
+        .route("/admin/users/{id}/models", get(admin::user_models))
         .route("/admin/users/{id}/reset-bearkey", post(admin::reset_bearkey))
         .route("/admin/users/{id}/reset-usage", post(admin::reset_usage))
         .route("/admin/usage", get(admin::list_usage))

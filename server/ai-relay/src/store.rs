@@ -106,6 +106,18 @@ pub(crate) struct UserRec {
     pub(crate) created_at: i64,
     /// 该用户可用的上游 apikey id 池
     pub(crate) api_key_ids: Vec<String>,
+    /// 可用模型白名单；空 = 不限制。支持 `glm-5*` 前缀通配
+    #[serde(default)]
+    pub(crate) allowed_models: Vec<String>,
+}
+
+/// 判定模型是否被白名单放行：空名单不限；精确匹配或 `xxx*` 前缀通配
+pub(crate) fn model_allowed(allowed: &[String], model: &str) -> bool {
+    allowed.is_empty()
+        || allowed.iter().any(|entry| {
+            entry == model
+                || (entry.ends_with('*') && model.starts_with(&entry[..entry.len() - 1]))
+        })
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -279,7 +291,11 @@ mod tests {
             disabled: false,
             created_at: 1,
             api_key_ids: vec!["k1".into()],
+            allowed_models: vec!["glm-5*".into()],
         };
+        assert!(model_allowed(&user.allowed_models, "glm-5.3"));
+        assert!(!model_allowed(&user.allowed_models, "deepseek-chat"));
+        assert!(model_allowed(&[], "anything"));
         put_row(&db, USERS_TABLE, "u1", serde_json::to_vec(&user).unwrap().as_slice()).unwrap();
         let usage = UsageRec {
             user_id: "u1".into(),

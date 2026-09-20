@@ -444,80 +444,85 @@
         ></textarea>
         <div class="composer-row">
           <div class="composer-left">
-            <!-- 上下文占用：小圆圈进度 + 最大窗口选择（与思考模式并排） -->
-            <o-if :value="ctxUsed > 0">
-              <span class="ctx-anchor">
-                <button
-                  class="ctx-ring"
-                  attr:disabled="compacting"
-                  attr:title="compacting ? '正在压缩上下文…' : ctxTitle + '，点击立即压缩上下文'"
-                  on:click="handleCompress"
+            <!-- 上下文占用圆圈常驻：无占用时显示「AI」，悬停即可选模型 / API Key；
+                 有占用后显示进度，点击压缩 -->
+            <span class="ctx-anchor">
+              <button
+                class="ctx-ring"
+                attr:disabled="compacting"
+                attr:title="compacting ? '正在压缩上下文…' : (ctxUsed > 0 ? ctxTitle + '，点击立即压缩上下文' : '选择对话使用的 AI：悬停切换模型与 API Key')"
+                on:click="handleCompress"
+              >
+                <svg class="ctx-ring-svg" viewBox="0 0 20 20">
+                  <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
+                  <circle
+                    class="ctx-ring-fill"
+                    class:warn="ctxPct >= 80"
+                    cx="10"
+                    cy="10"
+                    r="8"
+                    stroke-dasharray="50.27"
+                    attr:stroke-dashoffset="ctxDash"
+                  ></circle>
+                </svg>
+                <span
+                  class="ctx-ring-label"
+                  >{{compacting ? '压缩中…' : (ctxUsed ? ctxPct + '%' : '🤖 AI')}}</span
                 >
-                  <svg class="ctx-ring-svg" viewBox="0 0 20 20">
-                    <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
-                    <circle
-                      class="ctx-ring-fill"
-                      class:warn="ctxPct >= 80"
-                      cx="10"
-                      cy="10"
-                      r="8"
-                      stroke-dasharray="50.27"
-                      attr:stroke-dashoffset="ctxDash"
-                    ></circle>
-                  </svg>
-                  <span class="ctx-ring-label">{{compacting ? '压缩中…' : ctxPct + '%'}}</span>
-                </button>
-                <!-- 悬停气泡：当前模型 + API Key 切换 -->
-                <span class="ctx-pop">
-                  <span class="ctx-pop-row">
-                    <span class="ctx-pop-label">模型</span>
+              </button>
+              <!-- 悬停气泡：当前模型 + API Key 切换 -->
+              <span class="ctx-pop">
+                <span class="ctx-pop-row">
+                  <span class="ctx-pop-label">模型</span>
+                  <select
+                    class="ctx-select key-select model-select"
+                    attr:title="'对话使用的模型（当前：' + (activeModelId || '供应商默认') + '）'"
+                    :value="activeModelId"
+                    attr:disabled="modelOptions.length === 0"
+                    on:change="selectModel($event)"
+                  >
+                    <option value="">自动（供应商默认）</option>
+                    <o-fill :value="modelOptions" fill-key="id">
+                      <option attr:value="$data.id">{{$data.label}}</option>
+                    </o-fill>
+                  </select>
+                </span>
+                <span class="ctx-pop-row">
+                  <span class="ctx-pop-label">Key</span>
+                  <o-if :value="apiKeys.length > 0">
                     <select
-                      class="ctx-select key-select model-select"
-                      attr:title="'对话使用的模型（当前：' + (activeModelId || '供应商默认') + '）'"
-                      :value="activeModelId"
-                      attr:disabled="modelOptions.length === 0"
-                      on:change="selectModel($event)"
+                      class="ctx-select key-select"
+                      attr:title="'对话使用的 API Key（当前：' + activeKeyText + '）'"
+                      :value="activeKeyId"
+                      on:change="selectApiKey($event)"
                     >
-                      <option value="">自动（供应商默认）</option>
-                      <o-fill :value="modelOptions" fill-key="id">
-                        <option attr:value="$data.id">{{$data.label}}</option>
+                      <option value="">自动选择</option>
+                      <o-fill :value="apiKeys" fill-key="id">
+                        <option attr:value="$data.id">{{$data.provider}} · {{$data.maskedKey}}</option>
                       </o-fill>
                     </select>
-                  </span>
-                  <span class="ctx-pop-row">
-                    <span class="ctx-pop-label">Key</span>
-                    <o-if :value="apiKeys.length > 0">
-                      <select
-                        class="ctx-select key-select"
-                        attr:title="'对话使用的 API Key（当前：' + activeKeyText + '）'"
-                        :value="activeKeyId"
-                        on:change="selectApiKey($event)"
-                      >
-                        <option value="">自动选择</option>
-                        <o-fill :value="apiKeys" fill-key="id">
-                          <option attr:value="$data.id">{{$data.provider}} · {{$data.maskedKey}}</option>
-                        </o-fill>
-                      </select>
-                    </o-if>
-                    <o-if :value="apiKeys.length === 0">
-                      <span class="ctx-pop-value">未配置（去密钥管理器添加）</span>
-                    </span>
-                  </span>
+                  </o-if>
+                  <o-if :value="apiKeys.length === 0">
+                    <span class="ctx-pop-value">未配置（去密钥管理器添加）</span>
+                  </o-if>
+                </span>
+                <span class="ctx-pop-row">
+                  <span class="ctx-pop-label">窗口</span>
+                  <select
+                    class="ctx-select"
+                    attr:title="'会话最大上下文窗口（当前 ' + ctxWindowText + '）'"
+                    :value="ctxWindow"
+                    on:change="setCtxWindow($event)"
+                  >
+                    <option value="131072">128k</option>
+                    <option value="262144">256k</option>
+                    <option value="524288">512k</option>
+                    <option value="786432">768k</option>
+                    <option value="1048576">1mb</option>
+                  </select>
                 </span>
               </span>
-            </o-if>
-            <select
-              class="ctx-select"
-              attr:title="'会话最大上下文窗口（当前 ' + ctxWindowText + '）'"
-              :value="ctxWindow"
-              on:change="setCtxWindow($event)"
-            >
-              <option value="131072">128k</option>
-              <option value="262144">256k</option>
-              <option value="524288">512k</option>
-              <option value="786432">768k</option>
-              <option value="1048576">1mb</option>
-            </select>
+            </span>
             <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
             <button
               class="target-opt"
@@ -1489,7 +1494,13 @@
           syncCtx() {
             const info = contextInfo(this.messages);
             this.ctxUsed = info.used;
-            if (info.used <= 0) return;
+            if (info.used <= 0) {
+              // 空会话回零态：圆圈显示「🤖 AI」入口（选择模型 / Key）
+              this.ctxPct = 0;
+              this.ctxDash = "50.27";
+              this.ctxTitle = "";
+              return;
+            }
             const total = Number(this.ctxWindow) || 131072;
             this.ctxPct = Math.round(Math.min(100, (info.used / total) * 100) * 10) / 10;
             // r=8 的圆周长 2πr ≈ 50.27，偏移量 = 周长 ×（1 - 进度）
@@ -1680,7 +1691,7 @@
 
           // 手动压缩当前会话上下文（点击进度圆圈触发）
           async handleCompress() {
-            if (this.compacting) return;
+            if (this.compacting || this.ctxUsed <= 0) return;
             this.compacting = true;
             try {
               const r = await store.compress();

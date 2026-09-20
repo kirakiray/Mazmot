@@ -249,6 +249,41 @@ try {
     check("glm-coding 缓存记账（根目录 test-api-keys.json 无 glmcodingplan key，跳过）", true);
   }
 
+  // ———— 2.8 用户级模型白名单 ————
+  const mpatch = await request(`/admin/users/${user.id}`, {
+    method: "PATCH",
+    token: ADMIN_TOKEN,
+    body: { allowedModels: ["deepseek-flash"] },
+  });
+  check("PATCH allowedModels 生效", mpatch.status === 200 &&
+    JSON.stringify(mpatch.data.data.allowedModels) === JSON.stringify(["deepseek-flash"]),
+    `status=${mpatch.status} body=${JSON.stringify(mpatch.data).slice(0, 200)}`);
+
+  const blockedChat = await request("/v1/chat/completions", {
+    method: "POST",
+    token: user.bearkey,
+    body: { model: "deepseek-reasoner", messages: [{ role: "user", content: "hi" }] },
+  });
+  check("白名单外模型被 403 拦截",
+    blockedChat.status === 403 && !!blockedChat.data?.error?.message,
+    `status=${blockedChat.status}`);
+
+  const filteredModels = await request("/v1/models", { token: user.bearkey });
+  const filteredIds = (filteredModels.data?.data || []).map((m) => m.id);
+  check("/v1/models 按白名单过滤",
+    filteredModels.status === 200 && filteredIds.length === 1 && filteredIds[0] === "deepseek-flash",
+    JSON.stringify(filteredIds));
+
+  await request(`/admin/users/${user.id}`, {
+    method: "PATCH",
+    token: ADMIN_TOKEN,
+    body: { allowedModels: [] },
+  });
+  const unblockedModels = await request("/v1/models", { token: user.bearkey });
+  check("清空白名单后模型恢复不限制",
+    (unblockedModels.data?.data || []).length === 2,
+    `${(unblockedModels.data?.data || []).length} 个模型`);
+
   // ———— 3. 流式 ————
   const streamResp = await fetch(`${BASE}/v1/chat/completions`, {
     method: "POST",

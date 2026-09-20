@@ -28,7 +28,7 @@ server/ai-relay/
 
 ## 数据模型（redb 表，内存全量读缓存）
 
-- `users`：`UserRec { id, name, note, quota_tokens(可空=无限), used_tokens(累计，不自动重置), total_requests(累计对话轮数), bearkey("ar-"+32位随机), disabled, created_at, api_key_ids[] }`
+- `users`：`UserRec { id, name, note, quota_tokens(可空=无限), used_tokens(累计，不自动重置), total_requests(累计对话轮数), bearkey("ar-"+32位随机), disabled, created_at, api_key_ids[], allowed_models[](模型白名单，空=不限；支持 `glm-5*` 前缀通配，见 `model_allowed`) }`
 - `apikeys`：`ApiKeyRec { id, provider("deepseek"|"glm"|"glm-coding"), label, api_key(明文仅本地), masked_key, disabled, created_at }`；创建前经 `proxy::probe_key` 真实上游探测（GET /models，404/405 降级 1 token 对话探测），失败 422 不落库
 - `usage`：流水 `UsageRec { user_id, ts, model, prompt_tokens, completion_tokens, cache_hit_tokens, cache_miss_tokens(兼容 DeepSeek 扁平字段与 GLM prompt_tokens_details.cached_tokens，仅命中时 miss=输入-命中，全无则 0), key_id }`，行 key = `{user_id}\0{ts}\0{nonce}`
 
@@ -36,13 +36,13 @@ server/ai-relay/
 
 - 管理 `/admin/*`：Bearer = AI_RELAY_ADMIN_TOKEN（恒定时间比较）。响应统一 `{ ok, data }` 或 `{ ok: false, error }`。
   - `GET /admin/overview`；`GET|POST /admin/apikeys`；`PATCH|DELETE /admin/apikeys/{id}`（仍被用户绑定时删除返回 409）
-  - `GET|POST /admin/users`；`PATCH|DELETE /admin/users/{id}`；`POST /admin/users/{id}/reset-usage`
+  - `GET|POST /admin/users`；`PATCH|DELETE /admin/users/{id}`（含 `allowedModels` 白名单编辑）；`POST /admin/users/{id}/reset-usage`；`GET /admin/users/{id}/models`（key 池聚合模型清单，不过滤白名单，供管理台点选）
   - `GET /admin/users/{id}/invite`（返回 `{ code, serverUrl, bearkey }`）；`POST /admin/users/{id}/reset-bearkey`（作废旧码）
   - `GET /admin/usage?userId=&limit=`（每条含 `totalTokens` = 输入+输出）
   - 创建后 apikey 明文不再可读，只回 `maskedKey`
 - 用户 `/v1/*`（OpenAI 兼容，Bearer = 用户 bearkey）：
   - `POST /v1/chat/completions`：按模型名前缀从 key 池内选可用上游（`deepseek-*` → api.deepseek.com，`glm-*` → glm 按量 key 或 glm-coding 订阅 key（open.bigmodel.cn/api/[coding/]paas/v4，见 `Provider::serves_model` / `upstream_base`））随机选取；流式请求注入 `stream_options.include_usage` 并边透传边扫末 chunk usage 落账（含 prompt/completion/cache_hit/cache_miss 明细），每条流水同时给用户累计 used_tokens 与 total_requests；非流式直接读 usage。超额 402，禁用 403，无匹配 key 400，上游错误原样透传状态码与响应体。
-  - `GET /v1/models`：合并 key 池各上游模型（去重）
+  - `GET /v1/models`：合并 key 池各上游模型（去重 + 按白名单过滤）；chat 对白名单外模型返回 403
   - `GET /v1/usage`：`{ quotaTokens, usedTokens, totalRequests, remainingTokens }`
 
 ## 部署 / 测试

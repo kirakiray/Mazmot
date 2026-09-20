@@ -187,6 +187,9 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     const dialog = page.locator("st-dialog.dlg-invite");
     await expect(dialog).toBeVisible();
 
+    // 白名单填 glm-4.7*（通配），保存后服务端校验
+    await dialog.locator("st-textarea textarea").fill("glm-4.7*");
+
     // 改配额：详情回填为 500k，切回 token 单位应自动换算为 500000，再改填 777
     await dialog
       .locator("st-select")
@@ -216,6 +219,7 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     }
     expect(user.quotaTokens).toBe(777);
     expect(user.apiKeyIds).toEqual([key2Id]);
+    expect(user.allowedModels).toEqual(["glm-4.7*"]);
     await dialog.locator("st-button", { hasText: /关闭|Close/ }).click();
   });
 

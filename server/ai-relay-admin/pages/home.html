@@ -246,6 +246,31 @@
       margin: 4px 0 0;
     }
 
+    .model-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .model-chip {
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: transparent;
+      color: var(--md-sys-color-on-surface-variant);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        monospace;
+      cursor: pointer;
+    }
+
+    .model-chip.picked {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      border-color: transparent;
+    }
+
     .checkbox-group {
       display: flex;
       flex-direction: column;
@@ -674,6 +699,29 @@
         </div>
       </o-if>
     </div>
+    <div class="field">
+      <div class="section-header" style="margin-bottom: 6px;">
+        <label class="field-label" style="margin: 0;"><locale-text><span lang="cn">可用模型（逗号/换行分隔，支持 glm-5* 通配，留空不限制）</span><span lang="en">Allowed models (comma/newline separated, glm-5* wildcard, empty = unlimited)</span></locale-text></label>
+        <st-button variant="outlined" style="font-size: 11px" attr:disabled="loadingModels" on:click="fetchPoolModels">
+          <span slot="prefix"><n-icon icon="mdi:cloud-download-outline"></n-icon></span>
+          <locale-text><span lang="cn">拉取上游模型</span><span lang="en">Fetch upstream models</span></locale-text>
+        </st-button>
+      </div>
+      <st-textarea sync:value="detailModels" attr:rows="'2'" attr:placeholder="t('modelsPlaceholder')"></st-textarea>
+      <o-if :value="detailModelOptions.length > 0">
+        <p class="quota-converted"><locale-text><span lang="cn">点击追加/移除：</span><span lang="en">Click to toggle:</span></locale-text></p>
+        <div class="model-chips">
+          <o-fill :value="detailModelOptions" fill-key="id">
+            <button
+              type="button"
+              class="model-chip"
+              class:picked="$host.modelPicked($data.id)"
+              on:click="$host.toggleModelOption($data.id)"
+            >{{$data.id}}</button>
+          </o-fill>
+        </div>
+      </o-if>
+    </div>
     <div class="form-actions" style="justify-content: flex-start; margin-bottom: 16px;">
       <st-button
         style="font-size: 12px"
@@ -750,6 +798,7 @@
         detail: { cn: "详情 / 邀请码", en: "Details / invite" },
         testKey: { cn: "测试 key 是否可用", en: "Test this key" },
         resetUsage: { cn: "清零用量", en: "Reset usage" },
+        modelsPlaceholder: { cn: "如 glm-5*, deepseek-chat；留空 = 不限制", en: "e.g. glm-5*, deepseek-chat; empty = unlimited" },
         keyLabelPlaceholder: { cn: "可选，便于识别", en: "Optional, for identification" },
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
         userNamePlaceholder: { cn: "用户名", en: "User name" },
@@ -785,6 +834,9 @@
           detailUsage: [],
           detailQuota: "",
           detailQuotaUnit: "token",
+          detailModels: "",
+          detailModelOptions: [],
+          loadingModels: false,
           savingDetail: false,
         },
 
@@ -1129,6 +1181,48 @@
 
           // ———— 详情 / 邀请码 ————
 
+          /** 文本框 ⇄ 白名单数组（逗号 / 换行 / 空格分隔） */
+          modelsTextToArray(text) {
+            return String(text ?? "")
+              .split(/[\n,，\s]+/)
+              .map((m) => m.trim())
+              .filter(Boolean);
+          },
+
+          modelPicked(id) {
+            return this.modelsTextToArray(this.detailModels).includes(id);
+          },
+
+          /** 点选上游模型 chip：已在白名单则移除，否则追加 */
+          toggleModelOption(id) {
+            const list = this.modelsTextToArray(this.detailModels);
+            const idx = list.indexOf(id);
+            if (idx === -1) {
+              list.push(id);
+            } else {
+              list.splice(idx, 1);
+            }
+            this.detailModels = list.join(", ");
+          },
+
+          /** 拉取该用户 key 池聚合的模型清单（不过滤白名单） */
+          async fetchPoolModels() {
+            if (!this.detailUser) return;
+            this.loadingModels = true;
+            try {
+              const data = await this.api(
+                `/admin/users/${this.detailUser.id}/models`,
+              );
+              this.detailModelOptions = (data.models || []).map((id) => ({
+                id,
+              }));
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+            } finally {
+              this.loadingModels = false;
+            }
+          },
+
           detailUserHasKey(id) {
             return this.detailUser
               ? this.detailUser.apiKeyIds.indexOf(id) !== -1
@@ -1159,6 +1253,7 @@
                     this.detailQuotaUnit,
                   ),
                   apiKeyIds: [...this.detailUser.apiKeyIds],
+                  allowedModels: this.modelsTextToArray(this.detailModels),
                 }),
               });
               await this.loadUsers();
@@ -1194,6 +1289,10 @@
               this.detailQuotaUnit = "token";
             }
             this._prevDetailUnit = this.detailQuotaUnit;
+            this.detailModels = (this.detailUser?.allowedModels || []).join(
+              ", ",
+            );
+            this.detailModelOptions = [];
             this.loadApikeys();
             this.detailOpen = true;
             try {

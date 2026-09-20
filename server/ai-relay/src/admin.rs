@@ -202,6 +202,7 @@ fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
         "disabled": u.disabled,
         "createdAt": u.created_at,
         "apiKeyIds": u.api_key_ids,
+        "allowedModels": u.allowed_models,
     });
     if include_bearkey {
         v["bearkey"] = Value::String(u.bearkey.clone());
@@ -236,6 +237,8 @@ pub(crate) struct CreateUserReq {
     quota_tokens: Option<i64>,
     #[serde(default, rename = "apiKeyIds")]
     api_key_ids: Vec<String>,
+    #[serde(default, rename = "allowedModels")]
+    allowed_models: Vec<String>,
 }
 
 pub(crate) async fn create_user(
@@ -273,6 +276,7 @@ pub(crate) async fn create_user(
         disabled: false,
         created_at: store::now_ms(),
         api_key_ids,
+        allowed_models: req.allowed_models,
     };
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok((StatusCode::CREATED, ok_json(user_public(&user, true))))
@@ -289,6 +293,8 @@ pub(crate) struct UpdateUserReq {
     quota_tokens: Option<Option<i64>>,
     #[serde(default, rename = "apiKeyIds", skip_serializing_if = "Option::is_none")]
     api_key_ids: Option<Vec<String>>,
+    #[serde(default, rename = "allowedModels", skip_serializing_if = "Option::is_none")]
+    allowed_models: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     disabled: Option<bool>,
 }
@@ -331,6 +337,9 @@ pub(crate) async fn update_user(
     }
     if let Some(disabled) = req.disabled {
         user.disabled = disabled;
+    }
+    if let Some(models) = req.allowed_models {
+        user.allowed_models = models.into_iter().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect();
     }
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok(ok_json(user_public(&user, false)))
@@ -410,6 +419,37 @@ pub(crate) async fn reset_bearkey(
     user.bearkey = format!("ar-{}", store::random_token(32));
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok(ok_json(invite_payload(&state, &headers, &user)))
+}
+
+/// GET /admin/users/{id}/models —— key 池聚合的模型清单（不过滤白名单，供管理台编辑参考）
+pub(crate) async fn user_models(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    let keys = state.apikeys.read().await;
+    let pool: Vec<crate::store::ApiKeyRec> = user
+        .api_key_ids
+        .iter()
+        .filter_map(|k| keys.get(k))
+        .filter(|k| !k.disabled)
+        .cloned()
+        .collect();
+    drop(keys);
+    let ids = crate::proxy::pool_models(&state.http, &pool)
+        .await
+        .ok_or_else(|| api_error(StatusCode::BAD_GATEWAY, "所有上游模型列表查询失败"))?;
+    Ok(ok_json(serde_json::json!({ "models": ids })))
 }
 
 // ———— 用量 ————

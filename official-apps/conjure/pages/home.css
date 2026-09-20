@@ -1384,15 +1384,15 @@ st-icon-button.preview-live::after {
   position: relative;
   display: inline-flex;
   flex: none;
-  padding-top: 12px;
-  margin-top: -12px;
+  /* 四周扩展透明热区：悬停不必精确落在圆圈上，靠近即可触发气泡 */
+  padding: 12px 10px;
+  margin: -12px -10px;
 }
 
 .ctx-pop {
   position: absolute;
-  /* 锚点 padding(12px) - 视觉间隙(8px)：气泡底边悬在透明悬停区内 8px 处，
-     与圆圈之间保留 8px 空隙但全程被锚点盒子覆盖 */
-  bottom: calc(100% - 4px);
+  /* 气泡底边压到锚点热区内，与圆圈之间不留视觉断链 */
+  bottom: calc(100% - 8px);
   left: 0;
   z-index: 12;
   display: flex;
@@ -1412,6 +1412,16 @@ st-icon-button.preview-live::after {
     opacity 160ms ease,
     transform 160ms ease,
     visibility 0s linear 160ms;
+}
+
+/* 气泡下缘隐形过渡带：斜着移向气泡时 hover 链不断 */
+.ctx-pop::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  top: 100%;
+  height: 14px;
 }
 
 /* 悬停锚点或气泡本身时显示（气泡是锚点子元素，移入不断链） */
