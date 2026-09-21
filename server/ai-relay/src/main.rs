@@ -11,6 +11,7 @@
 //! - 配额为累计总额（不自动重置），超额返回 402。
 
 mod admin;
+mod identity;
 mod proxy;
 mod store;
 
@@ -225,6 +226,7 @@ async fn main() {
             "/admin/users/{id}",
             patch(admin::update_user).delete(admin::delete_user),
         )
+        .route("/admin/users/{id}/unbind", post(admin::unbind_user))
         .route("/admin/users/{id}/invite", get(admin::get_invite))
         .route("/admin/users/{id}/models", get(admin::user_models))
         .route("/admin/users/{id}/reset-bearkey", post(admin::reset_bearkey))
@@ -235,6 +237,7 @@ async fn main() {
             get(admin::get_settings).patch(admin::update_settings),
         )
         // 用户 API（OpenAI 兼容）
+        .route("/v1/activate", post(proxy::activate))
         .route("/v1/chat/completions", post(proxy::chat_completions))
         .route("/v1/models", get(proxy::models))
         .route("/v1/usage", get(proxy::usage))

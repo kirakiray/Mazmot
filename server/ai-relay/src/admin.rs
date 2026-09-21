@@ -191,6 +191,37 @@ pub(crate) async fn test_apikey(
 
 // ———— 用户 ————
 
+/// bindMode 入参规范化：只认 "bound"，其余一律回退 "open"
+fn normalize_bind_mode(mode: Option<String>) -> String {
+    match mode.as_deref() {
+        Some("bound") => "bound".into(),
+        _ => "open".into(),
+    }
+}
+
+/// POST /admin/users/{id}/unbind —— 清除绑定记录（重新开放激活；bindMode 保持不变）
+pub(crate) async fn unbind_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if let Some(err) = gate(&state, &headers) {
+        return Err(err);
+    }
+    let mut user = state
+        .users
+        .read()
+        .await
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))?;
+    user.bound_user_id = String::new();
+    user.bound_pubkey = String::new();
+    user.bound_at = 0;
+    state.save_user(&user).await.map_err(api_error_db)?;
+    Ok(ok_json(user_public(&user, false)))
+}
+
 fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
     let mut v = serde_json::json!({
         "id": u.id,
@@ -203,6 +234,9 @@ fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
         "createdAt": u.created_at,
         "apiKeyIds": u.api_key_ids,
         "allowedModels": u.allowed_models,
+        "bindMode": if u.bind_mode.is_empty() { "open" } else { &u.bind_mode },
+        "boundUserId": u.bound_user_id,
+        "boundAt": u.bound_at,
     });
     if include_bearkey {
         v["bearkey"] = Value::String(u.bearkey.clone());
@@ -239,6 +273,9 @@ pub(crate) struct CreateUserReq {
     api_key_ids: Vec<String>,
     #[serde(default, rename = "allowedModels")]
     allowed_models: Vec<String>,
+    /// "open"（默认）| "bound"（仅限绑定的 NoneOS 用户）
+    #[serde(default, rename = "bindMode")]
+    bind_mode: Option<String>,
 }
 
 pub(crate) async fn create_user(
@@ -277,6 +314,10 @@ pub(crate) async fn create_user(
         created_at: store::now_ms(),
         api_key_ids,
         allowed_models: req.allowed_models,
+        bind_mode: normalize_bind_mode(req.bind_mode),
+        bound_user_id: String::new(),
+        bound_pubkey: String::new(),
+        bound_at: 0,
     };
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok((StatusCode::CREATED, ok_json(user_public(&user, true))))
@@ -295,6 +336,9 @@ pub(crate) struct UpdateUserReq {
     api_key_ids: Option<Vec<String>>,
     #[serde(default, rename = "allowedModels", skip_serializing_if = "Option::is_none")]
     allowed_models: Option<Vec<String>>,
+    /// "open" | "bound"
+    #[serde(default, rename = "bindMode", skip_serializing_if = "Option::is_none")]
+    bind_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     disabled: Option<bool>,
 }
@@ -340,6 +384,9 @@ pub(crate) async fn update_user(
     }
     if let Some(models) = req.allowed_models {
         user.allowed_models = models.into_iter().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect();
+    }
+    if let Some(mode) = req.bind_mode {
+        user.bind_mode = normalize_bind_mode(Some(mode));
     }
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok(ok_json(user_public(&user, false)))

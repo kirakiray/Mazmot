@@ -330,7 +330,7 @@ ai/
 │   ├── deepseek.js               # DeepSeek 实现
 │   ├── kimi.js                   # Kimi 实现
 │   ├── glm.js                    # GLM 实现（含 Coding Plan 子类）
-│   └── relay.js                  # ai-relay 转发服务器实现（邀请码即 apiKey，decodeInvite 解出服务器地址+bearkey）
+│   └── relay.js                  # ai-relay 转发服务器实现（邀请码即 apiKey，decodeInvite 解出服务器地址+bearkey；自动完成 NoneOS 用户激活绑定并在请求带 X-Relay-Auth 签名头）
 ├── chain/                        # Agent 封装（见 ai-chain.md）
 ├── test/
 │   ├── ai-supplier-sb.html       # supplier 层测试（sibyl-test）

@@ -120,6 +120,24 @@ pub(crate) struct UserRec {
     /// 可用模型白名单；空 = 不限制。支持 `glm-5*` 前缀通配
     #[serde(default)]
     pub(crate) allowed_models: Vec<String>,
+    /// 用户绑定模式："open"（默认，任何持有邀请码者可用）| "bound"（仅限绑定的 NoneOS 用户）
+    #[serde(default)]
+    pub(crate) bind_mode: String,
+    /// 已绑定的 NoneOS 用户（ECDSA P-256，与 noneos-core 证书同体系）
+    #[serde(default)]
+    pub(crate) bound_user_id: String,
+    /// 绑定用户的公钥（SPKI DER base64）
+    #[serde(default)]
+    pub(crate) bound_pubkey: String,
+    #[serde(default)]
+    pub(crate) bound_at: i64,
+}
+
+impl UserRec {
+    /// 是否处于绑定校验模式（mode=bound 且已有绑定记录）
+    pub(crate) fn binding_enforced(&self) -> bool {
+        self.bind_mode == "bound" && !self.bound_pubkey.is_empty()
+    }
 }
 
 /// 判定模型是否被白名单放行：空名单不限；精确匹配或 `xxx*` 前缀通配
@@ -313,6 +331,10 @@ mod tests {
             created_at: 1,
             api_key_ids: vec!["k1".into()],
             allowed_models: vec!["glm-5*".into()],
+            bind_mode: "bound".into(),
+            bound_user_id: "uid-1".into(),
+            bound_pubkey: "pubkey-b64".into(),
+            bound_at: 7,
         };
         assert!(model_allowed(&user.allowed_models, "glm-5.3"));
         assert!(!model_allowed(&user.allowed_models, "deepseek-chat"));
@@ -339,6 +361,9 @@ mod tests {
         let (users, apikeys, usage, _settings) = load_all(&db).unwrap();
         assert_eq!(users["u1"].name, "alice");
         assert_eq!(users["u1"].used_tokens, 42);
+        assert_eq!(users["u1"].bind_mode, "bound");
+        assert_eq!(users["u1"].bound_user_id, "uid-1");
+        assert!(users["u1"].binding_enforced());
         assert!(apikeys.is_empty());
         assert_eq!(usage.len(), 1);
         assert_eq!(usage[0].completion_tokens, 20);

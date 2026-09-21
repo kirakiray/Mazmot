@@ -350,6 +350,161 @@ try {
   });
   check("伪造 bearkey 被拒绝", unbound.status === 401);
 
+  // ———— 4.2 用户绑定（bindMode=bound，ECDSA P-256 签名，模拟 noneos _sign 协议） ————
+  const sha256hex = async (text) => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  const makeSigningIdentity = async () => {
+    const kp = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const b64 = (buf) => Buffer.from(new Uint8Array(buf)).toString("base64");
+    const publicKey = b64(await crypto.subtle.exportKey("spki", kp.publicKey));
+    const privateKey = await crypto.subtle.importKey(
+      "pkcs8",
+      new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey)),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"],
+    );
+    const userId = await sha256hex(publicKey);
+    /** noneos _sign 对应实现：附加 signTime/publicKey、按 key 排序后 stringify 签名 */
+    const sign = async (payload) => {
+      const record = { ...payload, signTime: Date.now(), publicKey };
+      const sorted = Object.fromEntries(Object.keys(record).sort().map((k) => [k, record[k]]));
+      const sig = await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        privateKey,
+        new TextEncoder().encode(JSON.stringify(sorted)),
+      );
+      return { ...sorted, signature: Buffer.from(new Uint8Array(sig)).toString("base64") };
+    };
+    return { publicKey, userId, sign };
+  };
+
+  const mb = await request("/admin/users", {
+    method: "POST",
+    token: ADMIN_TOKEN,
+    body: { name: "e2e-bound", bindMode: "bound", apiKeyIds: [keyId] },
+  });
+  const boundUser = mb.data?.data;
+  check("创建 bindMode=bound 用户生效",
+    mb.status === 201 && boundUser?.bindMode === "bound" && !boundUser?.boundUserId,
+    `bindMode=${boundUser?.bindMode}`);
+
+  const boundNoSig = await request("/v1/chat/completions", {
+    method: "POST",
+    token: boundUser.bearkey,
+    body: { model: "deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+  });
+  check("bound 模式未绑定/未签名请求被 403 拒绝",
+    boundNoSig.status === 403, `status=${boundNoSig.status}`);
+
+  const alice = await makeSigningIdentity();
+  const activateBody = await alice.sign({
+    k: "relay-auth",
+    userId: alice.userId,
+    ts: Date.now(),
+    method: "POST",
+    path: "/v1/activate",
+    bodyHash: "",
+  });
+  const act = await fetch(`${BASE}/v1/activate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${boundUser.bearkey}`,
+    },
+    body: JSON.stringify(activateBody),
+  });
+  const actData = await act.json().catch(() => ({}));
+  check("激活绑定成功且回传 boundUserId",
+    act.status === 200 && actData?.boundUserId === alice.userId,
+    `status=${act.status} boundUserId=${actData?.boundUserId?.slice(0, 12)}`);
+
+  const boundChatBody = JSON.stringify({
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "回复两个字：你好" }],
+    max_tokens: 16,
+  });
+  /** signText：参与签名的 body（默认 = 实际发送的 bodyText）；篡改场景让两者不同 */
+  const signedReq = async (overrides = {}, bodyText = boundChatBody, signText = bodyText) => {
+    const signed = await alice.sign({
+      k: "relay-auth",
+      userId: alice.userId,
+      ts: Date.now(),
+      method: "POST",
+      path: "/v1/chat/completions",
+      bodyHash: await sha256hex(signText),
+      ...overrides,
+    });
+    return fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${boundUser.bearkey}`,
+        "X-Relay-Auth": Buffer.from(JSON.stringify(signed)).toString("base64"),
+      },
+      body: bodyText,
+    });
+  };
+  const boundChat = await signedReq();
+  check("bound 用户带正确签名对话成功（WebCrypto 签名 ↔ Rust 验签互通）",
+    boundChat.status === 200 && !!(await boundChat.json())?.choices?.[0]?.message?.content,
+    `status=${boundChat.status}`);
+
+  const tamperedBody = JSON.stringify({ model: "deepseek-chat", messages: [{ role: "user", content: "被篡改的内容" }] });
+  const tampered = await signedReq({}, tamperedBody, boundChatBody);
+  check("篡改请求体后签名校验失败（403）", tampered.status === 403, `status=${tampered.status}`);
+
+  const replay = await signedReq({ ts: Date.now() - 2 * 10 * 60 * 1000 });
+  check("过期时间戳签名被拒（403）", replay.status === 403, `status=${replay.status}`);
+
+  const mallory = await makeSigningIdentity();
+  const malloryActivate = await mallory.sign({
+    k: "relay-auth",
+    userId: mallory.userId,
+    ts: Date.now(),
+    method: "POST",
+    path: "/v1/activate",
+    bodyHash: "",
+  });
+  const malloryResp = await fetch(`${BASE}/v1/activate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${boundUser.bearkey}`,
+    },
+    body: JSON.stringify(malloryActivate),
+  });
+  check("第二用户激活被 409 拒绝（一人一码）", malloryResp.status === 409, `status=${malloryResp.status}`);
+
+  const boundShown = await request("/admin/users", { token: ADMIN_TOKEN });
+  const boundShownUser = (boundShown.data?.data?.users || []).find((u) => u.id === boundUser.id);
+  check("admin 用户列表可见绑定者 userId",
+    boundShownUser?.boundUserId === alice.userId && !!boundShownUser?.boundAt,
+    `boundUserId=${boundShownUser?.boundUserId?.slice(0, 12)}`);
+
+  const unbound2 = await request(`/admin/users/${boundUser.id}/unbind`, {
+    method: "POST",
+    token: ADMIN_TOKEN,
+  });
+  check("admin 解绑清空绑定记录",
+    unbound2.status === 200 && !unbound2.data.data.boundUserId && unbound2.data.data.bindMode === "bound",
+    `status=${unbound2.status}`);
+  const rebind = await fetch(`${BASE}/v1/activate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${boundUser.bearkey}`,
+    },
+    body: JSON.stringify(malloryActivate),
+  });
+  check("解绑后原激活请求可重新绑定（重新开放激活）", rebind.status === 200, `status=${rebind.status}`);
+
   // ———— 4.5 服务器自定义命名 ————
   const mset = await request("/admin/settings", {
     method: "PATCH",

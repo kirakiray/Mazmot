@@ -534,6 +534,9 @@
                   <div class="item-sub">{{$data.note}}</div>
                   <div class="quota-text" class:over="$host.isOver($data)">{{$host.quotaText($data)}}</div>
                   <div class="item-sub">{{$host.roundsText($data)}}</div>
+                  <o-if :value="$data.boundUserId">
+                    <div class="item-sub mono"><locale-text><span lang="cn">绑定</span><span lang="en">Bound</span></locale-text>: {{$data.boundUserId.slice(0, 12)}}…</div>
+                  </o-if>
                   <o-if :value="$data.disabled">
                     <span class="disabled-badge">
                       <n-icon icon="mdi:pause-circle-outline"></n-icon>
@@ -646,6 +649,13 @@
       <p class="quota-converted">{{convertedQuotaText(newUser.quota, newUserQuotaUnit)}}</p>
     </div>
     <div class="field">
+      <label class="field-label"><locale-text><span lang="cn">用户绑定（bound = 仅限激活绑定的 NoneOS 用户使用，一人一码）</span><span lang="en">User binding (bound = only the activated NoneOS user can use this code)</span></locale-text></label>
+      <st-select sync:value="newUser.bindMode">
+        <option value="open"><locale-text><span lang="cn">不绑定（任何持码者可用）</span><span lang="en">Open (anyone with the code)</span></locale-text></option>
+        <option value="bound"><locale-text><span lang="cn">绑定 NoneOS 用户（一人一码）</span><span lang="en">Bind NoneOS user (one user per code)</span></locale-text></option>
+      </st-select>
+    </div>
+    <div class="field">
       <label class="field-label"><locale-text><span lang="cn">可用上游 Key</span><span lang="en">Allowed upstream keys</span></locale-text></label>
       <o-if :value="apikeys.length === 0">
         <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); margin: 0;">
@@ -756,6 +766,30 @@
       </st-button>
     </div>
 
+    <div class="field" style="margin-bottom: 12px;">
+      <label class="field-label"><locale-text><span lang="cn">用户绑定</span><span lang="en">User binding</span></locale-text></label>
+      <st-select sync:value="detailBindMode">
+        <option value="open"><locale-text><span lang="cn">不绑定（任何持码者可用）</span><span lang="en">Open (anyone with the code)</span></locale-text></option>
+        <option value="bound"><locale-text><span lang="cn">绑定 NoneOS 用户（一人一码）</span><span lang="en">Bind NoneOS user (one user per code)</span></locale-text></option>
+      </st-select>
+      <o-if :value="detailUser && detailUser.boundUserId">
+        <p class="quota-converted">
+          <locale-text><span lang="cn">已绑定：</span><span lang="en">Bound: </span></locale-text>
+          <span class="mono">{{detailUser.boundUserId.slice(0, 16)}}…</span>
+          <span style="margin-left: 8px;">{{detailUser.boundAt ? new Date(detailUser.boundAt).toLocaleString() : ''}}</span>
+        </p>
+      </o-if>
+      <o-if :value="detailUser && detailUser.bindMode === 'bound' && !detailUser.boundUserId">
+        <p class="quota-converted"><locale-text><span lang="cn">等待用户在客户端首次使用时激活绑定。</span><span lang="en">Waiting for the user to activate on first use.</span></locale-text></p>
+      </o-if>
+      <div style="margin-top: 8px;">
+        <st-button variant="outlined" style="font-size: 12px" attr:disabled="!detailUser || !detailUser.boundUserId" on:click="unbindUser">
+          <span slot="prefix"><n-icon icon="mdi:link-variant-off"></n-icon></span>
+          <locale-text><span lang="cn">解绑用户（重新开放激活）</span><span lang="en">Unbind user (allow re-activation)</span></locale-text>
+        </st-button>
+      </div>
+    </div>
+
     <label class="field-label"><locale-text><span lang="cn">邀请码（发给用户即可使用）</span><span lang="en">Invitation code (share with the user)</span></locale-text></label>
     <div class="invite-code-box">
       <div class="mono">{{detailInvite ? detailInvite.code : ''}}</div>
@@ -850,7 +884,7 @@
           savingKey: false,
           keyDialogOpen: false,
           userDialogOpen: false,
-          newUser: { name: "", note: "", quota: "", keyIds: [] },
+          newUser: { name: "", note: "", quota: "", keyIds: [], bindMode: "open" },
           newUserQuotaUnit: "token",
           savingUser: false,
           detailOpen: false,
@@ -865,6 +899,7 @@
           savingSettings: false,
           detailModels: "",
           detailModelOptions: [],
+          detailBindMode: "open",
           loadingModels: false,
           savingDetail: false,
         },
@@ -1100,7 +1135,7 @@
           // ———— 用户 ————
 
           openUserDialog() {
-            this.newUser = { name: "", note: "", quota: "", keyIds: [] };
+            this.newUser = { name: "", note: "", quota: "", keyIds: [], bindMode: "open" };
             this.newUserQuotaUnit = "token";
             this._prevNewUserUnit = "token";
             this.loadApikeys();
@@ -1185,6 +1220,7 @@
                     this.newUserQuotaUnit,
                   ),
                   apiKeyIds: [...this.newUser.keyIds],
+                  bindMode: this.newUser.bindMode || "open",
                 }),
               });
               this.userDialogOpen = false;
@@ -1318,6 +1354,7 @@
                   ),
                   apiKeyIds: [...this.detailUser.apiKeyIds],
                   allowedModels: this.modelsTextToArray(this.detailModels),
+                  bindMode: this.detailBindMode || "open",
                 }),
               });
               await this.loadUsers();
@@ -1332,10 +1369,35 @@
             }
           },
 
+          /** 清除用户绑定记录（bindMode 保持不变，重新开放激活） */
+          async unbindUser() {
+            if (!this.detailUser) return;
+            const ok = await confirm({
+              title: getLocaleText({ cn: "解绑用户", en: "Unbind User" }),
+              message: getLocaleText({ cn: "清除绑定记录后，下一个激活的用户将成为新的绑定者。确定？", en: "After clearing, the next user to activate becomes the new owner. Continue?" }),
+              yes: getLocaleText({ cn: "解绑", en: "Unbind" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
+            });
+            if (!ok) return;
+            try {
+              const updated = await this.api(
+                `/admin/users/${this.detailUser.id}/unbind`,
+                { method: "POST" },
+              );
+              const idx = this.users.findIndex((u) => u.id === updated.id);
+              if (idx !== -1) this.users.splice(idx, 1, updated);
+              this.detailUser = updated;
+              toast({ message: getLocaleText({ cn: "已解绑", en: "Unbound" }), color: "success" });
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+            }
+          },
+
           async openDetail(id) {
             this.detailUser = this.users.find((u) => u.id === id) || null;
             this.detailInvite = null;
             this.detailUsage = [];
+            this.detailBindMode = this.detailUser?.bindMode || "open";
             if (this.detailUser && this.detailUser.quotaTokens != null) {
               const q = this.detailUser.quotaTokens;
               if (q >= 1e6 && q % 1e6 === 0) {

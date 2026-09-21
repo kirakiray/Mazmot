@@ -73,7 +73,7 @@ Mazmot/
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js / relay.js——apiKey 字段存 ai-relay 签发的邀请码，decodeInvite 解出服务器地址 + bearkey）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js / relay.js——apiKey 字段存 ai-relay 签发的邀请码，decodeInvite 解出服务器地址 + bearkey；自动激活 NoneOS 用户绑定并给 /v1/* 请求加 X-Relay-Auth 签名头）
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库；isToolLoop 真循环检测——
 │   │   │                    #   连续 4 次相同调用 / 最近 8 次 ≤2 种签名的窄循环 → 注入提醒并收起工具优雅收束，
 │   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）
@@ -178,8 +178,8 @@ Mazmot/
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
-│   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
-│   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN（凭据存 getStorage("ai-relay-admin")）；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
+│   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
+│   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN（凭据存 getStorage("ai-relay-admin")）；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）

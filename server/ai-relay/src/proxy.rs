@@ -13,7 +13,47 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::store::{self, Provider, UsageRec, UserRec};
-use crate::{api_error, AppState};
+use crate::{api_error, identity, AppState};
+
+/// 签名请求头（base64 后的完整签名对象，含 signature / publicKey / signTime）
+const AUTH_HEADER: &str = "x-relay-auth";
+
+/// 绑定模式下的请求签名校验：未绑定记录时报"需先激活"，否则验签并核对 userId
+fn check_bound_signature(
+    user: &UserRec,
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> Result<(), (StatusCode, Json<Value>)> {
+    if user.bind_mode != "bound" {
+        return Ok(());
+    }
+    if !user.binding_enforced() {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "该邀请码要求绑定用户，但尚未有任何用户激活绑定；请先在客户端激活",
+        ));
+    }
+    let auth = headers
+        .get(AUTH_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            api_error(
+                StatusCode::FORBIDDEN,
+                "该邀请码已绑定用户，请求需要携带签名头（X-Relay-Auth）",
+            )
+        })?;
+    let sig_user = identity::verify_request_signature(auth, &user.bound_pubkey, method, path, body)
+        .map_err(|e| api_error(StatusCode::FORBIDDEN, format!("用户身份校验失败: {e}")))?;
+    if sig_user != user.bound_user_id {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "签名用户与绑定用户不一致",
+        ));
+    }
+    Ok(())
+}
 
 /// 按 bearkey 找用户（未命中 / 已禁用分别处理）
 async fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<UserRec, (StatusCode, Json<Value>)> {
@@ -156,6 +196,52 @@ pub(crate) async fn probe_key(
     Err(format!("上游探测失败（对话探测）: {}", resp.status()))
 }
 
+/// POST /v1/activate —— NoneOS 用户激活绑定（请求体即签名对象，见 identity 模块说明）。
+/// 仅 bind_mode=bound 的用户会真正落绑定；open 模式直接返回（行为不变）。
+pub(crate) async fn activate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user = auth_user(&state, &headers).await?;
+    if user.bind_mode != "bound" {
+        return Ok(Json(serde_json::json!({ "ok": true, "mode": "open" })));
+    }
+    if user.binding_enforced() {
+        // 幂等重放：绑定的本人再次激活视为成功；其他人则拒绝
+        match identity::verify_activate_body(&body) {
+            Ok((uid, _)) if uid == user.bound_user_id => {
+                return Ok(Json(serde_json::json!({
+                    "ok": true,
+                    "mode": "bound",
+                    "alreadyBound": true,
+                    "boundUserId": user.bound_user_id,
+                })));
+            }
+            _ => return Err(api_error(StatusCode::CONFLICT, "该邀请码已被其他用户绑定")),
+        }
+    }
+
+    let (uid, pubkey) = identity::verify_activate_body(&body)
+        .map_err(|e| api_error(StatusCode::UNAUTHORIZED, format!("激活校验失败: {e}")))?;
+    let mut user = user;
+    user.bound_user_id = uid;
+    user.bound_pubkey = pubkey;
+    user.bound_at = store::now_ms();
+    state.save_user(&user).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": { "message": e, "type": "ai_relay_error" } })),
+        )
+    })?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "mode": "bound",
+        "boundUserId": user.bound_user_id,
+        "boundAt": user.bound_at,
+    })))
+}
+
 /// POST /v1/chat/completions
 pub(crate) async fn chat_completions(
     State(state): State<AppState>,
@@ -163,6 +249,7 @@ pub(crate) async fn chat_completions(
     body: axum::body::Bytes,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
     let user = auth_user(&state, &headers).await?;
+    check_bound_signature(&user, &headers, "POST", "/v1/chat/completions", &body)?;
     if quota_exceeded(&user) {
         return Err(api_error(
             StatusCode::PAYMENT_REQUIRED,
@@ -336,6 +423,7 @@ pub(crate) async fn models(
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user = auth_user(&state, &headers).await?;
+    check_bound_signature(&user, &headers, "GET", "/v1/models", b"")?;
     let keys = state.apikeys.read().await;
     let pool: Vec<crate::store::ApiKeyRec> = user
         .api_key_ids
@@ -375,6 +463,7 @@ pub(crate) async fn usage(
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user = auth_user(&state, &headers).await?;
+    check_bound_signature(&user, &headers, "GET", "/v1/usage", b"")?;
     Ok(Json(serde_json::json!({
         "serverName": state.server_name.read().await.clone(),
         "userId": user.id,
