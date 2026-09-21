@@ -209,6 +209,96 @@
       font-weight: 600;
     }
 
+    .user-item-icon {
+      font-size: 28px;
+      color: var(--md-sys-color-outline);
+    }
+
+    .user-item-icon.bound {
+      color: var(--md-sys-color-primary);
+    }
+
+    .user-line1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .user-name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-note {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rounds-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+
+    .rounds-chip n-icon {
+      font-size: 12px;
+    }
+
+    .user-side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+      margin-right: 16px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: nowrap;
+    }
+
+    .user-side .side-quota {
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .user-side .side-quota.over {
+      color: var(--md-sys-color-error);
+    }
+
+    .bound-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--md-sys-color-tertiary);
+    }
+
+    .bound-line n-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .bound-line .mono {
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .dlg-invite::part(panel) {
       width: min(560px, 100%);
     }
@@ -527,24 +617,39 @@
                 attr:data-disabled="$data.disabled"
               >
                 <span slot="prefix">
-                  <n-icon icon="mdi:account-circle-outline" style="font-size: 28px"></n-icon>
+                  <o-if :value="$data.boundUserId">
+                    <n-icon icon="mdi:account-check-outline" class="user-item-icon bound"></n-icon>
+                  </o-if>
+                  <o-if :value="!$data.boundUserId">
+                    <n-icon icon="mdi:account-circle-outline" class="user-item-icon"></n-icon>
+                  </o-if>
                 </span>
                 <div>
-                  <div style="font-size: 14px; font-weight: 500">{{$data.name}}</div>
-                  <div class="item-sub">{{$data.note}}</div>
-                  <div class="quota-text" class:over="$host.isOver($data)">{{$host.quotaText($data)}}</div>
-                  <div class="item-sub">{{$host.roundsText($data)}}</div>
-                  <o-if :value="$data.boundUserId">
-                    <div class="item-sub mono"><locale-text><span lang="cn">绑定</span><span lang="en">Bound</span></locale-text>: {{$data.boundUserId.slice(0, 12)}}…</div>
-                  </o-if>
-                  <o-if :value="$data.disabled">
-                    <span class="disabled-badge">
-                      <n-icon icon="mdi:pause-circle-outline"></n-icon>
-                      <locale-text><span lang="cn">已禁用</span><span lang="en">Disabled</span></locale-text>
+                  <div class="user-line1">
+                    <span class="user-name">{{$data.name}}</span>
+                    <span class="user-note" attr:title="$data.note">{{$data.note}}</span>
+                    <span class="rounds-chip">
+                      <n-icon icon="mdi:chart-line"></n-icon>
+                      {{$host.roundsText($data)}}
                     </span>
-                  </o-if>
+                    <o-if :value="$data.disabled">
+                      <span class="disabled-badge">
+                        <n-icon icon="mdi:pause-circle-outline"></n-icon>
+                        <locale-text><span lang="cn">已禁用</span><span lang="en">Disabled</span></locale-text>
+                      </span>
+                    </o-if>
+                  </div>
                 </div>
                 <div slot="suffix" class="item-actions">
+                  <div class="user-side">
+                    <span class="side-quota" class:over="$host.isOver($data)">{{$host.quotaText($data)}}</span>
+                    <o-if :value="$data.boundUserId">
+                      <span class="bound-line">
+                        <n-icon icon="mdi:link-variant"></n-icon>
+                        <span class="mono">{{$data.boundUserId.slice(0, 12)}}…</span>
+                      </span>
+                    </o-if>
+                  </div>
                   <st-icon-button
                     style="font-size: 13px"
                     attr:title="$host.t('resetUsage')"
