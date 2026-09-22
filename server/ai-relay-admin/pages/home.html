@@ -300,7 +300,27 @@
     }
 
     .dlg-invite::part(panel) {
-      width: min(560px, 100%);
+      width: 80vw;
+      max-width: 1100px;
+    }
+
+    .dlg-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    @media (min-width: 760px) {
+      .dlg-body {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 28px;
+      }
+
+      .dlg-col {
+        flex: 1;
+        min-width: 0;
+      }
     }
 
     .dlg-user::part(panel) {
@@ -796,6 +816,8 @@
   <!-- ============ 用户详情 / 邀请码弹窗 ============ -->
   <st-dialog class="dlg-invite" sync:open="detailOpen" auto-close>
     <h2 slot="headline">{{detailUser ? detailUser.name : ''}}</h2>
+    <div class="dlg-body">
+    <div class="dlg-col">
     <div class="detail-row" style="margin-bottom: 12px;">
       <span class="detail-label"><locale-text><span lang="cn">用量</span><span lang="en">Usage</span></locale-text></span>
       <span class="quota-text">{{detailUser ? quotaText(detailUser) : ''}}</span>
@@ -870,7 +892,9 @@
         <locale-text><span lang="cn">保存修改</span><span lang="en">Save changes</span></locale-text>
       </st-button>
     </div>
+    </div>
 
+    <div class="dlg-col">
     <div class="field" style="margin-bottom: 12px;">
       <label class="field-label"><locale-text><span lang="cn">用户绑定</span><span lang="en">User binding</span></locale-text></label>
       <st-select sync:value="detailBindMode">
@@ -926,6 +950,8 @@
         </o-fill>
       </div>
     </o-if>
+    </div>
+    </div>
 
     <div slot="actions">
       <st-button on:click="detailOpen = false">
