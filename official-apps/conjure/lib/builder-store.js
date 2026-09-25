@@ -317,6 +317,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       model = state.activeModelId;
     } else if (key?.provider === "deepseek") {
       model = "deepseek-flash";
+    } else if (Array.isArray(knownModels) && knownModels.length) {
+      // 未选模型（或选中的已不在清单里）：取已知清单第一个兜底，
+      // 避免落到供应商默认模型上撞白名单 403
+      model = knownModels[0];
     } else {
       model = undefined;
     }
