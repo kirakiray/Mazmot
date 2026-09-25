@@ -10,6 +10,7 @@
 | Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
 | GLM | glm-5.3 / glm-5.3-flash / glm-4.7 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
+| Relay（转发服务器） | 取决于服务器分配的上游（`glm-*` / `deepseek-*` 前缀），Bearer 为邀请码 bearkey | 透传 | ✅ |
 
 > 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
 
@@ -27,11 +28,11 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey, setKeyDi
 
 ## API
 
-### saveKey(apiKey, provider)
+### saveKey(apiKey, provider, extra?)
 
-保存 API Key 并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
+保存 API Key。`extra` 可选，附加字段合并进 key 对象（如 relay 的 `serverName`）。并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
 
-- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）
+- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）/ `"relay"`（转发服务器邀请码，见下节）
 
 ```javascript
 const assistant = await saveKey("sk-xxx", "deepseek");
@@ -52,6 +53,14 @@ removeKey("abc123"); // true / false
 ```javascript
 setKeyDisabled("abc123", true); // 禁用
 setKeyDisabled("abc123", false); // 恢复
+```
+
+### updateKey(id, extra)
+
+按 id 合并更新 key 的附加字段（如 relay 的 `serverName`），自动持久化并通知订阅者。用于给旧 key 补充元数据。
+
+```javascript
+updateKey("abc123", { serverName: "团队中转" });
 ```
 
 ### getAssistant(id?)
@@ -99,6 +108,28 @@ const unsub = onApiKeysChange((keys) => {
 });
 // 组件销毁时
 unsub();
+```
+
+### Relay 转发服务器（provider: "relay"）
+
+对接自建 AI API 转发服务器（`server/ai-relay/`，见其 CONTEXT.md）。`apiKey` 字段保存的不是明文 key，而是服务器签发的**完整邀请码**（URL-safe Base64 的 JSON `{"u": serverUrl, "k": bearkey}`）；`RelayAssistant` 内部解出服务器地址与 bearkey，以 OpenAI 兼容接口访问 `/v1/*`。服务器端按模型名前缀路由上游（`glm-*` / `deepseek-*`），token 按用户累计配额统计。
+
+```javascript
+import { saveKey, testApiKey, getAssistant } from "/mz/ai/main.js";
+import { fetchServerInfo, decodeInvite } from "/mz/ai/supplier/relay.js";
+
+// 邀请码同样走 testApiKey 验证（对转发服务器 /v1/models 探测）
+const { valid, message } = await testApiKey(inviteCode, "relay");
+if (valid) saveKey(inviteCode, "relay");
+
+// 拉取服务器自定义命名（/v1/server，无需鉴权），随 key 持久化供各应用展示
+const { name } = await fetchServerInfo("https://relay.example.com");
+saveKey(inviteCode, "relay", { serverName: name });
+// 之后 getApiKeys() 的每条 relay key 上都有 serverName，选择 provider 时可展示
+
+const assistant = getAssistant();
+assistant.baseUrl; // 邀请码解析出的服务器地址
+await assistant.getRemaining(); // token 配额视角：balances[0] = { currency: "tokens", amount: 剩余 }
 ```
 
 ### testApiKey(apiKey, provider)
@@ -195,14 +226,14 @@ const response = await assistant.chat({
 | stream | boolean | false | 是否启用流式输出 |
 | model | string | - | 模型名称 |
 | onStream | function | null | 流式输出回调 |
-| reasoningEffort | string | "high" | 推理强度。DeepSeek：`low` / `high` / `max`（官方另接受 `minimal` / `medium` / `xhigh` / `ultra` 并自动映射到三档）；kimi-k3：`low` / `high` / `max`；GLM-5.3+：`low` / `high` / `max`（见下方 GLM 思考模式） |
+| reasoningEffort | string | "low" | 推理强度。DeepSeek：`low` / `high` / `max`（官方另接受 `minimal` / `medium` / `xhigh` / `ultra` 并自动映射到三档）；kimi-k3：`low` / `high` / `max`；GLM-5.3+：`low` / `high` / `max`（见下方 GLM 思考模式） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
 | signal | AbortSignal | null | 传入 `AbortSignal` 用于取消请求；abort 后 `chat` 会抛出 `AbortError`，底层连接和流读取立即释放 |
 | tools | array | null | OpenAI 风格函数定义（function calling）：`[{ type: "function", function: { name, description, parameters } }]`，一般由 [chain 层](./chain/README.md) 的 `tool().toWire()` 生成 |
 | toolChoice | string | "auto" | 配合 `tools` 使用，透传给供应商（如 `"auto"` / `"none"` / `{ type: "function", function: { name } }`） |
 
 > Kimi 不同模型的思考行为差异较大，详见 [Kimi 思考模型文档](https://platform.kimi.com/docs/guide/use-thinking-models)：
-> - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（官方默认 "max"，本库默认降为 "high"）
+> - `kimi-k3`：始终思考、不支持 `thinking` 参数，通过 `reasoningEffort` 调节强度（官方默认 "max"，本库默认降为 "low"）
 > - `kimi-k2.7-code`：始终思考，`thinking` 参数无效
 > - `kimi-k2.6`：`thinking` 默认 true，支持 `thinkingKeep: "all"`
 > - `kimi-k2.5`：`thinking` 默认 true，不支持保留式思考
@@ -250,7 +281,7 @@ await assistant.chat({
   model: "deepseek-v4-pro",
   messages: [{ role: "user", content: "解释相对论" }],
   thinking: true,
-  reasoningEffort: "max", // "high"（默认）或 "max"
+  reasoningEffort: "max", // "low"（默认）或 "max"
 });
 ```
 
@@ -265,7 +296,7 @@ Kimi 不同模型对思考参数的支持不同，**请按模型选用参数**�
 await assistant.chat({
   model: "kimi-k3",
   messages: [{ role: "user", content: "解释相对论" }],
-  reasoningEffort: "max", // "low" / "high"（默认） / "max"
+  reasoningEffort: "max", // "low"（默认） / "high" / "max"
 });
 
 // ✅ kimi-k2.6：支持 thinking 开关 + thinkingKeep
@@ -297,7 +328,7 @@ GLM（智谱 bigmodel.cn）按模型版本分两种思考控制方式：
 - **GLM-4.x（如 `glm-4.7`）**：通过 `thinking: { type: "enabled" | "disabled" }` 开关控制思考，4.7 系列默认开启思考，需要非思考响应时显式传 `thinking: false`。不支持 `reasoningEffort`，传入会被忽略。
 - **GLM-5.3+（`glm-5.3` / `glm-5.3-flash` 等，模型名 `glm-5` 开头）**：思考**不可关闭**，官方不再支持 `thinking` 开关，改用 `reasoning_effort` 三档（`low` / `high` / `max`）控制思考深度。本库不再发 `thinking` 参数，档位取值规则：
   - 显式传 `reasoningEffort`：原样透传，优先级最高
-  - `thinking: true` 且未传档位：取 `"high"`（与 DeepSeek / Kimi 默认一致）
+  - 未传档位：取 `"low"`（与 DeepSeek / Kimi 默认一致，省 token 低延迟）
   - `thinking: false`（默认）且未传档位：取 `"low"`（官方迁移路径：原「关闭思考」场景改用最低档）
 
 ```javascript
@@ -374,7 +405,7 @@ import { createAgent, tool, MemorySaver } from "/mz/ai/chain/main.js";
 
 ### 准备工作
 
-1. 在 [test-api-keys.json](./test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
+1. 在项目根目录 [test-api-keys.json](../../test-api-keys.json) 填入真实的 API Key（该文件已被 `.gitignore` 忽略）：
 
    ```json
    {
@@ -406,7 +437,7 @@ npm run test-ai -- --browsers chrome  # 仅 Chrome
 - Kimi 各模型（k3 / k2.7-code / k2.6）的思考参数分支构建逻辑（不消耗 API 配额）
 - GLM 按模型版本的思考参数分支构建逻辑（5.3+ 用 `reasoning_effort` / 4.x 用 `thinking` 开关，不消耗 API 配额）
 - Assistant 基类的错误处理与流式 tool_calls 累积
-- Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在 `mz/ai/test-api-keys.json` 填 key）
+- Chain 层（`mz/ai/chain/`，`ai-chain-sb.html`）：工具 schema 校验与容错、导出完整性、MemorySaver 副本语义（纯函数，不发请求）；Agent 工具循环、参数直传（model / thinking）、动态工具（函数形式）、流式事件序列、threadId 记忆与隔离（真实 `deepseek-v4-flash`，需在项目根目录 `test-api-keys.json` 填 key）
 
 ## Demo
 
@@ -432,7 +463,6 @@ npx serve .
 ```
 mz/ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
-├── test-api-keys.json       # 测试用 API Key（已 gitignore）
 ├── README.md
 ├── supplier/                # AI 提供商实现
 │   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）

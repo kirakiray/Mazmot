@@ -71,9 +71,9 @@ Mazmot/
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key），被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js / relay.js——apiKey 字段存 ai-relay 签发的邀请码，decodeInvite 解出服务器地址 + bearkey；自动激活 NoneOS 用户绑定并给 /v1/* 请求加 X-Relay-Auth 签名头）
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库；isToolLoop 真循环检测——
 │   │   │                    #   连续 4 次相同调用 / 最近 8 次 ≤2 种签名的窄循环 → 注入提醒并收起工具优雅收束，
 │   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）
@@ -97,7 +97,7 @@ Mazmot/
 │
 ├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
-│   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js）
+│   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js；provider 含 relay——粘贴 ai-relay 邀请码即用转发服务器，详情折叠可看服务器地址）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 互授 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；live-share.html 互授页（配对码连接后自动拉取与自己相关的证书：服务消息只传匹配通知与元数据清单，证书本体走 core 按精确 key 拉取，经 lib/live-share.js 封装 registerService/sendToService 可靠层，详见其应用内 CONTEXT.md）；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
@@ -178,6 +178,8 @@ Mazmot/
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
+│   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
+│   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN（凭据存 getStorage("ai-relay-admin")）；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
@@ -493,6 +495,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| AI 转发服务器管理台前端（server 侧静态应用，Core 内打开） | [server/ai-relay-admin/pages/home.html](server/ai-relay-admin/pages/home.html) |
+| AI 转发服务器（Rust，apikey 隔离 / 配额 / 邀请码） | [server/ai-relay/](server/ai-relay/)（详见其 [CONTEXT.md](server/ai-relay/CONTEXT.md)；客户端 supplier [mz/ai/supplier/relay.js](mz/ai/supplier/relay.js)） |
 | 妙造（Conjure）官方应用（对话生成 ofa.js 应用 → 写入 mazmot-apps VFS → 预览） | [official-apps/conjure/pages/home.html](official-apps/conjure/pages/home.html)（核心库 [lib/builder.js](official-apps/conjure/lib/builder.js)，测试 [test/builder.sb.html](official-apps/conjure/test/builder.sb.html)） |
 | 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息 + 互授） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [live-share.html](official-apps/cred-manager/pages/live-share.html) + [lib/live-share.js](official-apps/cred-manager/lib/live-share.js) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |

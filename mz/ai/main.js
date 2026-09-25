@@ -1,6 +1,7 @@
 import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 import { GlmAssistant, GlmCodingAssistant } from "./supplier/glm.js";
+import RelayAssistant from "./supplier/relay.js";
 
 // /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
 // 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
@@ -43,6 +44,9 @@ const _createAssistant = (provider, id, apiKey) => {
       return new GlmAssistant(id, apiKey);
     case "glm-coding":
       return new GlmCodingAssistant(id, apiKey);
+    case "relay":
+      // apiKey 字段存的是服务器签发的完整邀请码
+      return new RelayAssistant(id, apiKey);
     default:
       throw new Error(`provider not supported: ${provider}`);
   }
@@ -95,7 +99,7 @@ export const testApiKey = async (apiKey, provider) => {
  * 保存 API Key，返回新保存的 key 对象（含 id，可用于 removeKey / getAssistant）。
  * 写入后自动持久化到本地存储（nos storage），并通知所有 onApiKeysChange 订阅者。
  */
-export const saveKey = (apiKey, provider) => {
+export const saveKey = (apiKey, provider, extra = {}) => {
   const id = Math.random().toString(36).slice(2);
   const createdAt = new Date();
 
@@ -107,6 +111,7 @@ export const saveKey = (apiKey, provider) => {
     disabled: false,
     createdAt: createdAt.toISOString(),
     formattedDate: createdAt.toLocaleString(),
+    ...extra,
   };
 
   _apiKeys.push(keyObj);
@@ -125,6 +130,21 @@ export const removeKey = (id) => {
   const index = _apiKeys.findIndex((item) => item.id === id);
   if (index === -1) return false;
   _apiKeys.splice(index, 1);
+  _persist();
+  _emit();
+  return true;
+};
+
+/**
+ * 按 id 更新 key 的附加字段（如 relay 的 serverName），合并写入并通知订阅者。
+ * @param {string} id
+ * @param {object} extra
+ * @returns {boolean} 是否更新成功
+ */
+export const updateKey = (id, extra = {}) => {
+  const item = _apiKeys.find((item) => item.id === id);
+  if (!item) return false;
+  Object.assign(item, extra);
   _persist();
   _emit();
   return true;
