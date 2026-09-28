@@ -23,9 +23,9 @@
 
 ```
 Mazmot/
-├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（localhost/生产手动切换），随后加载宿主离线缓存引擎 sw/host-cache.js
-├── sw/                       # SW 侧模块（host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
+├── index.html                # 根入口：初始化/升级 NoneOS Core（组件源跟随 sw/sw-config.js 开关），完成后跳转 /apps/main/ 或 ?redirect=
+├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
+├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
@@ -374,6 +374,8 @@ npm run static
 
 启动后：
 - 主系统：http://localhost:30031/
+
+**本地调试 NoneOS Core**：把 [sw/sw-config.js](sw/sw-config.js) 的 `coreDev` 改为 `true`（唯一开关），index.html 的 nos-version 组件与 SW 的 `sw/dist.js` 会一起改走本地 core dev server（localhost:3002，需先在 noneos-core 仓库跑 `npm run dev`）；本地未启动时自动回退线上。非 localhost 环境一律走线上；调试完改回 `false` 再提交。
 
 ### 首次访问
 
