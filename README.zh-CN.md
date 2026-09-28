@@ -86,7 +86,7 @@
 
 ### 离线与缓存
 - Service Worker 拦截 `/gh/`、`/npm/`、`/nos/*` 前缀请求，离线可用
-- 宿主离线缓存（`mz/sw/host-cache.js`，由根 SW 加载）：按 `cache-manifest.json`（SHA-256 清单，version 内容派生）把 `index.html` + `mz/` 缓存到 Cache API，增量更新、原子切换
+- 宿主离线缓存（`sw/host-cache.js`，由根 SW 加载）：按 `cache-manifest.json`（SHA-256 清单，version 内容派生）把 `index.html` + `mz/` 缓存到 Cache API，增量更新、原子切换
 
 ---
 

@@ -1,6 +1,6 @@
-// 生成 /cache-manifest.json：index.html + mz/（不含 test 目录与 mz/sw/）的
+// 生成 /cache-manifest.json：index.html + mz/（不含 test 目录）的
 // SHA-256 清单。version 由 hashes 内容派生（SHA-256 前 8 位），与
-// mz/sw/host-cache.js 运行时的 deriveVersion 算法保持一致，无需手工 bump。
+// sw/host-cache.js 运行时的 deriveVersion 算法保持一致，无需手工 bump。
 //
 // 用法：
 //   node scripts/update-cache-manifest.js          重新生成（内容无变化则不写盘）
@@ -112,8 +112,6 @@ function walkDir(dir, baseDir = '') {
   for (const entry of entries) {
     if (entry.isDirectory() && entry.name === 'test') continue;
     const relativePath = baseDir ? `${baseDir}/${entry.name}` : entry.name;
-    // mz/sw/ 是 SW 引擎自身，随 SW script 缓存，不入清单
-    if (relativePath === 'mz/sw') continue;
     if (isIgnored(relativePath, ignorePatterns)) continue;
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {

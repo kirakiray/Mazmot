@@ -24,7 +24,8 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # SW 引导（根入口注册，scope=/）：按环境 importScripts NoneOS Core dist.js，随后加载宿主离线缓存引擎 mz/sw/host-cache.js
+├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（localhost/生产手动切换），随后加载宿主离线缓存引擎 sw/host-cache.js
+├── sw/                       # SW 侧模块（host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
@@ -70,7 +71,6 @@ Mazmot/
 ├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
-│   ├── sw/                   # 宿主离线缓存引擎（host-cache.js，由根 sw.js importScripts；缓存 index.html + mz/ 到 Cache API）
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
@@ -345,9 +345,9 @@ clearOpened → 关闭窗口
 { "name": "mazmot", "version": "99a2fd1a", "hashes": [{ "path": "index.html", "hash": "<sha256-hex>", "size": 2215 }] }
 ```
 
-- **收录范围**：`index.html` + `mz/`（跳过 `test` 目录与 `mz/sw/` 引擎自身），由 [scripts/update-cache-manifest.js](scripts/update-cache-manifest.js) 生成（`npm run update`；`--check` 供 CI 校验，过期 exit 1）。
-- **version 内容派生**：`sha256(JSON.stringify(hashes))` 前 8 位，与 [host-cache.js](mz/sw/host-cache.js) 的 `deriveVersion` 算法一致；内容不变则不写盘，**禁止手工修改 version**。
-- **缓存机制**（[mz/sw/host-cache.js](mz/sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / apps/main 回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
+- **收录范围**：`index.html` + `mz/`（跳过 `test` 目录），由 [scripts/update-cache-manifest.js](scripts/update-cache-manifest.js) 生成（`npm run update`；`--check` 供 CI 校验，过期 exit 1）。`sw/` 引擎自身随 SW script 由浏览器缓存，不入清单。
+- **version 内容派生**：`sha256(JSON.stringify(hashes))` 前 8 位，与 [host-cache.js](sw/host-cache.js) 的 `deriveVersion` 算法一致；内容不变则不写盘，**禁止手工修改 version**。
+- **缓存机制**（[sw/host-cache.js](sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / apps/main 回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
 
 ## UI 关键组件（[apps/main/home.html](apps/main/home.html)）
 
@@ -498,7 +498,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
-| 主 SW | [sw.js](sw.js)（core dist.js + [mz/sw/host-cache.js](mz/sw/host-cache.js)） |
+| 主 SW | [sw.js](sw.js)（core dist.js + [sw/host-cache.js](sw/host-cache.js)） |
 | 宿主离线缓存清单 / 版本 | [cache-manifest.json](cache-manifest.json)（version 内容派生，`npm run update` 生成，勿手改） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |

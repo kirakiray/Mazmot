@@ -90,7 +90,7 @@ Apps run directly on the main domain through the Service Worker's virtual URL pr
 
 ### Offline & Caching
 - Service Worker intercepts `/gh/`, `/npm/`, `/nos/*` prefixed requests for offline use
-- Host offline cache (`mz/sw/host-cache.js`, loaded by the root SW): caches `index.html` + `mz/` into the Cache API per `cache-manifest.json` (SHA-256 manifest, content-derived version), with incremental updates and atomic switching
+- Host offline cache (`sw/host-cache.js`, loaded by the root SW): caches `index.html` + `mz/` into the Cache API per `cache-manifest.json` (SHA-256 manifest, content-derived version), with incremental updates and atomic switching
 
 ---
 
