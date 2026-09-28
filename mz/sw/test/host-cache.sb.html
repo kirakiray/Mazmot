@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>host-cache 引擎测试</title>
+    <script src="/mz/sw/host-cache.js"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+
+  <body>
+    <sb-test name="sha256Hex 标准向量" parallel>
+      <template>
+        <script>
+          {
+            const hex_sha = await MZHostCache.sha256Hex("abc");
+            return {
+              assert:
+                hex_sha ===
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+              content: { hex_sha },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="清单 version 与内容派生一致（构建脚本 ↔ 引擎算法）">
+      <template>
+        <script>
+          {
+            const res_ver = await fetch("/cache-manifest.json", {
+              cache: "no-store",
+            });
+            const manifest_ver = await res_ver.json();
+            const derived_ver = await MZHostCache.deriveVersion(manifest_ver);
+            return {
+              assert: derived_ver === manifest_ver.version,
+              content: {
+                declared: manifest_ver.version,
+                derived_ver,
+                files: manifest_ver.hashes.length,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="validateManifest 合法清单通过、非法清单拒绝" parallel>
+      <template>
+        <script>
+          {
+            const good_vd = {
+              name: "mazmot",
+              version: "abcd1234",
+              hashes: [
+                { path: "index.html", hash: "aa".repeat(32), size: 1 },
+              ],
+            };
+            let goodOk_vd = false;
+            let goodErr_vd;
+            try {
+              MZHostCache.validateManifest(good_vd);
+              goodOk_vd = true;
+            } catch (err) {
+              goodErr_vd = err.message;
+            }
+
+            const badCases_vd = [
+              ["missing name", { version: "abcd1234", hashes: good_vd.hashes }],
+              ["bad version", { name: "m", version: "bad version!", hashes: good_vd.hashes }],
+              ["empty hashes", { name: "m", version: "abcd1234", hashes: [] }],
+              ["bad hash", { name: "m", version: "abcd1234", hashes: [{ path: "a", hash: "xyz", size: 1 }] }],
+              ["absolute path", { name: "m", version: "abcd1234", hashes: [{ path: "/a", hash: "aa".repeat(32), size: 1 }] }],
+              ["bad size", { name: "m", version: "abcd1234", hashes: [{ path: "a", hash: "aa".repeat(32), size: -1 }] }],
+              ["duplicate path", { name: "m", version: "abcd1234", hashes: [good_vd.hashes[0], good_vd.hashes[0]] }],
+            ];
+            const rejected_vd = badCases_vd.map(([label_vd, manifest_vd]) => {
+              try {
+                MZHostCache.validateManifest(manifest_vd);
+                return { label_vd, rejected: false };
+              } catch {
+                return { label_vd, rejected: true };
+              }
+            });
+
+            return {
+              assert:
+                goodOk_vd && rejected_vd.every((r) => r.rejected),
+              content: { goodOk_vd, goodErr_vd, rejected_vd },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="matchPath 路径归一化与 hasPath 判断" parallel>
+      <template>
+        <script>
+          {
+            const root_mp = MZHostCache.matchPath(new URL("https://m.example/"));
+            const query_mp = MZHostCache.matchPath(
+              new URL("https://m.example/mz/app-runner.js?v=1"),
+            );
+            const plain_mp = MZHostCache.matchPath(
+              new URL("https://m.example/mz/ai/main.js"),
+            );
+            const has_mp = MZHostCache.hasPath(
+              { hashes: [{ path: "mz/ai/main.js" }] },
+              "mz/ai/main.js",
+            );
+            const hasNot_mp = MZHostCache.hasPath(
+              { hashes: [{ path: "mz/ai/main.js" }] },
+              "mz/other.js",
+            );
+            return {
+              assert:
+                root_mp === "index.html" &&
+                query_mp === "mz/app-runner.js" &&
+                plain_mp === "mz/ai/main.js" &&
+                has_mp &&
+                !hasNot_mp,
+              content: { root_mp, query_mp, plain_mp, has_mp, hasNot_mp },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildCache 同 hash 条目零网络搬运 + 清单快照写入">
+      <template>
+        <script>
+          {
+            const content_bc = "hello mz cache";
+            const bytes_bc = new TextEncoder().encode(content_bc);
+            const hash_bc = await MZHostCache.sha256Hex(bytes_bc);
+            const entry_bc = {
+              path: "t-inc/a.txt",
+              hash: hash_bc,
+              size: bytes_bc.length,
+            };
+            const oldManifest_bc = {
+              name: "t",
+              version: "tstinc001",
+              hashes: [entry_bc],
+            };
+            const newManifest_bc = {
+              name: "t",
+              version: "tstinc002",
+              hashes: [entry_bc],
+            };
+            const oldCacheName_bc = "mazmot-host-vtstinc001";
+            const oldCache_bc = await caches.open(oldCacheName_bc);
+            await oldCache_bc.put("/t-inc/a.txt", new Response(content_bc));
+
+            const origFetch_bc = window.fetch;
+            let fetchCalls_bc = 0;
+            window.fetch = (...args_bc) => {
+              fetchCalls_bc++;
+              return Promise.reject(new Error("network should not be used"));
+            };
+
+            let newCacheName_bc, reusedText_bc, snapJson_bc, err_bc;
+            try {
+              newCacheName_bc = await MZHostCache.buildCache(newManifest_bc, {
+                cacheName: oldCacheName_bc,
+                manifest: oldManifest_bc,
+              });
+              const newCache_bc = await caches.open(newCacheName_bc);
+              reusedText_bc = await (
+                await newCache_bc.match("/t-inc/a.txt")
+              ).text();
+              const snapRes_bc = await newCache_bc.match("/__mz-manifest__");
+              snapJson_bc = snapRes_bc ? await snapRes_bc.json() : null;
+            } catch (err) {
+              err_bc = err.message;
+            } finally {
+              window.fetch = origFetch_bc;
+              await caches.delete(oldCacheName_bc);
+              if (newCacheName_bc) await caches.delete(newCacheName_bc);
+            }
+
+            return {
+              assert:
+                !err_bc &&
+                fetchCalls_bc === 0 &&
+                reusedText_bc === content_bc &&
+                snapJson_bc?.version === "tstinc002",
+              content: {
+                err_bc,
+                fetchCalls_bc,
+                reusedText_bc,
+                snapVersion_bc: snapJson_bc?.version,
+                newCacheName_bc,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildCache 字节 hash 不匹配拒绝写入">
+      <template>
+        <script>
+          {
+            const manifest_mm = {
+              name: "t",
+              version: "tstmm002",
+              hashes: [{ path: "t-mm/f.js", hash: "b".repeat(64), size: 12 }],
+            };
+            const origFetch_mm = window.fetch;
+            let err_mm;
+            try {
+              window.fetch = () =>
+                Promise.resolve(new Response("actual bytes"));
+              await MZHostCache.buildCache(manifest_mm, null);
+            } catch (err) {
+              err_mm = err.message;
+            } finally {
+              window.fetch = origFetch_mm;
+              await caches.delete("mazmot-host-v" + manifest_mm.version);
+            }
+            return {
+              assert: !!err_mm && err_mm.includes("hash mismatch"),
+              content: { err_mm },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildCache 网络响应非 200 拒绝">
+      <template>
+        <script>
+          {
+            const manifest_http = {
+              name: "t",
+              version: "tsthttp3",
+              hashes: [{ path: "t-http/f.js", hash: "c".repeat(64), size: 3 }],
+            };
+            const origFetch_http = window.fetch;
+            let err_http;
+            try {
+              window.fetch = () =>
+                Promise.resolve(new Response("nope", { status: 404 }));
+              await MZHostCache.buildCache(manifest_http, null);
+            } catch (err) {
+              err_http = err.message;
+            } finally {
+              window.fetch = origFetch_http;
+              await caches.delete("mazmot-host-v" + manifest_http.version);
+            }
+            return {
+              assert: !!err_http && err_http.includes("404"),
+              content: { err_http },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="state 引擎环境标记">
+      <template>
+        <script>
+          {
+            const st_env = MZHostCache.state();
+            return {
+              assert:
+                st_env.inSW === false && typeof st_env.enabled === "boolean",
+              content: st_env,
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

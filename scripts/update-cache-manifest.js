@@ -1,7 +1,17 @@
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
+// 生成 /cache-manifest.json：index.html + mz/（不含 test 目录与 mz/sw/）的
+// SHA-256 清单。version 由 hashes 内容派生（SHA-256 前 8 位），与
+// mz/sw/host-cache.js 运行时的 deriveVersion 算法保持一致，无需手工 bump。
+//
+// 用法：
+//   node scripts/update-cache-manifest.js          重新生成（内容无变化则不写盘）
+//   node scripts/update-cache-manifest.js --check  校验清单是否最新，过期则 exit 1
+
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { createHash } from 'crypto';
 
 const rootDir = join(import.meta.dirname, '..');
+const manifestPath = join(rootDir, 'cache-manifest.json');
 
 // 1. Read package.json
 const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-8'));
@@ -102,6 +112,8 @@ function walkDir(dir, baseDir = '') {
   for (const entry of entries) {
     if (entry.isDirectory() && entry.name === 'test') continue;
     const relativePath = baseDir ? `${baseDir}/${entry.name}` : entry.name;
+    // mz/sw/ 是 SW 引擎自身，随 SW script 缓存，不入清单
+    if (relativePath === 'mz/sw') continue;
     if (isIgnored(relativePath, ignorePatterns)) continue;
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -115,19 +127,47 @@ function walkDir(dir, baseDir = '') {
 
 const mzFiles = walkDir(join(rootDir, 'mz'), 'mz');
 
-// 4. Read current host-cache.json and update
-const hostCachePath = join(rootDir, 'host-cache.json');
-const hostCache = JSON.parse(readFileSync(hostCachePath, 'utf-8'));
+// 4. Compute per-file SHA-256 + size
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-hostCache.name = pkg.name;
-hostCache.version = pkg.version;
-hostCache.files = ['index.html', ...mzFiles];
+const hashes = ['index.html', ...mzFiles].map((path) => {
+  const bytes = readFileSync(join(rootDir, path));
+  return { path, hash: sha256(bytes), size: bytes.length };
+});
 
-// 5. Write back
-writeFileSync(hostCachePath, JSON.stringify(hostCache, null, 2) + '\n', 'utf-8');
+// 5. Derive version from content（与 host-cache.js deriveVersion 一致）
+const version = createHash('sha256')
+  .update(JSON.stringify(hashes), 'utf-8')
+  .digest('hex')
+  .slice(0, 8);
 
-console.log('host-cache.json updated successfully');
+const manifest = { name: pkg.name, version, hashes };
+
+// 6. Compare / write / check
+const expected = JSON.stringify(manifest, null, 2) + '\n';
+const isCheck = process.argv.includes('--check');
+
+if (isCheck) {
+  const current = existsSync(manifestPath)
+    ? readFileSync(manifestPath, 'utf-8')
+    : '';
+  if (current !== expected) {
+    console.error('cache-manifest.json is stale. Run: npm run update');
+    process.exit(1);
+  }
+  console.log(`cache-manifest.json is up to date (version ${version}, ${hashes.length} files)`);
+  process.exit(0);
+}
+
+const current = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : '';
+if (current === expected) {
+  console.log(`cache-manifest.json unchanged (version ${version}, ${hashes.length} files)`);
+  process.exit(0);
+}
+
+writeFileSync(manifestPath, expected, 'utf-8');
+console.log('cache-manifest.json updated successfully');
 console.log(`  name: ${pkg.name}`);
-console.log(`  version: ${pkg.version}`);
+console.log(`  version: ${version}`);
 console.log(`  mz files: ${mzFiles.length}`);
-console.log(`  total files: ${mzFiles.length + 1}`);
+console.log(`  total files: ${hashes.length}`);

@@ -24,8 +24,8 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core，完成后跳转 /apps/main/ 或 ?redirect=
-├── sw.js                     # NoneOS Core Service Worker（在根入口注册，scope=/；importScripts 前设置 HOST_CACHE_CONFIG=true 开启宿主缓存）
-├── host-cache.json           # 宿主项目缓存清单（name/version/files），Core 安装或升级后自动下载 files 写入 OPFS 实现离线访问
+├── sw.js                     # SW 引导（根入口注册，scope=/）：按环境 importScripts NoneOS Core dist.js，随后加载宿主离线缓存引擎 mz/sw/host-cache.js
+├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
@@ -33,7 +33,7 @@ Mazmot/
 ├── apps/                     # 应用（monorepo 风格）
 │   ├── main/                 # 主应用：应用列表 / 市场安装 / 分享入口，URL = /apps/main/
 │   │   ├── index.html        # 入口 HTML：校验 Core 模块 → 装载 ./app-config.js；同时挂载 <rdn-network> 浮窗
-│   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间）
+│   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
 │   │   ├── home.html         # 应用列表主页（页面模块）
 │   │   ├── home/
 │   │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
@@ -70,6 +70,7 @@ Mazmot/
 ├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
+│   ├── sw/                   # 宿主离线缓存引擎（host-cache.js，由根 sw.js importScripts；缓存 index.html + mz/ 到 Cache API）
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
 │   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
@@ -338,6 +339,16 @@ clearOpened → 关闭窗口
 - **持久化字段最小集合**：`name / desc / handle / dirName / source / namespace / appId / autoShare / createdAt`（自建应用；官方应用以 `officialId` 替代 `appId`，经 run-app 安装的应用额外带 `fileHash / payloadHash`）。新增字段必须同步更新 [share-mgr.js](mz/share-mgr.js) 的 payload `meta` 与"数据模型"小节。
 - **`app.json` 元数据**：至少包含 `name` / `displayName` / `version` / `icon` / `description`（官方应用的 `displayName`/`description` 基准值须为英文，可用 `i18n` 字段按语言覆盖，如 `"i18n": { "cn": { "displayName": "...", "description": "..." } }`）；`home.html` 的 `loadApps` 读它覆盖持久化的 `name` / `desc` 用于显示（有 `i18n[当前语言]` 覆盖时优先）。
 
+### `cache-manifest.json`（宿主离线缓存清单）
+
+```json
+{ "name": "mazmot", "version": "99a2fd1a", "hashes": [{ "path": "index.html", "hash": "<sha256-hex>", "size": 2215 }] }
+```
+
+- **收录范围**：`index.html` + `mz/`（跳过 `test` 目录与 `mz/sw/` 引擎自身），由 [scripts/update-cache-manifest.js](scripts/update-cache-manifest.js) 生成（`npm run update`；`--check` 供 CI 校验，过期 exit 1）。
+- **version 内容派生**：`sha256(JSON.stringify(hashes))` 前 8 位，与 [host-cache.js](mz/sw/host-cache.js) 的 `deriveVersion` 算法一致；内容不变则不写盘，**禁止手工修改 version**。
+- **缓存机制**（[mz/sw/host-cache.js](mz/sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / apps/main 回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
+
 ## UI 关键组件（[apps/main/home.html](apps/main/home.html)）
 
 ### 主界面
@@ -487,8 +498,8 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
 | 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
-| 主 SW | [sw.js](sw.js) |
-| 宿主离线缓存文件清单 / 版本 | [host-cache.json](host-cache.json)（改动缓存文件后需同步提升 `version`） |
+| 主 SW | [sw.js](sw.js)（core dist.js + [mz/sw/host-cache.js](mz/sw/host-cache.js)） |
+| 宿主离线缓存清单 / 版本 | [cache-manifest.json](cache-manifest.json)（version 内容派生，`npm run update` 生成，勿手改） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |
 | 浮窗式网络面板（主应用挂载） | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html) |
