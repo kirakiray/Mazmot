@@ -86,7 +86,7 @@
 
 ### 离线与缓存
 - Service Worker 拦截 `/gh/`、`/npm/`、`/nos/*` 前缀请求，离线可用
-- 宿主项目文件缓存清单（`host-cache.json`），Core 安装/升级后自动下载到 OPFS
+- 宿主离线缓存（`sw/host-cache.js`，由根 SW 加载）：按 `cache-manifest.json`（SHA-256 清单，version 内容派生）把 `index.html` + `mz/` 缓存到 Cache API，增量更新、原子切换
 
 ---
 
@@ -95,8 +95,8 @@
 ```
 Mazmot/
 ├── index.html                # 根入口：初始化/升级 NoneOS Core
-├── sw.js                     # NoneOS Core Service Worker
-├── host-cache.json           # 宿主项目离线缓存清单
+├── sw.js                     # SW 引导：加载 NoneOS Core + 宿主离线缓存引擎
+├── cache-manifest.json       # 宿主离线缓存清单（npm run update 生成）
 ├── AGENTS.md                 # AI 代理开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文
 ├── apps/                     # 应用（URL = /apps/<name>/）
@@ -179,7 +179,7 @@ https://your-host/apps/run-app/?u={publisherUserId}&h={payloadHash}
 |---|---|
 | `npm run static` | 启动静态服务器（端口 30031，无缓存） |
 | `npm test` | 运行 sibyl-test 多浏览器测试套件 |
-| `npm run update` | 重新生成宿主项目离线缓存清单（`host-cache.json`） |
+| `npm run update` | 重新生成宿主离线缓存清单（`cache-manifest.json`，内容无变化则不写盘） |
 
 ---
 

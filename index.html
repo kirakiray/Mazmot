@@ -40,6 +40,8 @@
     </style>
     <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
     <script src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
+    <!-- SW / Core 调试开关（见 sw/sw-config.js） -->
+    <script src="/sw/sw-config.js"></script>
   </head>
   <body>
     <div class="mask">
@@ -68,8 +70,23 @@
         location.replace(target);
       });
 
-      await load("https://core.noneos.com/nos-tool/comps/nos-version.html");
-      // await load("http://localhost:3002/nos-tool/comps/nos-version.html");
+      // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
+      // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
+      const swConfig = globalThis.SW_CONFIG || {};
+      const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(
+        location.hostname,
+      );
+      const prodNosVersion =
+        "https://core.noneos.com/nos-tool/comps/nos-version.html";
+      if (swConfig.coreDev && isLocalhost) {
+        try {
+          await load("http://localhost:3002/nos-tool/comps/nos-version.html");
+        } catch (err) {
+          await load(prodNosVersion);
+        }
+      } else {
+        await load(prodNosVersion);
+      }
     </script>
   </body>
 </html>
