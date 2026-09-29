@@ -10,6 +10,9 @@ mz/comps/
 │   ├── ercode.html
 │   ├── demo.html
 │   └── ercode.sb.html
+├── mascot/               # 相机机器人吉祥物组件
+│   ├── mascot.html
+│   └── demo.html
 ├── o-md/                 # Markdown 渲染组件（marked + highlight.js）
 │   ├── o-md.html
 │   ├── demo.html
@@ -41,6 +44,22 @@ mz/comps/
 ```html
 <l-m src="/mz/comps/ercode/ercode.html"></l-m>
 <m-ercode content="https://github.com/ofajs/ofa.js"></m-ercode>
+```
+
+### `m-mascot` — 相机机器人吉祥物
+
+- **文件**：[mascot/mascot.html](mascot/mascot.html)
+- **标签**：`<m-mascot>`
+- **定位**：Mazmot 吉祥物形象（相机造型机器人），纯 CSS 动效，可作形象展示与状态反馈。
+- **核心能力**：
+  - `state` 属性切换形态：默认（漂浮 + 眨眼）/ `happy`（眯眼弹跳）/ `angry`（抖动红温）/ `soulless`（灰暗停摆）；`setState()` 方法可编程切换。
+  - `--mascot-size` 控制整体尺寸（默认 120px，内部以 em 等比缩放）；`--mascot-eye-color` 控制光圈眼色（默认蓝）。
+  - 默认插槽内容渲染为头顶型号徽标（如 `<m-mascot>V4-Flash</m-mascot>`），插槽为空时徽标自动隐藏。
+- **使用示例**：
+
+```html
+<l-m src="/mz/comps/mascot/mascot.html"></l-m>
+<m-mascot style="--mascot-size: 104px"></m-mascot>
 ```
 
 ### `m-rnd-box` — 可拖拽缩放的浮动盒子

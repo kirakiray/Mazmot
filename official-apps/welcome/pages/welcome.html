@@ -29,25 +29,11 @@
       align-items: center;
       gap: 24px;
     }
-    /* 机器人形象占位：灰色圆圈，后续替换为吉祥物图片 */
+    /* 吉祥物：mz/comps/mascot 相机机器人组件（自带漂浮 / 眨眼动效） */
     .mascot {
-      width: 104px;
-      height: 104px;
-      border-radius: 50%;
+      --mascot-size: 104px;
       flex-shrink: 0;
-      background-color: var(--md-sys-color-surface-container-highest);
-      border: 2px solid var(--md-sys-color-outline-variant);
-      animation: mascot-breathe 3.2s ease-in-out infinite;
       user-select: none;
-    }
-    @keyframes mascot-breathe {
-      0%,
-      100% {
-        transform: scale(1);
-      }
-      50% {
-        transform: scale(1.04);
-      }
     }
     .chat {
       width: 100%;
@@ -338,6 +324,7 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/mz/comps/mascot/mascot.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
@@ -345,7 +332,7 @@
     <o-if :value="flowReady">
       <div class="flow">
         <div class="flow-center">
-          <div class="mascot"></div>
+          <m-mascot class="mascot" attr:state="mascotState"></m-mascot>
 
           <div class="chat">
             <div class="bubble" class:enter="msgEntered" class:leaving="msgLeaving">{{currentMsg}}</div>
@@ -676,6 +663,8 @@
           showHint: false,
           uiReady: false,
           keyReady: plan.hasUsableKey(existingKeys),
+          // 吉祥物形态：进场无灵魂，确认 AI Key 后苏醒为默认态（跳过则保持无灵魂）
+          mascotState: "soulless",
           provider: "deepseek",
           keyInput: "",
           showPassword: false,
@@ -733,6 +722,10 @@
             this.transitioning = true;
             this.unitIndex = index;
             this.unitId = unit.id;
+            // 走到 Key 步骤时已确认有可用 Key：吉祥物苏醒
+            if (unit.id === "key" && this.keyReady) {
+              this.mascotState = "";
+            }
             this.showHint = false;
             this.uiReady = false;
             this.clickReady = false;
@@ -850,6 +843,7 @@
               ai.saveKey(key, this.provider, extra);
               this.keyInput = "";
               this.keyReady = true;
+              this.mascotState = ""; // Key 填充确认，吉祥物苏醒
               toast({ message: t("keySavedToast"), color: "success" });
               this._purposeMsgKey = "keySaved";
               this.enterUnit(UNIT_INDEX.purpose);
