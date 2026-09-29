@@ -35,6 +35,20 @@ export default defineConfig({
       },
     },
     {
+      // 第二台 ai-relay（多账户保存 / 切换 / 删除用例）
+      command: "cargo run",
+      cwd: "..",
+      url: "http://127.0.0.1:18976/health",
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: {
+        AI_RELAY_PORT: "18976",
+        AI_RELAY_DATA: "data/e2e-ui2.redb",
+        AI_RELAY_ADMIN_TOKEN: "e2e-ui-admin-token-2",
+        AI_RELAY_SERVER_NAME: "E2E Relay Two",
+      },
+    },
+    {
       // 仓库静态服务器（承载管理台前端与根 Core 引导入口）
       command: "npx http-server . -p 18975 -c-1 --silent",
       cwd: "../../..",

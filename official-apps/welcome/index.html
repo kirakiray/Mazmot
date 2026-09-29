@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mazmot</title>
+    <script type="module">
+      // 加载应用前先校验 NoneOS Core 是否已就绪。
+      // 旧版本 Core 可能缺少新模块（如 /nos/fs/main.js），此时先到根入口完成升级，
+      // 升级后经 ?redirect= 回到当前地址（安装态 /$mazmot-apps/welcome/... 或在线调试态 /official-apps/welcome/...）。
+      try {
+        await import("/nos/fs/main.js");
+      } catch (e) {
+        window.location.href =
+          "/?redirect=" + encodeURIComponent(location.pathname);
+      }
+    </script>
+    <script
+      src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
+      type="module"
+    ></script>
+    <script
+      src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs"
+      type="module"
+    ></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          Segoe UI,
+          Microsoft Yahei,
+          Helvetica,
+          Arial,
+          sans-serif,
+          Apple Color Emoji,
+          Segoe UI Emoji;
+      }
+    </style>
+    <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
+    <script src="/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
+  </head>
+
+  <body>
+    <o-router fix-body>
+      <o-app src="./app-config.js"></o-app>
+    </o-router>
+    <script type="module">
+      // 按当前语言设置页面标题（Core 未就绪时保留默认标题）
+      try {
+        const { getLocaleText } = await import(
+          "/nos/locale-text/get-locale-text.js"
+        );
+        document.title = getLocaleText({
+          cn: "Mazmot 主页",
+          en: "Mazmot Home",
+        });
+      } catch (e) {}
+    </script>
+  </body>
+</html>
