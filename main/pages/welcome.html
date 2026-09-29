@@ -1,0 +1,968 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .stage {
+      height: 100%;
+      cursor: pointer;
+      background-color: var(--md-sys-color-background);
+      color: var(--md-sys-color-on-background);
+    }
+    /* 内容区滚动容器：顶部锚定布局——圆圈位置只由视口高度决定（16vh），
+       不随下方对话换行 / hint / 交互 UI 的高度变化而移动。
+       （整体垂直居中会在内容变化时重新分配上下留白，圆圈必然抖动） */
+    .flow {
+      height: 100%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .flow-center {
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+      padding: clamp(48px, 16vh, 200px) 16px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    /* 吉祥物：mz/comps/mascot 相机机器人组件（自带漂浮 / 眨眼动效） */
+    .mascot {
+      --mascot-size: 104px;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .chat {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+    /* 单条对话气泡：入场（translateY 8px→0）/出场（→-8px）走 transition，
+       由 msgEntered / msgLeaving 两个状态类驱动 */
+    .bubble {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 4px 16px 16px 16px;
+      background-color: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface);
+      font-size: 15px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-sizing: border-box;
+      opacity: 0;
+      transform: translateY(8px);
+      transition:
+        opacity 0.2s ease-out,
+        transform 0.2s ease-out;
+    }
+    .bubble.enter {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .bubble.leaving {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    @keyframes bubble-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      animation: hint-blink 1.8s ease-in-out infinite;
+      user-select: none;
+    }
+    @keyframes hint-blink {
+      0%,
+      100% {
+        opacity: 0.7;
+      }
+      50% {
+        opacity: 0.25;
+      }
+    }
+    .interact {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      cursor: default;
+      animation: bubble-in 0.25s ease-out;
+    }
+
+    /* ===== AI Key 表单 ===== */
+    .form-card {
+      padding: 16px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container-low);
+      border: 1px solid var(--md-sys-color-outline-variant);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .provider-field {
+      flex: 0 0 auto;
+      min-width: 170px;
+    }
+    .key-field {
+      flex: 1;
+      min-width: 220px;
+    }
+    .field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .relay-hint {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .relay-hint n-icon {
+      flex-shrink: 0;
+      font-size: 18px;
+      color: var(--md-sys-color-primary);
+    }
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    /* ===== 用途选项 ===== */
+    .purpose-step,
+    .apps-step {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .option-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .option {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+      box-sizing: border-box;
+      transition:
+        background-color 0.15s,
+        opacity 0.15s;
+    }
+    .option:hover {
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .option-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .option-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .option-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .option-desc {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.5;
+    }
+    .option-reason {
+      font-size: 12px;
+      color: var(--md-sys-color-error);
+      line-height: 1.5;
+    }
+    .option-arrow {
+      flex-shrink: 0;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .option[data-disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .option[data-disabled] .option-num {
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    /* ===== 应用方块 ===== */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 20px 12px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+      text-align: center;
+    }
+    .tile-icon {
+      font-size: 40px;
+      line-height: 1;
+    }
+    .tile-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .tile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .tile-badge n-icon {
+      font-size: 12px;
+    }
+    .tile-badge.installed {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .tile-badge.pending {
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+
+    .step-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .step-actions .back-btn {
+      margin-right: auto;
+    }
+
+    @media (max-width: 480px) {
+      .form-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .provider-field,
+      .key-field {
+        min-width: 0;
+      }
+      .provider-field st-select {
+        width: 100%;
+      }
+      .key-field st-input {
+        width: 100%;
+      }
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/mz/comps/mascot/mascot.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="stage" on:click="handleScreenClick">
+    <o-if :value="flowReady">
+      <div class="flow">
+        <div class="flow-center">
+          <m-mascot class="mascot" attr:state="mascotState"></m-mascot>
+
+          <div class="chat">
+            <div class="bubble" class:enter="msgEntered" class:leaving="msgLeaving">{{currentMsg}}</div>
+          </div>
+
+          <o-if :value="showHint">
+            <div class="hint">
+              <locale-text><span lang="cn">点击屏幕继续</span><span lang="en">Tap anywhere to continue</span></locale-text>
+            </div>
+          </o-if>
+
+          <o-if :value="uiReady">
+            <div class="interact">
+              <!-- 步骤：AI Key -->
+              <o-if :value="unitId === 'key'">
+                <div class="key-step">
+                  <o-if :value="keyReady">
+                    <div class="step-actions">
+                      <st-button color="primary" on:click="advanceAfterKey">
+                        <n-icon icon="mdi:arrow-right" slot="prefix"></n-icon>
+                        <locale-text><span lang="cn">下一步</span><span lang="en">Next</span></locale-text>
+                      </st-button>
+                    </div>
+                  </o-if>
+                  <o-if :value="!keyReady">
+                    <div class="form-card">
+                      <div class="form-row">
+                        <div class="provider-field">
+                          <label class="field-label">
+                            <locale-text><span lang="cn">提供商</span><span lang="en">Provider</span></locale-text>
+                          </label>
+                          <st-select
+                            id="provider-select"
+                            sync:value="provider"
+                            attr:default-value="provider"
+                            style="width: 100%"
+                          >
+                            <option value="relay">Invite code</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="kimi">Kimi</option>
+                            <option value="glm">GLM</option>
+                            <option value="glm-coding">GLM Coding Plan</option>
+                          </st-select>
+                        </div>
+                        <div class="key-field">
+                          <label class="field-label">
+                            {{provider === 'relay' ? t('inviteCodeLabel') : 'API Key'}}
+                          </label>
+                          <st-input
+                            sync:value="keyInput"
+                            attr:type="showPassword ? 'text' : 'password'"
+                            attr:placeholder="provider === 'relay' ? t('invitePlaceholder') : t('apiKeyPlaceholder')"
+                          >
+                            <st-icon-button
+                              slot="suffix"
+                              style="font-size: 13px"
+                              attr:title="t('toggleKeyVisibility')"
+                              on:click="togglePassword"
+                            >
+                              <n-icon
+                                attr:icon="showPassword ? 'mdi:eye-off' : 'mdi:eye'"
+                              ></n-icon>
+                            </st-icon-button>
+                          </st-input>
+                        </div>
+                      </div>
+                      <o-if :value="provider === 'relay'">
+                        <div class="relay-hint">
+                          <n-icon icon="mdi:server-network"></n-icon>
+                          <span>{{t('relayHint')}}</span>
+                        </div>
+                      </o-if>
+                      <div class="form-actions">
+                        <st-button
+                          variant="text"
+                          attr:disabled="keySaving"
+                          on:click="skipKey"
+                        >
+                          <locale-text><span lang="cn">跳过，暂不配置</span><span lang="en">Skip for now</span></locale-text>
+                        </st-button>
+                        <st-button
+                          color="primary"
+                          attr:disabled="!keyInput || keySaving"
+                          on:click="saveKeyFlow"
+                        >
+                          <span slot="prefix">
+                            <n-icon icon="mdi:check-circle-outline"></n-icon>
+                          </span>
+                          <o-if :value="!keySaving">
+                            <locale-text><span lang="cn">验证并保存</span><span lang="en">Validate and Save</span></locale-text>
+                          </o-if>
+                          <o-if :value="keySaving">
+                            <locale-text><span lang="cn">验证中...</span><span lang="en">Validating...</span></locale-text>
+                          </o-if>
+                        </st-button>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+
+              <!-- 步骤：选择用途 -->
+              <o-if :value="unitId === 'purpose'">
+                <div class="purpose-step">
+                  <div class="option-list">
+                    <o-fill :value="purposeOptions" fill-key="id">
+                      <button
+                        class="option"
+                        attr:data-disabled="$data.disabled"
+                        on:click="$host.pickPurpose($data.id)"
+                      >
+                        <span class="option-num">{{$data.num}}</span>
+                        <span class="option-body">
+                          <span class="option-title">{{$data.title}}</span>
+                          <span class="option-desc">{{$data.desc}}</span>
+                          <o-if :value="$data.disabledReason">
+                            <span class="option-reason">{{$data.disabledReason}}</span>
+                          </o-if>
+                        </span>
+                        <n-icon
+                          class="option-arrow"
+                          attr:icon="$data.disabled ? 'mdi:lock-outline' : 'mdi:chevron-right'"
+                        ></n-icon>
+                      </button>
+                    </o-fill>
+                  </div>
+                  <div class="step-actions">
+                    <st-button variant="text" class="back-btn" on:click="backToKey">
+                      <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
+                      <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
+                    </st-button>
+                  </div>
+                </div>
+              </o-if>
+
+              <!-- 步骤：按用途展示待安装应用 -->
+              <o-if :value="unitId === 'apps'">
+                <div class="apps-step">
+                  <div class="tile-grid">
+                    <o-fill :value="pickedApps" fill-key="id">
+                      <div class="tile">
+                        <div class="tile-icon">{{$data.icon}}</div>
+                        <div class="tile-name">{{$data.name}}</div>
+                        <div class="tile-state">
+                          <o-if :value="$data.installed">
+                            <span class="tile-badge installed">
+                              <n-icon icon="mdi:check-circle-outline"></n-icon>
+                              <locale-text><span lang="cn">已安装</span><span lang="en">Installed</span></locale-text>
+                            </span>
+                          </o-if>
+                          <o-if :value="!$data.installed">
+                            <span class="tile-badge pending">
+                              <n-icon icon="mdi:download-outline"></n-icon>
+                              <locale-text><span lang="cn">将安装</span><span lang="en">Will install</span></locale-text>
+                            </span>
+                          </o-if>
+                        </div>
+                      </div>
+                    </o-fill>
+                  </div>
+                  <div class="step-actions">
+                    <st-button variant="text" class="back-btn" on:click="backToPurpose">
+                      <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
+                      <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
+                    </st-button>
+                    <st-button
+                      color="primary"
+                      attr:disabled="finishing"
+                      on:click="finish"
+                    >
+                      <o-if :value="!finishing">
+                        <n-icon icon="mdi:rocket-launch-outline" slot="prefix"></n-icon>
+                        <locale-text><span lang="cn">完成，进入 Mazmot</span><span lang="en">Finish and Enter Mazmot</span></locale-text>
+                      </o-if>
+                      <o-if :value="finishing">
+                        <locale-text><span lang="cn">准备中...</span><span lang="en">Preparing...</span></locale-text>
+                      </o-if>
+                    </st-button>
+                  </div>
+                </div>
+              </o-if>
+            </div>
+          </o-if>
+        </div>
+      </div>
+    </o-if>
+  </div>
+
+  <script>
+    export default async ({ load }) => {
+      const { getStorage } = await load("/nos/storage/main.js");
+      const storage = getStorage("mazmot");
+      const {
+        getLocaleText,
+        ensureLocaleTextJson,
+      } = await load("/nos/locale-text/get-locale-text.js");
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+      );
+      const ai = await load("/mz/ai/main.js");
+      const { decodeInvite, fetchServerInfo } = await load(
+        "/mz/ai/supplier/relay.js",
+      );
+      const { loadOfficialAppMeta } = await load(
+        "../lib/official-app-writer.js",
+      );
+      const plan = await load("../lib/welcome-plan.js");
+      const { enqueueOfficialInstalls } = await load("../lib/install-queue.js");
+
+      // 先构建 locale-text.json 反向索引再求值 L10N（扩展语种回退）
+      await ensureLocaleTextJson();
+
+      // 已完成过引导则直接进应用列表页（在 ready 里判断）
+      const welcomeDone = await storage.getItem("welcome-done");
+      const existingKeys = ai.getApiKeys();
+
+      // 属性类 / JS 侧文案（模板正文用 <locale-text>）
+      const L10N = {
+        welcome1: getLocaleText({
+          cn: "你好，欢迎来到 Mazmot！👋 我是你的引导助手，接下来带你快速认识这个地方。",
+          en: "Hi, welcome to Mazmot! 👋 I'm your guide — let me show you around.",
+        }),
+        intro1: getLocaleText({
+          cn: "Mazmot 是一个去中心化的应用中心。你可以在这里用 AI 创建、开发完全定制的应用，也可以直接安装使用别人开发好的应用。",
+          en: "Mazmot is a decentralized app center. You can create fully customized apps with AI, or install and use apps built by others.",
+        }),
+        intro2: getLocaleText({
+          cn: "一切都在你的浏览器里运行，数据保存在本地。开始之前，先花一步配置一下 AI 能力吧。",
+          en: "Everything runs in your browser and data stays local. Before we start, let's set up AI capabilities.",
+        }),
+        keyNeed: getLocaleText({
+          cn: "使用 AI 相关能力（比如用 AI 开发应用）前，需要先配置一个 AI Key。支持 DeepSeek / Kimi / GLM，也支持粘贴中转服务的邀请码。密钥只保存在你的浏览器本地，不会上传。",
+          en: "AI features (like building apps with AI) need an AI Key first. DeepSeek / Kimi / GLM are supported, and relay invite codes work too. Keys are stored only in your browser.",
+        }),
+        keyFound: getLocaleText({
+          cn: "检测到你已经配置了可用的 AI Key，可以直接进入下一步！",
+          en: "You already have a usable AI Key — let's move on!",
+        }),
+        keySaved: getLocaleText({
+          cn: "AI Key 已保存，之后可以随时在「AI 密钥管理器」里管理。",
+          en: "AI Key saved. You can manage it anytime in the AI Key Manager.",
+        }),
+        keySkipped: getLocaleText({
+          cn: "好的，暂时跳过。之后你随时可以在「AI 密钥管理器」里添加 Key。",
+          en: "OK, skipped for now. You can add a Key anytime in the AI Key Manager.",
+        }),
+        purposeAsk: getLocaleText({
+          cn: "你打算主要用 Mazmot 做什么？选一个吧：",
+          en: "What do you mainly want to do with Mazmot? Pick one:",
+        }),
+        appsIntro: getLocaleText({
+          cn: "根据你的选择，我为你准备了这些应用：",
+          en: "Based on your choice, here are the apps prepared for you:",
+        }),
+        invitePlaceholder: getLocaleText({
+          cn: "请输入邀请码",
+          en: "Enter invite code",
+        }),
+        apiKeyPlaceholder: getLocaleText({
+          cn: "请输入 API Key",
+          en: "Enter API Key",
+        }),
+        inviteCodeLabel: getLocaleText({ cn: "邀请码", en: "Invite code" }),
+        toggleKeyVisibility: getLocaleText({
+          cn: "显示/隐藏 API Key",
+          en: "Show/hide API Key",
+        }),
+        relayHint: getLocaleText({
+          cn: "粘贴你收到的邀请码，验证通过后保存即可。",
+          en: "Paste the invite code you received. It will be validated and saved.",
+        }),
+        keySavedToast: getLocaleText({
+          cn: "API Key 已保存",
+          en: "API Key saved",
+        }),
+        purpose1Title: getLocaleText({
+          cn: "直接使用现成的应用",
+          en: "Use ready-made apps",
+        }),
+        purpose1Desc: getLocaleText({
+          cn: "安装官方精选应用，开箱即用",
+          en: "Install featured official apps, ready to use",
+        }),
+        purpose2Title: getLocaleText({
+          cn: "用 AI 开发自己的应用",
+          en: "Build your own apps with AI",
+        }),
+        purpose2Desc: getLocaleText({
+          cn: "通过 AI 开发助手「妙造」，对话就能生成应用",
+          en: "Chat with the AI builder Conjure to create apps",
+        }),
+        purpose3Title: getLocaleText({
+          cn: "Mazmot 社交中心",
+          en: "Mazmot Social Hub",
+        }),
+        purpose3Desc: getLocaleText({
+          cn: "与其他用户联机交流",
+          en: "Connect and socialize with other users",
+        }),
+        noKeyReason: getLocaleText({
+          cn: "还没有可用的 AI Key，无法使用",
+          en: "No usable AI Key yet, unavailable",
+        }),
+        comingSoon: getLocaleText({ cn: "敬请期待", en: "Coming soon" }),
+        finishErrorToast: getLocaleText({
+          cn: "进入失败，请重试",
+          en: "Failed to continue, please retry",
+        }),
+      };
+      const t = (key) => (L10N[key] === undefined ? key : L10N[key]);
+
+      // 引导单元线性脚本：每个单元同一时间只显示一条对话。
+      // dialog 单元点击屏幕进入下一个；key/purpose/apps 单元文案说完后
+      // 展示交互 UI，由按钮驱动流转
+      const UNITS = [
+        { id: "welcome1", type: "dialog", msgKey: "welcome1" },
+        { id: "intro1", type: "dialog", msgKey: "intro1" },
+        { id: "intro2", type: "dialog", msgKey: "intro2" },
+        { id: "key", type: "key" },
+        { id: "purpose", type: "purpose" },
+        { id: "apps", type: "apps", msgKey: "appsIntro" },
+      ];
+      const UNIT_INDEX = { key: 3, purpose: 4, apps: 5 };
+
+      return {
+        data: {
+          flowReady: false,
+          unitIndex: -1,
+          unitId: "",
+          currentMsg: "",
+          msgEntered: false,
+          msgLeaving: false,
+          typing: false,
+          clickReady: false,
+          showHint: false,
+          uiReady: false,
+          keyReady: plan.hasUsableKey(existingKeys),
+          // 吉祥物形态：进场无灵魂，确认 AI Key 后苏醒为默认态（跳过则保持无灵魂）
+          mascotState: "soulless",
+          // 默认走邀请码（推荐给新用户的接入方式）
+          provider: "relay",
+          keyInput: "",
+          showPassword: false,
+          keySaving: false,
+          choice: "",
+          purposeOptions: [],
+          pickedApps: [],
+          finishing: false,
+        },
+
+        ready() {
+          // 已完成过引导：直接进入应用列表页
+          if (welcomeDone) {
+            this.replace("./apps.html");
+            return;
+          }
+          this.flowReady = true;
+          this.enterUnit(0);
+        },
+
+        detached() {
+          clearTimeout(this._typeTimer);
+        },
+
+        proto: {
+          t(key) {
+            return t(key);
+          },
+
+          _sleep(ms) {
+            return new Promise((r) => setTimeout(r, ms));
+          },
+
+          _nextFrame() {
+            return new Promise((r) => requestAnimationFrame(() => r()));
+          },
+
+          // 点击屏幕：打字中 → 立即补全；对话单元完成 → 淡出并进入下一个
+          handleScreenClick() {
+            if (!this.flowReady || this.transitioning || this.finishing) return;
+            if (this.typing) {
+              this.finishTyping();
+              return;
+            }
+            const unit = UNITS[this.unitIndex];
+            if (unit && unit.type === "dialog" && this.clickReady) {
+              this.enterUnit(this.unitIndex + 1);
+            }
+          },
+
+          // 切换单元：旧气泡淡出 → 换文案 → 新气泡入场 → 打字机
+          async enterUnit(index) {
+            const unit = UNITS[index];
+            if (!unit) return;
+            this.transitioning = true;
+            this.unitIndex = index;
+            this.unitId = unit.id;
+            // 走到 Key 步骤时已确认有可用 Key：吉祥物苏醒
+            if (unit.id === "key" && this.keyReady) {
+              this.mascotState = "";
+            }
+            this.showHint = false;
+            this.uiReady = false;
+            this.clickReady = false;
+            clearTimeout(this._typeTimer);
+            this.typing = false;
+            if (this.currentMsg) {
+              this.msgLeaving = true;
+              this.msgEntered = false;
+              await this._sleep(210);
+            }
+            this.msgLeaving = false;
+            this.msgEntered = false;
+            this.currentMsg = this._unitMsgText(unit);
+            await this._nextFrame();
+            this.msgEntered = true;
+            this.transitioning = false;
+            this._typeCurrent();
+          },
+
+          _unitMsgText(unit) {
+            if (unit.id === "key") return t(this.keyReady ? "keyFound" : "keyNeed");
+            if (unit.id === "purpose") return t(this._purposeMsgKey || "purposeAsk");
+            return t(unit.msgKey);
+          },
+
+          _typeCurrent() {
+            const full = this.currentMsg;
+            this._fullMsg = full;
+            if (!full) {
+              this._onMsgDone();
+              return;
+            }
+            this.typing = true;
+            let len = 0;
+            const tick = () => {
+              if (!this.typing) return; // 已被单元切换打断
+              len = Math.min(full.length, len + 2);
+              this.currentMsg = full.slice(0, len);
+              if (len >= full.length) {
+                this.typing = false;
+                this._onMsgDone();
+                return;
+              }
+              this._typeTimer = setTimeout(tick, 24);
+            };
+            tick();
+          },
+
+          finishTyping() {
+            if (!this.typing) return;
+            clearTimeout(this._typeTimer);
+            this.currentMsg = this._fullMsg;
+            this.typing = false;
+            this._onMsgDone();
+          },
+
+          _onMsgDone() {
+            const unit = UNITS[this.unitIndex];
+            if (!unit) return;
+            if (unit.type === "dialog") {
+              this.clickReady = true;
+              this.showHint = true;
+              return;
+            }
+            // 交互单元：文案说完后展示操作 UI
+            this.uiReady = true;
+            if (unit.id === "purpose") this.buildPurposeOptions();
+            if (unit.id === "apps") this.buildPickedApps();
+          },
+
+          // ===== AI Key 步骤 =====
+
+          togglePassword() {
+            this.showPassword = !this.showPassword;
+          },
+
+          advanceAfterKey() {
+            this._purposeMsgKey = "purposeAsk";
+            this.enterUnit(UNIT_INDEX.purpose);
+          },
+
+          async skipKey() {
+            if (this.keySaving) return;
+            this.keyReady = false;
+            this._purposeMsgKey = "keySkipped";
+            this.enterUnit(UNIT_INDEX.purpose);
+          },
+
+          async saveKeyFlow() {
+            const key = this.keyInput.trim();
+            if (!key || this.keySaving) return;
+            this.keySaving = true;
+            try {
+              const { valid, message } = await ai.testApiKey(
+                key,
+                this.provider,
+              );
+              if (!valid) {
+                toast({ message, color: "error" });
+                return;
+              }
+              // relay 邀请码：拉取服务器命名随 key 持久化（失败不阻塞保存）
+              let extra = {};
+              if (this.provider === "relay") {
+                const invite = decodeInvite(key);
+                if (invite) {
+                  try {
+                    const info = await fetchServerInfo(invite.baseUrl);
+                    extra = { serverName: info.name };
+                  } catch (e) {
+                    // 无命名信息也允许保存
+                  }
+                }
+              }
+              ai.saveKey(key, this.provider, extra);
+              this.keyInput = "";
+              this.keyReady = true;
+              this.mascotState = ""; // Key 填充确认，吉祥物苏醒
+              toast({ message: t("keySavedToast"), color: "success" });
+              this._purposeMsgKey = "keySaved";
+              this.enterUnit(UNIT_INDEX.purpose);
+            } catch (err) {
+              console.error("保存 AI Key 失败：", err);
+              toast({
+                message: getLocaleText(
+                  { cn: "保存失败：{msg}", en: "Save failed: {msg}" },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.keySaving = false;
+            }
+          },
+
+          // ===== 用途选择步骤 =====
+
+          buildPurposeOptions() {
+            this.purposeOptions = [
+              {
+                id: "ready-apps",
+                num: 1,
+                title: t("purpose1Title"),
+                desc: t("purpose1Desc"),
+                disabled: !plan.isPurposeEnabled("ready-apps", this.keyReady),
+                disabledReason: "",
+              },
+              {
+                id: "ai-dev",
+                num: 2,
+                title: t("purpose2Title"),
+                desc: t("purpose2Desc"),
+                disabled: !plan.isPurposeEnabled("ai-dev", this.keyReady),
+                disabledReason: this.keyReady ? "" : t("noKeyReason"),
+              },
+              {
+                id: "social",
+                num: 3,
+                title: t("purpose3Title"),
+                desc: t("purpose3Desc"),
+                disabled: true,
+                disabledReason: t("comingSoon"),
+              },
+            ];
+          },
+
+          pickPurpose(id) {
+            if (!plan.isPurposeEnabled(id, this.keyReady)) return;
+            this.choice = id;
+            // 从应用步骤「上一步」回来时重新发问
+            this._purposeMsgKey = "purposeAsk";
+            this.enterUnit(UNIT_INDEX.apps);
+          },
+
+          backToKey() {
+            this.enterUnit(UNIT_INDEX.key);
+          },
+
+          backToPurpose() {
+            this.enterUnit(UNIT_INDEX.purpose);
+          },
+
+          // ===== 应用方块步骤 =====
+
+          async buildPickedApps() {
+            const ids = plan.getAppIdsForPurpose(this.choice);
+            const apps = (await storage.getItem("apps")) || [];
+            const metas = await Promise.all(
+              ids.map((id) => loadOfficialAppMeta(id).catch(() => null)),
+            );
+            this.pickedApps = ids.map((id, i) => {
+              const meta = metas[i];
+              return {
+                id,
+                icon: (meta && meta.icon) || "📦",
+                name: (meta && meta.name) || id,
+                desc: (meta && meta.desc) || "",
+                installed: apps.some(
+                  (a) => a.name === id || a.officialId === id,
+                ),
+              };
+            });
+          },
+
+          async finish() {
+            if (this.finishing) return;
+            this.finishing = true;
+            try {
+              const ids = plan
+                .getAppIdsForPurpose(this.choice)
+                .filter((id) => {
+                  const picked = this.pickedApps.find((a) => a.id === id);
+                  return !picked || !picked.installed;
+                });
+              await storage.setItem("welcome-done", {
+                purpose: this.choice,
+                keyReady: this.keyReady,
+                at: Date.now(),
+              });
+              await enqueueOfficialInstalls(ids);
+              this.replace("./apps.html");
+            } catch (err) {
+              console.error("完成引导失败：", err);
+              toast({ message: t("finishErrorToast"), color: "error" });
+              this.finishing = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>welcome-plan 单元测试</title>
+    <script type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"></script>
+  </head>
+  <body>
+    <sb-test name="hasUsableKey：空列表 / 全禁用返回 false" parallel>
+      <template>
+        <script type="module">
+          import { hasUsableKey } from "../welcome-plan.js";
+          {
+            const emptyResult = hasUsableKey([]);
+            const undefinedResult = hasUsableKey(undefined);
+            const allDisabledResult = hasUsableKey([
+              { disabled: true },
+              { disabled: true },
+            ]);
+            return {
+              assert:
+                emptyResult === false &&
+                undefinedResult === false &&
+                allDisabledResult === false,
+              content: {
+                checks: { emptyResult, undefinedResult, allDisabledResult },
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="hasUsableKey：存在可用 Key 返回 true" parallel>
+      <template>
+        <script type="module">
+          import { hasUsableKey } from "../welcome-plan.js";
+          {
+            const enabledResult = hasUsableKey([
+              { disabled: false },
+              { disabled: true },
+            ]);
+            const missingFlagResult = hasUsableKey([{ id: "k1" }]);
+            return {
+              assert: enabledResult === true && missingFlagResult === true,
+              content: { checks: { enabledResult, missingFlagResult } },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="getAppIdsForPurpose：用途 → 应用 id 映射" parallel>
+      <template>
+        <script type="module">
+          import { getAppIdsForPurpose } from "../welcome-plan.js";
+          {
+            const readyApps = getAppIdsForPurpose("ready-apps");
+            const aiDev = getAppIdsForPurpose("ai-dev");
+            const social = getAppIdsForPurpose("social");
+            const unknown = getAppIdsForPurpose("not-exist");
+            return {
+              assert:
+                JSON.stringify(readyApps) ===
+                  JSON.stringify(["speed-dial", "ai-manager"]) &&
+                JSON.stringify(aiDev) ===
+                  JSON.stringify(["conjure", "ai-manager"]) &&
+                JSON.stringify(social) === "[]" &&
+                JSON.stringify(unknown) === "[]",
+              content: { readyApps, aiDev, social, unknown },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="isPurposeEnabled：无 Key 时 AI 开发置灰、社交恒置灰" parallel>
+      <template>
+        <script type="module">
+          import { isPurposeEnabled } from "../welcome-plan.js";
+          {
+            // 无 Key：仅「直接使用现成应用」可选
+            const noKeyChecks = {
+              readyApps: isPurposeEnabled("ready-apps", false),
+              aiDev: isPurposeEnabled("ai-dev", false),
+              social: isPurposeEnabled("social", false),
+            };
+            // 有 Key：AI 开发可选，社交仍不可选
+            const withKeyChecks = {
+              readyApps: isPurposeEnabled("ready-apps", true),
+              aiDev: isPurposeEnabled("ai-dev", true),
+              social: isPurposeEnabled("social", true),
+            };
+            const unknownResult = isPurposeEnabled("not-exist", true);
+            return {
+              assert:
+                noKeyChecks.readyApps === true &&
+                noKeyChecks.aiDev === false &&
+                noKeyChecks.social === false &&
+                withKeyChecks.readyApps === true &&
+                withKeyChecks.aiDev === true &&
+                withKeyChecks.social === false &&
+                unknownResult === false,
+              content: { noKeyChecks, withKeyChecks, unknownResult },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

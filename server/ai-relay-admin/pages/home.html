@@ -327,6 +327,10 @@
       width: min(520px, 100%);
     }
 
+    .dlg-switch::part(panel) {
+      width: min(520px, 100%);
+    }
+
     .invite-code-box {
       background-color: var(--md-sys-color-surface-container-high);
       border-radius: 12px;
@@ -487,6 +491,10 @@
             on:click="openSettings"
           ><n-icon icon="mdi:cog-outline"></n-icon></st-icon-button>
           <st-icon-button
+            attr:title="t('switchServer')"
+            on:click="openSwitch"
+          ><n-icon icon="mdi:swap-horizontal"></n-icon></st-icon-button>
+          <st-icon-button
             attr:title="t('disconnect')"
             on:click="disconnect"
           ><n-icon icon="mdi:link-off"></n-icon></st-icon-button>
@@ -496,6 +504,48 @@
 
     <!-- ============ 连接页 ============ -->
     <o-if :value="view === 'connect'">
+      <o-if :value="accounts.length > 0">
+        <section class="card">
+          <div class="section-header">
+            <h2 class="section-title"><locale-text><span lang="cn">已保存的服务器</span><span lang="en">Saved servers</span></locale-text></h2>
+            <span class="count-badge">{{accounts.length}}</span>
+          </div>
+          <st-list>
+            <o-fill :value="accounts" fill-key="id">
+              <st-list-item button on:click="$host.openAccount($data.id)">
+                <span slot="prefix">
+                  <o-if :value="$data.id === $host.activeId">
+                    <n-icon icon="mdi:server-network" class="user-item-icon bound"></n-icon>
+                  </o-if>
+                  <o-if :value="$data.id !== $host.activeId">
+                    <n-icon icon="mdi:server" class="user-item-icon"></n-icon>
+                  </o-if>
+                </span>
+                <div>
+                  <div class="user-line1">
+                    <span class="user-name">{{$host.accountTitle($data)}}</span>
+                    <o-if :value="$data.id === $host.activeId">
+                      <span class="rounds-chip">
+                        <n-icon icon="mdi:check"></n-icon>
+                        <locale-text><span lang="cn">当前</span><span lang="en">Current</span></locale-text>
+                      </span>
+                    </o-if>
+                  </div>
+                  <div class="item-sub mono">{{$data.url}}</div>
+                </div>
+                <div slot="suffix" class="item-actions">
+                  <st-icon-button
+                    color="error"
+                    style="font-size: 13px"
+                    attr:title="$host.t('delete')"
+                    on:click="$host.deleteAccount($data.id, $event)"
+                  ><n-icon icon="mdi:delete-outline"></n-icon></st-icon-button>
+                </div>
+              </st-list-item>
+            </o-fill>
+          </st-list>
+        </section>
+      </o-if>
       <section class="card">
         <h2 class="section-title"><locale-text><span lang="cn">连接转发服务器</span><span lang="en">Connect to Relay Server</span></locale-text></h2>
         <div class="field">
@@ -714,6 +764,51 @@
       </st-button>
       <st-button attr:disabled="!settingsName || savingSettings" on:click="saveSettings">
         <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+      </st-button>
+    </div>
+  </st-dialog>
+
+  <!-- ============ 切换服务器弹窗 ============ -->
+  <st-dialog class="dlg-switch" sync:open="switchOpen" auto-close>
+    <h2 slot="headline"><locale-text><span lang="cn">切换服务器</span><span lang="en">Switch Server</span></locale-text></h2>
+    <st-list>
+      <o-fill :value="accounts" fill-key="id">
+        <st-list-item button on:click="$host.openAccount($data.id)">
+          <span slot="prefix">
+            <o-if :value="$data.id === $host.activeId">
+              <n-icon icon="mdi:server-network" class="user-item-icon bound"></n-icon>
+            </o-if>
+            <o-if :value="$data.id !== $host.activeId">
+              <n-icon icon="mdi:server" class="user-item-icon"></n-icon>
+            </o-if>
+          </span>
+          <div>
+            <div class="user-line1">
+              <span class="user-name">{{$host.accountTitle($data)}}</span>
+              <o-if :value="$data.id === $host.activeId">
+                <span class="rounds-chip">
+                  <n-icon icon="mdi:check"></n-icon>
+                  <locale-text><span lang="cn">当前</span><span lang="en">Current</span></locale-text>
+                </span>
+              </o-if>
+            </div>
+            <div class="item-sub mono">{{$data.url}}</div>
+          </div>
+          <div slot="suffix" class="item-actions">
+            <st-icon-button
+              color="error"
+              style="font-size: 13px"
+              attr:title="$host.t('delete')"
+              on:click="$host.deleteAccount($data.id, $event)"
+            ><n-icon icon="mdi:delete-outline"></n-icon></st-icon-button>
+          </div>
+        </st-list-item>
+      </o-fill>
+    </st-list>
+    <div class="form-actions" style="justify-content: stretch; margin: 16px 0 0;">
+      <st-button variant="outlined" on:click="addNewServer">
+        <span slot="prefix"><n-icon icon="mdi:plus"></n-icon></span>
+        <locale-text><span lang="cn">添加新服务器</span><span lang="en">Add new server</span></locale-text>
       </st-button>
     </div>
   </st-dialog>
@@ -995,6 +1090,10 @@
         userNotePlaceholder: { cn: "可选备注", en: "Optional note" },
         quotaPlaceholder: { cn: "如 1000000（一百万 token）", en: "e.g. 1000000" },
         unlimited: { cn: "无限", en: "Unlimited" },
+        savedServers: { cn: "已保存的服务器", en: "Saved servers" },
+        switchServer: { cn: "切换服务器", en: "Switch server" },
+        currentAccount: { cn: "当前", en: "Current" },
+        addNewServer: { cn: "添加新服务器", en: "Add new server" },
       };
       const t = (key) => {
         const i = L10N[key];
@@ -1033,6 +1132,10 @@
           detailBindMode: "open",
           loadingModels: false,
           savingDetail: false,
+          accounts: [],
+          activeId: "",
+          switchOpen: false,
+          switchingId: "",
         },
 
         proto: {
@@ -1102,7 +1205,7 @@
                 body: JSON.stringify({ serverName: name }),
               });
               this.serverName = name;
-              await store.setItem("serverName", name);
+              await this.upsertAccount(this.serverUrl, this.adminToken, name);
               this.settingsOpen = false;
               toast({ message: getLocaleText({ cn: "已保存", en: "Saved" }), color: "success" });
             } catch (error) {
@@ -1124,30 +1227,23 @@
             this.serverUrl = this.serverUrl.trim().replace(/\/+$/, "");
             this.adminToken = this.adminToken.trim();
             if (!this.serverUrl || !this.adminToken) return;
-            this.connecting = true;
-            try {
-              const overview = await this.testConnection();
-              this.serverName = overview?.serverName || "";
-              await store.setItem("serverName", this.serverName);
-              await store.setItem("serverUrl", this.serverUrl);
-              await store.setItem("adminToken", this.adminToken);
-              this.view = "panel";
-              await this.refreshAll();
-              toast({ message: getLocaleText({ cn: "已连接", en: "Connected" }), color: "success" });
-            } catch (error) {
-              toast({
-                message: getLocaleText({ cn: "连接失败：{msg}", en: "Connect failed: {msg}" }, { msg: error.message }),
-                color: "error",
-              });
-            } finally {
-              this.connecting = false;
-            }
+            await this.doConnect();
           },
 
+          /** 断开：二次确认后回连接页；已保存账户保留，便于一键重连 / 切换 */
           async disconnect() {
-            await store.removeItem("serverUrl");
-            await store.removeItem("adminToken");
-            await store.removeItem("serverName");
+            const ok = await confirm({
+              title: getLocaleText({ cn: "断开连接", en: "Disconnect" }),
+              message: getLocaleText({
+                cn: "确定断开当前服务器吗？已保存的账户凭据会保留，可随时一键重连或切换。",
+                en: "Disconnect from the current server? The saved account credential is kept — you can reconnect or switch anytime.",
+              }),
+              yes: getLocaleText({ cn: "断开", en: "Disconnect" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
+            });
+            if (!ok) return;
+            await store.removeItem("activeId");
+            this.activeId = "";
             this.serverName = "";
             this.view = "connect";
             this.serverUrl = "";
@@ -1186,6 +1282,208 @@
           showUsersTab() {
             this.tab = "users";
             this.loadUsers();
+          },
+
+          // ———— 多服务器账户 ————
+
+          /** 读取账户列表与活跃 id；旧版单账户键（serverUrl/adminToken/serverName）一次性迁移进列表 */
+          async loadAccounts() {
+            let accounts = (await store.getItem("accounts")) || [];
+            if (accounts.length === 0) {
+              const url = await store.getItem("serverUrl");
+              const token = await store.getItem("adminToken");
+              if (url && token) {
+                const name = (await store.getItem("serverName")) || "";
+                accounts = [{ id: url, url, token, name }];
+                await store.setItem("accounts", accounts);
+                await store.setItem("activeId", url);
+                await store.removeItem("serverUrl");
+                await store.removeItem("adminToken");
+                await store.removeItem("serverName");
+              }
+            }
+            this.accounts = accounts;
+            this.activeId = (await store.getItem("activeId")) || "";
+          },
+
+          /** 连接成功后写入账户（同 url 视为同一账户，覆盖 token 与命名）并刷新列表 */
+          async upsertAccount(url, token, name) {
+            const accounts = (await store.getItem("accounts")) || [];
+            const found = accounts.find((a) => a.url === url);
+            if (found) {
+              found.token = token;
+              if (name) found.name = name;
+            } else {
+              accounts.push({ id: url, url, token, name: name || "" });
+            }
+            await store.setItem("accounts", accounts);
+            this.accounts = accounts;
+          },
+
+          accountTitle(account) {
+            return account.name || account.url;
+          },
+
+          openSwitch() {
+            this.switchOpen = true;
+          },
+
+          /** 切换弹窗底部入口：关弹窗、清空表单、回连接页添加新服务器 */
+          addNewServer() {
+            this.switchOpen = false;
+            this.serverUrl = "";
+            this.adminToken = "";
+            this.view = "connect";
+          },
+
+          /** 点已保存账户：连接页 → 直接连接；面板（切换弹窗）→ 切换 */
+          async openAccount(id) {
+            if (this.switchingId) return;
+            if (this.view === "panel") {
+              if (this.activeId === id) {
+                this.switchOpen = false;
+                return;
+              }
+              await this.switchToAccount(id);
+              return;
+            }
+            const account = this.accounts.find((a) => a.id === id);
+            if (!account || this.connecting) return;
+            this.serverUrl = account.url;
+            this.adminToken = account.token;
+            await this.doConnect();
+          },
+
+          /** 切换到目标账户：失败回滚原凭据、不动 activeId */
+          async switchToAccount(id) {
+            const account = this.accounts.find((a) => a.id === id);
+            if (!account) return;
+            this.switchingId = id;
+            const prev = {
+              url: this.serverUrl,
+              token: this.adminToken,
+              name: this.serverName,
+            };
+            this.serverUrl = account.url;
+            this.adminToken = account.token;
+            try {
+              const overview = await this.testConnection();
+              this.serverName =
+                overview?.serverName || account.name || "";
+              await this.upsertAccount(
+                account.url,
+                account.token,
+                this.serverName,
+              );
+              await store.setItem("activeId", account.id);
+              this.activeId = account.id;
+              this.switchOpen = false;
+              await this.refreshAll();
+              toast({
+                message: getLocaleText(
+                  { cn: "已切换到 {name}", en: "Switched to {name}" },
+                  { name: this.accountTitle(account) },
+                ),
+                color: "success",
+              });
+            } catch (error) {
+              this.serverUrl = prev.url;
+              this.adminToken = prev.token;
+              this.serverName = prev.name;
+              toast({
+                message: getLocaleText(
+                  { cn: "切换失败：{msg}", en: "Switch failed: {msg}" },
+                  { msg: error.message },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.switchingId = false;
+            }
+          },
+
+          /** 删除本机保存的账户凭据（不影响服务器）；删当前连接中的账户则断开回连接页 */
+          async deleteAccount(id, event) {
+            event?.stopPropagation?.();
+            const account = this.accounts.find((a) => a.id === id);
+            if (!account) return;
+            const isActive = id === this.activeId;
+            const ok = await confirm({
+              title: getLocaleText({
+                cn: "删除服务器账户",
+                en: "Remove Server Account",
+              }),
+              message: isActive
+                ? getLocaleText(
+                    {
+                      cn: "「{name}」当前已连接，删除后将断开并回到连接页。仅移除本机保存的凭据，服务器数据不受影响。",
+                      en: "\"{name}\" is currently connected and will be disconnected. Only the locally saved credential is removed — the server is not affected.",
+                    },
+                    { name: this.accountTitle(account) },
+                  )
+                : getLocaleText(
+                    {
+                      cn: "删除本机保存的「{name}」凭据？服务器数据不受影响。",
+                      en: "Remove the locally saved credential for \"{name}\"? The server is not affected.",
+                    },
+                    { name: this.accountTitle(account) },
+                  ),
+              yes: getLocaleText({ cn: "删除", en: "Delete" }),
+              cancel: getLocaleText({ cn: "取消", en: "Cancel" }),
+            });
+            if (!ok) return;
+            const accounts = ((await store.getItem("accounts")) || []).filter(
+              (a) => a.id !== id,
+            );
+            await store.setItem("accounts", accounts);
+            this.accounts = accounts;
+            if (isActive) {
+              await store.removeItem("activeId");
+              this.activeId = "";
+              this.serverName = "";
+              this.view = "connect";
+              this.serverUrl = "";
+              this.adminToken = "";
+              this.apikeys = [];
+              this.users = [];
+              this.switchOpen = false;
+              toast({
+                message: getLocaleText({ cn: "已删除", en: "Deleted" }),
+                color: "success",
+              });
+            }
+          },
+
+          /** 用当前 serverUrl / adminToken 建立连接，成功后落账户并置为活跃 */
+          async doConnect() {
+            this.connecting = true;
+            try {
+              const overview = await this.testConnection();
+              this.serverName = overview?.serverName || "";
+              await this.upsertAccount(
+                this.serverUrl,
+                this.adminToken,
+                this.serverName,
+              );
+              await store.setItem("activeId", this.serverUrl);
+              this.activeId = this.serverUrl;
+              this.view = "panel";
+              await this.refreshAll();
+              toast({
+                message: getLocaleText({ cn: "已连接", en: "Connected" }),
+                color: "success",
+              });
+            } catch (error) {
+              toast({
+                message: getLocaleText(
+                  { cn: "连接失败：{msg}", en: "Connect failed: {msg}" },
+                  { msg: error.message },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.connecting = false;
+            }
           },
 
           // ———— 上游 apikey ————
@@ -1632,20 +1930,20 @@
         },
 
         async attached() {
-          const savedUrl = await store.getItem("serverUrl");
-          const savedToken = await store.getItem("adminToken");
-          if (savedUrl && savedToken) {
-            this.serverUrl = savedUrl;
-            this.adminToken = savedToken;
-            try {
-              const overview = await this.testConnection();
-              this.serverName = overview?.serverName || "";
-              this.view = "panel";
-              await this.refreshAll();
-            } catch {
-              // 凭据失效时留在连接页并预填旧值
-              this.view = "connect";
-            }
+          await this.loadAccounts();
+          const account = this.accounts.find((a) => a.id === this.activeId);
+          if (!account) return;
+          this.serverUrl = account.url;
+          this.adminToken = account.token;
+          try {
+            const overview = await this.testConnection();
+            this.serverName = overview?.serverName || account.name || "";
+            await this.upsertAccount(account.url, account.token, this.serverName);
+            this.view = "panel";
+            await this.refreshAll();
+          } catch {
+            // 凭据失效时留在连接页并预填旧值（账户仍保留在已保存列表）
+            this.view = "connect";
           }
         },
       };

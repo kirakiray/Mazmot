@@ -1,7 +1,8 @@
 // ai-relay 管理台 UI e2e：浏览器经仓库根入口安装 NoneOS Core 后打开
-// server/ai-relay/admin/，与真实 ai-relay 服务器（webServer 起）全链路联调：
+// server/ai-relay/admin/，与真实 ai-relay 服务器（webServer 起两台）全链路联调：
 //   连接服务器 → 添加上游 key → 新建用户（配额 / key 池）→ 详情邀请码（解码与
-//   服务器 API 交叉校验）→ 清零用量 → 删除用户 → 断开连接。
+//   服务器 API 交叉校验）→ 清零用量 → 删除用户 → 断开连接（账户保留）→
+//   一键重连 → 添加第二台服务器 → 切换弹窗来回切换 → 删除账户（非活跃 / 活跃）。
 // 不打真实 AI 上游（管理台操作不触发 chat），可离线跑（装 Core 需要网络，可挂 E2E_PROXY）。
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -10,8 +11,10 @@ import { fileURLToPath } from "node:url";
 
 const STATIC = "http://127.0.0.1:18975";
 const RELAY = "http://127.0.0.1:18974";
+const RELAY2 = "http://127.0.0.1:18976";
 const ADMIN_PAGE = `${STATIC}/server/ai-relay-admin/`;
 const TOKEN = "e2e-ui-admin-token";
+const TOKEN2 = "e2e-ui-admin-token-2";
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 
 // 添加上游 key 现在会做真实上游探测，必须用真 key（根目录 test-api-keys.json）
@@ -280,16 +283,125 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
     expect(info.name).toBe(name);
   });
 
-  test("断开连接回到连接页并清空本地凭据", async ({ }, testInfo) => {
+  test("断开连接回连接页，账户保留在已保存列表", async () => {
     await page
       .locator("st-icon-button", {
         has: page.locator('n-icon[icon="mdi:link-off"]'),
       })
       .click();
+    // 二次确认弹窗（误触防护）
+    await clickDialogButton(page, /^(断开|Disconnect)$/);
     await expect(
       page.locator("st-button", { hasText: "连接" }).first(),
     ).toBeVisible();
-    // storage 由页面经 /nos/storage 清除；重连表单应为空
+    // 账户凭据保留（供一键重连 / 切换），仅表单清空
+    await expect(page.locator("st-list-item", { hasText: RELAY })).toBeVisible();
     await expect(page.locator("st-input input").nth(0)).toHaveValue("");
+  });
+
+  test("点已保存账户一键重连", async () => {
+    await page.locator("st-list-item", { hasText: RELAY }).first().click();
+    await expect(
+      page.locator("st-button", { hasText: "上游 API Key" }),
+    ).toBeVisible();
+    await expect(page.locator(".brand-text p")).toContainText(RELAY);
+  });
+
+  test("添加第二台服务器账户", async () => {
+    await page
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:link-off"]'),
+      })
+      .click();
+    await clickDialogButton(page, /^(断开|Disconnect)$/);
+    const inputs = page.locator("st-input input");
+    await inputs.nth(0).fill(RELAY2);
+    await inputs.nth(1).fill(TOKEN2);
+    await page.locator("st-button", { hasText: "连接" }).first().click();
+
+    // 面板副标题展示第二台服务器命名 + 地址（env AI_RELAY_SERVER_NAME 初始值）
+    await expect(page.locator(".brand-text p")).toContainText("E2E Relay Two");
+    await expect(page.locator(".brand-text p")).toContainText(RELAY2);
+    // 连接页此前已有第一台的账户，此时共两个
+    await page
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:swap-horizontal"]'),
+      })
+      .click();
+    const dlg = page.locator("st-dialog.dlg-switch");
+    await expect(dlg.locator("st-list-item")).toHaveCount(2);
+  });
+
+  test("切换弹窗标记当前账户，可来回切换且服务器状态独立", async () => {
+    const dlg = page.locator("st-dialog.dlg-switch");
+    // 当前连接在第二台：带「当前」标记
+    await expect(
+      dlg.locator("st-list-item", { hasText: RELAY2 }).locator(".rounds-chip"),
+    ).toContainText("当前");
+
+    // 切回第一台
+    await dlg.locator("st-list-item", { hasText: RELAY }).first().click();
+    await expect(page.locator(".brand-text p")).toContainText(RELAY);
+
+    // 再切到第二台
+    await page
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:swap-horizontal"]'),
+      })
+      .click();
+    await page
+      .locator("st-dialog.dlg-switch st-list-item", { hasText: RELAY2 })
+      .first()
+      .click();
+    await expect(page.locator(".brand-text p")).toContainText(RELAY2);
+
+    // 两台服务器状态各自独立：第一台命名是设置弹窗改的，第二台是 env 初始值
+    const info1 = await fetch(`${RELAY}/v1/server`).then((r) => r.json());
+    expect(info1.name).toBe(`UI Relay ${RUN}`);
+    const info2 = await fetch(`${RELAY2}/v1/server`).then((r) => r.json());
+    expect(info2.name).toBe("E2E Relay Two");
+  });
+
+  test("删除非活跃账户：列表移除且不影响当前连接", async () => {
+    await page
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:swap-horizontal"]'),
+      })
+      .click();
+    const dlg = page.locator("st-dialog.dlg-switch");
+    await dlg
+      .locator("st-list-item", { hasText: RELAY })
+      .first()
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:delete-outline"]'),
+      })
+      .click();
+    await clickDialogButton(page, /^(删除|Delete)$/);
+
+    await expect(dlg.locator("st-list-item", { hasText: RELAY })).toHaveCount(0);
+    // 仍连接在第二台上
+    await expect(page.locator(".brand-text p")).toContainText(RELAY2);
+  });
+
+  test("删除当前连接的账户：断开回连接页且列表清空", async () => {
+    await page
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:swap-horizontal"]'),
+      })
+      .click();
+    const dlg = page.locator("st-dialog.dlg-switch");
+    await dlg
+      .locator("st-list-item", { hasText: RELAY2 })
+      .first()
+      .locator("st-icon-button", {
+        has: page.locator('n-icon[icon="mdi:delete-outline"]'),
+      })
+      .click();
+    await clickDialogButton(page, /^(删除|Delete)$/);
+
+    await expect(
+      page.locator("st-button", { hasText: "连接" }).first(),
+    ).toBeVisible();
+    await expect(page.locator("st-list-item", { hasText: RELAY2 })).toHaveCount(0);
   });
 });

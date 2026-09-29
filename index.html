@@ -4,7 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot</title>
-    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
+    <script>
+      // /gh/ 前缀动态决策：NoneOS Core SW 已接管本页（controller 存在）→
+      // 资源走 /gh/ 本地前缀（SW 本地缓存、离线可用）；未接管（首访 / 未安装）
+      // → jsdelivr 完整 URL。结果写入 window.__GH_BASE 供后续引入使用。
+      window.__GH_BASE =
+        navigator.serviceWorker && navigator.serviceWorker.controller
+          ? "/gh/"
+          : "https://cdn.jsdelivr.net/gh/";
+      // senti-ui 主题引导：解析期同步写出，保证首帧前注入 M3 颜色变量
+      document.write(
+        '<script src="' +
+          window.__GH_BASE +
+          'ofajs/senti-ui@latest/packages/boot/st-boot.js"><\/script>'
+      );
+      // 预取 ofa.js（最大依赖），动态 import 执行前即开始拉取
+      document.write(
+        '<link rel="modulepreload" href="' +
+          window.__GH_BASE +
+          'ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug">'
+      );
+    </script>
     <style>
       html,
       body {
@@ -24,51 +44,277 @@
           Segoe UI Emoji;
       }
 
+      /* ===== Core 安装/升级引导层：吉祥物为主视觉 ===== */
       .mask {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
+        z-index: 9999;
         background-color: var(--md-sys-color-surface);
         display: flex;
-        justify-content: center;
+        flex-direction: column;
         align-items: center;
-        z-index: 9999;
-        transition: opacity 0.3s ease;
+        justify-content: center;
+        gap: 18px;
+        padding: 24px;
+        box-sizing: border-box;
+        transition: opacity 0.4s ease;
+      }
+      .mask.leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .brand {
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        color: var(--md-sys-color-on-surface);
+        user-select: none;
+      }
+      .boot-status {
+        font-size: 13px;
+        min-height: 18px;
+        text-align: center;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .boot-bar {
+        width: min(320px, 80vw);
+        height: 6px;
+        border-radius: 3px;
+        background-color: var(--md-sys-color-surface-variant);
+        overflow: hidden;
+      }
+      .boot-bar-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 3px;
+        background-color: var(--md-sys-color-primary);
+        transition: width 0.25s ease;
+      }
+      .boot-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        max-width: min(420px, 86vw);
+        font-size: 13px;
+        line-height: 1.6;
+        text-align: center;
+        word-break: break-word;
+        color: var(--md-sys-color-error);
+      }
+      .boot-retry {
+        font: inherit;
+        font-size: 13px;
+        padding: 8px 22px;
+        border-radius: 999px;
+        border: none;
+        background-color: var(--md-sys-color-primary);
+        color: var(--md-sys-color-on-primary);
+        cursor: pointer;
+      }
+
+      /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
+      nos-version {
+        display: none !important;
+      }
+
+      /* 作者样式会覆盖 UA 的 [hidden] { display: none }，这里显式兜底
+         （如 .boot-error 设了 display:flex，不加这条 hidden 会失效） */
+      [hidden] {
+        display: none !important;
+      }
+
+      /* 主应用宿主：Core 就绪后注入 <o-router> + <o-app src="/main/app-config.js"> */
+      #app-host {
+        height: 100%;
       }
     </style>
-    <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
-    <script src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
     <!-- SW / Core 调试开关（见 sw/sw-config.js） -->
     <script src="/sw/sw-config.js"></script>
   </head>
   <body>
-    <div class="mask">
-      <nos-version auto-install></nos-version>
+    <!-- Core 安装/升级引导层（不写静态 <l-m>：ofa 动态 import 时会在
+         window.lm 赋值前升级静态 l-m 导致中断，组件统一由脚本加载） -->
+    <div class="mask" id="boot-mask">
+      <m-mascot id="boot-mascot" state="soulless" style="--mascot-size: 120px"></m-mascot>
+      <div class="brand">Mazmot</div>
+      <div class="boot-status" id="boot-status"></div>
+      <div class="boot-bar">
+        <div class="boot-bar-fill" id="boot-bar-fill"></div>
+      </div>
+      <div class="boot-error" id="boot-error" hidden>
+        <span id="boot-error-text"></span>
+        <button class="boot-retry" id="boot-retry">重试 / Retry</button>
+      </div>
+
+      <!-- 隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core -->
+      <nos-version auto-install id="boot-nsv"></nos-version>
     </div>
 
-    <script type="module">
-      const load = lm(import.meta);
+    <!-- 主应用宿主 -->
+    <div id="app-host"></div>
 
-      $("nos-version").on("installed", () => {
-        // 安装/升级完成后，优先使用 ?redirect= 参数；否则进入主应用
+    <script type="module">
+      // ofa / router 与全部引导逻辑必须在同一个模块里：依赖顶层 await
+      // 阻塞后续模块脚本的模块排序在 WebKit 上不成立（后续模块不等 TLA），
+      // 拆两个脚本会出现 $ 未定义的竞态
+      const GH = window.__GH_BASE;
+      const CDN = "https://cdn.jsdelivr.net/gh/";
+      async function importFirst(...urls) {
+        let lastErr;
+        for (const url of urls) {
+          try {
+            return await import(url);
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        throw lastErr;
+      }
+      // ofa.js + router：优先 /gh/；加载失败（SW 异常边缘）回退 jsdelivr
+      await importFirst(
+        GH + "ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug",
+        CDN + "ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug",
+      );
+      await importFirst(
+        GH + "ofajs/ofa.js/libs/router/dist/router.min.mjs",
+        CDN + "ofajs/ofa.js/libs/router/dist/router.min.mjs",
+      );
+
+      // ---- 语言：Core 就绪前 /nos/locale-text 不可用（依赖 SW）----
+      // 初值：localStorage 的 lang 偏好（设置页切换语言时写入），无则按
+      // navigator 判定；随后异步拉取与正式应用同源的 getLang 校准
+      // （直连 core.noneos.com，不依赖 SW），校准后已渲染文案整体重刷
+      let lang =
+        localStorage.getItem("lang") ||
+        (/^zh/i.test(navigator.language || "") ? "cn" : "en");
+
+      // 取双语词条：精确命中 → 繁体回退简体 → 英文 → 简体
+      const langPick = (item) =>
+        item[lang] || (lang === "tw" ? item.cn : null) || item.en || item.cn;
+
+      const statusEl = document.getElementById("boot-status");
+      const barFillEl = document.getElementById("boot-bar-fill");
+      const maskEl = document.getElementById("boot-mask");
+      const mascotEl = document.getElementById("boot-mascot");
+      const errorEl = document.getElementById("boot-error");
+      const errorTextEl = document.getElementById("boot-error-text");
+      const retryBtn = document.getElementById("boot-retry");
+
+      // 状态文案保留词条引用，语言校准后整体重渲染
+      let statusItem = null;
+      const applyStatus = () => {
+        statusEl.textContent = statusItem ? langPick(statusItem) : "";
+      };
+
+      const setProgress = (p, item) => {
+        barFillEl.style.width = Math.min(100, Math.max(0, p)) + "%";
+        if (item !== undefined) {
+          statusItem = item;
+          applyStatus();
+        }
+      };
+
+      // ---- nos-version 事件绑定（先绑定后加载组件定义，同步触发的事件也能收到）----
+      // $() 接收 CSS 选择器：取 id 必须带 #（$("boot-nsv") 匹配的是标签名）
+      $("#boot-nsv").on("check-start", () => {
+        setProgress(2, {
+          cn: "正在检测 NoneOS Core...",
+          en: "Detecting NoneOS Core...",
+        });
+      });
+      $("#boot-nsv").on("uninstalled", () => {
+        setProgress(5, {
+          cn: "首次运行，正在安装 NoneOS Core...",
+          en: "First run, installing NoneOS Core...",
+        });
+      });
+      $("#boot-nsv").on("upgradable", (e) => {
+        const d = (e && e.detail) || {};
+        const a = d.version || "?";
+        const b = d.lastVersion || "?";
+        setProgress(5, {
+          cn: `NoneOS Core 升级中（${a} → ${b}）...`,
+          en: `Upgrading NoneOS Core (${a} → ${b})...`,
+        });
+      });
+      $("#boot-nsv").on("install-start", () => {
+        setProgress(6, {
+          cn: "NoneOS Core 安装准备中...",
+          en: "Preparing NoneOS Core installation...",
+        });
+      });
+      $("#boot-nsv").on("install-progress", (e) => {
+        const d = (e && e.detail) || {};
+        const step = Number(d.step) || 0;
+        const total = Number(d.total) || 0;
+        const p = total > 0 ? 6 + Math.round((step / total) * 88) : 50;
+        const desc = d.desc || "";
+        setProgress(p, {
+          cn: desc ? `NoneOS Core：${desc}` : "NoneOS Core 安装中...",
+          en: desc ? `NoneOS Core: ${desc}` : "Installing NoneOS Core...",
+        });
+      });
+
+      let entered = false;
+      $("#boot-nsv").on("installed", () => {
+        if (entered) return;
+        entered = true;
+        setProgress(100, {
+          cn: "NoneOS Core 就绪，Mazmot 苏醒中...",
+          en: "NoneOS Core ready, waking up...",
+        });
+        // 吉祥物苏醒：soulless → 默认形态
+        mascotEl.removeAttribute("state");
+        setTimeout(enterApp, 600);
+      });
+      $("#boot-nsv").on("error", (e) => {
+        const d = (e && e.detail) || {};
+        const msg = d.message || "";
+        errorTextEl.textContent = langPick({
+          cn: `NoneOS Core ${d.phase || "初始化"}失败：${msg || "未知错误"}`,
+          en: `NoneOS Core ${d.phase || "initialization"} failed: ${msg || "Unknown error"}`,
+        });
+        errorEl.hidden = false;
+        statusItem = null;
+        applyStatus();
+      });
+      retryBtn.addEventListener("click", () => {
+        location.reload();
+      });
+
+      // ---- 进入主应用：优先 ?redirect=（兼容旧客户端升级链路），否则原地挂载 ----
+      const enterApp = () => {
         const params = new URLSearchParams(location.search);
         const raw = params.get("redirect");
-        let target = "/apps/main/";
         if (raw) {
           try {
             const decoded = decodeURIComponent(raw);
             // 仅允许站内相对路径，避免 open redirect 风险
             if (decoded.startsWith("/") && !decoded.startsWith("//")) {
-              target = decoded;
+              location.replace(decoded);
+              return;
             }
           } catch (e) {
-            // 解码失败则忽略
+            // 解码失败则忽略，走原地挂载
           }
         }
-        location.replace(target);
-      });
+
+        // 原地挂载 /main 主应用（此时 Core SW 已就绪，/gh/、/nos/ 均可用）
+        document.getElementById("app-host").innerHTML =
+          '<o-router fix-body><o-app src="/main/app-config.js"></o-app></o-router>';
+
+        // 引导层淡出并移除
+        setTimeout(() => {
+          maskEl.classList.add("leaving");
+          setTimeout(() => maskEl.remove(), 450);
+        }, 300);
+      };
+
+      // ---- 组件加载（ofa 就绪后 lm 可用）----
+      const load = lm(import.meta);
+      // 吉祥物组件：升级时机由这次 load 决定，规避静态 <l-m> 的注册时序问题
+      await load("/mz/comps/mascot/mascot.html");
 
       // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
       // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
