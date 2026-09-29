@@ -364,14 +364,17 @@
                           <label class="field-label">
                             <locale-text><span lang="cn">提供商</span><span lang="en">Provider</span></locale-text>
                           </label>
-                          <st-select sync:value="provider" style="width: 100%">
+                          <st-select
+                            id="provider-select"
+                            sync:value="provider"
+                            attr:default-value="provider"
+                            style="width: 100%"
+                          >
+                            <option value="relay">Invite code</option>
                             <option value="deepseek">DeepSeek</option>
                             <option value="kimi">Kimi</option>
                             <option value="glm">GLM</option>
                             <option value="glm-coding">GLM Coding Plan</option>
-                            <option value="relay">
-                              <locale-text><span lang="cn">转发服务（邀请码）</span><span lang="en">Relay (invite code)</span></locale-text>
-                            </option>
                           </st-select>
                         </div>
                         <div class="key-field">
@@ -381,7 +384,7 @@
                           <st-input
                             sync:value="keyInput"
                             attr:type="showPassword ? 'text' : 'password'"
-                            attr:placeholder="t('inputPlaceholder')"
+                            attr:placeholder="provider === 'relay' ? t('invitePlaceholder') : t('apiKeyPlaceholder')"
                           >
                             <st-icon-button
                               slot="suffix"
@@ -584,9 +587,13 @@
           cn: "根据你的选择，我为你准备了这些应用：",
           en: "Based on your choice, here are the apps prepared for you:",
         }),
-        inputPlaceholder: getLocaleText({
-          cn: "请输入 API Key / 邀请码",
-          en: "Enter API Key / invite code",
+        invitePlaceholder: getLocaleText({
+          cn: "请输入邀请码",
+          en: "Enter invite code",
+        }),
+        apiKeyPlaceholder: getLocaleText({
+          cn: "请输入 API Key",
+          en: "Enter API Key",
         }),
         inviteCodeLabel: getLocaleText({ cn: "邀请码", en: "Invite code" }),
         toggleKeyVisibility: getLocaleText({
@@ -594,8 +601,8 @@
           en: "Show/hide API Key",
         }),
         relayHint: getLocaleText({
-          cn: "粘贴管理员发给你的邀请码（一段 base64 文本），验证通过后保存即可。使用时请求经由该邀请码对应的转发服务器中转。",
-          en: "Paste the invitation code (a base64 string) issued by your admin. Once validated and saved, requests are relayed through the corresponding server.",
+          cn: "粘贴你收到的邀请码，验证通过后保存即可。",
+          en: "Paste the invite code you received. It will be validated and saved.",
         }),
         keySavedToast: getLocaleText({
           cn: "API Key 已保存",
@@ -665,7 +672,8 @@
           keyReady: plan.hasUsableKey(existingKeys),
           // 吉祥物形态：进场无灵魂，确认 AI Key 后苏醒为默认态（跳过则保持无灵魂）
           mascotState: "soulless",
-          provider: "deepseek",
+          // 默认走邀请码（推荐给新用户的接入方式）
+          provider: "relay",
           keyInput: "",
           showPassword: false,
           keySaving: false,
