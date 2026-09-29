@@ -4,8 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot</title>
-    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
-    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
+    <script>
+      // /gh/ 前缀动态决策：NoneOS Core SW 已接管本页（controller 存在）→
+      // 资源走 /gh/ 本地前缀（SW 本地缓存、离线可用）；未接管（首访 / 未安装）
+      // → jsdelivr 完整 URL。结果写入 window.__GH_BASE 供后续引入使用。
+      window.__GH_BASE =
+        navigator.serviceWorker && navigator.serviceWorker.controller
+          ? "/gh/"
+          : "https://cdn.jsdelivr.net/gh/";
+      // senti-ui 主题引导：解析期同步写出，保证首帧前注入 M3 颜色变量
+      document.write(
+        '<script src="' +
+          window.__GH_BASE +
+          'ofajs/senti-ui@latest/packages/boot/st-boot.js"><\/script>'
+      );
+      // 预取 ofa.js（最大依赖），动态 import 执行前即开始拉取
+      document.write(
+        '<link rel="modulepreload" href="' +
+          window.__GH_BASE +
+          'ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug">'
+      );
+    </script>
     <style>
       html,
       body {
@@ -110,15 +129,13 @@
         height: 100%;
       }
     </style>
-    <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
-    <script src="https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
     <!-- SW / Core 调试开关（见 sw/sw-config.js） -->
     <script src="/sw/sw-config.js"></script>
   </head>
   <body>
-    <!-- Core 安装/升级引导层 -->
+    <!-- Core 安装/升级引导层（不写静态 <l-m>：ofa 动态 import 时会在
+         window.lm 赋值前升级静态 l-m 导致中断，组件统一由脚本加载） -->
     <div class="mask" id="boot-mask">
-      <l-m src="/mz/comps/mascot/mascot.html"></l-m>
       <m-mascot id="boot-mascot" state="soulless" style="--mascot-size: 120px"></m-mascot>
       <div class="brand">Mazmot</div>
       <div class="boot-status" id="boot-status"></div>
@@ -138,6 +155,32 @@
     <div id="app-host"></div>
 
     <script type="module">
+      // ofa / router 与全部引导逻辑必须在同一个模块里：依赖顶层 await
+      // 阻塞后续模块脚本的模块排序在 WebKit 上不成立（后续模块不等 TLA），
+      // 拆两个脚本会出现 $ 未定义的竞态
+      const GH = window.__GH_BASE;
+      const CDN = "https://cdn.jsdelivr.net/gh/";
+      async function importFirst(...urls) {
+        let lastErr;
+        for (const url of urls) {
+          try {
+            return await import(url);
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        throw lastErr;
+      }
+      // ofa.js + router：优先 /gh/；加载失败（SW 异常边缘）回退 jsdelivr
+      await importFirst(
+        GH + "ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug",
+        CDN + "ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug",
+      );
+      await importFirst(
+        GH + "ofajs/ofa.js/libs/router/dist/router.min.mjs",
+        CDN + "ofajs/ofa.js/libs/router/dist/router.min.mjs",
+      );
+
       // ---- 语言：Core 就绪前 /nos/locale-text 不可用（依赖 SW）----
       // 初值：localStorage 的 lang 偏好（设置页切换语言时写入），无则按
       // navigator 判定；随后异步拉取与正式应用同源的 getLang 校准
@@ -240,17 +283,6 @@
         location.reload();
       });
 
-      // 语言校准（不阻塞首帧；拉取失败保持启发式判定结果）
-      import("https://core.noneos.com/nos/locale-text/get-locale-text.js")
-        .then((m) => m.getLang())
-        .then((resolved) => {
-          if (!resolved || resolved === lang) return;
-          lang = resolved;
-          applyStatus();
-          retryBtn.textContent = langPick({ cn: "重试", en: "Retry" });
-        })
-        .catch(() => {});
-
       // ---- 进入主应用：优先 ?redirect=（兼容旧客户端升级链路），否则原地挂载 ----
       const enterApp = () => {
         const params = new URLSearchParams(location.search);
@@ -279,9 +311,13 @@
         }, 300);
       };
 
-      // ---- nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
-      // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
+      // ---- 组件加载（ofa 就绪后 lm 可用）----
       const load = lm(import.meta);
+      // 吉祥物组件：升级时机由这次 load 决定，规避静态 <l-m> 的注册时序问题
+      await load("/mz/comps/mascot/mascot.html");
+
+      // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
+      // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
       const swConfig = globalThis.SW_CONFIG || {};
       const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(
         location.hostname,

@@ -23,7 +23,7 @@
 
 ```
 Mazmot/
-├── index.html                # 根入口兼主应用宿主：初始化/升级 NoneOS Core（<nos-version auto-install> 驱动、组件源跟随 sw/sw-config.js 开关，<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒），完成后原地挂载 /main 主应用（不再跳转）；带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路
+├── index.html                # 根入口兼主应用宿主：初始化/升级 NoneOS Core（<nos-version auto-install> 驱动、组件源跟随 sw/sw-config.js 开关，<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒），完成后原地挂载 /main 主应用（不再跳转）；带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump

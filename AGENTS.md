@@ -25,6 +25,7 @@ ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片�
 
 - **Core 引导入口（仅此三处）**：根目录 [index.html](index.html) 与 [apps/run-app/](apps/run-app/)、[bridge/](bridge/) 下所有文件（含 [run-app.html](apps/run-app/run-app.html)、[bridge/bridge.html](bridge/bridge.html)），使用 `https://cdn.jsdelivr.net/gh/ofajs/...` 完整 URL。
   - run-app / bridge 是自装 Core 的首访入口，其页面（进度 / 配置 UI）可能在 NoneOS Core SW 注册前渲染，`/gh/`、`/npm/` 本地前缀不可用，因此整个目录统一走 jsdelivr 完整 URL（根入口可锁定具体版本，如 `@4.7.1`）。
+  - **根 index.html 例外**：加载前先探测 NoneOS Core SW 是否已接管本页（`navigator.serviceWorker.controller`），已接管则 ofa / router / senti-ui 走 `/gh/` 本地前缀（决策写入 `window.__GH_BASE`），未接管才回退 jsdelivr。
   - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug`
 - **其余所有文件**（`apps/main/index.html`、`apps/network/index.html`、`official-apps/*/index.html`、模板应用等其他入口 HTML，以及全部页面模块 / 组件模块 / 普通模块 / 测试页）：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
   - 这些入口均先经根引导入口装好 Core 再进入，SW 必定就绪，`/gh/` 可用；入口 HTML 自身的 Core 就绪校验（`await import("/nos/xxx/main.js")`）同样依赖 SW，二者一致。
