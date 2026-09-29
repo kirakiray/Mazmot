@@ -138,9 +138,17 @@
     <div id="app-host"></div>
 
     <script type="module">
-      // Core 就绪前无法使用 /nos/locale-text（依赖 SW），用导航语言简单判定双语文案
-      const isCN = /^zh/i.test(navigator.language || "");
-      const t = (cn, en) => (isCN ? cn : en);
+      // ---- 语言：Core 就绪前 /nos/locale-text 不可用（依赖 SW）----
+      // 初值：localStorage 的 lang 偏好（设置页切换语言时写入），无则按
+      // navigator 判定；随后异步拉取与正式应用同源的 getLang 校准
+      // （直连 core.noneos.com，不依赖 SW），校准后已渲染文案整体重刷
+      let lang =
+        localStorage.getItem("lang") ||
+        (/^zh/i.test(navigator.language || "") ? "cn" : "en");
+
+      // 取双语词条：精确命中 → 繁体回退简体 → 英文 → 简体
+      const langPick = (item) =>
+        item[lang] || (lang === "tw" ? item.cn : null) || item.en || item.cn;
 
       const statusEl = document.getElementById("boot-status");
       const barFillEl = document.getElementById("boot-bar-fill");
@@ -148,66 +156,100 @@
       const mascotEl = document.getElementById("boot-mascot");
       const errorEl = document.getElementById("boot-error");
       const errorTextEl = document.getElementById("boot-error-text");
+      const retryBtn = document.getElementById("boot-retry");
 
-      const setProgress = (p, text) => {
+      // 状态文案保留词条引用，语言校准后整体重渲染
+      let statusItem = null;
+      const applyStatus = () => {
+        statusEl.textContent = statusItem ? langPick(statusItem) : "";
+      };
+
+      const setProgress = (p, item) => {
         barFillEl.style.width = Math.min(100, Math.max(0, p)) + "%";
-        if (text !== undefined) statusEl.textContent = text;
+        if (item !== undefined) {
+          statusItem = item;
+          applyStatus();
+        }
       };
 
       // ---- nos-version 事件绑定（先绑定后加载组件定义，同步触发的事件也能收到）----
       // $() 接收 CSS 选择器：取 id 必须带 #（$("boot-nsv") 匹配的是标签名）
       $("#boot-nsv").on("check-start", () => {
-        setProgress(2, t("正在检测 NoneOS Core...", "Detecting NoneOS Core..."));
+        setProgress(2, {
+          cn: "正在检测 NoneOS Core...",
+          en: "Detecting NoneOS Core...",
+        });
       });
       $("#boot-nsv").on("uninstalled", () => {
-        setProgress(5, t("首次运行，正在安装 NoneOS Core...", "First run, installing NoneOS Core..."));
+        setProgress(5, {
+          cn: "首次运行，正在安装 NoneOS Core...",
+          en: "First run, installing NoneOS Core...",
+        });
       });
       $("#boot-nsv").on("upgradable", (e) => {
         const d = (e && e.detail) || {};
         const a = d.version || "?";
         const b = d.lastVersion || "?";
-        setProgress(
-          5,
-          t(
-            `NoneOS Core 升级中（${a} → ${b}）...`,
-            `Upgrading NoneOS Core (${a} → ${b})...`,
-          ),
-        );
+        setProgress(5, {
+          cn: `NoneOS Core 升级中（${a} → ${b}）...`,
+          en: `Upgrading NoneOS Core (${a} → ${b})...`,
+        });
       });
       $("#boot-nsv").on("install-start", () => {
-        setProgress(6, t("NoneOS Core 安装准备中...", "Preparing NoneOS Core installation..."));
+        setProgress(6, {
+          cn: "NoneOS Core 安装准备中...",
+          en: "Preparing NoneOS Core installation...",
+        });
       });
       $("#boot-nsv").on("install-progress", (e) => {
         const d = (e && e.detail) || {};
         const step = Number(d.step) || 0;
         const total = Number(d.total) || 0;
         const p = total > 0 ? 6 + Math.round((step / total) * 88) : 50;
-        const desc = d.desc || t("安装中", "installing");
-        setProgress(p, t(`NoneOS Core：${desc}`, `NoneOS Core: ${desc}`));
+        const desc = d.desc || "";
+        setProgress(p, {
+          cn: desc ? `NoneOS Core：${desc}` : "NoneOS Core 安装中...",
+          en: desc ? `NoneOS Core: ${desc}` : "Installing NoneOS Core...",
+        });
       });
 
       let entered = false;
       $("#boot-nsv").on("installed", () => {
         if (entered) return;
         entered = true;
-        setProgress(100, t("NoneOS Core 就绪，Mazmot 苏醒中...", "NoneOS Core ready, waking up..."));
+        setProgress(100, {
+          cn: "NoneOS Core 就绪，Mazmot 苏醒中...",
+          en: "NoneOS Core ready, waking up...",
+        });
         // 吉祥物苏醒：soulless → 默认形态
         mascotEl.removeAttribute("state");
         setTimeout(enterApp, 600);
       });
       $("#boot-nsv").on("error", (e) => {
         const d = (e && e.detail) || {};
-        const msg = d.message || t("未知错误", "Unknown error");
-        errorTextEl.textContent = t(
-          `NoneOS Core ${d.phase || "初始化"}失败：${msg}`,
-          `NoneOS Core ${d.phase || "initialization"} failed: ${msg}`,
-        );
+        const msg = d.message || "";
+        errorTextEl.textContent = langPick({
+          cn: `NoneOS Core ${d.phase || "初始化"}失败：${msg || "未知错误"}`,
+          en: `NoneOS Core ${d.phase || "initialization"} failed: ${msg || "Unknown error"}`,
+        });
         errorEl.hidden = false;
-        statusEl.textContent = "";
+        statusItem = null;
+        applyStatus();
       });
-      document.getElementById("boot-retry").addEventListener("click", () => {
+      retryBtn.addEventListener("click", () => {
         location.reload();
       });
+
+      // 语言校准（不阻塞首帧；拉取失败保持启发式判定结果）
+      import("https://core.noneos.com/nos/locale-text/get-locale-text.js")
+        .then((m) => m.getLang())
+        .then((resolved) => {
+          if (!resolved || resolved === lang) return;
+          lang = resolved;
+          applyStatus();
+          retryBtn.textContent = langPick({ cn: "重试", en: "Retry" });
+        })
+        .catch(() => {});
 
       // ---- 进入主应用：优先 ?redirect=（兼容旧客户端升级链路），否则原地挂载 ----
       const enterApp = () => {
