@@ -103,6 +103,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 不同类型的文件有约定位置，新增内容前请对号入座：
 
+- **主应用（[main/](main/)）**：根 `index.html` 完成 NoneOS Core 安装后**原地挂载**的主应用（原 official-apps/welcome 改造：首启引导对话 + 应用列表主页），URL 即站点根 `/`；页面/组件遵守上方通用规则（Core 由根入口保证就绪，`/gh/` 前缀可用）；它不在 `apps/` 下、也不参与应用市场，离线缓存清单随 `main/` 目录收录。
 - **新应用**：放在 [apps/](apps/) 下，目录名即 URL 路径（`apps/<name>/` = `/apps/<name>/`）；同时更新 [CONTEXT.md](CONTEXT.md) 目录树。
 - **新系统级组件**：放在 [mz/comps/](mz/comps/) 下（URL = /mz/comps/<name>/），独立子目录 + `<tag>.html` + `README.md`（推荐带 `demo.html`）；**必须同步更新 [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md)** 的目录树与组件说明，若被主系统使用也需更新根 [CONTEXT.md](CONTEXT.md)。
 - **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。

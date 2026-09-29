@@ -1,4 +1,4 @@
-// 生成 /cache-manifest.json：index.html + mz/（不含 test 目录）的
+// 生成 /cache-manifest.json：index.html + mz/ + main/（不含 test 目录）的
 // SHA-256 清单。version 由 hashes 内容派生（SHA-256 前 8 位），与
 // sw/host-cache.js 运行时的 deriveVersion 算法保持一致，无需手工 bump。
 //
@@ -124,11 +124,12 @@ function walkDir(dir, baseDir = '') {
 }
 
 const mzFiles = walkDir(join(rootDir, 'mz'), 'mz');
+const mainFiles = walkDir(join(rootDir, 'main'), 'main');
 
 // 4. Compute per-file SHA-256 + size
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-const hashes = ['index.html', ...mzFiles].map((path) => {
+const hashes = ['index.html', ...mzFiles, ...mainFiles].map((path) => {
   const bytes = readFileSync(join(rootDir, path));
   return { path, hash: sha256(bytes), size: bytes.length };
 });
@@ -168,4 +169,5 @@ console.log('cache-manifest.json updated successfully');
 console.log(`  name: ${pkg.name}`);
 console.log(`  version: ${version}`);
 console.log(`  mz files: ${mzFiles.length}`);
+console.log(`  main files: ${mainFiles.length}`);
 console.log(`  total files: ${hashes.length}`);

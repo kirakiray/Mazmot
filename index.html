@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazmot</title>
     <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
     <style>
       html,
       body {
@@ -24,18 +25,89 @@
           Segoe UI Emoji;
       }
 
+      /* ===== Core 安装/升级引导层：吉祥物为主视觉 ===== */
       .mask {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
+        z-index: 9999;
         background-color: var(--md-sys-color-surface);
         display: flex;
-        justify-content: center;
+        flex-direction: column;
         align-items: center;
-        z-index: 9999;
-        transition: opacity 0.3s ease;
+        justify-content: center;
+        gap: 18px;
+        padding: 24px;
+        box-sizing: border-box;
+        transition: opacity 0.4s ease;
+      }
+      .mask.leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .brand {
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        color: var(--md-sys-color-on-surface);
+        user-select: none;
+      }
+      .boot-status {
+        font-size: 13px;
+        min-height: 18px;
+        text-align: center;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .boot-bar {
+        width: min(320px, 80vw);
+        height: 6px;
+        border-radius: 3px;
+        background-color: var(--md-sys-color-surface-variant);
+        overflow: hidden;
+      }
+      .boot-bar-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 3px;
+        background-color: var(--md-sys-color-primary);
+        transition: width 0.25s ease;
+      }
+      .boot-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        max-width: min(420px, 86vw);
+        font-size: 13px;
+        line-height: 1.6;
+        text-align: center;
+        word-break: break-word;
+        color: var(--md-sys-color-error);
+      }
+      .boot-retry {
+        font: inherit;
+        font-size: 13px;
+        padding: 8px 22px;
+        border-radius: 999px;
+        border: none;
+        background-color: var(--md-sys-color-primary);
+        color: var(--md-sys-color-on-primary);
+        cursor: pointer;
+      }
+
+      /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
+      nos-version {
+        display: none !important;
+      }
+
+      /* 作者样式会覆盖 UA 的 [hidden] { display: none }，这里显式兜底
+         （如 .boot-error 设了 display:flex，不加这条 hidden 会失效） */
+      [hidden] {
+        display: none !important;
+      }
+
+      /* 主应用宿主：Core 就绪后注入 <o-router> + <o-app src="/main/app-config.js"> */
+      #app-host {
+        height: 100%;
       }
     </style>
     <!-- senti-ui 主题引导：首帧注入 --md-sys-color-* M3 颜色体系 -->
@@ -44,34 +116,130 @@
     <script src="/sw/sw-config.js"></script>
   </head>
   <body>
-    <div class="mask">
-      <nos-version auto-install></nos-version>
+    <!-- Core 安装/升级引导层 -->
+    <div class="mask" id="boot-mask">
+      <l-m src="/mz/comps/mascot/mascot.html"></l-m>
+      <m-mascot id="boot-mascot" state="soulless" style="--mascot-size: 120px"></m-mascot>
+      <div class="brand">Mazmot</div>
+      <div class="boot-status" id="boot-status"></div>
+      <div class="boot-bar">
+        <div class="boot-bar-fill" id="boot-bar-fill"></div>
+      </div>
+      <div class="boot-error" id="boot-error" hidden>
+        <span id="boot-error-text"></span>
+        <button class="boot-retry" id="boot-retry">重试 / Retry</button>
+      </div>
+
+      <!-- 隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core -->
+      <nos-version auto-install id="boot-nsv"></nos-version>
     </div>
 
-    <script type="module">
-      const load = lm(import.meta);
+    <!-- 主应用宿主 -->
+    <div id="app-host"></div>
 
-      $("nos-version").on("installed", () => {
-        // 安装/升级完成后，优先使用 ?redirect= 参数；否则进入主应用
+    <script type="module">
+      // Core 就绪前无法使用 /nos/locale-text（依赖 SW），用导航语言简单判定双语文案
+      const isCN = /^zh/i.test(navigator.language || "");
+      const t = (cn, en) => (isCN ? cn : en);
+
+      const statusEl = document.getElementById("boot-status");
+      const barFillEl = document.getElementById("boot-bar-fill");
+      const maskEl = document.getElementById("boot-mask");
+      const mascotEl = document.getElementById("boot-mascot");
+      const errorEl = document.getElementById("boot-error");
+      const errorTextEl = document.getElementById("boot-error-text");
+
+      const setProgress = (p, text) => {
+        barFillEl.style.width = Math.min(100, Math.max(0, p)) + "%";
+        if (text !== undefined) statusEl.textContent = text;
+      };
+
+      // ---- nos-version 事件绑定（先绑定后加载组件定义，同步触发的事件也能收到）----
+      // $() 接收 CSS 选择器：取 id 必须带 #（$("boot-nsv") 匹配的是标签名）
+      $("#boot-nsv").on("check-start", () => {
+        setProgress(2, t("正在检测 NoneOS Core...", "Detecting NoneOS Core..."));
+      });
+      $("#boot-nsv").on("uninstalled", () => {
+        setProgress(5, t("首次运行，正在安装 NoneOS Core...", "First run, installing NoneOS Core..."));
+      });
+      $("#boot-nsv").on("upgradable", (e) => {
+        const d = (e && e.detail) || {};
+        const a = d.version || "?";
+        const b = d.lastVersion || "?";
+        setProgress(
+          5,
+          t(
+            `NoneOS Core 升级中（${a} → ${b}）...`,
+            `Upgrading NoneOS Core (${a} → ${b})...`,
+          ),
+        );
+      });
+      $("#boot-nsv").on("install-start", () => {
+        setProgress(6, t("NoneOS Core 安装准备中...", "Preparing NoneOS Core installation..."));
+      });
+      $("#boot-nsv").on("install-progress", (e) => {
+        const d = (e && e.detail) || {};
+        const step = Number(d.step) || 0;
+        const total = Number(d.total) || 0;
+        const p = total > 0 ? 6 + Math.round((step / total) * 88) : 50;
+        const desc = d.desc || t("安装中", "installing");
+        setProgress(p, t(`NoneOS Core：${desc}`, `NoneOS Core: ${desc}`));
+      });
+
+      let entered = false;
+      $("#boot-nsv").on("installed", () => {
+        if (entered) return;
+        entered = true;
+        setProgress(100, t("NoneOS Core 就绪，Mazmot 苏醒中...", "NoneOS Core ready, waking up..."));
+        // 吉祥物苏醒：soulless → 默认形态
+        mascotEl.removeAttribute("state");
+        setTimeout(enterApp, 600);
+      });
+      $("#boot-nsv").on("error", (e) => {
+        const d = (e && e.detail) || {};
+        const msg = d.message || t("未知错误", "Unknown error");
+        errorTextEl.textContent = t(
+          `NoneOS Core ${d.phase || "初始化"}失败：${msg}`,
+          `NoneOS Core ${d.phase || "initialization"} failed: ${msg}`,
+        );
+        errorEl.hidden = false;
+        statusEl.textContent = "";
+      });
+      document.getElementById("boot-retry").addEventListener("click", () => {
+        location.reload();
+      });
+
+      // ---- 进入主应用：优先 ?redirect=（兼容旧客户端升级链路），否则原地挂载 ----
+      const enterApp = () => {
         const params = new URLSearchParams(location.search);
         const raw = params.get("redirect");
-        let target = "/apps/main/";
         if (raw) {
           try {
             const decoded = decodeURIComponent(raw);
             // 仅允许站内相对路径，避免 open redirect 风险
             if (decoded.startsWith("/") && !decoded.startsWith("//")) {
-              target = decoded;
+              location.replace(decoded);
+              return;
             }
           } catch (e) {
-            // 解码失败则忽略
+            // 解码失败则忽略，走原地挂载
           }
         }
-        location.replace(target);
-      });
 
-      // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
+        // 原地挂载 /main 主应用（此时 Core SW 已就绪，/gh/、/nos/ 均可用）
+        document.getElementById("app-host").innerHTML =
+          '<o-router fix-body><o-app src="/main/app-config.js"></o-app></o-router>';
+
+        // 引导层淡出并移除
+        setTimeout(() => {
+          maskEl.classList.add("leaving");
+          setTimeout(() => maskEl.remove(), 450);
+        }, 300);
+      };
+
+      // ---- nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
       // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
+      const load = lm(import.meta);
       const swConfig = globalThis.SW_CONFIG || {};
       const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(
         location.hostname,

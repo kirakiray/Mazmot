@@ -1,0 +1,206 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .settings-field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+      margin-bottom: 8px;
+    }
+    .user-info-field {
+      margin-bottom: 20px;
+    }
+    .user-info-value {
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      word-break: break-all;
+      line-height: 1.6;
+    }
+    .user-id-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .user-id-value {
+      flex: 1;
+      min-width: 0;
+    }
+    .user-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <div class="user-info-field">
+    <div class="settings-field-label">
+      <locale-text><span lang="cn">用户 ID</span><span lang="en">User ID</span></locale-text>
+    </div>
+    <div class="user-id-row">
+      <span class="user-info-value user-id-value" attr:title="userId">{{userId}}</span>
+      <st-icon-button
+        style="font-size: 12px"
+        attr:disabled="!userId"
+        on:click="copyUserId"
+        attr:title="t('copyUserIdTitle')"
+      >
+        <n-icon icon="mdi:content-copy"></n-icon>
+      </st-icon-button>
+    </div>
+  </div>
+  <div class="user-info-field">
+    <div class="settings-field-label">
+      <locale-text><span lang="cn">用户名</span><span lang="en">Username</span></locale-text>
+    </div>
+    <div class="user-name-row">
+      <st-input sync:value="nameInput" style="width: 190px; font-size: 12px"></st-input>
+      <st-button
+        style="font-size: 12px"
+        attr:disabled="savingName || nameInput === savedName"
+        on:click="handleSaveUsername"
+      >
+        <n-icon icon="mdi:content-save-outline" slot="prefix"></n-icon>
+        <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+      </st-button>
+    </div>
+  </div>
+
+  <script>
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+    import { ensureUser } from "/mz/share-mgr.js";
+    import {
+      getLocaleText,
+      ensureLocaleTextJson,
+    } from "/nos/locale-text/get-locale-text.js";
+
+    // 先构建 locale-text.json 反向索引再求值 L10N，扩展语种才能命中
+    await ensureLocaleTextJson();
+
+
+    // 属性类文案：值必须是字面量 getLocaleText 调用才能被 locale-text-tool 扫描
+    const L10N = {
+      copyUserIdTitle: getLocaleText({ cn: "复制用户 ID", en: "Copy user ID" }),
+    };
+
+    export default async () => {
+      return {
+        data: {
+          userId: "",
+          nameInput: "",
+          // 已保存的用户名；输入框内容与它一致时保存按钮置灰
+          savedName: "",
+          savingName: false,
+        },
+        async attached() {
+          await this.loadUserInfo();
+        },
+        proto: {
+          // noneos-core getLocaleText 的模板透传（属性绑定不能直接 import 函数）
+          t(key) {
+            const item = L10N[key];
+            return item === undefined ? key : item;
+          },
+
+          // 读取当前 default 用户的身份信息（userId / username）
+          async loadUserInfo() {
+            try {
+              const user = await ensureUser();
+              const info = await user.getInfo();
+              this.userId = info.subject || user.userId || "";
+              this.nameInput = info.username || "";
+              this.savedName = this.nameInput;
+            } catch (err) {
+              console.error("读取用户信息失败：", err);
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "读取用户信息失败：{msg}",
+                    en: "Failed to load user info: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            }
+          },
+
+          async copyUserId() {
+            if (!this.userId) return;
+            try {
+              await navigator.clipboard.writeText(this.userId);
+              toast({
+                message: getLocaleText({
+                  cn: "用户 ID 已复制",
+                  en: "User ID copied",
+                }),
+                color: "success",
+              });
+            } catch (err) {
+              toast({
+                message: getLocaleText({
+                  cn: "复制失败，请手动复制",
+                  en: "Copy failed, please copy manually",
+                }),
+                color: "error",
+              });
+            }
+          },
+
+          // 更新 default 用户名（updateInfo 合并更新，自动重新签名）
+          async handleSaveUsername() {
+            const next = (this.nameInput || "").trim();
+            if (!next) {
+              toast({
+                message: getLocaleText({
+                  cn: "用户名不能为空",
+                  en: "Username cannot be empty",
+                }),
+                color: "tertiary",
+              });
+              return;
+            }
+            this.savingName = true;
+            try {
+              const user = await ensureUser();
+              await user.updateInfo({ username: next });
+              this.nameInput = next;
+              this.savedName = next;
+              toast({
+                message: getLocaleText({
+                  cn: "用户名已更新",
+                  en: "Username updated",
+                }),
+                color: "success",
+              });
+            } catch (err) {
+              console.error("更新用户名失败：", err);
+              toast({
+                message: getLocaleText(
+                  {
+                    cn: "更新用户名失败：{msg}",
+                    en: "Failed to update username: {msg}",
+                  },
+                  { msg: err.message || err },
+                ),
+                color: "error",
+              });
+            } finally {
+              this.savingName = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>
