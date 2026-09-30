@@ -12,6 +12,12 @@
         navigator.serviceWorker && navigator.serviceWorker.controller
           ? "/gh/"
           : "https://cdn.jsdelivr.net/gh/";
+      // 回头客（Core SW 已接管本页）：首帧就不渲染引导层，快速通道
+      // 直接进应用，不闪一帧安装界面；探测失败或加载卡住时再恢复显示
+      // （模块脚本探测分支 + body 尾部兜底定时器）
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        document.documentElement.classList.add("boot-fast");
+      }
       // senti-ui 主题引导：解析期同步写出，保证首帧前注入 M3 颜色变量
       document.write(
         '<script src="' +
@@ -45,6 +51,14 @@
       }
 
       /* ===== Core 安装/升级引导层：吉祥物为主视觉 ===== */
+      /* 快速通道（回头客）：引导层首帧即不渲染，只留 surface 色底 */
+      html.boot-fast .mask {
+        display: none;
+      }
+      html.boot-fast,
+      html.boot-fast body {
+        background-color: var(--md-sys-color-surface);
+      }
       .mask {
         position: fixed;
         inset: 0;
@@ -154,6 +168,16 @@
     <!-- 主应用宿主 -->
     <div id="app-host"></div>
 
+    <script>
+      // 快速通道兜底：模块脚本迟迟未就绪（网络异常、CDN 回退中）且仍未
+      // 进入应用时，恢复显示引导层，避免长时间只有一块裸色底
+      setTimeout(function () {
+        if (!document.getElementById("app-host").childElementCount) {
+          document.documentElement.classList.remove("boot-fast");
+        }
+      }, 1200);
+    </script>
+
     <script type="module">
       // ofa / router 与全部引导逻辑必须在同一个模块里：依赖顶层 await
       // 阻塞后续模块脚本的模块排序在 WebKit 上不成立（后续模块不等 TLA），
@@ -207,7 +231,9 @@
         statusEl.textContent = statusItem ? langPick(statusItem) : "";
       };
 
+      // 快速通道已移除引导层时（后台静默升级的进度事件），不再驱动已卸载的 UI
       const setProgress = (p, item) => {
+        if (!maskEl.isConnected) return;
         barFillEl.style.width = Math.min(100, Math.max(0, p)) + "%";
         if (item !== undefined) {
           statusItem = item;
@@ -230,7 +256,8 @@
         });
       });
       $("#boot-nsv").on("upgradable", (e) => {
-        const d = (e && e.detail) || {};
+        // ofa 的 emit({data}) 把负载放在 e.detail.data 上
+        const d = (e && e.detail && e.detail.data) || {};
         const a = d.version || "?";
         const b = d.lastVersion || "?";
         setProgress(5, {
@@ -245,7 +272,7 @@
         });
       });
       $("#boot-nsv").on("install-progress", (e) => {
-        const d = (e && e.detail) || {};
+        const d = (e && e.detail && e.detail.data) || {};
         const step = Number(d.step) || 0;
         const total = Number(d.total) || 0;
         const p = total > 0 ? 6 + Math.round((step / total) * 88) : 50;
@@ -269,7 +296,10 @@
         setTimeout(enterApp, 600);
       });
       $("#boot-nsv").on("error", (e) => {
-        const d = (e && e.detail) || {};
+        // 后台静默升级失败不打扰用户，下次启动的本地探测/检测会再触发
+        if (!maskEl.isConnected) return;
+        // ofa 的 emit({data}) 把负载放在 e.detail.data 上
+        const d = (e && e.detail && e.detail.data) || {};
         const msg = d.message || "";
         errorTextEl.textContent = langPick({
           cn: `NoneOS Core ${d.phase || "初始化"}失败：${msg || "未知错误"}`,
@@ -284,7 +314,7 @@
       });
 
       // ---- 进入主应用：优先 ?redirect=（兼容旧客户端升级链路），否则原地挂载 ----
-      const enterApp = () => {
+      const mountApp = () => {
         const params = new URLSearchParams(location.search);
         const raw = params.get("redirect");
         if (raw) {
@@ -303,18 +333,32 @@
         // 原地挂载 /main 主应用（此时 Core SW 已就绪，/gh/、/nos/ 均可用）
         document.getElementById("app-host").innerHTML =
           '<o-router fix-body><o-app src="/main/app-config.js"></o-app></o-router>';
+      };
 
-        // 引导层淡出并移除
+      const leaveBootMask = () => {
         setTimeout(() => {
           maskEl.classList.add("leaving");
           setTimeout(() => maskEl.remove(), 450);
         }, 300);
       };
 
+      // 完整引导路径（首访 / 恢复装）：保留苏醒仪式
+      const enterApp = () => {
+        entered = true;
+        mountApp();
+        leaveBootMask();
+      };
+
+      // 快速通道（Core 已就绪的回头客）：跳过苏醒仪式，立即挂载并快速淡出
+      const enterFast = () => {
+        entered = true;
+        mountApp();
+        maskEl.classList.add("leaving");
+        setTimeout(() => maskEl.remove(), 450);
+      };
+
       // ---- 组件加载（ofa 就绪后 lm 可用）----
       const load = lm(import.meta);
-      // 吉祥物组件：升级时机由这次 load 决定，规避静态 <l-m> 的注册时序问题
-      await load("/mz/comps/mascot/mascot.html");
 
       // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
       // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上
@@ -323,15 +367,57 @@
         location.hostname,
       );
       const prodNosVersion =
-        "https://core.noneos.com/nos-tool/comps/nos-version.html";
-      if (swConfig.coreDev && isLocalhost) {
-        try {
-          await load("http://localhost:3002/nos-tool/comps/nos-version.html");
-        } catch (err) {
-          await load(prodNosVersion);
+        "https://core.noneos.com/nos-lib/nos-version/nos-version.html";
+      const loadNosVersion = async () => {
+        if (swConfig.coreDev && isLocalhost) {
+          try {
+            await load("http://localhost:3002/nos-lib/nos-version/nos-version.html");
+            return;
+          } catch (err) {
+            // 本地 dev Core 未起，回退线上
+          }
         }
-      } else {
         await load(prodNosVersion);
+      };
+
+      // ---- 引导分叉 ----
+      // 快速通道：Core SW 已接管本页（controller 存在，head 脚本同步判定、
+      // 引导层首帧即不渲染）且本地配置完整（/__config 由 SW 本地响应，不走
+      // 网络）→ 立即进应用；在线升级检查挪到进应用之后后台跑，回头客不再
+      // 见到任何安装界面。
+      // 探测失败（装到一半 / SW 异常）或无 controller（首访）→ 完整引导流程。
+      const controllerAlive = !!(
+        navigator.serviceWorker && navigator.serviceWorker.controller
+      );
+      let coreReady = false;
+      if (controllerAlive) {
+        const configData = await fetch("/__config")
+          .then((e) => e.json())
+          .catch(() => null);
+        coreReady = !!(
+          configData &&
+          configData.serviceWorkerVersion &&
+          configData.systemConfig &&
+          configData.systemConfig.version
+        );
+      }
+
+      if (coreReady) {
+        enterFast();
+        // 后台升级检查：延迟触发，避免与应用首屏抢网络。隐藏的
+        // <nos-version auto-install> 检到可升级会静默装好；Core SW 带
+        // skipWaiting/claim，会话内后续懒加载可能拿到新版 /nos/* 模块
+        // （已加载模块不受影响），整体切换下次启动生效
+        setTimeout(() => {
+          loadNosVersion().catch(() => {});
+        }, 3000);
+      } else {
+        // 探测失败但首帧隐藏了引导层（半安装恢复），恢复显示
+        document.documentElement.classList.remove("boot-fast");
+        // 吉祥物组件：升级时机由这次 load 决定，规避静态 <l-m> 的注册时序问题
+        await load("/mz/comps/mascot/mascot.html");
+        // attached 即触发 check：uninstalled 自动安装 → installed 进应用
+        await loadNosVersion();
       }
     </script>
   </body>

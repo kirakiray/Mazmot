@@ -23,7 +23,7 @@
 
 ```
 Mazmot/
-├── index.html                # 根入口兼主应用宿主：初始化/升级 NoneOS Core（<nos-version auto-install> 驱动、组件源跟随 sw/sw-config.js 开关，<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒），完成后原地挂载 /main 主应用（不再跳转）；带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
+├── index.html                # 根入口兼主应用宿主，引导分叉两路径：① 快速通道——head 内联脚本同步判定 Core SW 已接管本页（controller 存在）即加 html.boot-fast 类，引导层首帧就不渲染（只留 surface 色底，不闪安装界面），fetch("/__config") 本地探测 version 完整（SW 本地响应不走网络）→ enterFast 立即原地挂载 /main 主应用；body 尾部兜底定时器（1.2s 未进应用则恢复引导层，防模块加载卡死成裸底）；在线升级检查延后 3s 由隐藏 <nos-version auto-install> 后台静默完成（进度/错误事件经 maskEl.isConnected 守卫不再驱动已卸载引导层；Core SW skipWaiting+claim，已加载模块不受影响，整体切换下次启动生效）。② 完整引导——无 controller（首访）或探测失败（装到一半/SW 异常，移除 boot-fast 恢复显示引导层）走原流程：<nos-version auto-install> 驱动（组件源跟随 sw/sw-config.js 开关），<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒后原地挂载；两种路径带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
