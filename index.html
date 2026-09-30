@@ -256,7 +256,8 @@
         });
       });
       $("#boot-nsv").on("upgradable", (e) => {
-        const d = (e && e.detail) || {};
+        // ofa 的 emit({data}) 把负载放在 e.detail.data 上
+        const d = (e && e.detail && e.detail.data) || {};
         const a = d.version || "?";
         const b = d.lastVersion || "?";
         setProgress(5, {
@@ -271,7 +272,7 @@
         });
       });
       $("#boot-nsv").on("install-progress", (e) => {
-        const d = (e && e.detail) || {};
+        const d = (e && e.detail && e.detail.data) || {};
         const step = Number(d.step) || 0;
         const total = Number(d.total) || 0;
         const p = total > 0 ? 6 + Math.round((step / total) * 88) : 50;
@@ -297,7 +298,8 @@
       $("#boot-nsv").on("error", (e) => {
         // 后台静默升级失败不打扰用户，下次启动的本地探测/检测会再触发
         if (!maskEl.isConnected) return;
-        const d = (e && e.detail) || {};
+        // ofa 的 emit({data}) 把负载放在 e.detail.data 上
+        const d = (e && e.detail && e.detail.data) || {};
         const msg = d.message || "";
         errorTextEl.textContent = langPick({
           cn: `NoneOS Core ${d.phase || "初始化"}失败：${msg || "未知错误"}`,
