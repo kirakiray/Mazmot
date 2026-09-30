@@ -114,11 +114,11 @@
 | `importOrgCerts(name)` / `reissueOrgCerts(name)` | 组织证书导入本地库（幂等）/ 按当前时间重签 |
 | `isOrgProfile(profile)` | 判断 profile 是否组织账户 |
 
-### `/nos/*` 与 `/ncomp/*`
+### `/nos/*` 与 `/nos-lib/*`
 
 - `/nos/locale-text/locale-text.html`（`<locale-text>` 双语组件）与 `/nos/locale-text/get-locale-text.js`（`getLocaleText({cn, en}, params)`）：所有文案与占位符。
 - `/nos/n-icon/n-icon.html`：图标。
-- `/ncomp/user-name/user-name.html`（`<n-user-name user-id>`）、`/ncomp/user-status/user-status.html`（`<n-user-status>` 在线状态点）：用户展示组件。
+- `/nos-lib/user-name/user-name.html`（`<n-user-name user-id>`）、`/nos-lib/user-status/user-status.html`（`<n-user-status>` 在线状态点）：NoneOS 官方在线库（nos-lib）用户展示组件。
 - `/nos/user/main.js` 的 `getUser("org:<name>")`：cert-detail 在 `?ns=` 命名空间下取组织用户（组件内 `load()` 按需加载）。
 
 ## 关键流程
