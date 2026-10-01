@@ -120,6 +120,9 @@ await agent.chat({
       case "toolResult":  // 单个工具执行完毕
         showResult(ev.name, ev.result);
         break;
+      case "usage":       // 工具循环中间模型调用的实时用量快照
+        updateProgress(ev.usage.context_tokens);
+        break;
       case "done":        // 循环结束，携带最终结果
         finish(ev.content, ev.usage);
         break;
@@ -224,6 +227,7 @@ schema 字段定义：
 | `text` | 模型输出文本 / 思考增量（仅 `stream: true`） | `delta` / `deltaReasoning` / `content` / `reasoningContent`（与 `assistant.chat` 的 onStream 同构） |
 | `toolCalls` | 模型决定发起工具调用 | `toolCalls`（wire 格式） |
 | `toolResult` | 单个工具执行完毕 | `name` / `toolCallId` / `result` |
+| `usage` | 工具循环中的中间模型调用返回后（还会继续循环时才推，最终回合的完整用量随 `done` 下发） | `usage`（截至本次调用的累计快照，含 `context_tokens`） |
 | `done` | 循环结束 | `done: true` + 最终结果全部字段（`content` / `usage` / `messages` 等） |
 
 **返回值**（与 `assistant.chat` 返回值同构，额外多 `messages`）：

@@ -62,6 +62,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 消息与发送
     messages: [],
     sending: false,
+    stopRequested: false, // 用户点了停止、回合尚未收尾（按钮显示「停止中」并禁用）
     nextId: 1,
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
@@ -1512,6 +1513,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           toolCallId: call.id,
         });
       }
+    } else if (ev.type === "usage" && ev.usage) {
+      // 工具循环中间模型调用的实时用量快照：立即 patch 到当前气泡，
+      // 页面 syncCtx 随消息事件重算，上下文占用圆圈中途即更新；
+      // 暂存到 turnUsage 供停止收尾补挂（该轮无文本气泡时 done 不会带来 usage）
+      turnUsage = ev.usage;
+      if (activeBubble) {
+        activeBubble.usage = ev.usage;
+        patchMessage(activeBubble.id, { usage: ev.usage });
+      }
     } else if (ev.type === "toolResult") {
       const item = bucketFor(activeKey()).find(
         (m) => m.toolCallId === ev.toolCallId,
@@ -1896,9 +1906,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 发送主流程：落点准备 → 用户消息入列 → Agent 流式对话 → 回合收尾
-  // currentAbort：本轮的中止信号；stop() 触发后 Agent 对话被中断，
-  // 已产生的流式内容保留，回合照常收尾落盘（下次发送继续同一 thread）
+  // currentAbort：本轮的中止信号；stop() 触发后置位并 abort 在途模型请求，
+  // Agent 对话被中断，已产生的流式内容保留，回合照常收尾落盘（下次发送继续
+  // 同一 thread）；turnUsage 暂存本轮最近一次模型调用的用量（停止收尾补挂）
   let currentAbort = null;
+  let currentAbortCtrl = null;
+  let turnUsage = null;
 
   async function send(text) {
     if (state.sending) return;
@@ -1967,12 +1980,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   async function driveTurn(threadId, firstUserText, inputMessages) {
     activeBubble = null;
     currentAbort = { stopped: false };
+    currentAbortCtrl = new AbortController();
+    turnUsage = null;
     const abort = currentAbort;
+    // 本回合第一条消息的 id 基线：收尾标记（turnMs / stopped / usage）只
+    // patch 本回合内产生的消息，避免误改上一回合的末条 AI 消息
+    const turnFirstId = state.nextId;
     try {
       await agent.chat({
         messages: inputMessages,
         threadId,
         stream: true,
+        signal: currentAbortCtrl.signal,
         onStream: (ev) => {
           if (abort.stopped) throw new Error("已停止生成");
           handleStreamEvent(ev);
@@ -1988,15 +2007,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } finally {
       activeBubble = null;
       currentAbort = null;
+      currentAbortCtrl = null;
+      set("stopRequested", false);
       cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
-      // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
-      // 落盘前 patch，随会话桶一起持久化）
+      // 本轮耗时 / 手动停止标记 / 停止时的实时用量 patch 到回合内末条 AI
+      // 消息（须在 finishTurn 落盘前 patch，随会话桶一起持久化）
       if (turnStartAt) {
         const lastAi = [...bucketFor(turnKey)]
           .reverse()
-          .find((m) => m.role === "assistant");
-        if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
+          .find((m) => m.role === "assistant" && m.id >= turnFirstId);
+        if (lastAi) {
+          const patch = { turnMs: Date.now() - turnStartAt };
+          if (abort.stopped) {
+            patch.stopped = true;
+            if (turnUsage && !lastAi.usage) patch.usage = turnUsage;
+          }
+          patchMessage(lastAi.id, patch);
+        }
       }
       await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
@@ -2007,10 +2035,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘。
-  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回
+  // 停止当前生成：置位中止信号 + abort 在途模型请求（不必等下一个流式
+  // 事件，模型长流式 / 工具执行中点击都能尽快中断），已生成内容保留并照常
+  // 落盘收尾（耗时 / 用量 / stopped 标记见 driveTurn 收尾）。
+  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回；
+  // stopRequested 供按钮显示「停止中」并防重复点击
   function stop() {
-    if (currentAbort) currentAbort.stopped = true;
+    if (!currentAbort || currentAbort.stopped) return;
+    currentAbort.stopped = true;
+    set("stopRequested", true);
+    try {
+      currentAbortCtrl?.abort();
+    } catch {}
     cancelPendingForm("用户停止了生成");
   }
 
@@ -2154,7 +2190,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       turnKey = null;
       turnStartAt = 0;
       markBusy(null);
-      setMany({ sending: false, turnStartTs: 0, keyError: err.message });
+      setMany({
+        sending: false,
+        stopRequested: false,
+        turnStartTs: 0,
+        keyError: err.message,
+      });
     }
   }
 

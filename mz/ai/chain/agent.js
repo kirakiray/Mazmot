@@ -189,6 +189,12 @@ export const createAgent = ({
       lastReasoning = res.reasoningContent || lastReasoning;
       addUsage(res.usage);
 
+      // 还会继续工具循环的中间模型调用：推一条实时用量快照，消费方可在
+      // 循环期间更新上下文占用进度（最终回合的完整用量随 done 整体下发）
+      if (res.toolCalls?.length) {
+        emit({ type: "usage", usage: { ...usage } });
+      }
+
       const aiMessage = {
         role: "assistant",
         content: res.content ?? "",

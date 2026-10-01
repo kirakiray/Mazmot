@@ -929,5 +929,116 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="回合实时用量与手动停止：usage 中途落位 / stopped 标记 / stop 防重复">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [],
+                  },
+                ],
+              });
+              // 伪造 chain：chat 脚本化——先推文本与 usage 中间事件，然后挂起，
+              // 直到 signal abort 才以 AbortError 拒绝（模拟模型长流式中被停止）
+              const scriptedChat = ({ onStream, signal }) =>
+                new Promise((resolve, reject) => {
+                  onStream({ type: "text", delta: "先干一半" });
+                  onStream({
+                    type: "usage",
+                    usage: {
+                      prompt_tokens: 4800,
+                      completion_tokens: 200,
+                      total_tokens: 5000,
+                      context_tokens: 5000,
+                    },
+                  });
+                  const onAbort = () =>
+                    reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+                  if (signal?.aborted) return onAbort();
+                  signal?.addEventListener("abort", onAbort, { once: true });
+                });
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: {}, // 仅需真值让 send 放行；本用例不触达真实 fs 方法
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async (path) => {
+                  if (String(path).includes("/mz/ai/chain/main.js")) {
+                    return {
+                      tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                      createAgent: () => ({ chat: scriptedChat }),
+                    };
+                  }
+                  return aiFake;
+                },
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 未发送时点停止：无活动回合，应静默无副作用
+              store.stop();
+              const idleNoop = store.state.stopRequested === false;
+
+              const sendP = store.send("做个番茄钟");
+              // 等中间 usage 事件 patch 到当前气泡（上下文圆圈中途刷新的数据源）
+              let midMsg = null;
+              for (let i = 0; i < 150; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+                midMsg = [...store.state.messages]
+                  .reverse()
+                  .find((m) => m.role === "assistant");
+                if (midMsg?.usage?.context_tokens === 5000) break;
+              }
+              const midUpdated = midMsg?.usage?.context_tokens === 5000;
+              const sendingMid = store.state.sending === true;
+
+              // 停止：置位 stopRequested；重复点击无副作用
+              store.stop();
+              const stopFlag = store.state.stopRequested === true;
+              store.stop();
+              const stopFlagStable = store.state.stopRequested === true;
+              await sendP;
+
+              const st = store.state;
+              const persisted =
+                (await fakeStore.getItem(`chat:demo:${st.currentSessionId}`)) || [];
+              const lastPersistAi = [...persisted]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const checks = {
+                idleNoop,
+                midUpdated,
+                sendingMid,
+                stopFlag,
+                stopFlagStable,
+                finishedIdle: st.sending === false && st.stopRequested === false,
+                stoppedMarked: lastPersistAi?.stopped === true,
+                turnMsRecorded: typeof lastPersistAi?.turnMs === "number" && lastPersistAi.turnMs >= 0,
+                usageKept: lastPersistAi?.usage?.context_tokens === 5000,
+                contentKept: !!midMsg?.content,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, lastPersistAi },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>
