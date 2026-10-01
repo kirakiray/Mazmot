@@ -198,8 +198,8 @@ schema 字段定义：
 | `text` | 模型输出文本 / 思考增量（仅 `stream: true`） | `delta` / `deltaReasoning` / `content` / `reasoningContent`（与 `assistant.chat` 的 onStream 同构） |
 | `toolCalls` | 模型决定发起工具调用 | `toolCalls`（wire 格式） |
 | `toolResult` | 单个工具执行完毕 | `name` / `toolCallId` / `result` |
-| `usage` | 工具循环中的中间模型调用返回后（还会继续循环时才推，最终回合的完整用量随 `done` 下发） | `usage`（截至本次调用的累计快照，含 `context_tokens`） |
-| `done` | 循环结束 | `done: true` + 最终结果全部字段（`content` / `usage` / `messages` 等） |
+| `usage` | 工具循环中的中间模型调用返回后（还会继续循环时才推，最终回合的完整用量随 `done` 下发） | `usage`（截至本次调用的累计快照，含 `context_tokens`）+ `stats` / `contextBreakdown` 同构快照 |
+| `done` | 循环结束 | `done: true` + 最终结果全部字段（`content` / `usage` / `stats` / `contextBreakdown` / `messages` 等） |
 
 **返回值**（与 `assistant.chat` 返回值同构，额外多 `messages`）：
 
@@ -215,7 +215,17 @@ schema 字段定义：
     // 供应商有返回时才累计（DeepSeek：prompt_cache_hit_tokens /
     // prompt_cache_miss_tokens；OpenAI 风格：prompt_tokens_details.cached_tokens）
     prompt_cache_hit_tokens?, prompt_cache_miss_tokens?, prompt_tokens_details?,
+    // 推理 token（completion_tokens_details.reasoning_tokens，仅供应商回报时存在）
+    reasoning_tokens?,
   }, // prompt/completion/total 为整个循环累计
+  // 本回合执行统计（客户端墙上时间）：steps 模型调用次数；llmMs 模型调用
+  // 累计耗时；toolMs 工具执行累计耗时；ttftMs/ttftSteps 首 token 延迟累计
+  // 与计步（仅流式步）；decodeMs/decodeTokens 解码耗时与输出 token 累计
+  //（二者相除即输出速度 TPS）
+  stats: { steps, llmMs, toolMs, ttftMs, ttftSteps, decodeMs, decodeTokens },
+  // 上下文构成估算（对齐末次调用的 context_tokens）：系统提示词与工具定义
+  // 按字符数 ÷2 估 token，对话消息取余量；供 UI 做分解展示
+  contextBreakdown: { systemTokens, toolsTokens, messageTokens },
   toolCalls: [],           // 恒为空数组（最终回答不再发起工具调用）
   messages: [              // 完整轨迹（wire 格式，含 system / tool 消息）
     { role: "user", content: "..." },

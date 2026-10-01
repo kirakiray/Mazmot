@@ -227,8 +227,8 @@ schema 字段定义：
 | `text` | 模型输出文本 / 思考增量（仅 `stream: true`） | `delta` / `deltaReasoning` / `content` / `reasoningContent`（与 `assistant.chat` 的 onStream 同构） |
 | `toolCalls` | 模型决定发起工具调用 | `toolCalls`（wire 格式） |
 | `toolResult` | 单个工具执行完毕 | `name` / `toolCallId` / `result` |
-| `usage` | 工具循环中的中间模型调用返回后（还会继续循环时才推，最终回合的完整用量随 `done` 下发） | `usage`（截至本次调用的累计快照，含 `context_tokens`） |
-| `done` | 循环结束 | `done: true` + 最终结果全部字段（`content` / `usage` / `messages` 等） |
+| `usage` | 工具循环中的中间模型调用返回后（还会继续循环时才推，最终回合的完整用量随 `done` 下发） | `usage`（截至本次调用的累计快照，含 `context_tokens`）+ `stats` / `contextBreakdown` 同构快照 |
+| `done` | 循环结束 | `done: true` + 最终结果全部字段（`content` / `usage` / `stats` / `contextBreakdown` / `messages` 等） |
 
 **返回值**（与 `assistant.chat` 返回值同构，额外多 `messages`）：
 
@@ -237,7 +237,9 @@ schema 字段定义：
   content: "最终回答",
   reasoningContent: "最后一次模型调用的思考过程",
   model: "使用的模型",
-  usage: { prompt_tokens, completion_tokens, total_tokens, context_tokens }, // 前三个为整个循环累计；context_tokens 为当前上下文占用估算（末次模型调用的 prompt + completion，覆盖写入）
+  usage: { prompt_tokens, completion_tokens, total_tokens, context_tokens }, // 前三个为整个循环累计；context_tokens 为当前上下文占用估算（末次模型调用的 prompt + completion，覆盖写入）；缓存命中/未命中字段（prompt_cache_hit_tokens / prompt_tokens_details.cached_tokens）与推理 token（reasoning_tokens）仅供应商回报时存在
+  stats: { steps, llmMs, toolMs, ttftMs, ttftSteps, decodeMs, decodeTokens }, // 本回合执行统计（墙上时间）：模型调用次数 / 模型耗时 / 工具耗时 / 首 token 延迟累计与计步 / 解码耗时与输出 token（相除即 TPS）
+  contextBreakdown: { systemTokens, toolsTokens, messageTokens }, // 上下文构成估算（系统提示词与工具定义按字符数估，对话消息取余量）
   toolCalls: [],           // 恒为空数组（最终回答不再发起工具调用）
   messages: [              // 完整轨迹（wire 格式，含 system / tool 消息）
     { role: "user", content: "..." },

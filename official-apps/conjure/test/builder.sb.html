@@ -959,6 +959,20 @@
                       total_tokens: 5000,
                       context_tokens: 5000,
                     },
+                    stats: {
+                      steps: 1,
+                      llmMs: 120,
+                      toolMs: 0,
+                      ttftMs: 40,
+                      ttftSteps: 1,
+                      decodeMs: 80,
+                      decodeTokens: 200,
+                    },
+                    contextBreakdown: {
+                      systemTokens: 100,
+                      toolsTokens: 200,
+                      messageTokens: 4700,
+                    },
                   });
                   const onAbort = () =>
                     reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
@@ -1027,11 +1041,164 @@
                 stoppedMarked: lastPersistAi?.stopped === true,
                 turnMsRecorded: typeof lastPersistAi?.turnMs === "number" && lastPersistAi.turnMs >= 0,
                 usageKept: lastPersistAi?.usage?.context_tokens === 5000,
+                statsRecorded: lastPersistAi?.turnStats?.steps === 1,
+                breakdownRecorded: lastPersistAi?.contextBreakdown?.messageTokens === 4700,
                 contentKept: !!midMsg?.content,
               };
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, lastPersistAi },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="草稿发送即建项目：中断归属项目 / 草稿不积攒 / fresh 提示词与 create_app 过滤">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualDir,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              // 脚本化 chain：捕获 createAgent 参数；chat 第一轮挂起等 abort
+              //（模拟生成中被停止），第二轮直接完成（同会话继续迭代）
+              const agentCalls = [];
+              let callN = 0;
+              const chat = async ({ onStream, signal }) => {
+                callN++;
+                if (callN === 1) {
+                  onStream({ type: "text", delta: "开始生成" });
+                  return new Promise((_, reject) => {
+                    const onAbort = () =>
+                      reject(
+                        Object.assign(new Error("aborted"), { name: "AbortError" }),
+                      );
+                    if (signal?.aborted) return onAbort();
+                    signal?.addEventListener("abort", onAbort, { once: true });
+                  });
+                }
+                onStream({ type: "text", delta: "继续生成" });
+                return {
+                  content: "继续生成",
+                  usage: {
+                    prompt_tokens: 100,
+                    completion_tokens: 20,
+                    total_tokens: 120,
+                    context_tokens: 120,
+                  },
+                  stats: {
+                    steps: 1,
+                    llmMs: 30,
+                    toolMs: 0,
+                    ttftMs: 10,
+                    ttftSteps: 1,
+                    decodeMs: 20,
+                    decodeTokens: 20,
+                  },
+                  toolCalls: [],
+                };
+              };
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: (opts) => {
+                  agentCalls.push({
+                    systemPrompt: opts.systemPrompt || "",
+                    tools: (opts.tools || []).map((t) => t.name),
+                  });
+                  return { chat };
+                },
+              };
+              const aiFake = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 草稿态发送首条消息：项目应立即建立（不等回合结束）
+              const sendP = store.send("做个番茄钟应用");
+              let appName = "";
+              for (let i = 0; i < 200 && !appName; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+                appName = store.state.currentAppName;
+              }
+              await new Promise((r) => setTimeout(r, 60)); // 等登记落盘
+              const sid = store.state.currentSessionId;
+              const reg = (await fakeStore.getItem("apps-registry")) || [];
+              const regHit = reg.find((a) => a.name === appName);
+              const call1 = agentCalls[0] || { systemPrompt: "", tools: [] };
+              const midChecks = {
+                projectCreated: /^app-/.test(appName), // 中文取不出 slug，时间戳兜底
+                displayFromText: store.state.currentAppDisplay === "做个番茄钟应用",
+                registryWithSession:
+                  !!regHit && regHit.sessions?.length === 1 && regHit.sessions[0].id === sid,
+                mazmotRegistered: ((await mazmotStore.getItem("apps")) || []).some(
+                  (a) => a.name === appName,
+                ),
+                freshPrompt: call1.systemPrompt.includes("空项目"),
+                createAppFiltered: !call1.tools.includes("create_app"),
+                viewFollowsProject: store.state.messages.length > 0, // 用户消息已进新会话视图
+              };
+
+              // 中断：项目与会话保留（这正是本次要修的场景）
+              store.stop();
+              await sendP;
+              const persisted =
+                (await fakeStore.getItem(`chat:${appName}:${sid}`)) || [];
+              const card = persisted.find((m) => m.role === "app");
+              const draftChat = await fakeStore.getItem("chat:draft");
+              const draftThread = await fakeStore.getItem("thread:draft");
+              const stopChecks = {
+                projectKept: store.state.currentAppName === appName,
+                cardPushed: !!card,
+                draftChatGone: draftChat === null || draftChat?.length === 0,
+                draftThreadGone: draftThread === null || draftThread?.length === 0,
+              };
+
+              // 同会话继续第二回合：fresh 标记已清、agent 重建为常规提示词、
+              // 会话不重复
+              const nAgents = agentCalls.length;
+              await store.send("继续");
+              const reg2 = (await fakeStore.getItem("apps-registry")) || [];
+              const hit2 = reg2.find((a) => a.name === appName);
+              const call2 = agentCalls[agentCalls.length - 1] || {
+                systemPrompt: "",
+                tools: [],
+              };
+              const contChecks = {
+                sameSession: store.state.currentSessionId === sid,
+                sessionNotDuplicated: hit2?.sessions?.length === 1,
+                agentRebuilt: agentCalls.length === nAgents + 1,
+                turn2NormalPrompt:
+                  !call2.systemPrompt.includes("空项目") &&
+                  call2.systemPrompt.includes("已存在的应用"),
+                turn2HasCreateApp: call2.tools.includes("create_app"),
+                idleAfterTurn2: store.state.sending === false,
+              };
+              const checks = { ...midChecks, ...stopChecks, ...contChecks };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, appName, agentCalls: agentCalls.length },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

@@ -910,7 +910,21 @@ export const COMPACTION_PROMPT = `你是对话压缩器。把提供的 AI 应用
  */
 export function buildSystemPrompt(ctx = {}) {
   let prompt = SYSTEM_PROMPT;
-  if (ctx.appName) {
+  if (ctx.appName && ctx.freshProject) {
+    // 全新项目：系统已在用户发送首条消息时建好目录与占位 app.json，
+    // 模型跳过 create_app 直接生成（宿主同时会把 create_app 从工具清单移除）
+    const where =
+      ctx.mode === "local"
+        ? `用户本地磁盘所选目录的 client/ 子目录（路径相对 client/，多级路径会自动建目录）`
+        : `虚拟文件系统 /$${NAMESPACE}/${ctx.appName}/client/`;
+    prompt += `
+
+## 当前上下文（重要）
+项目「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）是**系统刚为你创建的空项目**，目录里只有一个占位 app.json（displayName / icon 都是占位值）。
+- **不要调用 create_app**，从 write_file 直接开始；项目当前没有代码，也无需先 read_file 查看。
+- 第一个文件就写 app.json：覆盖为正确的 displayName / icon / description（icon 用一个贴切的 emoji，name 保持 ${ctx.appName} 不变）。
+- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → AGENTS.md / CONTEXT.md）。`;
+  } else if (ctx.appName) {
     const where =
       ctx.mode === "local"
         ? `用户本地磁盘所选目录的 client/ 子目录（路径相对 client/，多级路径会自动建目录）`

@@ -1,6 +1,7 @@
 <template page>
   <link rel="stylesheet" href="./home.css" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
@@ -274,10 +275,54 @@
                         </span>
                       </o-if>
                       <o-if :value="$host.hasUsage($data)">
-                        <div class="usage-row" attr:title="'本轮 token 用量（含工具循环的多次模型调用累计）'">
-                          <n-icon icon="mdi:counter"></n-icon>
-                          <span>{{$host.usageText($data)}}</span>
-                        </div>
+                        <!-- 本轮用量（TurnUsagePanel 同款）：胶囊显示紧凑总量，
+                             点击弹出明细面板（缓存命中 / 未缓存输入 / 缓存读取 / 输出） -->
+                        <span class="stat-anchor">
+                          <button
+                            class="stat-pill"
+                            attr:title="'本轮 token 用量（含工具循环的多次模型调用累计），点击查看明细'"
+                            on:click="$host.toggleUsagePanel($data.id)"
+                          >
+                            <n-icon icon="mdi:database-outline"></n-icon>
+                            <span>{{$host.usagePillText($data)}}</span>
+                          </button>
+                          <span class="stat-panel" class:open="$host.openUsageMsgId === $data.id">
+                            <span class="stat-panel-head">
+                              <n-icon icon="mdi:database-outline"></n-icon>
+                              <span class="stat-panel-title">本轮用量</span>
+                              <span class="stat-panel-value">{{$host.fmtTokExact($host.usageTotalOf($data))}} tok</span>
+                            </span>
+                            <span class="stat-rule"></span>
+                            <span class="stat-rows">
+                              <o-if :value="$data.model">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">提供方 / 模型</span
+                                  ><span class="stat-dd">{{$data.model}}</span></span
+                                >
+                              </o-if>
+                              <o-if :value="$host.usageCacheHit($data) !== ''">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">缓存命中</span
+                                  ><span class="stat-dd">{{$host.usageCacheHit($data)}}%</span></span
+                                >
+                              </o-if>
+                              <span class="stat-row"
+                                ><span class="stat-dt">未缓存输入</span
+                                ><span class="stat-dd">{{$host.fmtTokExact($host.usageUncachedOf($data))}} tok</span></span
+                              >
+                              <o-if :value="$host.usageCacheReadOf($data) > 0">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">缓存读取</span
+                                  ><span class="stat-dd">{{$host.fmtTokExact($host.usageCacheReadOf($data))}} tok</span></span
+                                >
+                              </o-if>
+                              <span class="stat-row"
+                                ><span class="stat-dt">输出</span
+                                ><span class="stat-dd">{{$host.usageOutputText($data)}}</span></span
+                              >
+                            </span>
+                          </span>
+                        </span>
                       </o-if>
                       <o-if :value="$host.canFork()">
                         <button
@@ -449,83 +494,6 @@
           on:keydown="handleKeydown($event)"
         ></textarea>
         <div class="composer-row">
-          <div class="composer-left">
-            <!-- 上下文占用圆圈常驻：无占用时显示「AI」，悬停即可选模型 / API Key；
-                 有占用后显示进度，点击压缩 -->
-            <span class="ctx-anchor">
-              <button
-                class="ctx-ring"
-                attr:disabled="compacting"
-                attr:title="compacting ? '正在压缩上下文…' : (ctxUsed > 0 ? ctxTitle + '，点击立即压缩上下文' : '选择对话使用的 AI：悬停切换模型与 API Key')"
-                on:click="handleCompress"
-              >
-                <svg class="ctx-ring-svg" viewBox="0 0 20 20">
-                  <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
-                  <circle
-                    class="ctx-ring-fill"
-                    class:warn="ctxPct >= 80"
-                    cx="10"
-                    cy="10"
-                    r="8"
-                    stroke-dasharray="50.27"
-                    attr:stroke-dashoffset="ctxDash"
-                  ></circle>
-                </svg>
-                <span
-                  class="ctx-ring-label"
-                  >{{compacting ? '压缩中…' : (ctxUsed ? ctxPct + '%' : '🤖 AI')}}</span
-                >
-              </button>
-              <!-- 悬停气泡：当前模型 + API Key 切换 -->
-              <span class="ctx-pop">
-                <span class="ctx-pop-row">
-                  <span class="ctx-pop-label">模型</span>
-                  <st-select
-                    class="ctx-select key-select model-select"
-                    attr:title="'对话使用的模型（当前：' + (activeModelId || '供应商默认') + '）'"
-                    :options="modelSelectOptions"
-                    sync:value="activeModelId"
-                    attr:disabled="modelOptions.length === 0"
-                    on:change="selectModel($event)"
-                  ></st-select>
-                </span>
-                <span class="ctx-pop-row">
-                  <span class="ctx-pop-label">Key</span>
-                  <o-if :value="apiKeys.length > 0">
-                    <st-select
-                      class="ctx-select key-select"
-                      attr:title="'对话使用的 API Key（当前：' + activeKeyText + '）'"
-                      :options="apiSelectOptions"
-                      sync:value="activeKeyId"
-                      on:change="selectApiKey($event)"
-                    ></st-select>
-                  </o-if>
-                  <o-if :value="apiKeys.length === 0">
-                    <span class="ctx-pop-value">未配置（去密钥管理器添加）</span>
-                  </o-if>
-                </span>
-                <span class="ctx-pop-row">
-                  <span class="ctx-pop-label">窗口</span>
-                  <st-select
-                    class="ctx-select"
-                    attr:title="'会话最大上下文窗口（当前 ' + ctxWindowText + '）'"
-                    :options="ctxOptions"
-                    sync:value="ctxWindow"
-                    on:change="setCtxWindow($event)"
-                  ></st-select>
-                </span>
-              </span>
-            </span>
-            <!-- 思考模式开关：开 = 回答前先推理（可见思考过程），关 = 直接快速回答 -->
-            <button
-              class="target-opt"
-              class:active="thinking"
-              attr:title="thinking ? '思考模式已开启：回答前先推理，速度较慢，点击关闭' : '思考模式已关闭：直接回答，点击开启推理'"
-              on:click="toggleThinking()"
-            >
-              🧠 思考模式
-            </button>
-          </div>
           <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
           <o-if :value="currentAppName === ''">
             <div class="target-picker">
@@ -558,12 +526,97 @@
           <o-if :value="currentAppName !== ''">
             <span class="composer-meta">📂 {{dirText({ mode: currentAppMode, appName: currentAppName })}}</span>
           </o-if>
-          <o-if :value="!sending">
+          <!-- 模型 + 推理等级 + Key + 窗口：钻入式选择菜单（对齐 deepseek harness ModelSelect） -->
+          <!-- 模型 / 推理等级 / Key / 窗口：st-menu 钻入式选择（子菜单 hover 展开，
+               选中任意项整链自动关闭；面板 fixed 定位自动翻转避让视口） -->
+          <st-menu align="right">
             <button
+              slot="trigger"
+              class="model-trigger"
+              attr:title="'模型与推理等级（当前：' + modelTriggerText + '）'"
+            >
+              <span class="model-trigger-label">{{modelTriggerText}}</span>
+              <svg
+                class="model-chev"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <st-menu-item>
+              模型
+              <span slot="suffix" class="menu-value">{{modelValueText}}</span>
+              <st-menu slot="sub-menu">
+                <st-menu-item on:click="pickModel('')">
+                  <span slot="prefix" class="menu-check">{{activeModelId === '' ? '✓' : ''}}</span>
+                  自动（供应商默认）
+                </st-menu-item>
+                <o-fill :value="modelOptions" fill-key="id">
+                  <st-menu-item on:click="$host.pickModel($data.id)">
+                    <span slot="prefix" class="menu-check">{{$host.modelCheck($data.id)}}</span>
+                    {{$data.label}}
+                  </st-menu-item>
+                </o-fill>
+                <o-if :value="modelOptions.length === 0">
+                  <span class="menu-empty">当前 Key 未拉取到模型清单</span>
+                </o-if>
+              </st-menu>
+            </st-menu-item>
+            <st-menu-item>
+              推理等级
+              <span slot="suffix" class="menu-value">{{reasoningLabel()}}</span>
+              <st-menu slot="sub-menu">
+                <o-fill :value="effortOptions" fill-key="id">
+                  <st-menu-item on:click="$host.pickReasoning($data.id)">
+                    <span slot="prefix" class="menu-check">{{$host.reasoningCheck($data.id)}}</span>
+                    {{$data.label}}
+                  </st-menu-item>
+                </o-fill>
+              </st-menu>
+            </st-menu-item>
+            <st-menu-item>
+              Key
+              <span slot="suffix" class="menu-value">{{activeKeyText}}</span>
+              <st-menu slot="sub-menu">
+                <st-menu-item on:click="pickKey('')">
+                  <span slot="prefix" class="menu-check">{{activeKeyId === '' ? '✓' : ''}}</span>
+                  自动选择（负载均衡）
+                </st-menu-item>
+                <o-fill :value="apiKeys" fill-key="id">
+                  <st-menu-item on:click="$host.pickKey($data.id)">
+                    <span slot="prefix" class="menu-check">{{$host.keyCheck($data.id)}}</span>
+                    {{$data.provider === 'relay' ? $data.serverName || 'Relay' : $data.provider}} · {{$data.maskedKey}}
+                  </st-menu-item>
+                </o-fill>
+                <o-if :value="apiKeys.length === 0">
+                  <span class="menu-empty">未配置 Key（去密钥管理器添加）</span>
+                </o-if>
+              </st-menu>
+            </st-menu-item>
+            <st-menu-item>
+              窗口
+              <span slot="suffix" class="menu-value">{{ctxWindowText}}</span>
+              <st-menu slot="sub-menu">
+                <o-fill :value="ctxOptions" fill-key="value">
+                  <st-menu-item on:click="$host.pickWindow($data.value)">
+                    <span slot="prefix" class="menu-check">{{$host.windowCheck($data.value)}}</span>
+                    {{$data.label}}
+                  </st-menu-item>
+                </o-fill>
+              </st-menu>
+            </st-menu-item>
+          </st-menu>
+          <o-if :value="!sending">
+            <st-button
               class="send-btn"
               attr:disabled="!input.trim()"
+              attr:title="'发送（Enter）'"
               on:click="handleSend"
-              title="发送（Enter）"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -576,12 +629,12 @@
                 <path d="M12 19V5" />
                 <path d="M5 12l7-7 7 7" />
               </svg>
-            </button>
+            </st-button>
           </o-if>
           <o-if :value="sending">
-            <button
+            <st-button
               class="send-btn stop"
-              class:stopping="stopRequested"
+              color="error"
               attr:disabled="stopRequested"
               attr:title="stopRequested ? '正在停止…' : '停止生成'"
               on:click="handleStop"
@@ -594,11 +647,157 @@
               >
                 <rect x="7" y="7" width="10" height="10" rx="1.5" />
               </svg>
-            </button>
+            </st-button>
           </o-if>
         </div>
       </div>
-      <div class="disclaimer">内容由 AI 生成，请注意甄别</div>
+      <!-- 底部统计胶囊（点开明细面板）：会话统计 / Token 用量 / 上下文占用；
+           无数据的胶囊不渲染 -->
+      <div class="stats-dock">
+        <o-if :value="statSteps > 0">
+          <span class="stat-anchor">
+            <button
+              class="stat-pill"
+              attr:title="'会话统计：' + statTurns + ' 轮 ' + statSteps + ' 步' + (statTps > 0 ? ' · ' + statTps + ' tok/s' : '')"
+              on:click="toggleStat('time')"
+            >
+              <n-icon icon="mdi:speedometer"></n-icon>
+              <span class="stat-pill-label">{{timePillText()}}</span>
+            </button>
+            <span class="stat-panel" class:open="openStat === 'time'">
+                <span class="stat-panel-head">
+                  <n-icon icon="mdi:speedometer"></n-icon>
+                  <span class="stat-panel-title">会话统计</span>
+                </span>
+                <span class="stat-rule"></span>
+                <span class="stat-rows">
+                  <o-if :value="statLlmMs > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">模型用时</span
+                      ><span class="stat-dd">{{fmtDurCompact(statLlmMs)}}</span></span
+                    >
+                  </o-if>
+                  <o-if :value="statToolMs > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">工具调用用时</span
+                      ><span class="stat-dd">{{fmtDurCompact(statToolMs)}}</span></span
+                    >
+                  </o-if>
+                  <o-if :value="statTtftAvg > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">首 token 平均（TTFT）</span
+                      ><span class="stat-dd">{{fmtDurCompact(statTtftAvg)}}</span></span
+                    >
+                  </o-if>
+                  <o-if :value="statTps > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">输出速度（TPS）</span
+                      ><span class="stat-dd">{{statTps}} tok/s</span></span
+                    >
+                  </o-if>
+                </span>
+              </span>
+          </span>
+        </o-if>
+        <o-if :value="usageTotal > 0">
+          <span class="stat-anchor">
+            <button
+              class="stat-pill"
+              attr:title="'Token 用量：共 ' + fmtTokExact(usageTotal) + ' tok' + (usageCacheRead > 0 ? ' · 缓存命中 ' + cacheHitPct() + '%' : '')"
+              on:click="toggleStat('usage')"
+            >
+              <n-icon icon="mdi:database-outline"></n-icon>
+              <span class="stat-pill-label">{{usagePillText()}}</span>
+            </button>
+            <span class="stat-panel" class:open="openStat === 'usage'">
+                <span class="stat-panel-head">
+                  <n-icon icon="mdi:database-outline"></n-icon>
+                  <span class="stat-panel-title">Token 用量</span>
+                  <span class="stat-panel-value">{{fmtTokExact(usageTotal)}} tok</span>
+                </span>
+                <span class="stat-rule"></span>
+                <span class="stat-rows">
+                  <o-if :value="usageCacheRead > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">缓存命中</span
+                      ><span class="stat-dd">{{cacheHitPct()}}%</span></span
+                    >
+                  </o-if>
+                  <span class="stat-row"
+                    ><span class="stat-dt">未缓存输入</span
+                    ><span class="stat-dd">{{fmtTokExact(usageUncached)}} tok</span></span
+                  >
+                  <o-if :value="usageCacheRead > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">缓存读取</span
+                      ><span class="stat-dd">{{fmtTokExact(usageCacheRead)}} tok</span></span
+                    >
+                  </o-if>
+                  <span class="stat-row"
+                    ><span class="stat-dt">输出</span
+                    ><span class="stat-dd">{{fmtTokExact(usageOutput)}} tok</span></span
+                  >
+                </span>
+              </span>
+          </span>
+        </o-if>
+        <o-if :value="ctxUsed > 0">
+          <span class="stat-anchor">
+            <button
+              class="stat-pill"
+              attr:title="ctxTitle"
+              on:click="toggleStat('ctx')"
+            >
+              <svg class="stat-ring" viewBox="0 0 20 20">
+                <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
+                <circle
+                  class="ctx-ring-fill"
+                  class:warn="ctxPct >= 80"
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  stroke-dasharray="50.27"
+                  attr:stroke-dashoffset="ctxDash"
+                ></circle>
+              </svg>
+              <span class="stat-pill-label">{{ctxPct}}%</span>
+            </button>
+            <span class="stat-panel" class:open="openStat === 'ctx'">
+                <span class="stat-panel-head">
+                  <span class="stat-panel-title">上下文已用 {{ctxPct}}%</span>
+                  <span class="stat-panel-value"
+                    >~{{fmtTokCompact(ctxUsed)}} / {{ctxWindowText}}</span
+                  >
+                </span>
+                <span class="stat-bar">
+                  <span class="stat-seg seg-sys" :style.width="ctxSegSys + '%'"></span>
+                  <span class="stat-seg seg-tools" :style.width="ctxSegTools + '%'"></span>
+                  <span class="stat-seg seg-msgs" :style.width="ctxSegMsgs + '%'"></span>
+                </span>
+                <span class="stat-rows">
+                  <o-fill :value="ctxBreakRows" fill-key="label">
+                    <span class="stat-row">
+                      <span class="stat-dt">
+                        <span class="stat-swatch" attr:data-k="$data.k"></span>
+                        {{$data.label}}
+                      </span>
+                      <span class="stat-dd">{{$data.text}}</span>
+                    </span>
+                  </o-fill>
+                </span>
+                <span class="stat-panel-foot">
+                  <button
+                    class="stat-compress"
+                    attr:disabled="compacting || sending"
+                    on:click="compressFromPanel"
+                  >
+                    {{compacting ? '压缩中…' : '压缩上下文'}}
+                  </button>
+                </span>
+              </span>
+          </span>
+        </o-if>
+      </div>
     </footer>
       </div>
     </div>
@@ -1238,7 +1437,7 @@
           input: "",
           sending: false,
           stopRequested: false, // 用户点了停止、回合尚未收尾（按钮禁用显示「停止中」）
-          thinking: true,
+          reasoning: "low", // 推理等级偏好（仓库 patch；off/low/medium/high）
           keyError: "",
           coreError: "",
           atBottom: true,
@@ -1288,11 +1487,37 @@
           dragOverSid: "", // 拖拽排序：悬停目标会话 id（高亮）
           toolDefs,
           skills: [],
-          // 上下文占用圆圈进度（applyMessageEvent 时由 contextInfo 重算）
+          // 上下文占用进度（applyMessageEvent 时由 contextInfo 重算；ctx 胶囊用）
           ctxUsed: 0,
           ctxPct: 0,
           ctxDash: "50.27",
           ctxTitle: "",
+          // 底部统计胶囊（syncStats 随消息/状态事件重算）
+          statTurns: 0, // 轮 = 会话内用户回合数
+          statSteps: 0, // 步 = 模型调用次数（跨回合累计）
+          statLlmMs: 0,
+          statToolMs: 0,
+          statTtftAvg: 0,
+          statTps: 0,
+          usageTotal: 0,
+          usagePrompt: 0,
+          usageOutput: 0,
+          usageCacheRead: 0,
+          usageUncached: 0,
+          ctxBreakRows: [], // 上下文分解行 [{k, label, text}]
+          ctxSegSys: 0, // 分解色条宽度（百分比 × 各部分占比）
+          ctxSegTools: 0,
+          ctxSegMsgs: 0,
+          openStat: "", // 打开中的统计面板："time" | "usage" | "ctx"（互斥，"" 全关）
+          openUsageMsgId: 0, // 展开「本轮用量」明细的消息 id（0 = 全关，同时至多一条）
+          modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
+          modelValueText: "自动（供应商默认）",
+          effortOptions: [
+            { id: "off", label: "无" },
+            { id: "low", label: "低" },
+            { id: "medium", label: "中" },
+            { id: "high", label: "高" },
+          ],
           // 会话最大上下文窗口（token 数，select 切换，偏好持久化）
           ctxWindow: "131072",
           ctxWindowText: "128k",
@@ -1300,8 +1525,6 @@
           compacting: false,
           // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
           apiKeys: [],
-          modelSelectOptions: [{ value: "", label: "自动（供应商默认）" }],
-          apiSelectOptions: [{ value: "", label: "自动选择" }],
           ctxOptions: [
             { value: "131072", label: "128k" },
             { value: "262144", label: "256k" },
@@ -1394,6 +1617,8 @@
               ) {
                 this.syncActiveKeyText();
               }
+              // 底部统计胶囊与模型触发器文案跟随仓库状态（reasoning / Key 等）
+              this.syncStats();
               // 当前项目变化时同步 URL 的 p 参数（刷新 / 分享可回到当前项目）
               // 并向其他标签广播本标签的新项目名
               if ("currentAppName" in evt.data) {
@@ -1431,6 +1656,10 @@
             this.syncDocTitle();
             this.syncInputPlaceholder();
           },
+          // 项目元数据回填（模型覆写 app.json）后标题同步刷新
+          currentAppDisplay() {
+            this.syncDocTitle();
+          },
         },
 
         // ---- 生命周期（根级，proto 内的 attached 不会被调用）----
@@ -1439,6 +1668,21 @@
           this._durTimer = setInterval(() => {
             if (this.sending) this.clock = Date.now();
           }, 1000);
+          // 统计面板的收口：点外部与 Esc 收起（st-menu 的开合/Esc/点外部由组件自理）
+          this._docClose = (e) => {
+            const t = e.target;
+            if (!(t instanceof Element)) return;
+            if (t.closest(".stat-anchor")) return;
+            if (this.openStat) this.openStat = "";
+            if (this.openUsageMsgId) this.openUsageMsgId = 0;
+          };
+          this._docKey = (e) => {
+            if (e.key !== "Escape") return;
+            if (this.openStat) this.openStat = "";
+            if (this.openUsageMsgId) this.openUsageMsgId = 0;
+          };
+          document.addEventListener("mousedown", this._docClose);
+          document.addEventListener("keydown", this._docKey);
           // 代码块复制：事件委托挂在聊天容器上，:html 重渲后依然有效
           this.shadow.$("#chatScroll")?.on("click", async (event) => {
             const btn = event.target?.closest?.(".md-copy");
@@ -1461,6 +1705,8 @@
         },
         detached() {
           clearInterval(this._durTimer);
+          document.removeEventListener("mousedown", this._docClose);
+          document.removeEventListener("keydown", this._docKey);
         },
 
         proto: {
@@ -1500,21 +1746,16 @@
             }
           },
 
-          // 切换对话模型
-          selectModel(event) {
-            this.activeModelId = event.target.value;
-            store.selectModel(this.activeModelId);
-          },
-
-          // 重算上下文占用圆圈进度（总量由 select 选定的窗口决定）
+          // 重算上下文占用进度（总量由窗口选择决定），并同步底部统计胶囊
           syncCtx() {
             const info = contextInfo(this.messages);
             this.ctxUsed = info.used;
             if (info.used <= 0) {
-              // 空会话回零态：圆圈显示「🤖 AI」入口（选择模型 / Key）
+              // 空会话回零态：上下文胶囊隐藏
               this.ctxPct = 0;
               this.ctxDash = "50.27";
               this.ctxTitle = "";
+              this.syncStats();
               return;
             }
             const total = Number(this.ctxWindow) || 131072;
@@ -1528,23 +1769,235 @@
             this.ctxTitle =
               `当前会话上下文占用 ${k(info.used)} / ${k(total)} tok` +
               (info.model ? `（模型 ${info.model}）` : "");
+            this.syncStats();
           },
 
-          // 切换最大上下文窗口：立即重算进度并持久化偏好
-          setCtxWindow(event) {
-            this.ctxWindow = event.target.value;
-            const opt = this.ctxOptions.find((o) => o.value === this.ctxWindow);
+          // 底部统计胶囊聚合：遍历当前会话消息，累计各回合的 turnStats
+          //（轮/步/模型用时/工具用时/TTFT/TPS）与 usage（token 分桶，缓存读取
+          // 兼容 DeepSeek 与 OpenAI 两种字段）；上下文分解取最近一次带该字段的
+          // 回合；同时刷新右侧模型触发器与菜单取值文案
+          syncStats() {
+            let turns = 0,
+              steps = 0,
+              llmMs = 0,
+              toolMs = 0,
+              ttftMs = 0,
+              ttftSteps = 0,
+              decodeMs = 0,
+              decodeTokens = 0;
+            let prompt = 0,
+              output = 0,
+              cacheRead = 0,
+              lastBreakdown = null;
+            for (const m of this.messages) {
+              if (m.role === "user") turns++;
+              const ts = m.turnStats;
+              if (ts) {
+                steps += ts.steps || 0;
+                llmMs += ts.llmMs || 0;
+                toolMs += ts.toolMs || 0;
+                ttftMs += ts.ttftMs || 0;
+                ttftSteps += ts.ttftSteps || 0;
+                decodeMs += ts.decodeMs || 0;
+                decodeTokens += ts.decodeTokens || 0;
+              }
+              const u = m.usage;
+              if (u && u.total_tokens > 0) {
+                prompt += u.prompt_tokens || 0;
+                output += u.completion_tokens || 0;
+                cacheRead +=
+                  u.prompt_cache_hit_tokens ??
+                  u.prompt_tokens_details?.cached_tokens ??
+                  0;
+                if (m.contextBreakdown) lastBreakdown = m.contextBreakdown;
+              }
+            }
+            this.statTurns = turns;
+            this.statSteps = steps;
+            this.statLlmMs = llmMs;
+            this.statToolMs = toolMs;
+            this.statTtftAvg = ttftSteps > 0 ? ttftMs / ttftSteps : 0;
+            this.statTps =
+              decodeMs > 0 ? Math.round(decodeTokens / (decodeMs / 1000)) : 0;
+            this.usagePrompt = prompt;
+            this.usageOutput = output;
+            this.usageCacheRead = cacheRead;
+            this.usageUncached = Math.max(0, prompt - cacheRead);
+            this.usageTotal = prompt + output;
+            // 分解色条宽度 = 占用百分比 × 各部分占比（harness ContextMeter 同款）
+            const bd = lastBreakdown;
+            const total = bd
+              ? (bd.systemTokens || 0) +
+                (bd.toolsTokens || 0) +
+                (bd.messageTokens || 0)
+              : 0;
+            const w = (n) =>
+              total > 0
+                ? Math.round(((this.ctxPct * (n || 0)) / total) * 10) / 10
+                : 0;
+            this.ctxSegSys = w(bd?.systemTokens);
+            this.ctxSegTools = w(bd?.toolsTokens);
+            this.ctxSegMsgs = w(bd?.messageTokens);
+            this.ctxBreakRows = bd
+              ? [
+                  {
+                    k: "sys",
+                    label: "系统提示词",
+                    text: "~" + this.fmtTokCompact(bd.systemTokens || 0),
+                  },
+                  {
+                    k: "tools",
+                    label: "工具定义",
+                    text: "~" + this.fmtTokCompact(bd.toolsTokens || 0),
+                  },
+                  {
+                    k: "msgs",
+                    label: "对话消息",
+                    text: "~" + this.fmtTokCompact(bd.messageTokens || 0),
+                  },
+                ]
+              : [];
+            this.modelValueText = this.activeModelId || "自动（供应商默认）";
+            this.modelTriggerText =
+              (this.activeModelId || "自动") + " · " + this.reasoningLabel();
+          },
+
+          // ---- 底部统计面板（点击开合，互斥收口见 attached） ----
+
+          toggleStat(which) {
+            this.openStat = this.openStat === which ? "" : which;
+          },
+
+          compressFromPanel() {
+            if (this.compacting || this.sending) return;
+            this.openStat = "";
+            this.handleCompress();
+          },
+
+          reasoningLabel() {
+            const hit = this.effortOptions.find((o) => o.id === this.reasoning);
+            return hit ? hit.label : "低";
+          },
+
+          // 菜单项勾选标记（选中项 prefix 显示 ✓；抽方法避免模板插值带比较符）
+          modelCheck(id) {
+            return this.activeModelId === id ? "✓" : "";
+          },
+
+          reasoningCheck(id) {
+            return this.reasoning === id ? "✓" : "";
+          },
+
+          keyCheck(id) {
+            return this.activeKeyId === id ? "✓" : "";
+          },
+
+          windowCheck(value) {
+            return this.ctxWindow === value ? "✓" : "";
+          },
+
+          pickModel(id) {
+            this.activeModelId = id;
+            store.selectModel(id);
+            this.syncActiveKeyText();
+          },
+
+          pickReasoning(id) {
+            store.setReasoning(id);
+          },
+
+          pickKey(id) {
+            this.activeKeyId = id;
+            store.selectApiKey(id);
+            this.syncActiveKeyText();
+          },
+
+          pickWindow(value) {
+            this.applyCtxWindow(value);
+          },
+
+          // ---- 数字 / 时长格式化（统计胶囊与明细面板） ----
+
+          // 时间胶囊文案（含比较运算的拼串必须走方法：{{}} 文本插值里的
+          // > 会被模板 expr 属性序列化成 &gt;，求值报 gt is not defined）
+          timePillText() {
+            return (
+              `${this.statTurns} 轮 ${this.statSteps} 步` +
+              (this.statTps > 0 ? ` · ${this.statTps} tok/s` : "")
+            );
+          },
+
+          // Token 用量胶囊文案
+          usagePillText() {
+            return (
+              this.fmtTokCompact(this.usageTotal) +
+              " tok" +
+              (this.usageCacheRead > 0
+                ? ` · 缓存命中 ${this.cacheHitPct()}%`
+                : "")
+            );
+          },
+
+          // 紧凑 token 数：517 / 12.2K / 1.2M
+          fmtTokCompact(v) {
+            const n = Number(v || 0);
+            if (n < 1000) return String(n);
+            if (n < 1000000) {
+              const k = n / 1000;
+              return (
+                (k >= 100 ? String(Math.round(k)) : String(Math.round(k * 10) / 10)) +
+                "K"
+              );
+            }
+            const m = n / 1000000;
+            return (
+              (m >= 100 ? String(Math.round(m)) : String(Math.round(m * 10) / 10)) +
+              "M"
+            );
+          },
+
+          // 精确 token 数（千分位）
+          fmtTokExact(v) {
+            return String(Math.round(Number(v || 0))).replace(
+              /\B(?=(\d{3})+(?!\d))/g,
+              ",",
+            );
+          },
+
+          // 紧凑时长：12.1秒 / 2分42秒
+          fmtDurCompact(ms) {
+            const s = Number(ms || 0) / 1000;
+            if (s < 60) return Math.round(s * 10) / 10 + "秒";
+            const w = Math.round(s);
+            return Math.floor(w / 60) + "分" + (w % 60) + "秒";
+          },
+
+          // 缓存命中占比（分母 = 未缓存输入 + 缓存读取，即计费输入）
+          cacheHitPct() {
+            const denom = this.usageUncached + this.usageCacheRead;
+            if (!(denom > 0)) return "";
+            return String(Math.round((this.usageCacheRead / denom) * 100));
+          },
+
+          // 切换最大上下文窗口：立即重算进度并持久化偏好（select 与菜单共用）
+          applyCtxWindow(value) {
+            this.ctxWindow = value;
+            const opt = this.ctxOptions.find((o) => o.value === value);
             this.ctxWindowText = opt ? opt.label : "128k";
             this.syncCtx();
-            store.setContextWindow(Number(this.ctxWindow));
-          this.syncActiveKeyText();
+            store.setContextWindow(Number(value));
+            this.syncActiveKeyText();
             if (selfStore) {
               try {
-                selfStore.setItem("pref:ctx-window", this.ctxWindow);
+                selfStore.setItem("pref:ctx-window", value);
               } catch {
                 /* 存储失败不影响本次会话 */
               }
             }
+          },
+
+          setCtxWindow(event) {
+            this.applyCtxWindow(event.target.value);
           },
 
           renderMd(text) {
@@ -1580,27 +2033,56 @@
             return !!(m?.usage?.total_tokens > 0);
           },
 
-          usageText(m) {
+          // ---- 本轮用量明细面板（TurnUsagePanel 同款；插值一律走方法，
+          // {{}} 文本插值里不能出现比较符） ----
+
+          toggleUsagePanel(id) {
+            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）
+            this.openUsageMsgId = this.openUsageMsgId === id ? 0 : id;
+          },
+
+          usageTotalOf(m) {
+            return m?.usage?.total_tokens || 0;
+          },
+
+          // 缓存读取：DeepSeek 风格 prompt_cache_hit_tokens，
+          // OpenAI 风格 prompt_tokens_details.cached_tokens
+          usageCacheReadOf(m) {
             const u = m?.usage || {};
-            // ≥1024 显示为 k（如 2.3k），否则千分位整数
-            const n = (v) => {
-              const num = Number(v || 0);
-              if (num >= 1024) return (num / 1024).toFixed(1).replace(/\.0$/, "") + "k";
-              return num.toLocaleString();
-            };
-            // 缓存命中字段：DeepSeek 风格 prompt_cache_hit_tokens，
-            // OpenAI 风格 prompt_tokens_details.cached_tokens
-            const hit =
+            return (
               u.prompt_cache_hit_tokens ??
-              u.prompt_tokens_details?.cached_tokens;
-            const parts = [];
-            parts.push(`输入 ${n(u.prompt_tokens)}`);
-            if (hit !== undefined && hit !== null) {
-              parts.push(`缓存命中 ${n(hit)}`);
-            }
-            parts.push(`输出 ${n(u.completion_tokens)}`);
-            parts.push(`共 ${n(u.total_tokens)} tok`);
-            return parts.join(" · ");
+              u.prompt_tokens_details?.cached_tokens ??
+              0
+            );
+          },
+
+          usageUncachedOf(m) {
+            return Math.max(
+              0,
+              (m?.usage?.prompt_tokens || 0) - this.usageCacheReadOf(m),
+            );
+          },
+
+          // 缓存命中占比；部分命中四舍五入会到 100 时降位显示（99.9）保持诚实
+          usageCacheHit(m) {
+            const prompt = m?.usage?.prompt_tokens || 0;
+            if (!(prompt > 0)) return "";
+            const p = (this.usageCacheReadOf(m) / prompt) * 100;
+            if (p >= 99.95 && p < 100) return p.toFixed(1);
+            return String(Math.round(p));
+          },
+
+          // 输出及推理 token（供应商回报 completion_tokens_details 时显示）
+          usageOutputText(m) {
+            const u = m?.usage || {};
+            const out = `${this.fmtTokExact(u.completion_tokens || 0)} tok`;
+            const rt = u.completion_tokens_details?.reasoning_tokens;
+            if (rt > 0) return `${out}（其中推理 ${this.fmtTokExact(rt)} tok）`;
+            return out;
+          },
+
+          usagePillText(m) {
+            return `用量 ${this.fmtTokCompact(this.usageTotalOf(m))} tok`;
           },
 
           toggleReasoning(id) {
@@ -1697,17 +2179,7 @@
             store.forkSession(id);
           },
 
-          // 切换对话用的 API Key（"" = 自动负载均衡）
-          selectApiKey(event) {
-            const id = event.target.value;
-            store.selectApiKey(id);
-            const hit = this.apiKeys.find((k) => k.id === id);
-            this.activeKeyText = hit
-              ? `${hit.provider === "relay" ? hit.serverName || "Relay" : hit.provider} · ${hit.maskedKey}`
-              : "自动选择";
-          },
-
-          // 手动压缩当前会话上下文（点击进度圆圈触发）
+          // 手动压缩当前会话上下文（上下文胶囊面板内按钮触发）
           async handleCompress() {
             if (this.compacting || this.ctxUsed <= 0) return;
             this.compacting = true;
@@ -1727,10 +2199,6 @@
             } finally {
               this.compacting = false;
             }
-          },
-
-          toggleThinking() {
-            store.toggleThinking();
           },
 
           modeText(mode) {
