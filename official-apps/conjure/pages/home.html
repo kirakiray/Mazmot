@@ -506,23 +506,23 @@
           on:keydown="handleKeydown($event)"
           on:paste="handlePaste($event)"
         ></textarea>
-        <!-- 待发送图片附件（粘贴 / 选择），随下条消息一起发出 -->
-        <o-if :value="pendingImages.length > 0">
-          <div class="attach-row">
-            <o-fill :value="pendingImages" fill-key="id">
-              <div class="attach-chip">
-                <img attr:src="$data.src" on:click="$host.openImage($data.src)" />
-                <button
-                  class="attach-x"
-                  on:click="$host.removePendingImage($data.id)"
-                  title="移除图片"
-                >×</button>
-              </div>
-            </o-fill>
-            <span class="attach-hint">随下条消息发送</span>
-          </div>
-        </o-if>
         <div class="composer-row">
+          <!-- 待发送图片附件（粘贴 / 选择）：贴着动作条左侧，随下条消息一起发出 -->
+          <o-if :value="pendingImages.length > 0">
+            <div class="attach-row">
+              <o-fill :value="pendingImages" fill-key="id">
+                <div class="attach-chip">
+                  <img attr:src="$data.src" on:click="$host.openImage($data.src)" />
+                  <button
+                    class="attach-x"
+                    on:click="$host.removePendingImage($data.id)"
+                    title="移除图片"
+                  >×</button>
+                </div>
+              </o-fill>
+              <span class="attach-hint">随下条消息发送</span>
+            </div>
+          </o-if>
           <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
           <o-if :value="currentAppName === ''">
             <div class="target-picker">
