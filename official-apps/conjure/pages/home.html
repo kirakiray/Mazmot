@@ -1510,6 +1510,7 @@
           ctxSegMsgs: 0,
           openStat: "", // 打开中的统计面板："time" | "usage" | "ctx"（互斥，"" 全关）
           openUsageMsgId: 0, // 展开「本轮用量」明细的消息 id（0 = 全关，同时至多一条）
+          liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
           modelValueText: "自动（供应商默认）",
           effortOptions: [
@@ -1749,8 +1750,13 @@
           // 重算上下文占用进度（总量由窗口选择决定），并同步底部统计胶囊
           syncCtx() {
             const info = contextInfo(this.messages);
-            this.ctxUsed = info.used;
-            if (info.used <= 0) {
+            // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）
+            const liveUsed =
+              this.sending && this.liveTurnStats
+                ? this.liveTurnStats.usage?.context_tokens || 0
+                : 0;
+            this.ctxUsed = liveUsed > 0 ? liveUsed : info.used;
+            if (this.ctxUsed <= 0) {
               // 空会话回零态：上下文胶囊隐藏
               this.ctxPct = 0;
               this.ctxDash = "50.27";
@@ -1759,7 +1765,7 @@
               return;
             }
             const total = Number(this.ctxWindow) || 131072;
-            this.ctxPct = Math.round(Math.min(100, (info.used / total) * 100) * 10) / 10;
+            this.ctxPct = Math.round(Math.min(100, (this.ctxUsed / total) * 100) * 10) / 10;
             // r=8 的圆周长 2πr ≈ 50.27，偏移量 = 周长 ×（1 - 进度）
             this.ctxDash = (50.27 * (1 - this.ctxPct / 100)).toFixed(2);
             const k = (v) => {
@@ -1767,7 +1773,7 @@
               return String(v);
             };
             this.ctxTitle =
-              `当前会话上下文占用 ${k(info.used)} / ${k(total)} tok` +
+              `当前会话上下文占用 ${k(this.ctxUsed)} / ${k(total)} tok` +
               (info.model ? `（模型 ${info.model}）` : "");
             this.syncStats();
           },
@@ -1811,6 +1817,27 @@
                   0;
                 if (m.contextBreakdown) lastBreakdown = m.contextBreakdown;
               }
+            }
+            // 进行中回合的实时快照：消息上的本回合终值要等 done / 收尾才落，
+            // 进行中由 live 增量补足（模型不说话直接调工具的步同样刷新胶囊）
+            const live = this.sending ? this.liveTurnStats : null;
+            if (live?.usage) {
+              prompt += live.usage.prompt_tokens || 0;
+              output += live.usage.completion_tokens || 0;
+              cacheRead +=
+                live.usage.prompt_cache_hit_tokens ??
+                live.usage.prompt_tokens_details?.cached_tokens ??
+                0;
+              if (live.breakdown) lastBreakdown = live.breakdown;
+            }
+            if (live?.stats) {
+              steps += live.stats.steps || 0;
+              llmMs += live.stats.llmMs || 0;
+              toolMs += live.stats.toolMs || 0;
+              ttftMs += live.stats.ttftMs || 0;
+              ttftSteps += live.stats.ttftSteps || 0;
+              decodeMs += live.stats.decodeMs || 0;
+              decodeTokens += live.stats.decodeTokens || 0;
             }
             this.statTurns = turns;
             this.statSteps = steps;

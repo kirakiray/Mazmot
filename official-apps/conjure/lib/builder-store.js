@@ -64,6 +64,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     messages: [],
     sending: false,
     stopRequested: false, // 用户点了停止、回合尚未收尾（按钮显示「停止中」并禁用）
+    liveTurnStats: null, // 进行中回合的实时快照 { usage, stats, breakdown }（usage 事件写入，收尾清零）
     nextId: 1,
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
@@ -1526,17 +1527,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         });
       }
     } else if (ev.type === "usage" && ev.usage) {
-      // 工具循环中间模型调用的实时快照（用量 + 执行统计 + 上下文分解）：
-      // patch 到当前气泡让底部统计条中途即刷新；暂存到 turn* 变量，
-      // 该轮无文本气泡时由回合收尾补挂到末条 AI 消息
+      // 工具循环中间模型调用的实时快照：写进 state.liveTurnStats 供底部
+      // 统计条即时刷新——不 patch 消息，模型不说话直接调工具的步同样有数据；
+      // 最终数值随 done / 停止收尾落到回合末条 AI 消息（页面聚合时消息是
+      // 「既往回合」，live 是「进行中回合」，两边相加不重复）
       turnUsage = ev.usage;
       turnStats = ev.stats || null;
       turnBreakdown = ev.contextBreakdown || null;
-      if (activeBubble) {
-        const patch = turnPatchPayload();
-        Object.assign(activeBubble, patch);
-        carryTurnData(activeBubble.id, patch);
-      }
+      set("liveTurnStats", {
+        usage: { ...turnUsage },
+        stats: turnStats ? { ...turnStats } : null,
+        breakdown: turnBreakdown ? { ...turnBreakdown } : null,
+      });
     } else if (ev.type === "toolResult") {
       const item = bucketFor(activeKey()).find(
         (m) => m.toolCallId === ev.toolCallId,
@@ -2203,6 +2205,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       currentAbort = null;
       currentAbortCtrl = null;
       set("stopRequested", false);
+      // 先清实时快照再落终值：避免「消息终值 + live」叠加的瞬时双计
+      set("liveTurnStats", null);
       cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
       // 本轮耗时 / 手动停止标记 / 停止时的实时用量 patch 到回合内末条 AI
@@ -2224,6 +2228,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           patchMessage(lastAi.id, patch);
         }
       }
+      turnUsage = null;
+      turnStats = null;
+      turnBreakdown = null;
       await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
@@ -2391,6 +2398,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       setMany({
         sending: false,
         stopRequested: false,
+        liveTurnStats: null,
         turnStartTs: 0,
         keyError: err.message,
       });

@@ -1006,16 +1006,19 @@
               const idleNoop = store.state.stopRequested === false;
 
               const sendP = store.send("做个番茄钟");
-              // 等中间 usage 事件 patch 到当前气泡（上下文圆圈中途刷新的数据源）
-              let midMsg = null;
+              // 等中间 usage 事件写进 live 快照（统计条的数据源）；
+              // 进行中的回合不 patch 消息（终值等 done / 停止收尾才落）
+              let live = null;
               for (let i = 0; i < 150; i++) {
                 await new Promise((r) => setTimeout(r, 20));
-                midMsg = [...store.state.messages]
-                  .reverse()
-                  .find((m) => m.role === "assistant");
-                if (midMsg?.usage?.context_tokens === 5000) break;
+                live = store.state.liveTurnStats;
+                if (live?.usage?.context_tokens === 5000) break;
               }
-              const midUpdated = midMsg?.usage?.context_tokens === 5000;
+              const midMsg = [...store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const liveSnapshot = live?.usage?.context_tokens === 5000;
+              const notOnMessageMidTurn = !midMsg?.usage;
               const sendingMid = store.state.sending === true;
 
               // 停止：置位 stopRequested；重复点击无副作用
@@ -1033,11 +1036,13 @@
                 .find((m) => m.role === "assistant");
               const checks = {
                 idleNoop,
-                midUpdated,
+                liveSnapshot,
+                notOnMessageMidTurn,
                 sendingMid,
                 stopFlag,
                 stopFlagStable,
                 finishedIdle: st.sending === false && st.stopRequested === false,
+                liveCleared: st.liveTurnStats === null,
                 stoppedMarked: lastPersistAi?.stopped === true,
                 turnMsRecorded: typeof lastPersistAi?.turnMs === "number" && lastPersistAi.turnMs >= 0,
                 usageKept: lastPersistAi?.usage?.context_tokens === 5000,
