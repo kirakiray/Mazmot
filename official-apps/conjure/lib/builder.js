@@ -3,6 +3,8 @@
 // 本模块不静态 import /nos/* 与 /mz/*（受 Core 加载时机约束），
 // fs / storage / tool 均由页面模块通过 load() 加载后注入。
 
+import { AGENTS_MD_TEMPLATE, buildAgentsMd } from "./agents-template.js";
+
 // 生成应用在虚拟文件系统中的根命名空间：init("ai-apps") 在 VFS 根创建该目录，
 // 每个生成的应用再在其下建 <name>/client/ 作为应用载体目录。
 // 独立命名空间、不与主系统的 mazmot-apps/ 混用；生成应用也不进主系统应用列表。
@@ -313,7 +315,10 @@ const resolveBaseDir = async (fs, appName, rootHandle) => {
 };
 
 /**
- * 创建应用并写入 app.json。
+ * 创建应用并写入 app.json；同时预写通用 AGENTS.md（仅缺失时写——同名覆盖
+ * 重建不清空，项目已定制的规则不丢）。AGENTS.md 是全部生成项目共享的通用
+ * 规范模板（见 agents-template.js），模型不重写，只在「硬性约定」末尾追加
+ * 项目特有硬规则。
  * 同名应用视为覆盖重建（文件级覆盖，不先清空）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ name: string, displayName: string, dir: Object }>}
@@ -331,6 +336,11 @@ export async function createAppDir(
   await metaFile.write(
     buildAppJson({ name: clean, displayName, description, icon }),
   );
+  const existing = await base.get(`${rel}AGENTS.md`).catch(() => null);
+  if (!existing || existing.kind !== "file") {
+    const agentsFile = await base.get(`${rel}AGENTS.md`, { create: "file" });
+    await agentsFile.write(buildAgentsMd(displayName || clean));
+  }
   return { name: clean, displayName: displayName || clean, dir: base };
 }
 
@@ -835,10 +845,12 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
 4. 卡住就求助：同一个问题连续 2 次修复尝试仍然失败（改了 A 坏 B、多种写法都不对、开始怀疑是框架/平台的 bug）时，**停止盲目试错**——把「期望什么 / 实际什么 / 已试过哪些方案与各自结果 / 当前怀疑」整理成一段话直接向用户求助，或用 show_form 给出候选方案让用户拍板，不要无限循环消耗回合。
-5. 调试通过后，再补两份项目文档（内容基于你实际写的代码，不要写空话；这两份文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
-   - AGENTS.md —— 给 AI 代理的开发规范，须包含：本项目技术栈的规则与高频易错点（只写你实际用到的约定，规则具体可执行）；「完成标准」（功能完成必须 preview 实测：控制台无错误 + 核心交互可用）；「文档同步规则」（代码怎么变文档就怎么改，并指向 CONTEXT.md）；踩坑记录（按「症状 → 根因 → 正确姿势」格式积累，踩到新坑就追加）
-   - CONTEXT.md —— 项目说明（后续 AI 接手的事实依据）：一句话定位、目录结构树、数据模型、关键流程、踩坑记录，以实际代码为准
-6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ AGENTS.md / CONTEXT.md 已按实际代码写好（修改已有应用时已同步更新受影响的部分）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+5. 调试通过后，补齐项目文档体系（内容基于你实际写的代码，不要写空话；这套文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
+   - **CONTEXT.md** —— 项目说明（活文档，后续 AI 接手的事实依据）：一句话定位、目录结构树、数据模型、关键流程、ofa.js / senti-ui 使用指南（本项目实际用到的）、**「踩坑索引」表**（编号 / 标题 / 文件路径三列，供后续按标题按需精读）；
+   - **MEMORY.md** —— 项目记忆体（最新在最上）：把本次生成与验证结论记为第一条（日期 / 改了什么 / 为什么 / 验证结论）；之后每回合改动按 AGENTS.md「记忆体规则」追加；
+   - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，「症状 → 根因 → 正确姿势」三段），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件，索引表留表头即可；
+   - **AGENTS.md** —— 系统创建项目时已预写通用规范模板，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已按实际代码写好（CONTEXT.md / MEMORY.md / 踩坑索引；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -892,7 +904,7 @@ await store.setItem("key", value);
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。
 - 单个文件尽量小于 300 行，功能聚焦，一次对话先交付可运行的最小版本。
-- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后同步更新 AGENTS.md / CONTEXT.md 里受影响的描述。
+- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后按项目 AGENTS.md 的「文档同步规则」同步文档——CONTEXT.md 对应小节 + MEMORY.md 登记，踩了新坑沉淀到 pitfalls/ 并登记索引（沉淀出新硬规则则追加进 AGENTS.md）。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
@@ -936,7 +948,7 @@ export function buildSystemPrompt(ctx = {}) {
 项目「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）是**系统刚为你创建的空项目**，目录里只有一个占位 app.json（displayName / icon 都是占位值）。
 - **不要调用 create_app**，从 write_file 直接开始；项目当前没有代码，也无需先 read_file 查看。
 - 第一个文件就写 app.json：覆盖为正确的 displayName / icon / description（icon 用一个贴切的 emoji，name 保持 ${ctx.appName} 不变）。
-- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → AGENTS.md / CONTEXT.md）。`;
+- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → CONTEXT.md / MEMORY.md / pitfalls 文档体系）；client/ 下已有一份系统预写的通用 AGENTS.md，不要重写。`;
   } else if (ctx.appName) {
     const where =
       ctx.mode === "local"
@@ -946,11 +958,11 @@ export function buildSystemPrompt(ctx = {}) {
 
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
-- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
-- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须严格遵守项目 AGENTS.md 的约定**（其内容已在下方「项目规则」自动加载；若下方没有该节说明项目尚未写这份文档）；动手前再 read_file 读一遍 CONTEXT.md 核对项目事实（活文档，可能比记忆新）。改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），再同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
+- **会话开始按项目 AGENTS.md 头部的读取顺序执行**：先 \`read_file\` 读 CONTEXT.md（项目事实 + 「踩坑索引」——按索引标题挑出与本回合任务相关的坑，先精读对应 \`pitfalls/NNN-*.md\` 再动手），再读 MEMORY.md 恢复记忆，然后按需 list_files / read_file 目标文件（含 app.json）。只依据真实文件内容回答，禁止凭猜测或通用模板描述项目。
+- 修改严格遵守项目 AGENTS.md 的硬性约定与各节规则（其内容已在下方「项目规则」自动加载）；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），回合收尾按其「文档同步规则」与「完成标准」执行（CONTEXT.md 同步、MEMORY.md 登记、踩坑沉淀）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
-    // 自动加载项目 AGENTS.md：有则整节注入（超长截断），无则不注入、
-    // 由上方通用规则引导模型按需 read_file
+    // 自动加载项目 AGENTS.md：有则整节注入（超长截断）；无则内嵌通用模板让
+    // 模型一次性补建（较早期生成的项目没有这份文件）
     const rules = String(ctx.projectRules || "").trim();
     if (rules) {
       const clipped =
@@ -961,6 +973,15 @@ export function buildSystemPrompt(ctx = {}) {
 
 ## 项目规则（AGENTS.md，已自动加载，必须遵守）
 ${clipped}`;
+    } else {
+      prompt += `
+
+## AGENTS.md 创建（项目尚未有此文件）
+本项目还没有 AGENTS.md（较早期生成的项目）。请在本回合顺手用 write_file 创建：把下方通用模板**原样**写入 AGENTS.md（标题中的 <项目名> 换成「${ctx.displayName || ctx.appName}」），不要增删通用条款；本项目特有的硬性规则（如有）追加在「硬性约定」节末尾。
+
+\`\`\`markdown
+${AGENTS_MD_TEMPLATE}
+\`\`\``;
     }
   }
   if (Array.isArray(ctx.skills) && ctx.skills.length) {

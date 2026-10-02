@@ -371,13 +371,20 @@
             const checks = {
               draftPlain: !draft.includes("当前上下文"),
               appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
-              mustReadFirst: withApp.includes("必须先调用 list_files"),
-              mustReadDocs:
-                withApp.includes("CONTEXT.md 和 app.json") &&
-                withApp.includes("项目规则") &&
-                withApp.includes("同步更新 CONTEXT.md"),
+              appReadingOrder:
+                withApp.includes("先 `read_file` 读 CONTEXT.md") &&
+                withApp.includes("再读 MEMORY.md") &&
+                withApp.includes("踩坑索引") &&
+                withApp.includes("禁止凭猜测"),
+              appFollowsAgents: withApp.includes("严格遵守项目 AGENTS.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
+              // 工作流程的文档体系：四件套 + AGENTS.md 已预写不重写
+              docsSystem:
+                draft.includes("MEMORY.md") &&
+                draft.includes("踩坑索引") &&
+                draft.includes("已预写通用规范模板") &&
+                draft.includes("不要重写"),
               // 项目规则（AGENTS.md）自动注入：有则整节注入、无则不出现该节
               rulesInjected: buildSystemPrompt({
                 appName: "todo-app",
@@ -403,11 +410,75 @@
                 draft.includes("先取证再改") &&
                 draft.includes("卡住就求助") &&
                 draft.includes("完成标准"),
+              // 旧项目（没有 AGENTS.md）：提示词内嵌通用模板让模型一次性补建
+              legacyTemplate:
+                buildSystemPrompt({ appName: "old-app" }).includes(
+                  "AGENTS.md 创建",
+                ) &&
+                buildSystemPrompt({ appName: "old-app" }).includes(
+                  "# AGENTS.md — <项目名>",
+                ),
             };
             return {
               assert: Object.values(checks).every(Boolean),
               content: { checks },
             };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAppDir 预写通用 AGENTS.md（缺失才写，定制不被覆盖重建冲掉）">
+      <template>
+        <script type="module">
+          import { createAppDir, writeAppFile } from "../lib/builder.js";
+          import {
+            createVirtualDir,
+            readVirtualFile,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              await createAppDir(fsFake, { name: "Demo App", displayName: "演示" });
+              const seeded = await readVirtualFile(
+                root,
+                "demo-app/client/AGENTS.md",
+              );
+
+              // 定制后同名覆盖重建：AGENTS.md 保留定制内容（app.json 照常覆盖）
+              await writeAppFile(
+                fsFake,
+                "demo-app",
+                "AGENTS.md",
+                "# AGENTS.md — 定制版\n- 特有规则",
+              );
+              await createAppDir(fsFake, { name: "demo-app", displayName: "重建" });
+              const kept = await readVirtualFile(
+                root,
+                "demo-app/client/AGENTS.md",
+              );
+
+              const checks = {
+                seededTitleOk: (seeded || "").startsWith("# AGENTS.md — 演示"),
+                seededSections:
+                  !!seeded &&
+                  seeded.includes("## 记忆体规则") &&
+                  seeded.includes("## 踩坑库规则") &&
+                  seeded.includes("## 文档同步规则") &&
+                  seeded.includes("## 完成标准"),
+                seededGeneric: !!seeded && !seeded.includes("拍立得"),
+                customPreservedOnRebuild:
+                  kept === "# AGENTS.md — 定制版\n- 特有规则",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
           }
         </script>
       </template>
