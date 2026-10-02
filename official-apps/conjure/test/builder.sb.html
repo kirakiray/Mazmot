@@ -373,11 +373,36 @@
               appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
               mustReadFirst: withApp.includes("必须先调用 list_files"),
               mustReadDocs:
-                withApp.includes("AGENTS.md、CONTEXT.md 和 app.json") &&
-                withApp.includes("严格遵守其中约定") &&
+                withApp.includes("CONTEXT.md 和 app.json") &&
+                withApp.includes("项目规则") &&
                 withApp.includes("同步更新 CONTEXT.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
+              // 项目规则（AGENTS.md）自动注入：有则整节注入、无则不出现该节
+              rulesInjected: buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "# 项目规范\n- 禁止使用 localStorage",
+              }).includes("已自动加载，必须遵守"),
+              rulesClipped: buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "x".repeat(8000),
+              }).includes("已截断"),
+              rulesAbsentWhenEmpty: !buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "",
+              }).includes("已自动加载"),
+              // fresh（空项目）分支不注入规则节（项目还没有 AGENTS.md 可读）
+              freshNoRules: !buildSystemPrompt({
+                appName: "todo-app",
+                freshProject: true,
+                projectRules: "# 规则",
+              }).includes("已自动加载"),
+              // 工作流程闭环要点进基础提示词
+              loopChecklist:
+                draft.includes("尽早首跑") &&
+                draft.includes("先取证再改") &&
+                draft.includes("卡住就求助") &&
+                draft.includes("完成标准"),
             };
             return {
               assert: Object.values(checks).every(Boolean),
@@ -1068,6 +1093,7 @@
           import {
             createVirtualDir,
             createVirtualStorage,
+            seedVirtualFiles,
           } from "../lib/test-space/virtual-space.js";
           {
             try {
@@ -1181,7 +1207,12 @@
               };
 
               // 同会话继续第二回合：fresh 标记已清、agent 重建为常规提示词、
-              // 会话不重复
+              // 会话不重复。先往项目里写一份 AGENTS.md：第二回合的提示词应
+              // 自动注入这份项目规则（不依赖模型自觉去读）
+              await seedVirtualFiles(root, {
+                [`${appName}/client/AGENTS.md`]:
+                  "# 项目规范\n- 本项目禁止使用 localStorage",
+              });
               const nAgents = agentCalls.length;
               await store.send("继续");
               const reg2 = (await fakeStore.getItem("apps-registry")) || [];
@@ -1198,6 +1229,10 @@
                   !call2.systemPrompt.includes("空项目") &&
                   call2.systemPrompt.includes("已存在的应用"),
                 turn2HasCreateApp: call2.tools.includes("create_app"),
+                turn2RulesAutoLoaded:
+                  call2.systemPrompt.includes("已自动加载，必须遵守") &&
+                  call2.systemPrompt.includes("禁止使用 localStorage"),
+                turn1NoRules: !call1.systemPrompt.includes("已自动加载"),
                 idleAfterTurn2: store.state.sending === false,
               };
               const checks = { ...midChecks, ...stopChecks, ...contChecks };

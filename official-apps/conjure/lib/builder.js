@@ -822,20 +822,23 @@ export async function loadProjectChats(rootHandle) {
 export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 妙造，通过对话为用户生成可直接运行的 ofa.js 网页应用，并把文件写入虚拟文件系统。
 
 ## 工作流程
-1. 理解用户需求，必要时先简短澄清；然后调用 create_app（name 用小写英文短横线，如 todo-app；displayName 可用中文）。
+1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。
 2. 依次用 write_file 写入下列文件（路径相对 client/ 目录，本地目录渠道与虚拟渠道一致）：
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
-3. 功能文件完成后，实际运行调试（必须，不能只凭代码推断「应该没问题」）：
-   - 新功能写完：用 preview 工具（action=app，appName 必填）把应用推送到隔离预览窗口实际运行（返回时已在跑最新代码）；
+3. 开发调试闭环（必须，不能只凭代码推断「应该没问题」）：
+   - 尽早首跑：写完入口骨架（index.html / app-config.js / 首个页面）就先用 preview 工具（action=app，appName 必填）跑一次，确认应用能打开、骨架无报错，再继续写功能——不要全部写完才第一次运行，越早看到真实运行越早暴露问题；
+   - 每完成一层功能（一个页面 / 一块交互 / 一组数据逻辑）都 write_file 后用 preview action=app 刷新实际运行验证，小步推进；
+   - 发现问题先取证再改，禁止不看证据凭猜测连环改代码：控制台报错 → action=console 读日志；渲染不对 → action=dom / text 看真实 DOM；交互失灵 → action=click / type 复现用户操作；
+   - 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互实测可用为止；
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
-   - 发现问题（报错、渲染不对、交互失灵）→ write_file 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互可用为止；
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
-4. 调试通过后，再补两份项目文档（内容基于你实际写的代码，不要写空话）：
-   - AGENTS.md —— 给 AI 代理的开发规范：这个项目继续开发时需要遵守的约定（围绕你实际用到的技术栈与结构，规则具体、可执行）
-   - CONTEXT.md —— 项目说明：后续开发 AI 接手时需要了解的项目事实（架构、数据、流程，以实际代码为准）
-5. 全部完成后，用一段简短的话告诉用户应用已在预览窗口运行、功能与用法，以及调试验证过的结论。
+4. 卡住就求助：同一个问题连续 2 次修复尝试仍然失败（改了 A 坏 B、多种写法都不对、开始怀疑是框架/平台的 bug）时，**停止盲目试错**——把「期望什么 / 实际什么 / 已试过哪些方案与各自结果 / 当前怀疑」整理成一段话直接向用户求助，或用 show_form 给出候选方案让用户拍板，不要无限循环消耗回合。
+5. 调试通过后，再补两份项目文档（内容基于你实际写的代码，不要写空话；这两份文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
+   - AGENTS.md —— 给 AI 代理的开发规范，须包含：本项目技术栈的规则与高频易错点（只写你实际用到的约定，规则具体可执行）；「完成标准」（功能完成必须 preview 实测：控制台无错误 + 核心交互可用）；「文档同步规则」（代码怎么变文档就怎么改，并指向 CONTEXT.md）；踩坑记录（按「症状 → 根因 → 正确姿势」格式积累，踩到新坑就追加）
+   - CONTEXT.md —— 项目说明（后续 AI 接手的事实依据）：一句话定位、目录结构树、数据模型、关键流程、踩坑记录，以实际代码为准
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ AGENTS.md / CONTEXT.md 已按实际代码写好（修改已有应用时已同步更新受影响的部分）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -903,10 +906,20 @@ export const COMPACTION_PROMPT = `你是对话压缩器。把提供的 AI 应用
 3. 用中文条目化输出，总长度控制在 800 字以内。直接输出摘要正文，不要任何前后缀或评论。`;
 
 /**
+ * 项目规则（AGENTS.md 自动注入）的截断上限（字符）：个别项目的规则文档可能
+ * 超长，超限掐头留尾并提示用 read_file 读全文，防止系统提示词被撑爆。
+ */
+const RULES_CLIP = 6000;
+
+/**
  * 按当前上下文构建系统提示词：在基础规范上注入「正在开发哪个应用」，
  * 并强制回答项目相关问题前先读文件（防模型凭空猜测项目内容）。
- * @param {{ appName?: string, displayName?: string, mode?: "vfs"|"local", skills?: Array<{id:string,name:string,description:string}> }} [ctx]
- *        appName 为空表示「新应用」草稿阶段；skills 为可用技能知识库清单
+ * @param {{ appName?: string, displayName?: string, mode?: "vfs"|"local",
+ *          skills?: Array<{id:string,name:string,description:string}>,
+ *          freshProject?: boolean, projectRules?: string }} [ctx]
+ *        appName 为空表示「新应用」草稿阶段；skills 为可用技能知识库清单；
+ *        projectRules 为项目 AGENTS.md 的内容（宿主在会话开始时自动读取注入，
+ *        harness 常规机制——项目规则随会话自动生效，不依赖模型自觉去读）
  */
 export function buildSystemPrompt(ctx = {}) {
   let prompt = SYSTEM_PROMPT;
@@ -933,9 +946,22 @@ export function buildSystemPrompt(ctx = {}) {
 
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
-- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 AGENTS.md、CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
-- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须先读项目内的 AGENTS.md 与 CONTEXT.md，修改代码严格遵守其中约定**；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），再同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
+- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
+- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须严格遵守项目 AGENTS.md 的约定**（其内容已在下方「项目规则」自动加载；若下方没有该节说明项目尚未写这份文档）；动手前再 read_file 读一遍 CONTEXT.md 核对项目事实（活文档，可能比记忆新）。改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），再同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
+    // 自动加载项目 AGENTS.md：有则整节注入（超长截断），无则不注入、
+    // 由上方通用规则引导模型按需 read_file
+    const rules = String(ctx.projectRules || "").trim();
+    if (rules) {
+      const clipped =
+        rules.length > RULES_CLIP
+          ? `${rules.slice(0, RULES_CLIP)}\n…（AGENTS.md 过长已截断，需要完整内容时用 read_file 读取）`
+          : rules;
+      prompt += `
+
+## 项目规则（AGENTS.md，已自动加载，必须遵守）
+${clipped}`;
+    }
   }
   if (Array.isArray(ctx.skills) && ctx.skills.length) {
     const lines = ctx.skills

@@ -374,10 +374,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       onAppCreated: (info) => {
         pendingNewApp = { ...info, mode: lockedMode };
       },
-      // 模型覆写 app.json 时回填项目元数据（fresh 项目创建后的正式命名）
+      // 模型覆写 app.json 时回填项目元数据（fresh 项目创建后的正式命名）；
+      // 覆写 AGENTS.md 时失效缓存 Agent——下一回合重建即读到新版项目规则
       onFileWrite: (info) => {
-        if (info?.path !== "app.json") return;
-        syncAppMetaFromDisk(info.appName);
+        if (info?.path === "app.json") {
+          syncAppMetaFromDisk(info.appName);
+        } else if (info?.path === "AGENTS.md") {
+          invalidateAgent();
+        }
       },
       readSkill: (id, path) => readSkillFile(fs, id, path),
       requestForm,
@@ -393,6 +397,23 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const isFresh =
       !!freshTurn && freshTurn.appName === state.currentAppName;
     const toolList = Object.values(tools);
+    // 已存在项目：自动读取项目 AGENTS.md 注入系统提示词（harness 常规机制——
+    // 项目规则随会话开始自动生效，不依赖模型自觉去读；尚未写这份文档的新
+    // 项目读不到则不注入，由提示词引导模型按需 read_file）
+    let projectRules = "";
+    if (!isFresh && state.currentAppName) {
+      try {
+        projectRules =
+          (await readAppFile(
+            fs,
+            state.currentAppName,
+            "AGENTS.md",
+            useLocal ? localRootHandle : undefined,
+          )) || "";
+      } catch {
+        projectRules = "";
+      }
+    }
     agent = chainModules.createAgent({
       assistant,
       ...(model ? { model } : {}),
@@ -409,6 +430,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         mode: state.currentAppMode,
         skills: skillIndex,
         freshProject: isFresh,
+        projectRules,
       }),
       checkpointer,
     });
