@@ -223,7 +223,19 @@
                 <span class="msg-ts" attr:data-role="$data.role">{{ $host.msgTs($data) }}</span>
               </o-if>
               <o-if :value="$data.role === 'user'">
-                <div class="user-bubble">{{$data.content}}</div>
+                <div class="user-bubble">
+                  <o-if :value="$data.content !== ''">{{$data.content}}</o-if>
+                  <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
+                  <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
+                    <o-fill :value="$host.msgImages($data)">
+                      <img
+                        class="user-img"
+                        attr:src="$data"
+                        on:click="$host.openImage($data)"
+                      />
+                    </o-fill>
+                  </div>
+                </div>
               </o-if>
 
               <!-- 视觉交互表单卡片（show-form 包的组件，ready 预载） -->
@@ -492,7 +504,24 @@
           attr:placeholder="inputPlaceholder"
           attr:disabled="sending"
           on:keydown="handleKeydown($event)"
+          on:paste="handlePaste($event)"
         ></textarea>
+        <!-- 待发送图片附件（粘贴 / 选择），随下条消息一起发出 -->
+        <o-if :value="pendingImages.length > 0">
+          <div class="attach-row">
+            <o-fill :value="pendingImages" fill-key="id">
+              <div class="attach-chip">
+                <img attr:src="$data.src" on:click="$host.openImage($data.src)" />
+                <button
+                  class="attach-x"
+                  on:click="$host.removePendingImage($data.id)"
+                  title="移除图片"
+                >×</button>
+              </div>
+            </o-fill>
+            <span class="attach-hint">随下条消息发送</span>
+          </div>
+        </o-if>
         <div class="composer-row">
           <!-- 写入目标只在「新应用」阶段可选；create_app 落地后随应用锁定 -->
           <o-if :value="currentAppName === ''">
@@ -526,6 +555,19 @@
           <o-if :value="currentAppName !== ''">
             <span class="composer-meta">📂 {{dirText({ mode: currentAppMode, appName: currentAppName })}}</span>
           </o-if>
+          <!-- 添加图片（多模态输入）：点击选文件；输入框内直接粘贴截图亦可 -->
+          <button class="attach-btn" on:click="pickImages" title="添加图片（也可在输入框直接粘贴）">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <!-- 模型 + 推理等级 + Key + 窗口：钻入式选择菜单（对齐 deepseek harness ModelSelect） -->
           <!-- 模型 / 推理等级 / Key / 窗口：st-menu 钻入式选择（子菜单 hover 展开，
                选中任意项整链自动关闭；面板 fixed 定位自动翻转避让视口） -->
@@ -614,7 +656,7 @@
           <o-if :value="!sending">
             <st-button
               class="send-btn"
-              attr:disabled="!input.trim()"
+              attr:disabled="!canSend()"
               attr:title="'发送（Enter）'"
               on:click="handleSend"
             >
@@ -651,6 +693,8 @@
           </o-if>
         </div>
       </div>
+      <!-- 图片选择器（attach-btn 触发；display:none 而非 hidden 属性，避免被布局样式顶开） -->
+      <input id="imgPicker" type="file" accept="image/*" multiple style="display: none" on:change="onPickImages($event)" />
       <!-- 底部统计胶囊（点开明细面板）：会话统计 / Token 用量 / 上下文占用；
            无数据的胶囊不渲染 -->
       <div class="stats-dock">
@@ -1241,6 +1285,49 @@
 
       const store = createBuilderStore({ fs, mazmotStore, selfStore, load });
 
+      /* ---- 图片附件（多模态输入）：粘贴 / 选择 → dataURL 规范化 ----
+       * 超过 1280 长边或 400KB 的位图缩到 1280 长边 + JPEG 0.85 压缩
+       * （请求体与 IndexedDB 持久化都省）；GIF（动图）与达标小图原样保留 */
+      const IMG_MAX_EDGE = 1280;
+      const IMG_MAX_KEEP_BYTES = 400 * 1024;
+      const MAX_PENDING_IMAGES = 8;
+
+      const readAsDataURL = (file) =>
+        new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error("读取图片失败"));
+          r.readAsDataURL(file);
+        });
+
+      const loadImage = (src) =>
+        new Promise((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error("图片解码失败"));
+          el.src = src;
+        });
+
+      async function normalizeImage(file) {
+        if (!/^image\//.test(file.type)) throw new Error("不是图片文件");
+        const dataUrl = await readAsDataURL(file);
+        if (file.type === "image/gif" || file.size <= IMG_MAX_KEEP_BYTES) {
+          return dataUrl;
+        }
+        const img = await loadImage(dataUrl);
+        const scale = Math.min(
+          1,
+          IMG_MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight),
+        );
+        if (scale >= 1) return dataUrl; // 尺寸本就不大，只是文件偏大——不再有损压缩
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", 0.85);
+      }
+
+
       // 面板展示用的工具清单（取每个插件描述的第一句）
       const toolDefs = TOOL_DEFS.map((d) => {
         let desc = (d.description || "").split(/。|；/)[0];
@@ -1435,6 +1522,7 @@
         data: {
           messages: [],
           input: "",
+          pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
           stopRequested: false, // 用户点了停止、回合尚未收尾（按钮禁用显示「停止中」）
           reasoning: "low", // 推理等级偏好（仓库 patch；off/low/medium/high）
@@ -2789,17 +2877,85 @@
             }
           },
 
+          // ---- 图片附件（多模态输入） ----
+
+          // 输入框粘贴：剪贴板里有图片（截图等）就收进待发列表；纯文本粘贴不受影响
+          async handlePaste(event) {
+            const files = [...(event.clipboardData?.items || [])]
+              .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+              .map((it) => it.getAsFile())
+              .filter(Boolean);
+            if (!files.length) return;
+            event.preventDefault();
+            await this.addImageFiles(files);
+          },
+
+          pickImages() {
+            this.shadow.$("#imgPicker")?.ele.click();
+          },
+
+          async onPickImages(event) {
+            const files = [...(event.target?.files || [])];
+            event.target.value = ""; // 同一张图可再次选择
+            await this.addImageFiles(files);
+          },
+
+          async addImageFiles(files) {
+            if (this.sending || !files.length) return;
+            const room = MAX_PENDING_IMAGES - this.pendingImages.length;
+            if (room <= 0) return;
+            for (const file of files.slice(0, room)) {
+              try {
+                const src = await normalizeImage(file);
+                this.pendingImages.push({
+                  id: `img${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                  src,
+                });
+              } catch (err) {
+                console.warn("图片处理失败：", err);
+              }
+            }
+          },
+
+          removePendingImage(id) {
+            this.pendingImages = this.pendingImages.filter((p) => p.id !== id);
+          },
+
+          // 点击缩略图看大图：dataURL 顶层导航会被浏览器拦，转 blob URL 新开标签
+          async openImage(src) {
+            try {
+              const blob = await (await fetch(src)).blob();
+              const url = URL.createObjectURL(blob);
+              window.open(url, "_blank");
+              setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            } catch {
+              window.open(src, "_blank");
+            }
+          },
+
+          // 用户消息携带的图片清单（老消息无 images 字段 → 空数组）
+          msgImages(msg) {
+            return Array.isArray(msg?.images) ? msg.images : [];
+          },
+
+          // 发送可用：有文本或有待发图片（纯图片消息可发）
+          canSend() {
+            return !!this.input.trim() || this.pendingImages.length > 0;
+          },
+
           async handleSend() {
+            if (this.sending || !this.canSend()) return;
             const text = this.input.trim();
-            if (!text || this.sending) return;
+            const images = this.pendingImages.map((p) => p.src);
             this.input = "";
+            this.pendingImages = [];
             this.autoGrow();
             this.atBottom = true;
             this.followScroll(true);
             // 新回合：清零表单挂起的计时暂停累计
             this._formPauseMs = 0;
             this._formPauseStart = 0;
-            await store.send(text);
+            await store.send(text, images);
           },
 
           autoGrow() {

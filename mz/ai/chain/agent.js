@@ -175,6 +175,23 @@ export const createAgent = ({
       if (onStream) onStream(event);
     };
 
+    // wire content 字符量估算：多模态（OpenAI content 数组）取 text 部分按字符、
+    // image_url 部分按固定 1200 字符（≈600 token）估；纯字符串原样计数。
+    // 仅用于 provider 未回报 context_tokens 时的兜底估算
+    const wireContentLen = (content) =>
+      Array.isArray(content)
+        ? content.reduce(
+            (n, p) =>
+              n +
+              (p?.type === "text"
+                ? String(p.text ?? "").length
+                : p?.type === "image_url"
+                  ? 1200
+                  : 0),
+            0,
+          )
+        : String(content ?? "").length;
+
     // 上下文构成估算：system / tools 按字符数 ÷2 估 token，messages 用
     // provider 报告的总占用扣减余量（无报告时全部按字符估算）
     const estimateBreakdown = (wireTools, reportedContext) => {
@@ -187,7 +204,9 @@ export const createAgent = ({
         messageTokens = Math.max(0, reportedContext - sysTokens - toolsTokens);
       } else {
         messageTokens = Math.ceil(
-          messages.slice(1).reduce((n, m) => n + String(m.content ?? "").length, 0) / 2,
+          messages
+            .slice(1)
+            .reduce((n, m) => n + wireContentLen(m.content), 0) / 2,
         );
       }
       return { systemTokens: sysTokens, toolsTokens, messageTokens };

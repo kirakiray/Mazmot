@@ -185,7 +185,7 @@ schema 字段定义：
 
 | params 字段 | 说明 |
 |------|------|
-| `messages` | 本次输入（`{ role, content }` wire 格式数组） |
+| `messages` | 本次输入（`{ role, content }` wire 格式数组；user 的 `content` 也支持 OpenAI 多模态数组——`[{type:"text",text}, {type:"image_url",image_url:{url:"data:image/..."}}]`——原样透传给支持视觉的模型，随 checkpointer 记忆持久化，`contextBreakdown` 兜底估算按图片 1200 字符计） |
 | `stream` | `true` 时 `onStream` 额外收到 `text` 增量事件 |
 | `onStream` | 事件回调，见下表 |
 | `threadId` | 配合 checkpointer 加载 / 落盘历史 |

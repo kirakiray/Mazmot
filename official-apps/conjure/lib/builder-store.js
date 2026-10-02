@@ -972,10 +972,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const half = Math.floor(n / 2);
     return text.slice(0, half) + "\n…[过长截断]…\n" + text.slice(-half);
   };
+  // user 消息 content 的文本视图：多模态 wire（OpenAI content 数组）取 text 部分
+  // 拼接并标注图片张数，供压缩 transcript 等纯文本场景使用
+  const wireTextOf = (content) => {
+    if (!Array.isArray(content)) return String(content ?? "");
+    const texts = content
+      .filter((p) => p?.type === "text")
+      .map((p) => String(p.text ?? ""));
+    const nImg = content.filter((p) => p?.type === "image_url").length;
+    return texts.join("\n") + (nImg ? `\n[本条含 ${nImg} 张图片]` : "");
+  };
   const buildTranscript = (thread) =>
     thread
       .map((m) => {
-        if (m.role === "user") return `用户：${clip(m.content, 3000)}`;
+        if (m.role === "user") return `用户：${clip(wireTextOf(m.content), 3000)}`;
         if (m.role === "assistant") {
           const calls = (m.tool_calls || [])
             .map(
@@ -2129,8 +2139,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let turnBreakdown = null; // 本回合上下文构成估算快照（系统提示词/工具定义/对话消息）
   let turnFirstId = 0; // 本回合第一条消息的 id 基线（单载体剥离只看本回合消息）
 
-  async function send(text) {
+  /**
+   * 发送一条用户消息（可带图片，多模态）。
+   * @param {string} text 文本内容（纯图片消息可为空串）
+   * @param {string[]} images 图片 dataURL 列表（data:image/*；随消息持久化，
+   *        wire 侧组装为 OpenAI content 数组——text + image_url 混排，由
+   *        supplier 层原样透传给支持视觉的模型）
+   */
+  async function send(text, images = []) {
+    const body = String(text ?? "").trim();
+    const imgs = (Array.isArray(images) ? images : []).filter(
+      (s) => typeof s === "string" && s.startsWith("data:image/"),
+    );
     if (state.sending) return;
+    if (!body && !imgs.length) return;
     if (!fs) {
       set("keyError", state.coreError);
       return;
@@ -2138,7 +2160,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
     let threadId;
     try {
-      threadId = await prepareContext(text);
+      threadId = await prepareContext(body);
     } catch (err) {
       set("keyError", err.message);
       return;
@@ -2154,11 +2176,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     markBusy(turnKey, true);
 
     setMany({ keyError: "" });
-    // 用户消息记录发送时间 ts（聊天区 hover 展示）
+    // 用户消息记录发送时间 ts（聊天区 hover 展示）；图片随消息持久化
     pushMessage({
       id: state.nextId++,
       role: "user",
-      content: text,
+      content: body,
+      ...(imgs.length ? { images: imgs } : {}),
       newGroup: true,
       ts: turnStartAt,
     });
@@ -2181,14 +2204,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
     try {
       const info = contextInfo(bucketFor(turnKey));
-      const estimate = info.used + Math.ceil((text.length || 0) / 2) + 64;
+      const estimate = info.used + Math.ceil((body.length || 0) / 2) + 64;
       if (contextWindow > 0 && info.used > 0 && estimate >= contextWindow) {
         await compressThread(turnKey);
       }
     } catch (err) {
       console.warn("自动压缩上下文失败：", err);
     }
-    await driveTurn(threadId, text, [{ role: "user", content: text }]);
+    // wire 侧多模态组装：有图片时 content 为 OpenAI 数组（text 部分仅在有文本
+    // 时包含），无图片保持纯字符串（与历史消息一致）
+    const wireContent = imgs.length
+      ? [
+          ...(body ? [{ type: "text", text: body }] : []),
+          ...imgs.map((url) => ({ type: "image_url", image_url: { url } })),
+        ]
+      : body;
+    await driveTurn(threadId, body, [{ role: "user", content: wireContent }]);
   }
 
   // 驱动一轮 agent 对话循环：流式转发、错误入气泡、收尾（取消挂起表单、

@@ -1247,5 +1247,102 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="多模态图片消息：wire content 数组 / images 持久化 / 空消息拒绝">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualDir,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              // 捕获每次模型调用收到的输入 messages（wire 格式）
+              const chats = [];
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async ({ messages }) => {
+                    chats.push(messages);
+                    return {
+                      content: "收到",
+                      usage: {
+                        prompt_tokens: 10,
+                        completion_tokens: 5,
+                        total_tokens: 15,
+                        context_tokens: 15,
+                      },
+                      toolCalls: [],
+                    };
+                  },
+                }),
+              };
+              const aiFake = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 1) 文本 + 图片：wire content 应为 OpenAI 多模态数组
+              await store.send("看这张图", ["data:image/png;base64,AAAA"]);
+              const appName = store.state.currentAppName;
+              const sid = store.state.currentSessionId;
+              const w1 = chats[0]?.[0]?.content;
+              const persisted =
+                (await fakeStore.getItem(`chat:${appName}:${sid}`)) || [];
+              const userMsg = persisted.find((m) => m.role === "user");
+
+              // 2) 纯图片（无文本）：数组只含 image_url 部分
+              await store.send("", ["data:image/jpeg;base64,BBBB"]);
+              const w2 = chats[1]?.[0]?.content;
+
+              // 3) 空消息拒绝：纯空白 / 空图片表 / 非 data:image/* 前缀均不触发模型调用
+              const nChats = chats.length;
+              await store.send("");
+              await store.send("   ", []);
+              await store.send("", ["https://example.com/a.png"]);
+
+              const checks = {
+                wireIsArray: Array.isArray(w1),
+                textPart: w1?.[0]?.type === "text" && w1?.[0]?.text === "看这张图",
+                imgPart:
+                  w1?.[1]?.type === "image_url" &&
+                  w1?.[1]?.image_url?.url === "data:image/png;base64,AAAA",
+                imageOnlyWire:
+                  Array.isArray(w2) && w2?.length === 1 && w2?.[0]?.type === "image_url",
+                imageOnlyAllowed: chats.length === 2,
+                imagesPersisted:
+                  Array.isArray(userMsg?.images) &&
+                  userMsg.images[0] === "data:image/png;base64,AAAA",
+                userContentText: userMsg?.content === "看这张图",
+                emptyRejected: chats.length === nChats,
+                idle: store.state.sending === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, appName },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>
