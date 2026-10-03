@@ -224,7 +224,10 @@
               </o-if>
               <o-if :value="$data.role === 'user'">
                 <div class="user-bubble">
-                  <o-if :value="$data.content !== ''">{{$data.content}}</o-if>
+                  <!-- 文本包一层单行 span：pre-wrap 在 span 上（保留用户手打
+                       换行），气泡自身的模板缩进空隙按普通空白折叠，不再被
+                       pre-wrap 渲染成撑高气泡的空行 -->
+                  <span class="user-text"><o-if :value="$data.content !== ''">{{$data.content}}</o-if></span>
                   <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
                   <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
                     <o-fill :value="$host.msgImages($data)">
@@ -481,6 +484,11 @@
           </o-if>
         </div>
       </section>
+
+      <!-- 拖动调整对话列宽（左右边界对称手柄，calc 贴 --chat-w 边界跟随；
+           逻辑见 startChatResize，记忆到 sessionStorage） -->
+      <div class="chat-resize left" on:pointerdown="startChatResize($event, -1)" title="拖动调整对话宽度"></div>
+      <div class="chat-resize right" on:pointerdown="startChatResize($event, 1)" title="拖动调整对话宽度"></div>
 
       <o-if :value="!atBottom && messages.length > 0">
         <button class="to-bottom" title="回到底部" on:click="toBottomNow">
@@ -1554,6 +1562,7 @@
           coreError: "",
           atBottom: true,
           sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
+          chatWidth: 768, // 对话内容列宽度（左右手柄拖拽可调，480–1280，--chat-w 驱动）
           panelOpen: false,
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
@@ -1694,6 +1703,13 @@
           try {
             const w = parseInt(sessionStorage.getItem("aib:side-width"), 10);
             if (w >= 150 && w <= 400) this.sideWidth = w;
+          } catch {
+            /* 忽略 */
+          }
+          // 恢复对话列宽度偏好（480–1280；窄视口由 width:100% 天然收缩，无需回写）
+          try {
+            const cw = parseInt(sessionStorage.getItem("aib:chat-width"), 10);
+            if (cw >= 480 && cw <= 1280) this.applyChatWidth(cw);
           } catch {
             /* 忽略 */
           }
@@ -2966,6 +2982,64 @@
             };
             el.addEventListener("pointermove", onMove);
             el.addEventListener("pointerup", onUp);
+          },
+
+          // ---- 对话列宽拖拽（480px–min(1280, 可视宽-32)，左右边界对称手柄，
+          //      记忆到 sessionStorage；列族经 --chat-w 同步变宽） ----
+
+          // 钳制到契约范围后写 state 并改写根节点 --chat-w（消息列 / 输入区 /
+          // 统计条 / 错误条一次同步；窄视口由各列 width:100% 天然收缩）
+          applyChatWidth(px) {
+            this.chatWidth = Math.round(Math.min(1280, Math.max(480, px)));
+            this.shadow
+              .$(".app")
+              ?.ele?.style.setProperty("--chat-w", this.chatWidth + "px");
+          },
+
+          startChatResize(event, dir) {
+            // dir：1 = 右手柄（右拖变宽），-1 = 左手柄（左拖变宽）
+            event.preventDefault();
+            const el = event.target;
+            el.setPointerCapture(event.pointerId);
+            // 手势内基准冻结：取拖起时的**渲染宽度**而非存储偏好——窄视口下
+            // 列已被 width:100% 收缩（偏好 768、渲染 560），从偏好起跳会跳变
+            const originX = event.clientX;
+            const rendered =
+              this.shadow.$(".column")?.ele?.getBoundingClientRect().width;
+            const base = Math.round(rendered || this.chatWidth);
+            // 上限感知当前可视宽（列两侧各留 ≥16px），手势期间定死不再重算
+            const avail =
+              this.shadow.$(".chat-wrap")?.ele?.getBoundingClientRect().width ||
+              1280;
+            const maxW = Math.max(480, Math.min(1280, avail - 32));
+            let latestDx = 0;
+            let raf = null;
+            const apply = () => {
+              raf = null;
+              this.applyChatWidth(Math.min(maxW, base + dir * latestDx));
+            };
+            const onMove = (ev) => {
+              latestDx = ev.clientX - originX;
+              if (raf === null) raf = requestAnimationFrame(apply);
+            };
+            const onUp = () => {
+              el.removeEventListener("pointermove", onMove);
+              el.removeEventListener("pointerup", onUp);
+              el.removeEventListener("pointercancel", onUp);
+              if (raf !== null) cancelAnimationFrame(raf);
+              this.applyChatWidth(Math.min(maxW, base + dir * latestDx));
+              document.body.style.userSelect = "";
+              try {
+                sessionStorage.setItem("aib:chat-width", String(this.chatWidth));
+              } catch {
+                /* 隐私模式静默降级 */
+              }
+            };
+            // 拖动期间禁页面选字（指针划过消息文字不得触发拖选）
+            document.body.style.userSelect = "none";
+            el.addEventListener("pointermove", onMove);
+            el.addEventListener("pointerup", onUp);
+            el.addEventListener("pointercancel", onUp);
           },
 
           openPanel() {

@@ -13,6 +13,10 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* 对话内容列族（消息列 / 输入区 / 统计条 / 错误条）的统一宽度上限，
+     拖拽手柄改写（.chat-resize），默认 768px；消费处一律
+     max-width: var(--chat-w, 768px)，窄视口由 width:100% 天然收缩 */
+  --chat-w: 768px;
 }
 
 /* ---------- 主体区：左会话栏 + 聊天列 ---------- */
@@ -47,6 +51,34 @@
 
 .side-resize:hover,
 .side-resize:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
+}
+
+/* 对话列宽拖拽手柄：随 --chat-w 用 calc 自动跟随列边界（列族左右 padding
+   对称，容器 50% 即列中心），与内容保持 16px 间距（手柄宽 8 + 间距 16 →
+   偏移 24px）；max() 把手柄钳在容器内——窄视口列收缩为容器宽时手柄贴边
+   可点，而不是落到容器外失效。手柄挂在 .chat-wrap 层而非 .chat-scroll
+   内：滚动容器会裁掉出界子元素 */
+.chat-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none; /* 触屏拖拽不触发滚动 */
+}
+
+.chat-resize.left {
+  left: max(4px, calc(50% - var(--chat-w, 768px) / 2 - 24px));
+}
+
+.chat-resize.right {
+  right: max(4px, calc(50% - var(--chat-w, 768px) / 2 - 24px));
+}
+
+.chat-resize:hover,
+.chat-resize:active {
   background: color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
 }
 
@@ -262,7 +294,7 @@ st-icon-button.preview-live::after {
 }
 
 .column {
-  max-width: 768px;
+  max-width: var(--chat-w, 768px);
   width: 100%;
   min-height: 100%;
   margin: 0 auto;
@@ -359,8 +391,15 @@ st-icon-button.preview-live::after {
   color: var(--md-sys-color-on-primary-container);
   font-size: 16px;
   line-height: 24px;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* pre-wrap 只作用于正文 span（保留用户手打的换行与连续空格）；气泡元素
+   自身不用 pre-wrap——模板里标签间的缩进空隙是真实文本节点，会被
+   pre-wrap 原样渲染成空行把气泡撑高（实测单行消息 116px → 44px） */
+.user-text {
+  display: block;
+  white-space: pre-wrap;
 }
 
 /* hover 才显示的消息落盘时间（用户消息含本轮耗时）；order 排到消息内容底部 */
@@ -1146,7 +1185,7 @@ st-icon-button.preview-live::after {
 /* ---------- 错误提示 ---------- */
 
 .key-error {
-  max-width: 768px;
+  max-width: var(--chat-w, 768px);
   width: 100%;
   margin: 0 auto 6px;
   padding: 4px 8px;
@@ -1158,7 +1197,7 @@ st-icon-button.preview-live::after {
 }
 
 .key-error-row {
-  max-width: 768px;
+  max-width: var(--chat-w, 768px);
   width: 100%;
   margin: 0 auto 6px;
   display: flex;
@@ -1193,7 +1232,7 @@ st-icon-button.preview-live::after {
 .composer {
   box-sizing: border-box;
   width: 100%;
-  max-width: 768px;
+  max-width: var(--chat-w, 768px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1452,7 +1491,7 @@ st-icon-button.preview-live::after {
   flex-wrap: wrap;
   gap: 8px;
   width: 100%;
-  max-width: 768px;
+  max-width: var(--chat-w, 768px);
   min-height: 26px;
   padding: 2px 12px 10px;
 }
