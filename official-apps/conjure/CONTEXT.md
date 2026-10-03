@@ -52,9 +52,11 @@ conjure/
 │   │                   #   业务全部委托 builder-store）
 │   └── home.css        # 样式（M3 CSS 变量，含应用卡片 / 会话栏 / 滑出面板 / 目标切换器）
 └── test/
-    └── builder.sb.html # sibyl-test：builder / store 层用例（虚拟空间取自 lib/test-space/）；
-                        #   各工具包的内置测试在 lib/tools/<tool>/self-test.js +
-                        #   test/<tool>.sb.html，show-form 另含组件层用例
+    ├── builder.sb.html   # sibyl-test：builder / store 层用例（虚拟空间取自 lib/test-space/）；
+    │                      #   各工具包的内置测试在 lib/tools/<tool>/self-test.js +
+    │                      #   test/<tool>.sb.html，show-form 另含组件层用例
+    └── skill-sync.sb.html # sibyl-test：技能源清单播种 / 版本化迁移合并 / setSkillSources
+                           #   放行规则 / 从站内 /.agents/skills/mazmot-api.zip 端到端安装
 ```
 
 ## 技术栈
@@ -108,10 +110,10 @@ show-form 包的用例覆盖插件层（包结构 / 参数清洗 / 提交 / 取�
 
 Agent 的「查文档」能力，技能**不内置**在应用内：启动后后台任务按技能源清单从远端下载（zip 或裸 `SKILL.md`），安装到 VFS 根命名空间 `skills/<id>/`（`init("skills")`），`read_skill` 读取的也是这份虚拟目录副本（下载一次后离线可用）。
 
-- **源清单**：`DEFAULT_SKILL_SOURCES`（`ofajs-docs.zip`、`noneos-core-docs.zip` 两个 raw.githubusercontent URL）为默认种子，首次运行写入自存储空间 `skill-sources` 键，之后以存储为准（`getSkillSources` / `setSkillSources`，预留管理 UI 扩展点）
+- **源清单**：`DEFAULT_SKILL_SOURCES` 为默认种子——`ofajs-docs.zip`、`noneos-core-docs.zip`、`senti-ui-skill.zip` 三个 raw.githubusercontent URL + 站内同源路径 `/.agents/skills/mazmot-api.zip`（随站点部署分发的官方技能，源地址写 `/` 开头相对路径、fetch 按当前域名解析）。首次运行写入自存储空间 `skill-sources` 键，之后以存储为准（`getSkillSources` / `setSkillSources`，预留管理 UI 扩展点）。默认清单演进走**版本化增量迁移**（`skill-sources-ver` 键 + `DEFAULT_SKILL_SOURCES_VERSION`）：已播种过旧清单的存储在版本落后时把新增的默认源追加合并进清单（用户手动登记的源原样保留）并更新版本，新增默认源对老用户即时生效；默认清单变更时必须 bump 版本号
 - **同步流程**（`syncSkills`，`ready()` 里 `backgroundSyncSkills()` 后台触发、不阻塞首屏）：逐源下载 → sha256 与 `skills/<id>/__meta.json` 里记录比对，同内容跳过写入 → zip 经零依赖解析（`unzipText`：手读中央目录 + `DecompressionStream("deflate-raw")`，支持存储/deflate）→ `stripCommonRoot` 剥掉单一根目录 → 只落文本扩展名文件 + `__meta.json`；单个源失败不中断其余，离线时保留已有副本
 - **索引与读取**：`loadSkillIndex(fs)` 遍历 skills 空间各目录的 `SKILL.md` frontmatter（含 `version`，有则列表显示 v 徽标），并从 `__meta.json` 带出 `source`（下载地址）与 `installedAt`；`readSkillFile(fs, id, path)` 只放行 `.md`、拦截 `..` 逃逸与非法 id，超 60000 字符截断提示精读 references
-- **手动安装 / 更新**（右侧资源面板「技能」tab）：「＋ 添加」按钮弹出 prompt 输入 zip 包或 `SKILL.md` 的 https 地址 → 仓库 `installSkillFromSource(url)` 先把 loading 占位放入 `skills` 列表（同 id 已存在则原地置 loading，即更新语义）→ `installSkillFromUrl(fs, url)` 下载安装（同内容 sha256 一致跳过写入）→ 刷新索引、置空 `agent`，并把该地址登记进自存储 `skill-sources`（之后后台同步也会持续检查）。失败回滚 loading 占位并由 alert 提示。每个技能 item 下方展示来源地址，行尾刷新按钮从来源更新；`idFromUrl` 由 URL 推导技能 id
+- **手动安装 / 更新**（右侧资源面板「技能」tab）：「＋ 添加」按钮弹出 prompt 输入 zip 包或 `SKILL.md` 地址（https URL 或站内 `/` 开头的同源路径）→ 仓库 `installSkillFromSource(url)` 先把 loading 占位放入 `skills` 列表（同 id 已存在则原地置 loading，即更新语义）→ `installSkillFromUrl(fs, url)` 下载安装（同内容 sha256 一致跳过写入）→ 刷新索引、置空 `agent`，并把该地址登记进自存储 `skill-sources`（之后后台同步也会持续检查；`setSkillSources` 只放行 https 与站内 `/` 路径）。失败回滚 loading 占位并由 alert 提示。每个技能 item 下方展示来源地址，行尾刷新按钮从来源更新；`idFromUrl` 由 URL 推导技能 id
 - **接线**：页面初始化 `skillIndex = await loadSkillIndex(fs)`（失败不阻塞）→ `ensureAgent` 注入 `readSkill: (id, path) => readSkillFile(fs, id, path)` 并把 `skills: skillIndex` 传给 `buildSystemPrompt`（提示词尾部「可用知识库」清单；硬性约束含「写模板 / 用组件前禁止凭记忆，必须先 read_skill」）；后台同步有实际写入时刷新 `skillIndex` 并置空 `agent` 重建提示词
 
 `ctx.rootHandle` 是本地渠道的根目录句柄；缺省时所有写入走 VFS `ai-apps/`。**新增工具**：建插件文件 → `TOOL_DEFS` 登记 → 按需更新 `SYSTEM_PROMPT`（均在 `lib/` 内，页面零改动）。

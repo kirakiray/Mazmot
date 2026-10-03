@@ -6,18 +6,25 @@
 //
 // zip 解析零依赖：手读中央目录 + DecompressionStream("deflate-raw") 解压。
 
-// 技能源清单（zip 或裸 SKILL.md 的完整 URL）
+// 技能源清单（zip 或裸 SKILL.md；https URL 或站内 / 开头的同源路径——
+// 同源路径随站点部署走，官方技能随仓库分发）
 export const DEFAULT_SKILL_SOURCES = [
   "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
   "https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip",
   "https://raw.githubusercontent.com/ofajs/senti-ui/main/.agents/skills/senti-ui-skill.zip",
+  "/.agents/skills/mazmot-api.zip",
 ];
+
+// 默认源清单演进版本：新增/变更默认源时 +1；已播种过旧清单的存储据此把
+// 新增的默认项增量合并进 skill-sources（用户手动登记的源原样保留）
+const DEFAULT_SKILL_SOURCES_VERSION = 2;
 
 // 安装时只落文本文件（知识库内容均为文本；二进制杂项跳过）
 const TEXT_EXT = /\.(md|markdown|html?|js|mjs|css|json|txt|csv|xml|svg)$/i;
 
 export const SKILLS_NAMESPACE = "skills";
 const SOURCES_KEY = "skill-sources";
+const SOURCES_VER_KEY = "skill-sources-ver";
 const META_FILE = "__meta.json";
 
 const SKILL_ID_RE = /^[a-z0-9_-]+$/i;
@@ -174,22 +181,34 @@ async function writeEntries(fs, id, entries, meta) {
 }
 
 /**
- * 获取技能源清单（存储覆盖 > 默认播种）。
+ * 获取技能源清单（存储覆盖 > 默认播种；默认源清单演进时增量合并新增项）。
  * @param {Object} storage getStorage("conjure") 实例
  */
 export async function getSkillSources(storage) {
   if (storage) {
     const saved = await storage.getItem(SOURCES_KEY);
-    if (Array.isArray(saved) && saved.length) return saved;
+    if (Array.isArray(saved) && saved.length) {
+      const ver = (await storage.getItem(SOURCES_VER_KEY)) || 1;
+      if (ver >= DEFAULT_SKILL_SOURCES_VERSION) return saved;
+      // 旧清单升级：追加新增的默认源（用户手动登记的源不动），并记下版本
+      const merged = [
+        ...saved,
+        ...DEFAULT_SKILL_SOURCES.filter((u) => !saved.includes(u)),
+      ];
+      await storage.setItem(SOURCES_KEY, merged);
+      await storage.setItem(SOURCES_VER_KEY, DEFAULT_SKILL_SOURCES_VERSION);
+      return merged;
+    }
     await storage.setItem(SOURCES_KEY, DEFAULT_SKILL_SOURCES);
+    await storage.setItem(SOURCES_VER_KEY, DEFAULT_SKILL_SOURCES_VERSION);
   }
   return DEFAULT_SKILL_SOURCES;
 }
 
-/** 覆盖技能源清单 */
+/** 覆盖技能源清单（https URL 或站内 / 开头的同源路径） */
 export async function setSkillSources(storage, urls) {
   if (!storage) return;
-  await storage.setItem(SOURCES_KEY, urls.filter((u) => /^https?:\/\//.test(u)));
+  await storage.setItem(SOURCES_KEY, urls.filter((u) => /^(https?:\/\/|\/)/.test(u)));
 }
 
 /**

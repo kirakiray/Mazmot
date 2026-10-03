@@ -468,7 +468,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 之后后台同步也会持续检查这个地址。失败抛错由 UI 提示并回滚占位。
   async function installSkillFromSource(url) {
     const trimmed = String(url || "").trim();
-    if (!/^https?:\/\//.test(trimmed)) throw new Error("请输入 http(s) 技能地址");
+    if (!/^(https?:\/\/|\/)/.test(trimmed)) {
+      throw new Error("请输入 http(s) 或站内 / 开头的技能地址");
+    }
     const id = idFromUrl(trimmed);
 
     const existing = skillIndex.find((s) => s.id === id);

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>conjure 技能同步测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="默认技能源清单：含站内 mazmot-api，空存储播种并记版本">
+      <template>
+        <script type="module">
+          import {
+            getSkillSources,
+            DEFAULT_SKILL_SOURCES,
+          } from "../lib/skill-sync.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            const empty = createVirtualStorage();
+            const urls = await getSkillSources(empty);
+            const checks = {
+              sameAsDefault:
+                urls.join("|") === DEFAULT_SKILL_SOURCES.join("|"),
+              fourSources: urls.length === 4,
+              hasMazmotApi: urls.includes("/.agents/skills/mazmot-api.zip"),
+              seeded: (await empty.getItem("skill-sources")).length === 4,
+              versionSeeded: (await empty.getItem("skill-sources-ver")) === 2,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, urls },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="旧版已播种清单：增量合并新增默认源（幂等）">
+      <template>
+        <script type="module">
+          import { getSkillSources } from "../lib/skill-sync.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            // v1 时代的默认清单（三条，无版本键）——升级后应追加
+            // mazmot-api，原有顺序不动，且不重复追加
+            const v1 = [
+              "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
+              "https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip",
+              "https://raw.githubusercontent.com/ofajs/senti-ui/main/.agents/skills/senti-ui-skill.zip",
+            ];
+            const store = createVirtualStorage({ "skill-sources": [...v1] });
+            const merged = await getSkillSources(store);
+            const again = await getSkillSources(store);
+            const checks = {
+              length4: merged.length === 4,
+              keepsOld: v1.every((u, i) => merged[i] === u),
+              appendsNew:
+                merged[3] === "/.agents/skills/mazmot-api.zip",
+              versionWritten:
+                (await store.getItem("skill-sources-ver")) === 2,
+              idempotent:
+                again.length === 4 &&
+                again.join("|") === merged.join("|"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, merged },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="手动登记的源不受迁移影响；setSkillSources 放行站内路径">
+      <template>
+        <script type="module">
+          import { getSkillSources, setSkillSources } from "../lib/skill-sync.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            const custom = "https://example.com/my-skill.zip";
+            const store = createVirtualStorage({
+              // 旧版清单 + 用户手动登记的自定义源
+              "skill-sources": [
+                "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
+                custom,
+              ],
+            });
+            const merged = await getSkillSources(store);
+            await setSkillSources(store, [
+              "/official-apps/some-skill.zip", // 站内同源路径：放行
+              "javascript:alert(1)", // 非法协议：滤掉
+              "https://example.com/ok.zip",
+            ]);
+            const filtered = await store.getItem("skill-sources");
+            const checks = {
+              customKept: merged.includes(custom),
+              newDefaultAppended:
+                merged.includes("/.agents/skills/mazmot-api.zip"),
+              sameOriginAllowed: filtered.includes(
+                "/official-apps/some-skill.zip",
+              ),
+              httpsKept: filtered.includes("https://example.com/ok.zip"),
+              badRejected: !filtered.includes("javascript:alert(1)"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, merged, filtered },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="端到端：从站内 /.agents/skills/mazmot-api.zip 安装到 VFS">
+      <template>
+        <script type="module">
+          import {
+            installSkillFromUrl,
+            readSkillFile,
+            loadSkillIndex,
+          } from "../lib/skill-sync.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              // sb-test 本地服务器 serve 仓库根：同源路径直达仓库里的
+              // .agents/skills/mazmot-api.zip（同时守护该文件真实存在）
+              const fs = createVirtualFs();
+              const r1 = await installSkillFromUrl(
+                fs,
+                "/.agents/skills/mazmot-api.zip",
+              );
+              const r2 = await installSkillFromUrl(
+                fs,
+                "/.agents/skills/mazmot-api.zip",
+              );
+              const doc = await readSkillFile(fs, "mazmot-api");
+              const index = await loadSkillIndex(fs);
+              const hit = index.find((s) => s.id === "mazmot-api");
+              const checks = {
+                idDerived: r1.id === "mazmot-api",
+                installed: r1.installed === true,
+                // 同内容（sha256 一致）二次安装跳过写入
+                dedupeSkipped: r2.installed === false,
+                skillMdReadable:
+                  doc.includes("mazmot-api") &&
+                  doc.includes("Mazmot 能力 API 速查"),
+                referencesKept:
+                  (await readSkillFile(fs, "mazmot-api", "references/ai.md"))
+                    .length > 0,
+                indexed: !!hit && hit.source === "/.agents/skills/mazmot-api.zip",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, r1, r2 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
