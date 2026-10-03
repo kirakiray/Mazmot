@@ -1,0 +1,22 @@
+<template page>
+  <style>
+    :host { display: block; }
+  </style>
+  <div>{{greeting}}</div>
+  <script>
+    export default async () => {
+      const load = lm(import.meta);
+      const { getStorage } = await load("/nos/storage/main.js");
+      const store = getStorage("hello-world");
+      return {
+        data: { name: "", visits: 0 },
+        get greeting() {
+          return this.name ? "Hello, " + this.name : "Hello, World!";
+        },
+        async ready() {
+          this.visits = Number(await store.getItem("visits")) || 0;
+        },
+      };
+    };
+  </script>
+</template>
