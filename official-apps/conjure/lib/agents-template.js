@@ -1,13 +1,17 @@
-// 通用项目规范模板（AGENTS.md）
+// 项目文档骨架模板（四文档体系）
 //
-// conjure 创建每个新项目时由宿主经 createAppDir 直接预写到 client/AGENTS.md
-// （仅在文件缺失时写——同名覆盖重建不清空，项目已定制的规则不丢）。模板是
-// 全部生成项目共享的「通用规范」：只放硬性规则与体系规则，不放任何项目特有
-// 内容；项目特有的硬规则由模型在开发中追加到「硬性约定」节末尾，通用条款
-// 不动。较早期生成的项目没有这份文件时，buildSystemPrompt 会在「已存在应用」
-// 的提示词里内嵌模板，让模型一次性补建。
+// conjure 创建每个新项目时由宿主经 createAppDir 直接预写整套文档骨架到
+// client/ 下：AGENTS.md（通用硬性规范）+ CONTEXT.md / MEMORY.md /
+// pitfalls/README.md（各按下方模板）。每份都**仅在文件缺失时写**——同名覆盖
+// 重建不清空，项目已定制的内容不丢。文档必须由宿主保证存在：模型把文档放在
+// 工作流程末尾，生成中途被截停（工具步数上限 / 手动停止 / 报错）时整套文档
+// 会缺失，后续会话就没有项目记忆与规范可读。模型的任务是把骨架**填充**为与
+// 实际代码一致的真实内容（骨架首行带 \`<!-- skeleton\` 注释标记与「待填」
+// 字样，填充后应消失）；AGENTS.md 是全部生成项目共享的通用规范，模型不重写，
+// 只在「硬性约定」末尾追加项目特有硬规则。较早期生成的项目没有 AGENTS.md 时，
+// buildSystemPrompt 会在「已存在应用」的提示词里内嵌模板，让模型一次性补建。
 //
-// 注意：本模板是 JS 模板字符串，正文里的反引号已用 \` 转义；正文禁止出现
+// 注意：本文件是 JS 模板字符串，正文里的反引号已用 \` 转义；正文禁止出现
 // ${ 序列（会被当作插值执行）。
 
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md — <项目名>
@@ -81,4 +85,95 @@ CONTEXT.md 是项目知识的**活文档（living document）**，必须与代�
 export function buildAgentsMd(displayName) {
   const name = String(displayName || "").trim() || "项目";
   return AGENTS_MD_TEMPLATE.replace("<项目名>", name);
+}
+
+// CONTEXT.md 骨架：模型按小节填充为真实内容；首行 \`<!-- skeleton\` 注释标记与
+// 「待填」占位填充后删除（提示词据此判断文档是否已收尾）。
+export const CONTEXT_MD_TEMPLATE = `<!-- skeleton：系统预写的骨架占位，填充为真实内容后删除本行 -->
+# CONTEXT.md — <项目名>
+
+项目上下文（**活文档**）：项目事实与使用指南。维护规则见 AGENTS.md「文档同步规则」——代码怎么变，本文件就怎么改。
+
+## 一句话定位
+
+（待填：这个应用是做什么的、给谁用）
+
+## 使用指南
+
+（待填：界面布局与核心操作路径，写给下一次接手的 AI / 用户；交互简单可精简本节）
+
+## 目录结构
+
+（待填：client/ 下的目录树与各文件 / 目录职责，以实际代码为准；示例如下，按实际替换）
+
+\`\`\`
+client/
+├── index.html      # 入口
+├── app-config.js   # 路由导出
+└── pages/          # 页面模块
+\`\`\`
+
+## 数据模型
+
+（待填：持久化数据与关键状态的字段及含义；没有持久化 / 复杂状态则删除本节）
+
+## 关键流程
+
+（待填：应用启动 → 核心交互的关键流程；本节同时是「完成标准」里核心链路清单的依据）
+
+## 踩坑索引
+
+> 一坑一文件收在 \`pitfalls/\` 目录（命名与格式见 \`pitfalls/README.md\`）；本表只放索引，禁止把坑的正文写进本表。使用方式：按标题判断与本回合任务是否相关，命中才精读对应文件。
+
+| 编号 | 标题 | 文件 |
+| ---- | ---- | ---- |`;
+
+// MEMORY.md 骨架：登记第一条记录时删除占位行。
+export const MEMORY_MD_TEMPLATE = `<!-- skeleton：系统预写的骨架占位，登记第一条记录后删除本行 -->
+# MEMORY.md — <项目名>
+
+项目记忆体：每回合**有改动**就在下方顶部追加一条（日期 / 改了什么 / 为什么 / 验证结论），最新在最上；纯讨论不记。容量上限 50 条：满 50 先把最旧 20 条压缩成 3–4 条（只留仍生效的决策与约束、用户偏好、未解决待办）。完整规则见 AGENTS.md「记忆体规则」。
+
+## 记录
+
+（暂无记录——登记第一条时删除本行）`;
+
+// pitfalls/README.md：目录与格式说明（本身不是踩坑记录，不登记索引表），
+// 让模型不读 AGENTS.md 也能按正确格式沉淀坑文件。
+export const PITFALLS_README_TEMPLATE = `# pitfalls/ — 踩坑库
+
+一坑一文件：文件名 \`NNN-英文短横线-slug.md\`（NNN 三位编号从 001 顺延）；**编号与文件名一经创建不再改**，旧坑过时就地修正文件内容。每建一个坑文件，必须同步在 CONTEXT.md「踩坑索引」表末尾追加一行（编号 / 标题 / 文件路径）。
+
+## 单个坑文件的格式
+
+\`\`\`markdown
+# NNN · 一句话概括这个坑
+
+**症状**：（外在表现，要能对上号）
+
+**根因**：（机制上到底发生了什么；多次尝试才解决的难题，把试过的弯路与最终有效的那一步写在这里）
+
+**正确姿势**：（以后应该怎么写 / 怎么快速排查确认是这个坑）
+\`\`\`
+
+> 本 README 是目录说明，不是踩坑记录，不要登记进索引表；踩到第一个坑后这里才会出现 NNN 文件。`;
+
+/**
+ * 按项目显示名生成待预写的文档骨架清单（AGENTS.md 之外的三份）。
+ * @param {string} displayName 项目显示名（标题占位符替换用）
+ * @returns {Array<{ path: string, content: string }>}
+ */
+export function buildProjectDocs(displayName) {
+  const name = String(displayName || "").trim() || "项目";
+  return [
+    {
+      path: "CONTEXT.md",
+      content: CONTEXT_MD_TEMPLATE.replace(/<项目名>/g, name),
+    },
+    {
+      path: "MEMORY.md",
+      content: MEMORY_MD_TEMPLATE.replace(/<项目名>/g, name),
+    },
+    { path: "pitfalls/README.md", content: PITFALLS_README_TEMPLATE },
+  ];
 }

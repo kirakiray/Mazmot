@@ -3,7 +3,11 @@
 // 本模块不静态 import /nos/* 与 /mz/*（受 Core 加载时机约束），
 // fs / storage / tool 均由页面模块通过 load() 加载后注入。
 
-import { AGENTS_MD_TEMPLATE, buildAgentsMd } from "./agents-template.js";
+import {
+  AGENTS_MD_TEMPLATE,
+  buildAgentsMd,
+  buildProjectDocs,
+} from "./agents-template.js";
 
 // 生成应用在虚拟文件系统中的根命名空间：init("ai-apps") 在 VFS 根创建该目录，
 // 每个生成的应用再在其下建 <name>/client/ 作为应用载体目录。
@@ -315,10 +319,13 @@ const resolveBaseDir = async (fs, appName, rootHandle) => {
 };
 
 /**
- * 创建应用并写入 app.json；同时预写通用 AGENTS.md（仅缺失时写——同名覆盖
- * 重建不清空，项目已定制的规则不丢）。AGENTS.md 是全部生成项目共享的通用
- * 规范模板（见 agents-template.js），模型不重写，只在「硬性约定」末尾追加
- * 项目特有硬规则。
+ * 创建应用并写入 app.json；同时预写整套项目文档骨架（AGENTS.md / CONTEXT.md /
+ * MEMORY.md / pitfalls/README.md，各自仅缺失时写——同名覆盖重建不清空，项目
+ * 已定制的内容不丢）。文档由宿主保证存在：模型把文档放在工作流程末尾，生成
+ * 中途被截停（工具步数上限 / 手动停止 / 报错）时整套文档会缺失，后续会话就
+ * 没有项目记忆与规范可读。模板见 agents-template.js：AGENTS.md 是共享的通用
+ * 规范（模型不重写，只在「硬性约定」末尾追加项目特有硬规则），其余三份是带
+ * 占位标记的骨架（模型填充为真实内容）。
  * 同名应用视为覆盖重建（文件级覆盖，不先清空）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ name: string, displayName: string, dir: Object }>}
@@ -336,10 +343,16 @@ export async function createAppDir(
   await metaFile.write(
     buildAppJson({ name: clean, displayName, description, icon }),
   );
-  const existing = await base.get(`${rel}AGENTS.md`).catch(() => null);
-  if (!existing || existing.kind !== "file") {
-    const agentsFile = await base.get(`${rel}AGENTS.md`, { create: "file" });
-    await agentsFile.write(buildAgentsMd(displayName || clean));
+  const docs = [
+    { path: "AGENTS.md", content: buildAgentsMd(displayName || clean) },
+    ...buildProjectDocs(displayName || clean),
+  ];
+  for (const { path, content } of docs) {
+    const existing = await base.get(`${rel}${path}`).catch(() => null);
+    if (!existing || existing.kind !== "file") {
+      const doc = await base.get(`${rel}${path}`, { create: "file" });
+      await doc.write(content);
+    }
   }
   return { name: clean, displayName: displayName || clean, dir: base };
 }
@@ -845,12 +858,13 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
 4. 卡住就求助：同一个问题连续 2 次修复尝试仍然失败（改了 A 坏 B、多种写法都不对、开始怀疑是框架/平台的 bug）时，**停止盲目试错**——把「期望什么 / 实际什么 / 已试过哪些方案与各自结果 / 当前怀疑」整理成一段话直接向用户求助，或用 show_form 给出候选方案让用户拍板，不要无限循环消耗回合。
-5. 调试通过后，补齐项目文档体系（内容基于你实际写的代码，不要写空话；这套文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
-   - **CONTEXT.md** —— 项目说明（活文档，后续 AI 接手的事实依据）：一句话定位、目录结构树、数据模型、关键流程、ofa.js / senti-ui 使用指南（本项目实际用到的）、**「踩坑索引」表**（编号 / 标题 / 文件路径三列，供后续按标题按需精读）；
-   - **MEMORY.md** —— 项目记忆体（最新在最上）：把本次生成与验证结论记为第一条（日期 / 改了什么 / 为什么 / 验证结论）；之后每回合改动按 AGENTS.md「记忆体规则」追加；
-   - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，「症状 → 根因 → 正确姿势」三段），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件，索引表留表头即可；
-   - **AGENTS.md** —— 系统创建项目时已预写通用规范模板，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动。
-6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已按实际代码写好（CONTEXT.md / MEMORY.md / 踩坑索引；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+5. 调试通过后，把项目文档体系填充为真实内容（系统创建项目时已在 client/ 预写了 AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md 四份骨架，write_file 整文件覆盖填充即可；内容基于你实际写的代码，不要写空话——这套文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
+   - **CONTEXT.md** —— 按骨架小节填充：一句话定位、使用指南、目录结构树、数据模型、关键流程、**「踩坑索引」表**（编号 / 标题 / 文件路径三列，供后续按标题按需精读；本次没踩坑就保留空表头）；
+   - **MEMORY.md** —— 把本次生成与验证结论记为第一条（日期 / 改了什么 / 为什么 / 验证结论）；之后每回合改动按 AGENTS.md「记忆体规则」追加；
+   - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，格式见 \`pitfalls/README.md\`），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件；
+   - **AGENTS.md** —— 已预写通用规范，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动；
+   - 骨架里的 \`<!-- skeleton\` 首行注释标记与「待填」「暂无记录」占位必须全部被真实内容替换，不能留着占位交差。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -945,10 +959,10 @@ export function buildSystemPrompt(ctx = {}) {
     prompt += `
 
 ## 当前上下文（重要）
-项目「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）是**系统刚为你创建的空项目**，目录里只有一个占位 app.json（displayName / icon 都是占位值）。
+项目「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）是**系统刚为你创建的空项目**，目录里只有一个占位 app.json（displayName / icon 都是占位值）和预写的文档骨架（AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md）。
 - **不要调用 create_app**，从 write_file 直接开始；项目当前没有代码，也无需先 read_file 查看。
 - 第一个文件就写 app.json：覆盖为正确的 displayName / icon / description（icon 用一个贴切的 emoji，name 保持 ${ctx.appName} 不变）。
-- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → CONTEXT.md / MEMORY.md / pitfalls 文档体系）；client/ 下已有一份系统预写的通用 AGENTS.md，不要重写。`;
+- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → 按第 5 步填充文档体系）；client/ 下已预写好整套文档骨架（AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md）——AGENTS.md 不要重写，其余三份按第 5 步填充为真实内容。`;
   } else if (ctx.appName) {
     const where =
       ctx.mode === "local"
@@ -959,6 +973,7 @@ export function buildSystemPrompt(ctx = {}) {
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
 - **会话开始按项目 AGENTS.md 头部的读取顺序执行**：先 \`read_file\` 读 CONTEXT.md（项目事实 + 「踩坑索引」——按索引标题挑出与本回合任务相关的坑，先精读对应 \`pitfalls/NNN-*.md\` 再动手），再读 MEMORY.md 恢复记忆，然后按需 list_files / read_file 目标文件（含 app.json）。只依据真实文件内容回答，禁止凭猜测或通用模板描述项目。
+- 读到的文档若仍是骨架占位（首行 \`<!-- skeleton\` 注释标记，或「待填」「暂无记录」字样）或缺失（较早期生成的项目没有这些文件），说明上次会话未完成收尾：先按项目 AGENTS.md 的体系规则把占位 / 缺失的文档基于实际代码补齐（AGENTS.md 缺失时按下方对应章节补建），再继续本回合任务。
 - 修改严格遵守项目 AGENTS.md 的硬性约定与各节规则（其内容已在下方「项目规则」自动加载）；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），回合收尾按其「文档同步规则」与「完成标准」执行（CONTEXT.md 同步、MEMORY.md 登记、踩坑沉淀）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
     // 自动加载项目 AGENTS.md：有则整节注入（超长截断）；无则内嵌通用模板让
