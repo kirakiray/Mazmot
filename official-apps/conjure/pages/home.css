@@ -534,16 +534,33 @@ st-icon-button.preview-live::after {
 
 /* ---------- 回合变更卡（AI 正文下方：改了哪些文件 + 行级 diff + 回滚） ----------
    Material Design 3 语言：elevated card（surface-container-low 底 + 细描边），
-   与统计明细面板同族；diff 行红绿语义色 */
+   与统计明细面板同族；占满消息列宽，头行 ±统计语义色，展开/收起与逐文件
+   diff 均走 grid 0fr→1fr 纯 CSS 高度动画（内容常驻，收起不消失） */
 
 .turn-changes {
-  align-self: flex-start;
-  min-width: 220px;
-  max-width: 100%;
-  margin-top: 8px;
+  align-self: stretch;
+  width: 100%;
+  margin-top: 10px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+  overflow: hidden;
+}
+
+/* 开合动画容器：唯一的 grid 行 0fr ↔ 1fr，子项 min-height:0 + overflow hidden */
+.tc-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.turn-changes.open > .tc-collapse,
+.tc-diffzone.has > .tc-collapse {
+  grid-template-rows: 1fr;
+}
+
+.tc-collapse > * {
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -552,64 +569,112 @@ st-icon-button.preview-live::after {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: none;
   background: none;
   cursor: pointer;
   font: inherit;
   color: var(--md-sys-color-on-surface);
+  text-align: left;
 }
 
 .tc-head:hover {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
 }
 
+.tc-head-icon {
+  flex: none;
+  color: var(--md-sys-color-primary);
+}
+
 .tc-title {
   font-size: 13px;
+  font-weight: 500;
+}
+
+.tc-count {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .tc-stat {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  color: var(--md-sys-color-on-surface-variant);
   font-variant-numeric: tabular-nums;
 }
 
-.tc-head n-icon:last-child {
-  margin-left: auto;
+.tc-adds {
+  color: #4c8c4c;
+}
+
+.tc-dels {
+  color: #b05252;
+}
+
+.tc-chev {
+  flex: none;
   color: var(--md-sys-color-on-surface-variant);
+  transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.turn-changes.open .tc-chev {
+  transform: rotate(180deg);
 }
 
 .tc-body {
   border-top: 1px solid var(--md-sys-color-outline-variant);
-  padding: 4px 0 8px;
 }
 
-.tc-file-row {
+/* 文件芯片行：flex 换行、芯片按内容（标题）自适应宽度，不再等分拉伸 */
+.tc-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+.tc-file {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 5px 12px;
-  border: none;
-  background: none;
+  flex: none;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 10px;
+  background: var(--md-sys-color-surface-container, var(--md-sys-color-surface));
   cursor: pointer;
   font: inherit;
   text-align: left;
+  color: var(--md-sys-color-on-surface);
 }
 
-.tc-file-row:hover {
+.tc-file:hover {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+/* 选中态（diff 面板正在显示该文件） */
+.tc-file.active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
 }
 
 .tc-file-path {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 320px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--md-sys-color-on-surface);
+}
+
+.tc-file.active .tc-file-path {
+  color: var(--md-sys-color-primary);
 }
 
 .tc-file-op {
@@ -628,15 +693,54 @@ st-icon-button.preview-live::after {
 
 .tc-file-stat {
   flex: none;
-  font-size: 11px;
+  display: inline-flex;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+}
+
+/* 共享 diff 面板（VS Code 编辑器式）：一次只显示选中文件的内容，
+   切换文件仅换内容（面板保持展开）；随选中开合动画 */
+.tc-diffzone {
+  margin: 6px 12px 4px;
+}
+
+.tc-diff-wrap {
+  min-width: 0;
+}
+
+.tc-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 12px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.tc-diff-head n-icon {
+  flex: none;
+}
+
+.tc-diff-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tc-diff-note {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+}
+
 .tc-diff {
-  margin: 2px 12px 6px;
   border-radius: 8px;
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 320px;
   background: var(--md-sys-color-surface-container, var(--md-sys-color-surface));
   border: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -689,12 +793,15 @@ st-icon-button.preview-live::after {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
 }
 
+.diff-line[type="gap"] .diff-ln {
+  border-right: none;
+}
+
 .diff-line[type="gap"]::before {
   content: "⋯";
 }
 
 .tc-diff-empty {
-  margin: 2px 12px 6px;
   padding: 10px 12px;
   font-size: 12px;
   line-height: 18px;
@@ -704,11 +811,31 @@ st-icon-button.preview-live::after {
   border-radius: 8px;
 }
 
+.tc-diff .tc-diff-empty {
+  margin: 0;
+  border: none;
+  border-bottom: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: 8px 8px 0 0;
+}
+
+/* 底部操作行：回滚右对齐 */
+.tc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.tc-foot-note {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 .tc-rollback {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 12px 0;
   padding: 5px 14px;
   border-radius: 999px;
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -726,6 +853,13 @@ st-icon-button.preview-live::after {
 .tc-rollback.confirm {
   border-color: var(--md-sys-color-error);
   color: var(--md-sys-color-error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-collapse,
+  .tc-chev {
+    transition: none;
+  }
 }
 
 /* 自动错误提示条（输入区上方，宿主回合后检测预览收集） */

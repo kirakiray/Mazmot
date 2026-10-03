@@ -281,59 +281,80 @@
                     <div class="reasoning-body">{{$data.reasoning}}</div>
                   </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
-                  <!-- 本回合变更卡：改了哪些文件（+增 −删 行数）；点开逐文件
-                       看行级 diff（快照 vs 当前盘），可一键回滚到本回合前 -->
+                  <!-- 本回合变更卡：占满消息列宽；文件为网格芯片（每枚 ≥300px，
+                       列数随宽度自适应），点击选中 → 下方共享 diff 面板切换内容
+                       （VS Code 编辑器式：面板随选中开合动画，切文件只换内容） -->
                   <o-if :value="$host.turnChanges($data).length > 0">
-                    <div class="turn-changes">
+                    <div class="turn-changes" class:open="$host.changesMsgId === $data.id">
                       <button class="tc-head" on:click="$host.toggleChanges($data.id)">
-                        <n-icon icon="mdi:file-code-outline"></n-icon>
-                        <span class="tc-title">改了 {{$host.turnChanges($data).length}} 个文件</span>
-                        <span class="tc-stat">{{$host.turnChangesSummary($data)}}</span>
-                        <n-icon attr:icon="$host.changesMsgId === $data.id ? 'mdi:chevron-up' : 'mdi:chevron-down'"></n-icon>
+                        <n-icon class="tc-head-icon" icon="mdi:file-code-outline"></n-icon>
+                        <span class="tc-title">本回合改动</span>
+                        <span class="tc-count">{{$host.turnChanges($data).length}} 个文件</span>
+                        <span class="tc-stat">
+                          <span class="tc-adds">+{{$host.turnAdds($data)}}</span>
+                          <span class="tc-dels">−{{$host.turnDels($data)}}</span>
+                        </span>
+                        <n-icon class="tc-chev" icon="mdi:chevron-down"></n-icon>
                       </button>
-                      <o-if :value="$host.changesMsgId === $data.id">
+                      <div class="tc-collapse">
                         <div class="tc-body">
-                          <o-fill :value="$host.turnChanges($data)" fill-key="path">
-                            <div class="tc-file">
-                              <button class="tc-file-row" on:click="$host.toggleFileDiff($data.path)">
+                          <div class="tc-files">
+                            <o-fill :value="$host.turnChanges($data)" fill-key="path">
+                              <button
+                                class="tc-file"
+                                class:active="$host.fileDiffPath === $data.path"
+                                attr:title="'查看 ' + $data.path + ' 的行级改动（快照 vs 当前）'"
+                                on:click="$host.toggleFileDiff($data.path)"
+                              >
                                 <span class="tc-file-path">{{$data.path}}</span>
                                 <span class="tc-file-op" attr:op="$data.op">{{$host.tcOpText($data)}}</span>
-                                <span class="tc-file-stat">{{$host.tcStatText($data)}}</span>
+                                <span class="tc-file-stat">
+                                  <span class="tc-adds">+{{$data.adds || 0}}</span>
+                                  <span class="tc-dels">−{{$data.dels || 0}}</span>
+                                </span>
                               </button>
-                              <o-if :value="$host.fileDiffPath === $data.path && $host.diffLoading !== $data.path">
+                            </o-fill>
+                          </div>
+                          <div class="tc-diffzone" class:has="$host.fileDiffPath !== ''">
+                            <div class="tc-collapse">
+                              <div class="tc-diff-wrap">
+                                <div class="tc-diff-head">
+                                  <n-icon icon="mdi:diff"></n-icon>
+                                  <span class="tc-diff-path">{{$host.fileDiffPath}}</span>
+                                  <span class="tc-diff-note" attr:hidden="$host.diffNoteHidden()">正在加载…</span>
+                                </div>
                                 <div class="tc-diff">
-                                  <o-if :value="$host.diffEmpty($data.path)">
-                                    <div class="tc-diff-empty">{{$host.diffEmptyText($data.path)}}</div>
+                                  <o-if :value="$host.showDiffEmpty()">
+                                    <div class="tc-diff-empty">{{$host.diffEmptyText($host.fileDiffPath)}}</div>
                                   </o-if>
                                   <o-fill :value="$host.diffHunks">
                                     <div class="diff-line" attr:type="$data.type">
-                                      <span class="diff-ln">{{$data.type === 'add' ? $data.bLn : $data.aLn}}</span>
+                                      <span class="diff-ln">{{$data.type === 'gap' ? '' : ($data.type === 'add' ? $data.bLn : $data.aLn)}}</span>
                                       <span class="diff-txt">{{$data.text}}</span>
                                     </div>
                                   </o-fill>
                                 </div>
-                              </o-if>
-                              <o-if :value="$host.diffLoading === $data.path">
-                                <div class="tc-diff-empty">正在加载 diff…</div>
-                              </o-if>
+                              </div>
                             </div>
-                          </o-fill>
-                          <o-if :value="$data.snapshotId">
-                            <button
-                              class="tc-rollback"
-                              class:confirm="$host.confirmRollbackId === $data.id"
-                              attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响）'"
-                              on:click="$host.rollbackFrom($data)"
-                            >
-                              <n-icon icon="mdi:restore"></n-icon>
-                              <span>{{$host.confirmRollbackId === $data.id ? '确认回滚？' : '回滚本回合改动'}}</span>
-                            </button>
-                          </o-if>
-                          <o-if :value="!$data.snapshotId">
-                            <div class="tc-diff-empty">本回合没有快照（生成中的首个回合），无法回滚</div>
-                          </o-if>
+                          </div>
+                          <div class="tc-foot">
+                            <o-if :value="$data.snapshotId">
+                              <button
+                                class="tc-rollback"
+                                class:confirm="$host.confirmRollbackId === $data.id"
+                                attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响）'"
+                                on:click="$host.rollbackFrom($data)"
+                              >
+                                <n-icon icon="mdi:restore"></n-icon>
+                                <span>{{$host.confirmRollbackId === $data.id ? '确认回滚？' : '回滚本回合改动'}}</span>
+                              </button>
+                            </o-if>
+                            <o-if :value="!$data.snapshotId">
+                              <span class="tc-foot-note">本回合没有快照，无法回滚</span>
+                            </o-if>
+                          </div>
                         </div>
-                      </o-if>
+                      </div>
                     </div>
                   </o-if>
                   <o-if :value="$host.hasUsage($data) || $host.turnStatsMissing($data) || $host.canFork() || $host.aiTime($data) !== '' || $data.stopped">
@@ -2387,24 +2408,18 @@
             return Array.isArray(msg?.changes) ? msg.changes : [];
           },
 
-          turnChangesSummary(msg) {
-            let adds = 0;
-            let dels = 0;
-            for (const c of this.turnChanges(msg)) {
-              adds += c.adds || 0;
-              dels += c.dels || 0;
-            }
-            return `+${adds} −${dels}`;
+          turnAdds(msg) {
+            return this.turnChanges(msg).reduce((n, c) => n + (c.adds || 0), 0);
+          },
+
+          turnDels(msg) {
+            return this.turnChanges(msg).reduce((n, c) => n + (c.dels || 0), 0);
           },
 
           tcOpText(c) {
             if (c.op === "edit") return "编辑";
             if (!c.dels) return "新增";
             return "重写";
-          },
-
-          tcStatText(c) {
-            return `+${c.adds || 0} −${c.dels || 0}`;
           },
 
           toggleChanges(id) {
@@ -2444,6 +2459,20 @@
             return (
               this.fileDiffPath === path &&
               this.diffLoading !== path &&
+              this.diffHunks.length === 0
+            );
+          },
+
+          // 共享 diff 面板的守卫（根作用域不能引用 $host，且 && 不进模板
+          // 表达式——统一方法化）
+          diffNoteHidden() {
+            return this.diffLoading === "" || this.diffLoading !== this.fileDiffPath;
+          },
+
+          showDiffEmpty() {
+            return (
+              this.fileDiffPath !== "" &&
+              this.diffLoading === "" &&
               this.diffHunks.length === 0
             );
           },
