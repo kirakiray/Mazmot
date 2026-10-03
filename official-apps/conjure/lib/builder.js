@@ -3,6 +3,12 @@
 // 本模块不静态 import /nos/* 与 /mz/*（受 Core 加载时机约束），
 // fs / storage / tool 均由页面模块通过 load() 加载后注入。
 
+import {
+  AGENTS_MD_TEMPLATE,
+  buildAgentsMd,
+  buildProjectDocs,
+} from "./agents-template.js";
+
 // 生成应用在虚拟文件系统中的根命名空间：init("ai-apps") 在 VFS 根创建该目录，
 // 每个生成的应用再在其下建 <name>/client/ 作为应用载体目录。
 // 独立命名空间、不与主系统的 mazmot-apps/ 混用；生成应用也不进主系统应用列表。
@@ -313,7 +319,13 @@ const resolveBaseDir = async (fs, appName, rootHandle) => {
 };
 
 /**
- * 创建应用并写入 app.json。
+ * 创建应用并写入 app.json；同时预写整套项目文档骨架（AGENTS.md / CONTEXT.md /
+ * MEMORY.md / pitfalls/README.md，各自仅缺失时写——同名覆盖重建不清空，项目
+ * 已定制的内容不丢）。文档由宿主保证存在：模型把文档放在工作流程末尾，生成
+ * 中途被截停（工具步数上限 / 手动停止 / 报错）时整套文档会缺失，后续会话就
+ * 没有项目记忆与规范可读。模板见 agents-template.js：AGENTS.md 是共享的通用
+ * 规范（模型不重写，只在「硬性约定」末尾追加项目特有硬规则），其余三份是带
+ * 占位标记的骨架（模型填充为真实内容）。
  * 同名应用视为覆盖重建（文件级覆盖，不先清空）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ name: string, displayName: string, dir: Object }>}
@@ -331,13 +343,26 @@ export async function createAppDir(
   await metaFile.write(
     buildAppJson({ name: clean, displayName, description, icon }),
   );
+  const docs = [
+    { path: "AGENTS.md", content: buildAgentsMd(displayName || clean) },
+    ...buildProjectDocs(displayName || clean),
+  ];
+  for (const { path, content } of docs) {
+    const existing = await base.get(`${rel}${path}`).catch(() => null);
+    if (!existing || existing.kind !== "file") {
+      const doc = await base.get(`${rel}${path}`, { create: "file" });
+      await doc.write(content);
+    }
+  }
   return { name: clean, displayName: displayName || clean, dir: base };
 }
 
 /**
  * 往应用写入一个文件（自动创建中间目录）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
- * @returns {Promise<{ path: string, bytes: number }>}
+ * @returns {Promise<{ path: string, bytes: number, name: string, initialized: boolean, created: boolean }>}
+ *          created 表示本次写入的是新文件（此前不存在），供调用方给出
+ *          「需 preview 推送后预览端才可访问」类提示
  */
 /**
  * 确保目标应用已完成初始化（client/ 下存在 app.json）；缺失时自动补写一份
@@ -364,9 +389,17 @@ export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
   const text = String(content ?? "");
   const initialized = await ensureAppInitialized(fs, clean, rootHandle);
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const prev = await base.get(rel + relPath).catch(() => null);
+  const created = !prev || prev.kind !== "file";
   const file = await base.get(rel + relPath, { create: "file" });
   await file.write(text);
-  return { path: relPath, bytes: new Blob([text]).size, name: clean, initialized };
+  return {
+    path: relPath,
+    bytes: new Blob([text]).size,
+    name: clean,
+    initialized,
+    created,
+  };
 }
 
 /** 读取应用的一个文件，不存在返回 null */
@@ -819,23 +852,30 @@ export async function loadProjectChats(rootHandle) {
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
-export const SYSTEM_PROMPT = `你是 Mazmot 虚拟系统里的 妙造，通过对话为用户生成可直接运行的 ofa.js 网页应用，并把文件写入虚拟文件系统。
+export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。你可调用的工具（write_file / read_file / list_files / create_app / preview / show_form / read_skill）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
 
 ## 工作流程
-1. 理解用户需求，必要时先简短澄清；然后调用 create_app（name 用小写英文短横线，如 todo-app；displayName 可用中文）。
+1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。
 2. 依次用 write_file 写入下列文件（路径相对 client/ 目录，本地目录渠道与虚拟渠道一致）：
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
-3. 功能文件完成后，实际运行调试（必须，不能只凭代码推断「应该没问题」）：
-   - 新功能写完：用 preview 工具（action=app，appName 必填）把应用推送到隔离预览窗口实际运行（返回时已在跑最新代码）；
+3. 开发调试闭环（必须，不能只凭代码推断「应该没问题」）：
+   - 尽早首跑：写完入口骨架（index.html / app-config.js / 首个页面）就先用 preview 工具（action=app，appName 必填）跑一次，确认应用能打开、骨架无报错，再继续写功能——不要全部写完才第一次运行，越早看到真实运行越早暴露问题；
+   - 每完成一层功能（一个页面 / 一块交互 / 一组数据逻辑）都 write_file 后用 preview action=app 刷新实际运行验证，小步推进；
+   - 发现问题先取证再改，禁止不看证据凭猜测连环改代码：控制台报错 → action=console 读日志；渲染不对 → action=dom / text 看真实 DOM；交互失灵 → action=click / type 复现用户操作；
+   - 预览页内容渲染在 \`o-app\`/\`o-page\` 的 shadow DOM 里：action=text 读不到页面文本，用 action=dom 或 eval 查 \`shadowRoot\`；白屏或报「加载页面模块 … 失败」时，真实错误栈在 \`document.querySelector('o-app > o-page').shadowRoot.textContent\` 里（该报错不带原因、status 的 errors 计数也不含它），先 eval 取证再改；
+   - 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互实测可用为止；
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
-   - 发现问题（报错、渲染不对、交互失灵）→ write_file 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互可用为止；
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
-4. 调试通过后，再补两份项目文档（内容基于你实际写的代码，不要写空话）：
-   - AGENTS.md —— 给 AI 代理的开发规范：这个项目继续开发时需要遵守的约定（围绕你实际用到的技术栈与结构，规则具体、可执行）
-   - CONTEXT.md —— 项目说明：后续开发 AI 接手时需要了解的项目事实（架构、数据、流程，以实际代码为准）
-5. 全部完成后，用一段简短的话告诉用户应用已在预览窗口运行、功能与用法，以及调试验证过的结论。
+4. 卡住就求助：同一个问题连续 2 次修复尝试仍然失败（改了 A 坏 B、多种写法都不对、开始怀疑是框架/平台的 bug）时，**停止盲目试错**——把「期望什么 / 实际什么 / 已试过哪些方案与各自结果 / 当前怀疑」整理成一段话直接向用户求助，或用 show_form 给出候选方案让用户拍板，不要无限循环消耗回合。
+5. 调试通过后，把项目文档体系填充为真实内容（系统创建项目时已在 client/ 预写了 AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md 四份骨架，write_file 整文件覆盖填充即可；内容基于你实际写的代码，不要写空话——这套文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
+   - **CONTEXT.md** —— 按骨架小节填充：一句话定位、使用指南、目录结构树、数据模型、关键流程、**「踩坑索引」表**（编号 / 标题 / 文件路径三列，供后续按标题按需精读；本次没踩坑就保留空表头）；
+   - **MEMORY.md** —— 把本次生成与验证结论记为第一条（日期 / 改了什么 / 为什么 / 验证结论）；之后每回合改动按 AGENTS.md「记忆体规则」追加；
+   - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，格式见 \`pitfalls/README.md\`），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件；
+   - **AGENTS.md** —— 已预写通用规范，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动；
+   - 骨架里的 \`<!-- skeleton\` 首行注释标记与「待填」「暂无记录」占位必须全部被真实内容替换，不能留着占位交差。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -877,19 +917,20 @@ export const home = "./pages/home.html";
 - 需要弹窗/提示时可用 senti-ui 的 st-dialog / toast（先 \`<l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/st-dialog.html"></l-m>\` 声明）。
 
 ### 数据持久化（如应用需要保存数据）
-- 统一用 /nos/storage/main.js，禁止 localStorage：
+- 统一用 /nos/storage/main.js，禁止 localStorage。页面模块顶层禁止 import /nos/*，必须运行时用**页面工厂参数注入的 load** 加载（**禁止 \`lm(import.meta)\`**——页面脚本被编译成 \`data:\` URL 模块执行，import.meta 不能作 URL base，解析任何路径都抛 Invalid URL，整页加载失败且报错不带原因）：
 \`\`\`js
-// 页面模块顶层禁止 import /nos/*，必须运行时加载：
-const load = lm(import.meta);
-const { getStorage } = await load("/nos/storage/main.js");
-const store = getStorage("<app-独立空间>");
-await store.setItem("key", value);
+export default async ({ load }) => {
+  const { getStorage } = await load("/nos/storage/main.js");
+  const store = getStorage("<app-独立空间>");
+  await store.setItem("key", value);
+  return { data: { /* 声明模板用到的 data 安全默认值 */ } };
+};
 \`\`\`
 
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。
 - 单个文件尽量小于 300 行，功能聚焦，一次对话先交付可运行的最小版本。
-- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后同步更新 AGENTS.md / CONTEXT.md 里受影响的描述。
+- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后按项目 AGENTS.md 的「文档同步规则」同步文档——CONTEXT.md 对应小节 + MEMORY.md 登记，踩了新坑沉淀到 pitfalls/ 并登记索引（沉淀出新硬规则则追加进 AGENTS.md）。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
@@ -903,14 +944,38 @@ export const COMPACTION_PROMPT = `你是对话压缩器。把提供的 AI 应用
 3. 用中文条目化输出，总长度控制在 800 字以内。直接输出摘要正文，不要任何前后缀或评论。`;
 
 /**
+ * 项目规则（AGENTS.md 自动注入）的截断上限（字符）：个别项目的规则文档可能
+ * 超长，超限掐头留尾并提示用 read_file 读全文，防止系统提示词被撑爆。
+ */
+const RULES_CLIP = 6000;
+
+/**
  * 按当前上下文构建系统提示词：在基础规范上注入「正在开发哪个应用」，
  * 并强制回答项目相关问题前先读文件（防模型凭空猜测项目内容）。
- * @param {{ appName?: string, displayName?: string, mode?: "vfs"|"local", skills?: Array<{id:string,name:string,description:string}> }} [ctx]
- *        appName 为空表示「新应用」草稿阶段；skills 为可用技能知识库清单
+ * @param {{ appName?: string, displayName?: string, mode?: "vfs"|"local",
+ *          skills?: Array<{id:string,name:string,description:string}>,
+ *          freshProject?: boolean, projectRules?: string }} [ctx]
+ *        appName 为空表示「新应用」草稿阶段；skills 为可用技能知识库清单；
+ *        projectRules 为项目 AGENTS.md 的内容（宿主在会话开始时自动读取注入，
+ *        harness 常规机制——项目规则随会话自动生效，不依赖模型自觉去读）
  */
 export function buildSystemPrompt(ctx = {}) {
   let prompt = SYSTEM_PROMPT;
-  if (ctx.appName) {
+  if (ctx.appName && ctx.freshProject) {
+    // 全新项目：系统已在用户发送首条消息时建好目录与占位 app.json，
+    // 模型跳过 create_app 直接生成（宿主同时会把 create_app 从工具清单移除）
+    const where =
+      ctx.mode === "local"
+        ? `用户本地磁盘所选目录的 client/ 子目录（路径相对 client/，多级路径会自动建目录）`
+        : `虚拟文件系统 /$${NAMESPACE}/${ctx.appName}/client/`;
+    prompt += `
+
+## 当前上下文（重要）
+项目「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）是**系统刚为你创建的空项目**，目录里只有一个占位 app.json（displayName / icon 都是占位值）和预写的文档骨架（AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md）。
+- **不要调用 create_app**，从 write_file 直接开始；项目当前没有代码，也无需先 read_file 查看。
+- 第一个文件就写 app.json：覆盖为正确的 displayName / icon / description（icon 用一个贴切的 emoji，name 保持 ${ctx.appName} 不变）。
+- 之后按上方工作流程第 2 步起照常执行（index.html / app-config.js / pages/... → preview 实测调试 → 按第 5 步填充文档体系）；client/ 下已预写好整套文档骨架（AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md）——AGENTS.md 不要重写，其余三份按第 5 步填充为真实内容。`;
+  } else if (ctx.appName) {
     const where =
       ctx.mode === "local"
         ? `用户本地磁盘所选目录的 client/ 子目录（路径相对 client/，多级路径会自动建目录）`
@@ -919,9 +984,32 @@ export function buildSystemPrompt(ctx = {}) {
 
 ## 当前上下文（重要）
 用户正在开发一个**已存在的应用**「${ctx.displayName || ctx.appName}」（应用名 ${ctx.appName}，文件在 ${where}）。
-- 回答任何关于这个项目的问题（它是什么、有什么功能、有哪些文件、某段代码怎么写的）之前，**必须先调用 list_files 查看文件清单，再调用 read_file 读取相关文件（至少读 AGENTS.md、CONTEXT.md 和 app.json）**，只依据真实文件内容回答；禁止凭猜测或通用模板描述项目。
-- 用户要求修改时同样先读后写（read_file → write_file 覆盖），且**必须先读项目内的 AGENTS.md 与 CONTEXT.md，修改代码严格遵守其中约定**；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），再同步更新 CONTEXT.md（及 AGENTS.md 中失实的规则）。
+- **会话开始按项目 AGENTS.md 头部的读取顺序执行**：先 \`read_file\` 读 CONTEXT.md（项目事实 + 「踩坑索引」——按索引标题挑出与本回合任务相关的坑，先精读对应 \`pitfalls/NNN-*.md\` 再动手），再读 MEMORY.md 恢复记忆，然后按需 list_files / read_file 目标文件（含 app.json）。只依据真实文件内容回答，禁止凭猜测或通用模板描述项目。
+- 读到的文档若仍是骨架占位（首行 \`<!-- skeleton\` 注释标记，或「待填」「暂无记录」字样）或缺失（较早期生成的项目没有这些文件），说明上次会话未完成收尾：先按项目 AGENTS.md 的体系规则把占位 / 缺失的文档基于实际代码补齐（AGENTS.md 缺失时按下方对应章节补建），再继续本回合任务。
+- 修改严格遵守项目 AGENTS.md 的硬性约定与各节规则（其内容已在下方「项目规则」自动加载）；改动完成后用 preview 工具实际运行验证无回归（action=app 推送刷新，console / dom / click 检查），回合收尾按其「文档同步规则」与「完成标准」执行（CONTEXT.md 同步、MEMORY.md 登记、踩坑沉淀）。
 - 不要再调用 create_app 重建同名应用，除非用户明确要求推倒重来。`;
+    // 自动加载项目 AGENTS.md：有则整节注入（超长截断）；无则内嵌通用模板让
+    // 模型一次性补建（较早期生成的项目没有这份文件）
+    const rules = String(ctx.projectRules || "").trim();
+    if (rules) {
+      const clipped =
+        rules.length > RULES_CLIP
+          ? `${rules.slice(0, RULES_CLIP)}\n…（AGENTS.md 过长已截断，需要完整内容时用 read_file 读取）`
+          : rules;
+      prompt += `
+
+## 项目规则（AGENTS.md，已自动加载，必须遵守）
+${clipped}`;
+    } else {
+      prompt += `
+
+## AGENTS.md 创建（项目尚未有此文件）
+本项目还没有 AGENTS.md（较早期生成的项目）。请在本回合顺手用 write_file 创建：把下方通用模板**原样**写入 AGENTS.md（标题中的 <项目名> 换成「${ctx.displayName || ctx.appName}」），不要增删通用条款；本项目特有的硬性规则（如有）追加在「硬性约定」节末尾。
+
+\`\`\`markdown
+${AGENTS_MD_TEMPLATE}
+\`\`\``;
+    }
   }
   if (Array.isArray(ctx.skills) && ctx.skills.length) {
     const lines = ctx.skills

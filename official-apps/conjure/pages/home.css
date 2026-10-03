@@ -493,23 +493,26 @@ st-icon-button.preview-live::after {
 }
 
 /* 本轮 token 用量统计（回合末条 AI 消息底部） */
-.usage-row {
+/* 本轮用量胶囊复用 .stat-pill；明细面板复用 .stat-panel（含开合动画） */
+
+/* 手动停止标记（回合末条 AI 消息底部，与用量胶囊同级徽标） */
+.ai-stopped {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 2px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
-  color: var(--md-sys-color-on-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+  color: var(--md-sys-color-error);
   font-size: 11px;
   line-height: 18px;
-  font-variant-numeric: tabular-nums;
   align-self: flex-start;
+  user-select: none;
 }
 
-.usage-row n-icon {
+.ai-stopped n-icon {
   font-size: 13px;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .ai-text {
@@ -1237,10 +1240,116 @@ st-icon-button.preview-live::after {
 .composer-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 2px 8px 8px;
 }
+
+/* ---------- 图片附件（多模态输入） ---------- */
+
+/* 待发送缩略图：并入底部动作条，贴左（右侧按钮簇不动） */
+.attach-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-right: auto;
+  padding-left: 4px;
+}
+
+.attach-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+}
+
+.attach-chip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+}
+
+.attach-x {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 0 0 0 8px;
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 55%, transparent);
+  color: #fff;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.attach-x:hover {
+  background: var(--md-sys-color-error);
+}
+
+.attach-hint {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 添加图片按钮（composer-row 右簇，模型菜单左侧） */
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+
+.attach-btn:hover {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.attach-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 用户气泡内的已发送图片 */
+.user-imgs {
+  display: none;
+}
+
+.user-imgs.show {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.user-img {
+  display: block;
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  cursor: zoom-in;
+}
+
 
 /* ---------- 写入目标切换（虚拟系统 / 本地目录） ---------- */
 
@@ -1316,165 +1425,83 @@ st-icon-button.preview-live::after {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* 发送 / 停止按钮（st-button filled 组件）：配色/hover/禁用/波纹由组件内建，
+   页面只覆写尺寸形状（34px 圆形；`.send-btn svg` 是 slotted 轻量 DOM，
+   页面样式可直接命中）。停止态用 color="error" 属性语义换色 */
 .send-btn {
-  display: grid;
-  place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
-  border: none;
+  width: 27px;
+  height: 27px;
+  min-width: 27px;
+  padding: 0;
   border-radius: 999px;
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  cursor: pointer;
-  transition:
-    background-color 100ms ease,
-    opacity 100ms ease;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--md-sys-color-primary);
-  opacity: 0.88;
-}
-
-.send-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 .send-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-/* 生成中的停止按钮：error 色区分发送 */
-.send-btn.stop {
-  background: var(--md-sys-color-error);
-  color: var(--md-sys-color-on-error);
-}
-
-.send-btn.stop:hover {
-  background: var(--md-sys-color-error);
-  opacity: 0.88;
-}
-
-.disclaimer {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--md-sys-color-on-surface-variant);
-  opacity: 0.7;
-}
-
-/* ---------- 上下文占用圆圈进度 + 窗口选择（composer-row 内） ---------- */
-
-/* composer-row 是 space-between，左侧控件收进一个分组容器避免被拉开 */
-.composer-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-/* 圆圈锚点 + 悬停气泡（模型 / Key 切换）。
-   padding-top 是真实的透明悬停区：气泡底部与圆圈顶部之间隔着它，
-   鼠标从圆圈移进气泡全程不出锚点盒子，hover 链不会断。
-   margin-top 负值抵消 padding 撑高的布局，行高保持不变 */
-.ctx-anchor {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  /* 四周扩展透明热区：悬停不必精确落在圆圈上，靠近即可触发气泡 */
-  padding: 12px 10px;
-  margin: -12px -10px;
-}
-
-.ctx-pop {
-  position: absolute;
-  /* 气泡底边压到锚点热区内，与圆圈之间不留视觉断链 */
-  bottom: calc(100% - 8px);
-  left: 0;
-  z-index: 12;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.2);
-  white-space: nowrap;
-  /* 常驻渲染，用透明度 + 位移做淡入上浮动画（display 切换无法过渡） */
-  visibility: hidden;
-  opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    visibility 0s linear 160ms;
-}
-
-/* 气泡下缘隐形过渡带：斜着移向气泡时 hover 链不断 */
-.ctx-pop::after {
-  content: "";
-  position: absolute;
-  left: -8px;
-  right: -8px;
-  top: 100%;
+  width: 14px;
   height: 14px;
 }
 
-/* 悬停锚点或气泡本身时显示（气泡是锚点子元素，移入不断链） */
-.ctx-anchor:hover .ctx-pop {
-  visibility: visible;
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease;
-}
-
-.ctx-pop-row {
+/* 底部统计胶囊行（composer 下方，原免责声明位置；与输入框同宽、左对齐，
+   空态整行隐藏高度不塌） */
+.stats-dock {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  line-height: 20px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  max-width: 768px;
+  min-height: 26px;
+  padding: 2px 12px 10px;
 }
 
-.ctx-pop-label {
+/* ---------- 上下文占用进度 + 底部统计胶囊 ---------- */
+
+/* ---------- 底部统计胶囊（会话统计 / Token 用量 / 上下文占用） ----------
+   对齐 deepseek harness StatsPills：点击开合明细面板，openStat 互斥收口 */
+
+.stat-anchor {
+  position: relative;
+  display: inline-flex;
   flex: none;
-  color: var(--md-sys-color-on-surface-variant);
 }
 
-.ctx-pop-value {
-  color: var(--md-sys-color-on-surface);
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px;
-}
-
-.ctx-ring {
+.stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: none;
+  padding: 3px 10px;
   border: none;
-  background: transparent;
-  padding: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
   font: inherit;
+  font-size: 11px;
+  line-height: 18px;
   cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.ctx-ring:disabled {
-  cursor: default;
-  opacity: 0.6;
+.stat-pill:hover {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface);
 }
 
-.ctx-ring-svg {
-  width: 18px;
-  height: 18px;
+.stat-pill n-icon {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* 上下文胶囊的进度环（r=8 圈环复用 ctx-ring-* 描边类） */
+.stat-ring {
+  width: 14px;
+  height: 14px;
   transform: rotate(-90deg); /* 进度从顶部起 */
 }
 
@@ -1498,79 +1525,258 @@ st-icon-button.preview-live::after {
   stroke: var(--md-sys-color-error);
 }
 
-.ctx-ring-label {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* 明细面板：锚点上方弹出、水平居中于胶囊。常驻渲染，透明度 + 位移做
+   淡入上浮/淡出下沉（o-if 挂卸做不了退场动画；visibility 延迟切换保证
+   退场可点击穿透；X 居中与 Y 动画合并在同一个 transform 里） */
+.stat-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+  max-width: min(460px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.24);
+  /* 短行照常单行收缩；超长说明行（数据缺失等）在 max-width 内换行，不撑宽面板 */
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 0s linear 160ms;
 }
 
-.ctx-select,
-.key-select,
-.model-select {
+.stat-panel.open {
+  visibility: visible;
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+/* 左对齐变体。对话区「本轮用量」面板恒用此形态（在消息滚动层内居中会被
+   滚动层左缘裁掉）。宽度固定 300px：abspos 的收缩宽度计算会随内容摇摆
+   （时宽时窄），固定值最可预期；窄屏由 max-width 兜底 */
+.stat-panel.align-left {
+  left: 0;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  transform: translate(0, 6px);
+}
+
+.stat-panel.align-left.open {
+  transform: translate(0, 0);
+}
+
+.stat-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--md-sys-color-on-surface);
+}
+
+.stat-panel-head n-icon {
+  font-size: 15px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.stat-panel-title {
+  font-weight: 600;
+}
+
+.stat-panel-value {
+  margin-left: auto;
+  padding-left: 18px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-rule {
+  height: 1px;
+  margin: 8px 0;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+}
+
+.stat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  font-size: 12.5px;
+  line-height: 19px;
+}
+
+.stat-dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--md-sys-color-on-surface-variant);
+  /* 标签恒为单行：换行只发生在右侧说明文本（stat-dd）上 */
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stat-dd {
+  color: var(--md-sys-color-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 上下文分解色条 + 图例色块（系统提示词 / 工具定义 / 对话消息） */
+.stat-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin: 10px 0 2px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.stat-seg {
+  height: 100%;
+  min-width: 0;
+}
+
+.seg-sys {
+  background: var(--md-sys-color-outline);
+}
+
+.seg-tools {
+  background: var(--md-sys-color-tertiary);
+}
+
+.seg-msgs {
+  background: var(--md-sys-color-primary);
+}
+
+.stat-swatch {
   flex: none;
-  padding: 3px 4px;
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 18%, transparent);
-  border-radius: 8px;
-  background: transparent;
+  width: 9px;
+  height: 9px;
+  border-radius: 2.5px;
+  background: var(--md-sys-color-outline);
+}
+
+.stat-swatch[data-k="tools"] {
+  background: var(--md-sys-color-tertiary);
+}
+
+.stat-swatch[data-k="msgs"] {
+  background: var(--md-sys-color-primary);
+}
+
+.stat-panel-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+}
+
+.stat-compress {
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.stat-compress:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+
+.stat-compress:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- 右侧模型选择菜单（st-menu，模型 / 推理等级 / Key / 窗口） ----------
+   面板/子菜单/动画/翻转定位由 st-menu 组件自理；视觉向 stat-panel 一族对齐：
+   字号缩小联动内部 em 布局（圆角/内边距随之收窄），底色经主题变量换成
+   surface-container-high（与 .stat-panel 同色） */
+
+.model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  max-width: 260px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
   color: var(--md-sys-color-on-surface-variant);
   font: inherit;
   font-size: 12px;
   line-height: 18px;
   cursor: pointer;
-  outline: none;
+  white-space: nowrap;
 }
 
-.ctx-select {
-  max-width: 84px;
-}
-
-/* Key / 模型选择器要放得下「provider · 脱敏 key」等文案 */
-.key-select,
-.model-select {
-  max-width: 180px;
-}
-
-.model-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ctx-select:hover,
-.ctx-select:focus,
-.key-select:hover,
-.key-select:focus {
-  border-color: var(--md-sys-color-primary);
+.model-trigger:hover {
+  background: var(--md-sys-color-surface-variant);
   color: var(--md-sys-color-on-surface);
 }
 
-/* ---------- 气泡内 st-select 尺寸适配（原 .ctx-select 规则面向原生 select） ----------
-   st-select 内部全 em 布局（高 2.857em / 最小宽 13.571em），缩小宿主字号即整体等比缩小 */
-.ctx-pop-row st-select {
+.model-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-chev {
   flex: none;
-  max-width: none; /* 抵消下方旧原生 select 规则的 max-width */
-  font-size: 10px; /* 10px ≈ 高 28.6px / 最小宽 136px，紧凑观感；组件内部全 em 布局，字号即整体缩放 */
+  width: 14px;
+  height: 14px;
 }
 
-.ctx-pop st-select.key-select,
-.ctx-pop st-select.model-select {
-  width: 200px;
+.composer-row st-menu {
+  font-size: 12.5px;
+  --md-sys-color-surface-container: var(
+    --md-sys-color-surface-container-high,
+    var(--md-sys-color-surface-variant)
+  );
 }
 
-.ctx-pop-row + .ctx-pop-row {
-  margin-top: 6px; /* 行间距收紧，配合 10px 字号的 select 高度 */
+/* 菜单行右侧的当前取值（suffix slot）与选中项 ✓（prefix slot） */
+.menu-value {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.ctx-pop-row .ctx-pop-label {
-  width: 32px; /* 标签等宽对齐，三行左边缘齐整 */
-  text-align: justify;
-  text-align-last: justify;
+.menu-check {
+  min-width: 1.2em;
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 
-.model-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.menu-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
 }
 
 /* ---------- 面板 tab（st-tab-bar 轻量适配） ---------- */
@@ -2286,8 +2492,7 @@ st-icon-button.preview-live::after {
     transition: none;
   }
 
-  .ctx-pop,
-  .ctx-fill,
+  .stat-panel,
   .ctx-ring-fill {
     transition: none;
   }

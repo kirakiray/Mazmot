@@ -24,6 +24,7 @@ import {
   sanitizeAppName,
   listAppFiles,
   readAppFile,
+  createAppDir,
   createAppBackup,
   listAppBackups,
   deleteAppBackup,
@@ -62,11 +63,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 消息与发送
     messages: [],
     sending: false,
+    stopRequested: false, // 用户点了停止、回合尚未收尾（按钮显示「停止中」并禁用）
+    liveTurnStats: null, // 进行中回合的实时快照 { usage, stats, breakdown }（usage 事件写入，收尾清零）
     nextId: 1,
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
     coreError: "",
-    thinking: true, // 思考模式开关（传给 Agent 的 thinking 参数）
+    reasoning: "low", // 推理等级偏好："off" / "low" / "medium" / "high"（无=不思考）
     activeModel: "", // 当前 Agent 使用的模型标识（AI 消息徽标用）
     // 应用与会话
     apps: [],
@@ -222,6 +225,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let activeBubble = null;
   // 本轮对话生成的应用（create_app 工具回调写入），回合结束后校验并出卡片
   let pendingNewApp = null;
+  // 发送时即创建的全新项目 { appName, sid }：首回合用「空项目生成」提示词与
+  // 工具清单（去掉 create_app），回合收尾出预览卡片后清空
+  let freshTurn = null;
   // 本地目录渠道的根目录句柄（挂载后的 DirHandle），非响应式
   let localRootHandle = null;
   // 技能索引（plain 数组，对外经 state.skills 同步）
@@ -368,6 +374,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       onAppCreated: (info) => {
         pendingNewApp = { ...info, mode: lockedMode };
       },
+      // 模型覆写 app.json 时回填项目元数据（fresh 项目创建后的正式命名）；
+      // 覆写 AGENTS.md 时失效缓存 Agent——下一回合重建即读到新版项目规则
+      onFileWrite: (info) => {
+        if (info?.path === "app.json") {
+          syncAppMetaFromDisk(info.appName);
+        } else if (info?.path === "AGENTS.md") {
+          invalidateAgent();
+        }
+      },
       readSkill: (id, path) => readSkillFile(fs, id, path),
       requestForm,
       // 隔离预览调试（preview_* 工具）：推送入口 + dbg 指令通道 + 截图卡片
@@ -378,11 +393,35 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       previewDebug,
       onPreviewShot: pushPreviewShot,
     });
+    // 全新项目首回合：项目已由宿主建好，移除 create_app 并换「空项目生成」提示词
+    const isFresh =
+      !!freshTurn && freshTurn.appName === state.currentAppName;
+    const toolList = Object.values(tools);
+    // 已存在项目：自动读取项目 AGENTS.md 注入系统提示词（harness 常规机制——
+    // 项目规则随会话开始自动生效，不依赖模型自觉去读；尚未写这份文档的新
+    // 项目读不到则不注入，由提示词引导模型按需 read_file）
+    let projectRules = "";
+    if (!isFresh && state.currentAppName) {
+      try {
+        projectRules =
+          (await readAppFile(
+            fs,
+            state.currentAppName,
+            "AGENTS.md",
+            useLocal ? localRootHandle : undefined,
+          )) || "";
+      } catch {
+        projectRules = "";
+      }
+    }
     agent = chainModules.createAgent({
       assistant,
       ...(model ? { model } : {}),
-      thinking: state.thinking,
-      tools: Object.values(tools),
+      thinking: state.reasoning !== "off",
+      ...(state.reasoning !== "off" ? { reasoningEffort: state.reasoning } : {}),
+      tools: isFresh
+        ? toolList.filter((t) => t.name !== "create_app")
+        : toolList,
       // 注入当前应用上下文：已选应用时强制模型先读文件再回答/修改；
       // 同时列出可用技能知识库（read_skill）
       systemPrompt: buildSystemPrompt({
@@ -390,6 +429,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         displayName: state.currentAppDisplay || undefined,
         mode: state.currentAppMode,
         skills: skillIndex,
+        freshProject: isFresh,
+        projectRules,
       }),
       checkpointer,
     });
@@ -578,9 +619,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     invalidateAgent(); // 会话切换后重建 Agent（threadId 变化）
   }
 
-  // 回到「新应用」草稿（写入目标重新可选）；
-  // wipeDraft = true 时连历史草稿一起清空（删光所有应用后的全新开始）
+  // 回到「新应用」草稿（写入目标重新可选）。新流程下草稿桶永远是空的
+  // （用户一开口即建项目），历史遗留的草稿数据一律清除
   async function startDraft(wipeDraft = false) {
+    freshTurn = null; // 离开项目上下文，未消费的首回合标记作废
     setMany({
       currentAppName: "",
       currentAppDisplay: "",
@@ -596,21 +638,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     set("localDirLabel", "");
     invalidateAgent();
     if (selfStore) {
-      if (wipeDraft) {
-        await selfStore.removeItem("chat:draft");
-        await selfStore.removeItem("thread:draft");
-        // 草稿回合进行中被整体清空：中断并丢弃实时桶，避免回合收尾复活已删内容
-        if (turnKey === "chat:draft") {
-          stop();
-          sessionBuckets.delete("chat:draft");
-        }
-        replaceMessages([]);
-      } else if (turnKey === "chat:draft") {
-        projectBucket("chat:draft");
-      } else {
-        const draft = (await selfStore.getItem("chat:draft")) || [];
-        replaceMessages(Array.isArray(draft) ? draft : []);
+      await selfStore.removeItem("chat:draft");
+      await selfStore.removeItem("thread:draft");
+      // 草稿回合进行中被整体清空：中断并丢弃实时桶，避免回合收尾复活已删内容
+      if (turnKey === "chat:draft") {
+        stop();
+        sessionBuckets.delete("chat:draft");
       }
+      replaceMessages([]);
     } else {
       replaceMessages([]);
     }
@@ -644,16 +679,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     syncCurrentFromRegistry(reg);
   }
 
-  /* ---------- 思考模式 ---------- */
+  /* ---------- 推理等级 ---------- */
 
-  // 切换思考模式并持久化偏好；Agent 随开关重建（thinking 参数在创建时注入）
-  async function toggleThinking() {
-    const next = !state.thinking;
-    set("thinking", next);
+  // 切换推理等级（off / low / medium / high）并持久化偏好；Agent 随之重建
+  // （thinking = 等级非 off，reasoningEffort = 等级本身，创建时注入）
+  async function setReasoning(level) {
+    if (!["off", "low", "medium", "high"].includes(level)) return;
+    set("reasoning", level);
     invalidateAgent();
     if (selfStore) {
       try {
-        await selfStore.setItem("pref:thinking", next);
+        await selfStore.setItem("pref:reasoning", level);
       } catch {
         /* 存储失败不影响本次会话 */
       }
@@ -936,10 +972,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const half = Math.floor(n / 2);
     return text.slice(0, half) + "\n…[过长截断]…\n" + text.slice(-half);
   };
+  // user 消息 content 的文本视图：多模态 wire（OpenAI content 数组）取 text 部分
+  // 拼接并标注图片张数，供压缩 transcript 等纯文本场景使用
+  const wireTextOf = (content) => {
+    if (!Array.isArray(content)) return String(content ?? "");
+    const texts = content
+      .filter((p) => p?.type === "text")
+      .map((p) => String(p.text ?? ""));
+    const nImg = content.filter((p) => p?.type === "image_url").length;
+    return texts.join("\n") + (nImg ? `\n[本条含 ${nImg} 张图片]` : "");
+  };
   const buildTranscript = (thread) =>
     thread
       .map((m) => {
-        if (m.role === "user") return `用户：${clip(m.content, 3000)}`;
+        if (m.role === "user") return `用户：${clip(wireTextOf(m.content), 3000)}`;
         if (m.role === "assistant") {
           const calls = (m.tool_calls || [])
             .map(
@@ -1512,6 +1558,19 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           toolCallId: call.id,
         });
       }
+    } else if (ev.type === "usage" && ev.usage) {
+      // 工具循环中间模型调用的实时快照：写进 state.liveTurnStats 供底部
+      // 统计条即时刷新——不 patch 消息，模型不说话直接调工具的步同样有数据；
+      // 最终数值随 done / 停止收尾落到回合末条 AI 消息（页面聚合时消息是
+      // 「既往回合」，live 是「进行中回合」，两边相加不重复）
+      turnUsage = ev.usage;
+      turnStats = ev.stats || null;
+      turnBreakdown = ev.contextBreakdown || null;
+      set("liveTurnStats", {
+        usage: { ...turnUsage },
+        stats: turnStats ? { ...turnStats } : null,
+        breakdown: turnBreakdown ? { ...turnBreakdown } : null,
+      });
     } else if (ev.type === "toolResult") {
       const item = bucketFor(activeKey()).find(
         (m) => m.toolCallId === ev.toolCallId,
@@ -1522,36 +1581,174 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         patchMessage(item.id, { result: ev.result, pending: false });
       }
     } else if (ev.type === "done") {
+      turnUsage = ev.usage || turnUsage;
+      if (ev.stats) turnStats = ev.stats;
+      if (ev.contextBreakdown) turnBreakdown = ev.contextBreakdown;
+      const patch = turnPatchPayload();
       if (activeBubble) {
         if (ev.content) {
           activeBubble.content = ev.content;
-          patchMessage(activeBubble.id, { content: ev.content });
+          patch.content = ev.content;
         }
         // 用响应里的真实模型名回填徽标（随机 assistant 场景 provider 名只是兜底）
         if (ev.model) {
           activeBubble.model = ev.model;
-          patchMessage(activeBubble.id, { model: ev.model });
+          patch.model = ev.model;
         }
-        // 本轮 token 用量（Agent 已跨工具循环累计）随末条 AI 消息落盘
-        if (ev.usage) {
-          activeBubble.usage = ev.usage;
-          patchMessage(activeBubble.id, { usage: ev.usage });
-        }
+        Object.assign(activeBubble, patch);
+        if (Object.keys(patch).length) carryTurnData(activeBubble.id, patch);
       } else if (ev.content || ev.usage) {
         const bubble = newBubble();
         bubble.content = ev.content || "";
         if (ev.model) bubble.model = ev.model;
-        if (ev.usage) bubble.usage = ev.usage;
+        Object.assign(bubble, patch);
         patchMessage(bubble.id, {
           content: bubble.content,
           ...(ev.model ? { model: ev.model } : {}),
-          ...(ev.usage ? { usage: ev.usage } : {}),
+          ...patch,
         });
       }
     }
   }
 
+  // 回合统计/用量 patch 载荷（usage 恒有；stats / contextBreakdown 有则带）
+  function turnPatchPayload() {
+    const patch = {};
+    if (turnUsage) patch.usage = turnUsage;
+    if (turnStats) patch.turnStats = turnStats;
+    if (turnBreakdown) patch.contextBreakdown = turnBreakdown;
+    return patch;
+  }
+
+  // 回合内用量/统计的单一载体：数据落到 carrier 消息，并剥掉本回合其它
+  // assistant 消息上的同类字段（工具循环中途换气泡时防止聚合重复累计）
+  function carryTurnData(carrierId, patch) {
+    for (const m of bucketFor(turnKey)) {
+      if (m.role !== "assistant" || m.id < turnFirstId || m.id === carrierId)
+        continue;
+      if (m.usage || m.turnStats || m.contextBreakdown) {
+        delete m.usage;
+        delete m.turnStats;
+        delete m.contextBreakdown;
+        patchMessage(m.id, {
+          usage: null,
+          turnStats: null,
+          contextBreakdown: null,
+        });
+      }
+    }
+    const carrier = bucketFor(turnKey).find((m) => m.id === carrierId);
+    if (carrier) Object.assign(carrier, patch);
+    patchMessage(carrierId, patch);
+  }
+
   /* ---------- 发送与回合收尾 ---------- */
+
+  // 用户在草稿态发出第一条消息：**立即**创建项目（目录 + 登记 + 切换上下文 +
+  // 首个会话），不等回合结束——中断 / 关页的回合也归属项目，下次进来接着迭代，
+  // 草稿桶不再积攒半成品对话
+  async function createProjectNow(text) {
+    const isLocal = state.storageMode === "local" && !!localRootHandle;
+    // 应用名从请求文本取 slug；中文等取不出时用时间戳兜底（模型稍后会写入
+    // 正式的 app.json，元数据经 syncAppMetaFromDisk 回填）
+    const clean = sanitizeAppName(text) || `app-${Date.now().toString(36)}`;
+    const displayName = String(text || "").trim().slice(0, 24) || clean;
+    await createAppDir(
+      fs,
+      { name: clean, displayName, description: "", icon: "📦" },
+      isLocal ? localRootHandle : undefined,
+    );
+
+    // mazmot 登记：本地句柄必须尽早落库，否则刷新后无法恢复授权
+    if (mazmotStore) {
+      try {
+        await registerAppRecord(
+          mazmotStore,
+          isLocal
+            ? buildLocalAppRecord({
+                appName: clean,
+                displayName,
+                icon: "📦",
+                handle: localRootHandle,
+              })
+            : buildAppRecord({ appName: clean, displayName, icon: "📦" }),
+        );
+      } catch (err) {
+        console.warn("登记应用记录失败：", err);
+      }
+    }
+
+    // registry + 首个会话；同名项目已存在（如同类需求重建）时并入为新会话
+    const reg = await loadRegistry();
+    const sid = `s${Date.now().toString(36)}`;
+    const hit = reg.find((a) => a.name === clean);
+    const session = {
+      id: sid,
+      title: String(text || "").trim().slice(0, 24) || "新对话",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    if (hit) {
+      hit.mode = isLocal ? "local" : hit.mode;
+      hit.sessions = hit.sessions || [];
+      hit.sessions.push(session);
+    } else {
+      reg.push({
+        name: clean,
+        displayName,
+        icon: "📦",
+        mode: isLocal ? "local" : "vfs",
+        createdAt: Date.now(),
+        sessions: [session],
+      });
+    }
+    await saveRegistry(reg);
+    await reloadApps();
+    await applyApp(hit || reg.find((a) => a.name === clean));
+    set("currentSessionId", sid);
+    syncSessionTitle(reg);
+    freshTurn = { appName: clean, sid };
+  }
+
+  // 模型覆写 app.json 后，用盘上真实元数据回填 registry 与当前视图
+  //（占位的 displayName/icon 在项目创建后很快被正式值替换）
+  async function syncAppMetaFromDisk(appName) {
+    if (!fs) return;
+    try {
+      const isLocal = state.currentAppMode === "local" && !!localRootHandle;
+      const raw = await readAppFile(
+        fs,
+        appName,
+        "app.json",
+        isLocal ? localRootHandle : undefined,
+      );
+      if (!raw) return;
+      const meta = JSON.parse(raw);
+      const reg = await loadRegistry();
+      const hit = reg.find((a) => a.name === appName);
+      if (!hit) return;
+      const display = String(meta.displayName || "").trim();
+      const icon = String(meta.icon || "").trim();
+      let changed = false;
+      if (display && display !== hit.displayName) {
+        hit.displayName = display;
+        changed = true;
+      }
+      if (icon && icon !== hit.icon) {
+        hit.icon = icon;
+        changed = true;
+      }
+      if (!changed) return;
+      await saveRegistry(reg);
+      await reloadApps();
+      if (state.currentAppName === appName) {
+        set("currentAppDisplay", hit.displayName || appName);
+        set("currentAppIcon", hit.icon || "📦");
+      }
+    } catch (err) {
+      console.warn("回填项目元数据失败：", err);
+    }
+  }
 
   // 发送前确保落点就绪：草稿需本地句柄；已选应用需会话（无则自动新建）
   async function prepareContext(text) {
@@ -1565,7 +1762,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       // 选中的目录是既有项目：chooseLocalDir 已自动导入并切换应用，
       // 不返回草稿，继续走下方既有应用的会话准备流程
-      if (state.currentAppName === "") return "draft";
+      if (state.currentAppName === "") {
+        // 用户一开口即建项目（方案定稿：项目存在先于对话结束）
+        await createProjectNow(text);
+        return `${state.currentAppName}:${state.currentSessionId}`;
+      }
     }
     if (state.currentSessionId === "") {
       const reg = await loadRegistry();
@@ -1617,6 +1818,38 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const chatKey = threadId === "draft" ? "chat:draft" : `chat:${threadId}`;
     // 会话桶已在中途被删除（删除会话/应用时丢弃实时桶）：跳过落盘
     if (!sessionBuckets.has(chatKey)) return;
+
+    // 发送时即创建的全新项目：首回合结束出预览卡片（卡片须在快照前入桶，
+    // 随会话一起落盘；中断 / 出错的回合同样出卡——项目与文件现状如实呈现）
+    if (freshTurn && threadId === `${freshTurn.appName}:${freshTurn.sid}`) {
+      freshTurn = null;
+      // 首回合的「空项目生成」agent 到此为止：重建后后续回合换常规
+      // 「已存在应用」提示词与完整工具清单
+      invalidateAgent();
+      const isLocal = state.currentAppMode === "local" && !!localRootHandle;
+      let check = { ready: false, missing: [] };
+      try {
+        check = await validateApp(
+          fs,
+          state.currentAppName,
+          isLocal ? localRootHandle : undefined,
+        );
+      } catch (err) {
+        console.warn("校验新项目失败：", err);
+      }
+      pushMessage({
+        id: state.nextId++,
+        role: "app",
+        appName: state.currentAppName,
+        displayName: state.currentAppDisplay,
+        icon: state.currentAppIcon,
+        mode: state.currentAppMode,
+        ready: check.ready,
+        missing: check.missing,
+        newGroup: false,
+      });
+    }
+
     const plain = bucketFor(chatKey).map((m) => ({ ...m }));
 
     // 本轮创建了新应用：草稿会话迁移为该应用的第一个会话
@@ -1896,12 +2129,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 发送主流程：落点准备 → 用户消息入列 → Agent 流式对话 → 回合收尾
-  // currentAbort：本轮的中止信号；stop() 触发后 Agent 对话被中断，
-  // 已产生的流式内容保留，回合照常收尾落盘（下次发送继续同一 thread）
+  // currentAbort：本轮的中止信号；stop() 触发后置位并 abort 在途模型请求，
+  // Agent 对话被中断，已产生的流式内容保留，回合照常收尾落盘（下次发送继续
+  // 同一 thread）；turnUsage 暂存本轮最近一次模型调用的用量（停止收尾补挂）
   let currentAbort = null;
+  let currentAbortCtrl = null;
+  let turnUsage = null; // 本回合最近一次模型调用的用量快照（停止收尾补挂用）
+  let turnStats = null; // 本回合执行统计快照（步数/模型用时/工具用时/TTFT/TPS 分母）
+  let turnBreakdown = null; // 本回合上下文构成估算快照（系统提示词/工具定义/对话消息）
+  let turnFirstId = 0; // 本回合第一条消息的 id 基线（单载体剥离只看本回合消息）
 
-  async function send(text) {
+  /**
+   * 发送一条用户消息（可带图片，多模态）。
+   * @param {string} text 文本内容（纯图片消息可为空串）
+   * @param {string[]} images 图片 dataURL 列表（data:image/*；随消息持久化，
+   *        wire 侧组装为 OpenAI content 数组——text + image_url 混排，由
+   *        supplier 层原样透传给支持视觉的模型）
+   */
+  async function send(text, images = []) {
+    const body = String(text ?? "").trim();
+    const imgs = (Array.isArray(images) ? images : []).filter(
+      (s) => typeof s === "string" && s.startsWith("data:image/"),
+    );
     if (state.sending) return;
+    if (!body && !imgs.length) return;
     if (!fs) {
       set("keyError", state.coreError);
       return;
@@ -1909,7 +2160,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
     let threadId;
     try {
-      threadId = await prepareContext(text);
+      threadId = await prepareContext(body);
     } catch (err) {
       set("keyError", err.message);
       return;
@@ -1925,11 +2176,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     markBusy(turnKey, true);
 
     setMany({ keyError: "" });
-    // 用户消息记录发送时间 ts（聊天区 hover 展示）
+    // 用户消息记录发送时间 ts（聊天区 hover 展示）；图片随消息持久化
     pushMessage({
       id: state.nextId++,
       role: "user",
-      content: text,
+      content: body,
+      ...(imgs.length ? { images: imgs } : {}),
       newGroup: true,
       ts: turnStartAt,
     });
@@ -1952,14 +2204,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 自动压缩：预计本轮输入会突破窗口时，先压缩记忆再开聊（失败不阻塞对话）
     try {
       const info = contextInfo(bucketFor(turnKey));
-      const estimate = info.used + Math.ceil((text.length || 0) / 2) + 64;
+      const estimate = info.used + Math.ceil((body.length || 0) / 2) + 64;
       if (contextWindow > 0 && info.used > 0 && estimate >= contextWindow) {
         await compressThread(turnKey);
       }
     } catch (err) {
       console.warn("自动压缩上下文失败：", err);
     }
-    await driveTurn(threadId, text, [{ role: "user", content: text }]);
+    // wire 侧多模态组装：有图片时 content 为 OpenAI 数组（text 部分仅在有文本
+    // 时包含），无图片保持纯字符串（与历史消息一致）
+    const wireContent = imgs.length
+      ? [
+          ...(body ? [{ type: "text", text: body }] : []),
+          ...imgs.map((url) => ({ type: "image_url", image_url: { url } })),
+        ]
+      : body;
+    await driveTurn(threadId, body, [{ role: "user", content: wireContent }]);
   }
 
   // 驱动一轮 agent 对话循环：流式转发、错误入气泡、收尾（取消挂起表单、
@@ -1967,12 +2227,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   async function driveTurn(threadId, firstUserText, inputMessages) {
     activeBubble = null;
     currentAbort = { stopped: false };
+    currentAbortCtrl = new AbortController();
+    turnUsage = null;
+    turnStats = null;
+    turnBreakdown = null;
     const abort = currentAbort;
+    // 本回合第一条消息的 id 基线：收尾标记（turnMs / stopped / usage）只
+    // patch 本回合内产生的消息，避免误改上一回合的末条 AI 消息
+    turnFirstId = state.nextId;
     try {
       await agent.chat({
         messages: inputMessages,
         threadId,
         stream: true,
+        signal: currentAbortCtrl.signal,
         onStream: (ev) => {
           if (abort.stopped) throw new Error("已停止生成");
           handleStreamEvent(ev);
@@ -1988,16 +2256,35 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } finally {
       activeBubble = null;
       currentAbort = null;
+      currentAbortCtrl = null;
+      set("stopRequested", false);
+      // 先清实时快照再落终值：避免「消息终值 + live」叠加的瞬时双计
+      set("liveTurnStats", null);
       cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
-      // 本轮耗时 patch 到回合末条 AI 消息（ai-foot 右侧展示；须在 finishTurn
-      // 落盘前 patch，随会话桶一起持久化）
+      // 本轮耗时 / 手动停止标记 / 停止与异常收场的实时用量 patch 到回合内
+      // 末条 AI 消息（须在 finishTurn 落盘前 patch，随会话桶一起持久化）
       if (turnStartAt) {
         const lastAi = [...bucketFor(turnKey)]
           .reverse()
-          .find((m) => m.role === "assistant");
-        if (lastAi) patchMessage(lastAi.id, { turnMs: Date.now() - turnStartAt });
+          .find((m) => m.role === "assistant" && m.id >= turnFirstId);
+        if (lastAi) {
+          const patch = { turnMs: Date.now() - turnStartAt };
+          if (abort.stopped) patch.stopped = true;
+          // 停止 / 异常收场（步数上限、网络错误…）没有 done 事件把终值落到
+          // 消息，这里统一把累计的实时快照补上，否则统计胶囊整轮消失；
+          // 正常完成时 lastAi.usage 已有值，守卫自动跳过不重复累计
+          if (turnUsage && !lastAi.usage) patch.usage = turnUsage;
+          if (turnStats && !lastAi.turnStats) patch.turnStats = turnStats;
+          if (turnBreakdown && !lastAi.contextBreakdown) {
+            patch.contextBreakdown = turnBreakdown;
+          }
+          patchMessage(lastAi.id, patch);
+        }
       }
+      turnUsage = null;
+      turnStats = null;
+      turnBreakdown = null;
       await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
@@ -2007,10 +2294,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 停止当前生成：中断流式回调链，已生成内容保留并照常落盘。
-  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回
+  // 停止当前生成：置位中止信号 + abort 在途模型请求（不必等下一个流式
+  // 事件，模型长流式 / 工具执行中点击都能尽快中断），已生成内容保留并照常
+  // 落盘收尾（耗时 / 用量 / stopped 标记见 driveTurn 收尾）。
+  // 视觉表单挂起中（Agent 在等用户提交）时一并取消，工具以 cancelled 返回；
+  // stopRequested 供按钮显示「停止中」并防重复点击
   function stop() {
-    if (currentAbort) currentAbort.stopped = true;
+    if (!currentAbort || currentAbort.stopped) return;
+    currentAbort.stopped = true;
+    set("stopRequested", true);
+    try {
+      currentAbortCtrl?.abort();
+    } catch {}
     cancelPendingForm("用户停止了生成");
   }
 
@@ -2154,7 +2449,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       turnKey = null;
       turnStartAt = 0;
       markBusy(null);
-      setMany({ sending: false, turnStartTs: 0, keyError: err.message });
+      setMany({
+        sending: false,
+        stopRequested: false,
+        liveTurnStats: null,
+        turnStartTs: 0,
+        keyError: err.message,
+      });
     }
   }
 
@@ -2217,11 +2518,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         });
       } catch (_) {}
     })();
-    // 恢复思考模式偏好
+    // 恢复推理等级偏好（无记录时从旧版思考模式开关迁移：开=low，关=off）
     if (selfStore) {
       try {
-        const pref = await selfStore.getItem("pref:thinking");
-        if (typeof pref === "boolean") set("thinking", pref);
+        let level = await selfStore.getItem("pref:reasoning");
+        if (!["off", "low", "medium", "high"].includes(level)) {
+          const legacy = await selfStore.getItem("pref:thinking");
+          level = legacy === false ? "off" : "low";
+        }
+        set("reasoning", level);
       } catch {
         /* 忽略 */
       }
@@ -2338,7 +2643,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         msgEvent({ op: "patch", id, patch: { open: item.open } });
       }
     },
-    toggleThinking,
+    setReasoning,
     toggleReasoning(id) {
       const item = bucketFor(viewKey()).find((m) => m.id === id);
       if (item) {

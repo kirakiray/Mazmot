@@ -372,6 +372,64 @@
     .dlg-narrow::part(panel) {
       width: min(360px, 100%);
     }
+
+    /* 方块视图（网格） */
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+    }
+    .grid-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 20px 8px 12px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface);
+      border: 1px solid var(--md-sys-color-outline-variant);
+      cursor: pointer;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .grid-card:hover {
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .grid-card .grid-icon {
+      font-size: 36px;
+      line-height: 1;
+    }
+    .grid-card .grid-name {
+      max-width: 100%;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .grid-card .grid-opened {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--md-sys-color-primary);
+    }
+    /* hover 时浮出的「新窗口打开」按钮 */
+    .grid-card .window-btn {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+    .grid-card:hover .window-btn {
+      opacity: 1;
+    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
@@ -500,6 +558,13 @@
         </st-button>
         <st-icon-button
           style="font-size: 13px"
+          on:click="toggleViewMode"
+          attr:title="viewMode === 'grid' ? t('listViewTitle') : t('gridViewTitle')"
+        >
+          <n-icon attr:icon="viewMode === 'grid' ? 'mdi:format-list-bulleted' : 'mdi:view-grid-outline'"></n-icon>
+        </st-icon-button>
+        <st-icon-button
+          style="font-size: 13px"
           on:click="handleSettings"
           attr:title="t('settingsTitle')"
         >
@@ -571,7 +636,7 @@
           </o-fill>
         </st-list>
       </o-if>
-      <o-if :value="appList.length > 0">
+      <o-if :value="appList.length > 0 && viewMode === 'list'">
         <st-list>
           <!-- key 不能用 appId：官方应用不带 appId（空值互相冲突，导致
                新装应用顶替旧列表项、删除后渲染错乱）；_recordName 即 apps
@@ -803,6 +868,28 @@
           </o-fill>
         </st-list>
       </o-if>
+      <!-- 方块视图：点击方块新标签打开，hover 出现「新窗口打开」按钮 -->
+      <o-if :value="appList.length > 0 && viewMode === 'grid'">
+        <div class="app-grid">
+          <o-fill :value="appList" fill-key="_recordName">
+            <div class="grid-card" on:click="$host.handleOpenTab($event, $data)">
+              <o-if :value="$data.opened">
+                <span class="grid-opened" attr:title="$host.t('openedTitle')"></span>
+              </o-if>
+              <span class="grid-icon">{{$data.icon}}</span>
+              <span class="grid-name">{{$data.name}}</span>
+              <st-icon-button
+                class="icon-btn window-btn"
+                style="font-size: 13px"
+                on:click="$host.handleOpenWindow($event, $data)"
+                attr:title="$host.t('openWindowTitle')"
+              >
+                <n-icon icon="mdi:open-in-new"></n-icon>
+              </st-icon-button>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
       <o-if :value="appList.length === 0">
         <o-if :value="installingItems.length === 0">
           <div class="empty">
@@ -880,6 +967,8 @@
       settingsTitle: getLocaleText({ cn: "设置", en: "Settings" }),
       installingBadgeTitle: getLocaleText({ cn: "正在从应用市场安装", en: "Installing from the App Market" }),
       retryInstallTitle: getLocaleText({ cn: "重试安装", en: "Retry install" }),
+      gridViewTitle: getLocaleText({ cn: "切换为方块视图", en: "Switch to grid view" }),
+      listViewTitle: getLocaleText({ cn: "切换为列表视图", en: "Switch to list view" }),
       navGeneral: getLocaleText({ cn: "常规", en: "General" }),
       navUser: getLocaleText({ cn: "用户信息", en: "User Info" }),
       navCerts: getLocaleText({ cn: "凭证管理", en: "Credentials" }),
@@ -1027,6 +1116,7 @@
           installingItems: [],
           shareDialogOpen: false,
           shareUrl: "",
+          viewMode: "list",
           settingsOpen: false,
           settingsTab: "general",
           settingsTabs: [
@@ -1116,6 +1206,11 @@
           // 打开设置弹窗
           handleSettings() {
             this.settingsOpen = true;
+          },
+
+          // 切换列表 / 方块视图
+          toggleViewMode() {
+            this.viewMode = this.viewMode === "grid" ? "list" : "grid";
           },
 
           // 设置弹窗左侧导航切换

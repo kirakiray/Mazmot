@@ -287,7 +287,9 @@
 
               const checks = {
                 backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
-                packed: res.files === 3 && res.bytes > 0,
+                // createAppDir 预写 4 份文档骨架（AGENTS/CONTEXT/MEMORY/
+                // pitfalls/README）+ app.json + 本用例写的 2 个文件 = 7
+                packed: res.files === 7 && res.bytes > 0,
                 listed: list.length === 1 && list[0].id === res.id,
                 noNodeModules: !(
                   await listVirtualPaths(await root.get("demo/backup"))
@@ -325,11 +327,19 @@
                   (f) => f.path === "index.html" && f.text === "<html></html>",
                 );
               checks.curFilesSorted =
-                // collectClientFiles 排序后 app.json 恒在首位（此前断言误写为
-                // index.html，与实现从未一致，全量跑测试时才暴露）
-                curFiles[0].path === "app.json" &&
-                curFiles[1].path === "index.html" &&
-                curFiles[2].path === "pages/home.html";
+                // collectClientFiles 按纯字典序排序（备份指纹要稳定即可，
+                // 无 app.json 优先规则）：大写开头的文档骨架（AGENTS/CONTEXT/
+                // MEMORY）排在 app.json 等小写路径前面，整体清单比对锁定
+                curFiles.map((f) => f.path).join("\n") ===
+                [
+                  "AGENTS.md",
+                  "CONTEXT.md",
+                  "MEMORY.md",
+                  "app.json",
+                  "index.html",
+                  "pages/home.html",
+                  "pitfalls/README.md",
+                ].join("\n");
               checks.backupFiles =
                 bFiles.length === res3.files &&
                 bFiles.some(
@@ -371,18 +381,170 @@
             const checks = {
               draftPlain: !draft.includes("当前上下文"),
               appInjected: withApp.includes("todo-app") && withApp.includes("番茄钟"),
-              mustReadFirst: withApp.includes("必须先调用 list_files"),
-              mustReadDocs:
-                withApp.includes("AGENTS.md、CONTEXT.md 和 app.json") &&
-                withApp.includes("严格遵守其中约定") &&
-                withApp.includes("同步更新 CONTEXT.md"),
+              appReadingOrder:
+                withApp.includes("先 `read_file` 读 CONTEXT.md") &&
+                withApp.includes("再读 MEMORY.md") &&
+                withApp.includes("踩坑索引") &&
+                withApp.includes("禁止凭猜测"),
+              appFollowsAgents: withApp.includes("严格遵守项目 AGENTS.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
+              // 存储示例教工厂参数 load，且不再出现 lm(import.meta)
+              // （页面模块内 lm(import.meta) 因 data: URL 模块必崩，实测踩坑）
+              storagePattern:
+                draft.includes("export default async ({ load }) =>") &&
+                draft.includes('load("/nos/storage/main.js")') &&
+                !draft.includes("const load = lm(import.meta)"),
+              // 页面加载失败 / shadow DOM 取证捷径进基础提示词
+              shadowDomProbe: draft.includes("shadowRoot.textContent"),
+              // 工作流程的文档体系：宿主预写四份骨架 → 模型填充、不留占位
+              docsSystem:
+                draft.includes(
+                  "AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md",
+                ) &&
+                draft.includes("踩坑索引") &&
+                draft.includes("不要重写") &&
+                draft.includes("不能留着占位交差"),
+              // fresh 分支：告知整套骨架已预写、AGENTS.md 不重写
+              freshSeededDocs: buildSystemPrompt({
+                appName: "todo-app",
+                freshProject: true,
+              }).includes("已预写好整套文档骨架"),
+              // 已存在应用：读到骨架占位 / 缺失文档时先补齐再干活
+              appSkeletonBackfill:
+                withApp.includes("骨架占位") && withApp.includes("补齐"),
+              // 项目规则（AGENTS.md）自动注入：有则整节注入、无则不出现该节
+              rulesInjected: buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "# 项目规范\n- 禁止使用 localStorage",
+              }).includes("已自动加载，必须遵守"),
+              rulesClipped: buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "x".repeat(8000),
+              }).includes("已截断"),
+              rulesAbsentWhenEmpty: !buildSystemPrompt({
+                appName: "todo-app",
+                projectRules: "",
+              }).includes("已自动加载"),
+              // fresh（空项目）分支不注入规则节（项目还没有 AGENTS.md 可读）
+              freshNoRules: !buildSystemPrompt({
+                appName: "todo-app",
+                freshProject: true,
+                projectRules: "# 规则",
+              }).includes("已自动加载"),
+              // 工作流程闭环要点进基础提示词
+              loopChecklist:
+                draft.includes("尽早首跑") &&
+                draft.includes("先取证再改") &&
+                draft.includes("卡住就求助") &&
+                draft.includes("完成标准"),
+              // 旧项目（没有 AGENTS.md）：提示词内嵌通用模板让模型一次性补建
+              legacyTemplate:
+                buildSystemPrompt({ appName: "old-app" }).includes(
+                  "AGENTS.md 创建",
+                ) &&
+                buildSystemPrompt({ appName: "old-app" }).includes(
+                  "# AGENTS.md — <项目名>",
+                ),
             };
             return {
               assert: Object.values(checks).every(Boolean),
               content: { checks },
             };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAppDir 预写整套文档骨架（缺失才写，定制不被覆盖重建冲掉）">
+      <template>
+        <script type="module">
+          import { createAppDir, writeAppFile } from "../lib/builder.js";
+          import {
+            createVirtualDir,
+            readVirtualFile,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              await createAppDir(fsFake, { name: "Demo App", displayName: "演示" });
+              const seededAgents = await readVirtualFile(
+                root,
+                "demo-app/client/AGENTS.md",
+              );
+              const seededContext = await readVirtualFile(
+                root,
+                "demo-app/client/CONTEXT.md",
+              );
+              const seededMemory = await readVirtualFile(
+                root,
+                "demo-app/client/MEMORY.md",
+              );
+              const seededPitfalls = await readVirtualFile(
+                root,
+                "demo-app/client/pitfalls/README.md",
+              );
+
+              // 定制后同名覆盖重建：已有文档保留定制内容（app.json 照常覆盖）
+              await writeAppFile(
+                fsFake,
+                "demo-app",
+                "AGENTS.md",
+                "# AGENTS.md — 定制版\n- 特有规则",
+              );
+              await writeAppFile(
+                fsFake,
+                "demo-app",
+                "CONTEXT.md",
+                "# CONTEXT.md — 定制版",
+              );
+              await createAppDir(fsFake, { name: "demo-app", displayName: "重建" });
+              const kept = await readVirtualFile(
+                root,
+                "demo-app/client/AGENTS.md",
+              );
+              const keptContext = await readVirtualFile(
+                root,
+                "demo-app/client/CONTEXT.md",
+              );
+
+              const checks = {
+                seededAgentsTitle: (seededAgents || "").startsWith(
+                  "# AGENTS.md — 演示",
+                ),
+                seededAgentsSections:
+                  !!seededAgents &&
+                  seededAgents.includes("## 记忆体规则") &&
+                  seededAgents.includes("## 踩坑库规则") &&
+                  seededAgents.includes("## 文档同步规则") &&
+                  seededAgents.includes("## 完成标准"),
+                seededGeneric:
+                  !(seededAgents || "").includes("拍立得") &&
+                  !(seededContext || "").includes("拍立得"),
+                seededContextSkeleton:
+                  !!seededContext &&
+                  seededContext.includes("<!-- skeleton") &&
+                  seededContext.includes("## 踩坑索引") &&
+                  seededContext.includes("| 编号 | 标题 | 文件 |"),
+                seededMemorySkeleton:
+                  !!seededMemory &&
+                  seededMemory.includes("<!-- skeleton") &&
+                  seededMemory.includes("暂无记录"),
+                seededPitfallsReadme:
+                  !!seededPitfalls && seededPitfalls.includes("一坑一文件"),
+                customPreservedOnRebuild:
+                  kept === "# AGENTS.md — 定制版\n- 特有规则",
+                customContextPreserved: keptContext === "# CONTEXT.md — 定制版",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
           }
         </script>
       </template>
@@ -700,7 +862,8 @@
               }
 
               const checks = {
-                restored: restored.restored && restored.files === 3,
+                // app.json + 预写的 4 份文档骨架 + index.html + pages/home.html = 7
+                restored: restored.restored && restored.files === 7,
                 reverted: v1 === "<html>v1</html>",
                 extraRemoved: extraGone === null,
                 pageBack: page === "<template page>v1</template>",
@@ -921,6 +1084,503 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, meta, afterIds: st.currentAppSessions.map((s) => s.id) },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="回合实时用量与手动停止：usage 中途落位 / stopped 标记 / stop 防重复">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [],
+                  },
+                ],
+              });
+              // 伪造 chain：chat 脚本化——先推文本与 usage 中间事件，然后挂起，
+              // 直到 signal abort 才以 AbortError 拒绝（模拟模型长流式中被停止）
+              const scriptedChat = ({ onStream, signal }) =>
+                new Promise((resolve, reject) => {
+                  onStream({ type: "text", delta: "先干一半" });
+                  onStream({
+                    type: "usage",
+                    usage: {
+                      prompt_tokens: 4800,
+                      completion_tokens: 200,
+                      total_tokens: 5000,
+                      context_tokens: 5000,
+                    },
+                    stats: {
+                      steps: 1,
+                      llmMs: 120,
+                      toolMs: 0,
+                      ttftMs: 40,
+                      ttftSteps: 1,
+                      decodeMs: 80,
+                      decodeTokens: 200,
+                    },
+                    contextBreakdown: {
+                      systemTokens: 100,
+                      toolsTokens: 200,
+                      messageTokens: 4700,
+                    },
+                  });
+                  const onAbort = () =>
+                    reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+                  if (signal?.aborted) return onAbort();
+                  signal?.addEventListener("abort", onAbort, { once: true });
+                });
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: {}, // 仅需真值让 send 放行；本用例不触达真实 fs 方法
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async (path) => {
+                  if (String(path).includes("/mz/ai/chain/main.js")) {
+                    return {
+                      tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                      createAgent: () => ({ chat: scriptedChat }),
+                    };
+                  }
+                  return aiFake;
+                },
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 未发送时点停止：无活动回合，应静默无副作用
+              store.stop();
+              const idleNoop = store.state.stopRequested === false;
+
+              const sendP = store.send("做个番茄钟");
+              // 等中间 usage 事件写进 live 快照（统计条的数据源）；
+              // 进行中的回合不 patch 消息（终值等 done / 停止收尾才落）
+              let live = null;
+              for (let i = 0; i < 150; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+                live = store.state.liveTurnStats;
+                if (live?.usage?.context_tokens === 5000) break;
+              }
+              const midMsg = [...store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const liveSnapshot = live?.usage?.context_tokens === 5000;
+              const notOnMessageMidTurn = !midMsg?.usage;
+              const sendingMid = store.state.sending === true;
+
+              // 停止：置位 stopRequested；重复点击无副作用
+              store.stop();
+              const stopFlag = store.state.stopRequested === true;
+              store.stop();
+              const stopFlagStable = store.state.stopRequested === true;
+              await sendP;
+
+              const st = store.state;
+              const persisted =
+                (await fakeStore.getItem(`chat:demo:${st.currentSessionId}`)) || [];
+              const lastPersistAi = [...persisted]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const checks = {
+                idleNoop,
+                liveSnapshot,
+                notOnMessageMidTurn,
+                sendingMid,
+                stopFlag,
+                stopFlagStable,
+                finishedIdle: st.sending === false && st.stopRequested === false,
+                liveCleared: st.liveTurnStats === null,
+                stoppedMarked: lastPersistAi?.stopped === true,
+                turnMsRecorded: typeof lastPersistAi?.turnMs === "number" && lastPersistAi.turnMs >= 0,
+                usageKept: lastPersistAi?.usage?.context_tokens === 5000,
+                statsRecorded: lastPersistAi?.turnStats?.steps === 1,
+                breakdownRecorded: lastPersistAi?.contextBreakdown?.messageTokens === 4700,
+                contentKept: !!midMsg?.content,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, lastPersistAi },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="回合异常收场也落统计：错误入气泡 / 累计用量照常落末条 AI 消息">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const errFakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo-err",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [],
+                  },
+                ],
+              });
+              // 伪造 chain：chat 先推文本与 usage 中间事件，然后直接抛错——
+              // 模拟工具循环步数上限等异常收场（无 done 事件、无手动停止），
+              // 收尾必须把累计用量补落到回合末条 AI 消息，统计胶囊不能消失
+              const errChat = async ({ onStream }) => {
+                onStream({ type: "text", delta: "跑了很多步" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    prompt_tokens: 7800,
+                    completion_tokens: 900,
+                    total_tokens: 8700,
+                    context_tokens: 8700,
+                  },
+                  stats: {
+                    steps: 80,
+                    llmMs: 240000,
+                    toolMs: 24009,
+                    ttftMs: 40,
+                    ttftSteps: 1,
+                    decodeMs: 200000,
+                    decodeTokens: 900,
+                  },
+                  contextBreakdown: {
+                    systemTokens: 100,
+                    toolsTokens: 2000,
+                    messageTokens: 6600,
+                  },
+                });
+                throw new Error("agent 达到工具循环步数上限 80（防失控保护）");
+              };
+              const errAi = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const errStore = createBuilderStore({
+                fs: {}, // 仅需真值让 send 放行；本用例不触达真实 fs 方法
+                mazmotStore: null,
+                selfStore: errFakeStore,
+                load: async (path) => {
+                  if (String(path).includes("/mz/ai/chain/main.js")) {
+                    return {
+                      tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                      createAgent: () => ({ chat: errChat }),
+                    };
+                  }
+                  return errAi;
+                },
+              });
+              await errStore.init({});
+              await errStore.selectApp("demo-err");
+              await errStore.send("写一个简单的hello world");
+
+              const st = errStore.state;
+              const persistedErr =
+                (await errFakeStore.getItem(
+                  `chat:demo-err:${st.currentSessionId}`,
+                )) || [];
+              const lastErrAi = [...persistedErr]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const checks = {
+                finishedIdle:
+                  st.sending === false && st.stopRequested === false,
+                liveCleared: st.liveTurnStats === null,
+                errorInBubble: (lastErrAi?.content || "").includes(
+                  "出错了：agent 达到工具循环步数上限",
+                ),
+                notManualStop: lastErrAi?.stopped !== true,
+                turnMsRecorded:
+                  typeof lastErrAi?.turnMs === "number" &&
+                  lastErrAi.turnMs >= 0,
+                usageKept: lastErrAi?.usage?.context_tokens === 8700,
+                statsRecorded: lastErrAi?.turnStats?.steps === 80,
+                breakdownRecorded:
+                  lastErrAi?.contextBreakdown?.messageTokens === 6600,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, lastErrAi },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="草稿发送即建项目：中断归属项目 / 草稿不积攒 / fresh 提示词与 create_app 过滤">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualDir,
+            createVirtualStorage,
+            seedVirtualFiles,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              // 脚本化 chain：捕获 createAgent 参数；chat 第一轮挂起等 abort
+              //（模拟生成中被停止），第二轮直接完成（同会话继续迭代）
+              const agentCalls = [];
+              let callN = 0;
+              const chat = async ({ onStream, signal }) => {
+                callN++;
+                if (callN === 1) {
+                  onStream({ type: "text", delta: "开始生成" });
+                  return new Promise((_, reject) => {
+                    const onAbort = () =>
+                      reject(
+                        Object.assign(new Error("aborted"), { name: "AbortError" }),
+                      );
+                    if (signal?.aborted) return onAbort();
+                    signal?.addEventListener("abort", onAbort, { once: true });
+                  });
+                }
+                onStream({ type: "text", delta: "继续生成" });
+                return {
+                  content: "继续生成",
+                  usage: {
+                    prompt_tokens: 100,
+                    completion_tokens: 20,
+                    total_tokens: 120,
+                    context_tokens: 120,
+                  },
+                  stats: {
+                    steps: 1,
+                    llmMs: 30,
+                    toolMs: 0,
+                    ttftMs: 10,
+                    ttftSteps: 1,
+                    decodeMs: 20,
+                    decodeTokens: 20,
+                  },
+                  toolCalls: [],
+                };
+              };
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: (opts) => {
+                  agentCalls.push({
+                    systemPrompt: opts.systemPrompt || "",
+                    tools: (opts.tools || []).map((t) => t.name),
+                  });
+                  return { chat };
+                },
+              };
+              const aiFake = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 草稿态发送首条消息：项目应立即建立（不等回合结束）
+              const sendP = store.send("做个番茄钟应用");
+              let appName = "";
+              for (let i = 0; i < 200 && !appName; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+                appName = store.state.currentAppName;
+              }
+              await new Promise((r) => setTimeout(r, 60)); // 等登记落盘
+              const sid = store.state.currentSessionId;
+              const reg = (await fakeStore.getItem("apps-registry")) || [];
+              const regHit = reg.find((a) => a.name === appName);
+              const call1 = agentCalls[0] || { systemPrompt: "", tools: [] };
+              const midChecks = {
+                projectCreated: /^app-/.test(appName), // 中文取不出 slug，时间戳兜底
+                displayFromText: store.state.currentAppDisplay === "做个番茄钟应用",
+                registryWithSession:
+                  !!regHit && regHit.sessions?.length === 1 && regHit.sessions[0].id === sid,
+                mazmotRegistered: ((await mazmotStore.getItem("apps")) || []).some(
+                  (a) => a.name === appName,
+                ),
+                freshPrompt: call1.systemPrompt.includes("空项目"),
+                createAppFiltered: !call1.tools.includes("create_app"),
+                viewFollowsProject: store.state.messages.length > 0, // 用户消息已进新会话视图
+              };
+
+              // 中断：项目与会话保留（这正是本次要修的场景）
+              store.stop();
+              await sendP;
+              const persisted =
+                (await fakeStore.getItem(`chat:${appName}:${sid}`)) || [];
+              const card = persisted.find((m) => m.role === "app");
+              const draftChat = await fakeStore.getItem("chat:draft");
+              const draftThread = await fakeStore.getItem("thread:draft");
+              const stopChecks = {
+                projectKept: store.state.currentAppName === appName,
+                cardPushed: !!card,
+                draftChatGone: draftChat === null || draftChat?.length === 0,
+                draftThreadGone: draftThread === null || draftThread?.length === 0,
+              };
+
+              // 同会话继续第二回合：fresh 标记已清、agent 重建为常规提示词、
+              // 会话不重复。先往项目里写一份 AGENTS.md：第二回合的提示词应
+              // 自动注入这份项目规则（不依赖模型自觉去读）
+              await seedVirtualFiles(root, {
+                [`${appName}/client/AGENTS.md`]:
+                  "# 项目规范\n- 本项目禁止使用 localStorage",
+              });
+              const nAgents = agentCalls.length;
+              await store.send("继续");
+              const reg2 = (await fakeStore.getItem("apps-registry")) || [];
+              const hit2 = reg2.find((a) => a.name === appName);
+              const call2 = agentCalls[agentCalls.length - 1] || {
+                systemPrompt: "",
+                tools: [],
+              };
+              const contChecks = {
+                sameSession: store.state.currentSessionId === sid,
+                sessionNotDuplicated: hit2?.sessions?.length === 1,
+                agentRebuilt: agentCalls.length === nAgents + 1,
+                turn2NormalPrompt:
+                  !call2.systemPrompt.includes("空项目") &&
+                  call2.systemPrompt.includes("已存在的应用"),
+                turn2HasCreateApp: call2.tools.includes("create_app"),
+                turn2RulesAutoLoaded:
+                  call2.systemPrompt.includes("已自动加载，必须遵守") &&
+                  call2.systemPrompt.includes("禁止使用 localStorage"),
+                turn1NoRules: !call1.systemPrompt.includes("已自动加载"),
+                idleAfterTurn2: store.state.sending === false,
+              };
+              const checks = { ...midChecks, ...stopChecks, ...contChecks };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, appName, agentCalls: agentCalls.length },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="多模态图片消息：wire content 数组 / images 持久化 / 空消息拒绝">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualDir,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const root = createVirtualDir();
+              const fsFake = { init: async () => root };
+
+              // 捕获每次模型调用收到的输入 messages（wire 格式）
+              const chats = [];
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async ({ messages }) => {
+                    chats.push(messages);
+                    return {
+                      content: "收到",
+                      usage: {
+                        prompt_tokens: 10,
+                        completion_tokens: 5,
+                        total_tokens: 15,
+                        context_tokens: 15,
+                      },
+                      toolCalls: [],
+                    };
+                  },
+                }),
+              };
+              const aiFake = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 1) 文本 + 图片：wire content 应为 OpenAI 多模态数组
+              await store.send("看这张图", ["data:image/png;base64,AAAA"]);
+              const appName = store.state.currentAppName;
+              const sid = store.state.currentSessionId;
+              const w1 = chats[0]?.[0]?.content;
+              const persisted =
+                (await fakeStore.getItem(`chat:${appName}:${sid}`)) || [];
+              const userMsg = persisted.find((m) => m.role === "user");
+
+              // 2) 纯图片（无文本）：数组只含 image_url 部分
+              await store.send("", ["data:image/jpeg;base64,BBBB"]);
+              const w2 = chats[1]?.[0]?.content;
+
+              // 3) 空消息拒绝：纯空白 / 空图片表 / 非 data:image/* 前缀均不触发模型调用
+              const nChats = chats.length;
+              await store.send("");
+              await store.send("   ", []);
+              await store.send("", ["https://example.com/a.png"]);
+
+              const checks = {
+                wireIsArray: Array.isArray(w1),
+                textPart: w1?.[0]?.type === "text" && w1?.[0]?.text === "看这张图",
+                imgPart:
+                  w1?.[1]?.type === "image_url" &&
+                  w1?.[1]?.image_url?.url === "data:image/png;base64,AAAA",
+                imageOnlyWire:
+                  Array.isArray(w2) && w2?.length === 1 && w2?.[0]?.type === "image_url",
+                imageOnlyAllowed: chats.length === 2,
+                imagesPersisted:
+                  Array.isArray(userMsg?.images) &&
+                  userMsg.images[0] === "data:image/png;base64,AAAA",
+                userContentText: userMsg?.content === "看这张图",
+                emptyRejected: chats.length === nChats,
+                idle: store.state.sending === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, appName },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

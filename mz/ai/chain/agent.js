@@ -87,7 +87,7 @@ export const createAgent = ({
    * @param {(event: object) => void} [params.onStream] - 事件回调，见 README（text / toolCalls / toolResult / done）
    * @param {string} [params.threadId] - 配合 checkpointer 加载 / 落盘历史
    * @param {AbortSignal} [params.signal] - 取消请求（透传给每次 assistant.chat）
-   * @returns {Promise<{content, reasoningContent, model, usage, toolCalls, messages}>}
+   * @returns {Promise<{content, reasoningContent, model, usage, stats, contextBreakdown, toolCalls, messages}>}
    */
   const chat = async ({
     messages: inputMessages,
@@ -134,6 +134,12 @@ export const createAgent = ({
         usage.prompt_cache_miss_tokens =
           (usage.prompt_cache_miss_tokens ?? 0) + u.prompt_cache_miss_tokens;
       }
+      // 推理 token（DeepSeek/OpenAI 的 completion_tokens_details，仅供应商
+      // 回报时累计，不产生 0 值假象）；「输出（其中推理 X）」明细用
+      const rt = u.completion_tokens_details?.reasoning_tokens;
+      if (rt !== undefined) {
+        usage.reasoning_tokens = (usage.reasoning_tokens ?? 0) + rt;
+      }
       const cached = u.prompt_tokens_details?.cached_tokens;
       if (cached !== undefined) {
         usage.prompt_tokens_details = usage.prompt_tokens_details || {};
@@ -145,11 +151,65 @@ export const createAgent = ({
     let lastModel = "";
     let lastReasoning = "";
 
+    // 本回合的执行统计（模型节点 / 工具节点分别计时，客户端墙上时间）：
+    // steps 模型调用次数；llmMs 模型调用累计耗时；toolMs 工具执行累计耗时；
+    // ttftMs/ttftSteps 首 token 延迟累计与计步（仅流式步有）；decodeMs/decodeTokens
+    // 解码耗时与输出 token 累计（同步计，二者相除即输出速度 TPS）
+    const stats = {
+      steps: 0,
+      llmMs: 0,
+      toolMs: 0,
+      ttftMs: 0,
+      ttftSteps: 0,
+      decodeMs: 0,
+      decodeTokens: 0,
+    };
+    // 上下文构成估算（对齐最近一次模型调用的 provider 报告 context_tokens）：
+    // 系统提示词与工具定义按字符数估算，对话消息取余量；供 UI 做分解展示
+    let contextBreakdown = null;
+
     const toolSignatures = []; // 已执行工具调用签名（isToolLoop 判定用）
     let loopNudged = false; // 已注入循环提醒：下一轮收起工具，逼模型收尾
 
     const emit = (event) => {
       if (onStream) onStream(event);
+    };
+
+    // wire content 字符量估算：多模态（OpenAI content 数组）取 text 部分按字符、
+    // image_url 部分按固定 1200 字符（≈600 token）估；纯字符串原样计数。
+    // 仅用于 provider 未回报 context_tokens 时的兜底估算
+    const wireContentLen = (content) =>
+      Array.isArray(content)
+        ? content.reduce(
+            (n, p) =>
+              n +
+              (p?.type === "text"
+                ? String(p.text ?? "").length
+                : p?.type === "image_url"
+                  ? 1200
+                  : 0),
+            0,
+          )
+        : String(content ?? "").length;
+
+    // 上下文构成估算：system / tools 按字符数 ÷2 估 token，messages 用
+    // provider 报告的总占用扣减余量（无报告时全部按字符估算）
+    const estimateBreakdown = (wireTools, reportedContext) => {
+      const sysTokens = Math.ceil((systemPrompt?.length || 0) / 2);
+      const toolsTokens = wireTools
+        ? Math.ceil(JSON.stringify(wireTools).length / 2)
+        : 0;
+      let messageTokens;
+      if (reportedContext > 0) {
+        messageTokens = Math.max(0, reportedContext - sysTokens - toolsTokens);
+      } else {
+        messageTokens = Math.ceil(
+          messages
+            .slice(1)
+            .reduce((n, m) => n + wireContentLen(m.content), 0) / 2,
+        );
+      }
+      return { systemTokens: sysTokens, toolsTokens, messageTokens };
     };
 
     for (let step = 1; step <= maxSteps; step++) {
@@ -159,6 +219,9 @@ export const createAgent = ({
       const currentTools = await resolveTools();
       const wireTools =
         !loopNudged && currentTools.length ? toolsToWire(currentTools) : null;
+      // 计时：本步模型调用墙上时间 + 首 token 延迟（流式时从增量事件取）
+      const stepStart = Date.now();
+      let firstTokenAt = null;
       const res = await assistant.chat({
         model,
         thinking,
@@ -174,6 +237,7 @@ export const createAgent = ({
             ? (data) => {
                 // 文本/思考增量原样转发（字段与 assistant.chat 的 onStream 一致）
                 if (data.done || (!data.delta && !data.deltaReasoning)) return;
+                if (firstTokenAt === null) firstTokenAt = Date.now();
                 emit({
                   type: "text",
                   delta: data.delta,
@@ -188,6 +252,30 @@ export const createAgent = ({
       lastModel = res.model || lastModel;
       lastReasoning = res.reasoningContent || lastReasoning;
       addUsage(res.usage);
+
+      // 统计本步：模型耗时 / 首 token 延迟 / 解码速度分母（输出 token 只累计
+      // 有解码耗时的步，保证 TPS 分子分母同源）
+      const stepEnd = Date.now();
+      stats.steps += 1;
+      stats.llmMs += Math.max(0, stepEnd - stepStart);
+      if (firstTokenAt !== null) {
+        stats.ttftMs += Math.max(0, firstTokenAt - stepStart);
+        stats.ttftSteps += 1;
+        stats.decodeMs += Math.max(0, stepEnd - firstTokenAt);
+        stats.decodeTokens += res.usage?.completion_tokens ?? 0;
+      }
+      contextBreakdown = estimateBreakdown(wireTools, usage.context_tokens);
+
+      // 还会继续工具循环的中间模型调用：推一条实时用量快照，消费方可在
+      // 循环期间更新上下文占用进度（最终回合的完整用量随 done 整体下发）
+      if (res.toolCalls?.length) {
+        emit({
+          type: "usage",
+          usage: { ...usage },
+          stats: { ...stats },
+          contextBreakdown: { ...contextBreakdown },
+        });
+      }
 
       const aiMessage = {
         role: "assistant",
@@ -206,6 +294,10 @@ export const createAgent = ({
           reasoningContent: lastReasoning,
           model: lastModel,
           usage,
+          stats: { ...stats },
+          contextBreakdown: contextBreakdown
+            ? { ...contextBreakdown }
+            : estimateBreakdown(null, usage.context_tokens),
           toolCalls: [],
           messages,
         };
@@ -223,11 +315,13 @@ export const createAgent = ({
         const name = call.function?.name ?? call.name;
         const rawArgs = call.function?.arguments ?? call.args ?? "{}";
         const target = findTool(currentTools, name);
+        const toolStart = Date.now();
         const result = target
           ? await target.invoke(rawArgs)
           : `没有找到工具：${name}（可用工具：${
               currentTools.map((t) => t.name).join(", ") || "无"
             }）`;
+        stats.toolMs += Math.max(0, Date.now() - toolStart);
         messages.push({
           role: "tool",
           content: result,
