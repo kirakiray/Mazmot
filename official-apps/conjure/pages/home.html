@@ -1784,9 +1784,16 @@
           }, 1000);
           // 统计面板的收口：点外部与 Esc 收起（st-menu 的开合/Esc/点外部由组件自理）
           this._docClose = (e) => {
-            const t = e.target;
-            if (!(t instanceof Element)) return;
-            if (t.closest(".stat-anchor")) return;
+            // 页面内容在 shadow DOM 内：document 层事件的 target 已被 retarget
+            // 成宿主元素，closest 从宿主向上永远命中不了 shadow 里的 .stat-anchor
+            // ——面板内任何按下都被误判成「点外部」（面板上选字即关；已开胶囊
+            // 再点先被关、click 的 toggle 又打开，表现为重复弹起）。composed
+            // 事件的内外判定必须走 composedPath（同 senti-ui menu 的坑 #21）
+            if (
+              e.composedPath().some((el) => el.classList?.contains?.("stat-anchor"))
+            ) {
+              return;
+            }
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
           };
