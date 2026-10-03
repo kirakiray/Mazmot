@@ -287,7 +287,9 @@
 
               const checks = {
                 backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
-                packed: res.files === 3 && res.bytes > 0,
+                // createAppDir 预写 4 份文档骨架（AGENTS/CONTEXT/MEMORY/
+                // pitfalls/README）+ app.json + 本用例写的 2 个文件 = 7
+                packed: res.files === 7 && res.bytes > 0,
                 listed: list.length === 1 && list[0].id === res.id,
                 noNodeModules: !(
                   await listVirtualPaths(await root.get("demo/backup"))
@@ -325,11 +327,19 @@
                   (f) => f.path === "index.html" && f.text === "<html></html>",
                 );
               checks.curFilesSorted =
-                // collectClientFiles 排序后 app.json 恒在首位（此前断言误写为
-                // index.html，与实现从未一致，全量跑测试时才暴露）
-                curFiles[0].path === "app.json" &&
-                curFiles[1].path === "index.html" &&
-                curFiles[2].path === "pages/home.html";
+                // collectClientFiles 按纯字典序排序（备份指纹要稳定即可，
+                // 无 app.json 优先规则）：大写开头的文档骨架（AGENTS/CONTEXT/
+                // MEMORY）排在 app.json 等小写路径前面，整体清单比对锁定
+                curFiles.map((f) => f.path).join("\n") ===
+                [
+                  "AGENTS.md",
+                  "CONTEXT.md",
+                  "MEMORY.md",
+                  "app.json",
+                  "index.html",
+                  "pages/home.html",
+                  "pitfalls/README.md",
+                ].join("\n");
               checks.backupFiles =
                 bFiles.length === res3.files &&
                 bFiles.some(
@@ -852,7 +862,8 @@
               }
 
               const checks = {
-                restored: restored.restored && restored.files === 3,
+                // app.json + 预写的 4 份文档骨架 + index.html + pages/home.html = 7
+                restored: restored.restored && restored.files === 7,
                 reverted: v1 === "<html>v1</html>",
                 extraRemoved: extraGone === null,
                 pageBack: page === "<template page>v1</template>",
