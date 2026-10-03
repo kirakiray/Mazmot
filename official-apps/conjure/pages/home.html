@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css" />
+  <link rel="stylesheet" href="./home.css?v=5" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -278,7 +278,7 @@
                     <div class="reasoning-body">{{$data.reasoning}}</div>
                   </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
-                  <o-if :value="$host.hasUsage($data) || $host.canFork() || $host.aiTime($data) !== '' || $data.stopped">
+                  <o-if :value="$host.hasUsage($data) || $host.turnStatsMissing($data) || $host.canFork() || $host.aiTime($data) !== '' || $data.stopped">
                     <div class="ai-foot">
                       <o-if :value="$data.stopped">
                         <span class="ai-stopped" attr:title="'本轮由用户手动停止，已生成内容保留'">
@@ -286,23 +286,26 @@
                           <span>已手动停止</span>
                         </span>
                       </o-if>
-                      <o-if :value="$host.hasUsage($data)">
+                      <o-if :value="$host.hasUsage($data) || $host.turnStatsMissing($data)">
                         <!-- 本轮用量（TurnUsagePanel 同款）：胶囊显示紧凑总量，
-                             点击弹出明细面板（缓存命中 / 未缓存输入 / 缓存读取 / 输出） -->
+                             点击弹出明细面板（缓存命中 / 未缓存输入 / 缓存读取 / 输出）；
+                             回合已收尾但缺用量记录时降级显示「用量缺失」并说明原因 -->
                         <span class="stat-anchor">
                           <button
                             class="stat-pill"
-                            attr:title="'本轮 token 用量（含工具循环的多次模型调用累计），点击查看明细'"
+                            attr:title="$host.turnUsageTitle($data)"
                             on:click="$host.toggleUsagePanel($data.id)"
                           >
                             <n-icon icon="mdi:database-outline"></n-icon>
                             <span>{{$host.turnUsagePillText($data)}}</span>
                           </button>
-                          <span class="stat-panel" class:open="$host.openUsageMsgId === $data.id">
+                          <!-- 对话区面板恒为左对齐（align-left 静态类）：居中
+                               会溢出消息滚动层左缘被裁掉，滚动层宽度视口测量不到 -->
+                          <span class="stat-panel align-left" class:open="$host.openUsageMsgId === $data.id">
                             <span class="stat-panel-head">
                               <n-icon icon="mdi:database-outline"></n-icon>
                               <span class="stat-panel-title">本轮用量</span>
-                              <span class="stat-panel-value">{{$host.fmtTokExact($host.usageTotalOf($data))}} tok</span>
+                              <span class="stat-panel-value">{{$host.turnUsageHeadText($data)}}</span>
                             </span>
                             <span class="stat-rule"></span>
                             <span class="stat-rows">
@@ -318,20 +321,30 @@
                                   ><span class="stat-dd">{{$host.usageCacheHit($data)}}%</span></span
                                 >
                               </o-if>
-                              <span class="stat-row"
-                                ><span class="stat-dt">未缓存输入</span
-                                ><span class="stat-dd">{{$host.fmtTokExact($host.usageUncachedOf($data))}} tok</span></span
-                              >
+                              <o-if :value="$host.hasUsage($data)">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">未缓存输入</span
+                                  ><span class="stat-dd">{{$host.fmtTokExact($host.usageUncachedOf($data))}} tok</span></span
+                                >
+                              </o-if>
                               <o-if :value="$host.usageCacheReadOf($data) > 0">
                                 <span class="stat-row"
                                   ><span class="stat-dt">缓存读取</span
                                   ><span class="stat-dd">{{$host.fmtTokExact($host.usageCacheReadOf($data))}} tok</span></span
                                 >
                               </o-if>
-                              <span class="stat-row"
-                                ><span class="stat-dt">输出</span
-                                ><span class="stat-dd">{{$host.usageOutputText($data)}}</span></span
-                              >
+                              <o-if :value="$host.hasUsage($data)">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">输出</span
+                                  ><span class="stat-dd">{{$host.usageOutputText($data)}}</span></span
+                                >
+                              </o-if>
+                              <o-if :value="$host.turnStatsMissing($data)">
+                                <span class="stat-row"
+                                  ><span class="stat-dt">数据缺失</span
+                                  ><span class="stat-dd">本回合已收尾（耗时 {{$host.fmtDurCompact($data.turnMs)}}），但无用量记录——异常收场 / 早期会话，无法事后恢复</span></span
+                                >
+                              </o-if>
                             </span>
                           </span>
                         </span>
@@ -696,13 +709,14 @@
       <!-- 图片选择器（attach-btn 触发；display:none 而非 hidden 属性，避免被布局样式顶开） -->
       <input id="imgPicker" type="file" accept="image/*" multiple style="display: none" on:change="onPickImages($event)" />
       <!-- 底部统计胶囊（点开明细面板）：会话统计 / Token 用量 / 上下文占用；
-           无数据的胶囊不渲染 -->
+           数据缺失（异常收场 / 早期会话）时降级显示并说明缺了什么，
+           只有完全无记录的空会话才不渲染 -->
       <div class="stats-dock">
-        <o-if :value="statSteps > 0">
+        <o-if :value="statSteps > 0 || statTurns > 0">
           <span class="stat-anchor">
             <button
               class="stat-pill"
-              attr:title="'会话统计：' + statTurns + ' 轮 ' + statSteps + ' 步' + (statTps > 0 ? ' · ' + statTps + ' tok/s' : '')"
+              attr:title="timePillTitle()"
               on:click="toggleStat('time')"
             >
               <n-icon icon="mdi:speedometer"></n-icon>
@@ -739,15 +753,21 @@
                       ><span class="stat-dd">{{statTps}} tok/s</span></span
                     >
                   </o-if>
+                  <o-if :value="statSteps === 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">数据缺失</span
+                      ><span class="stat-dd">本会话无步数与用时记录（异常收场 / 早期会话）</span></span
+                    >
+                  </o-if>
                 </span>
               </span>
           </span>
         </o-if>
-        <o-if :value="usageTotal > 0">
+        <o-if :value="usageTotal > 0 || statMissingTurns > 0">
           <span class="stat-anchor">
             <button
               class="stat-pill"
-              attr:title="'Token 用量：共 ' + fmtTokExact(usageTotal) + ' tok' + (usageCacheRead > 0 ? ' · 缓存命中 ' + cacheHitPct() + '%' : '')"
+              attr:title="usagePillTitle()"
               on:click="toggleStat('usage')"
             >
               <n-icon icon="mdi:database-outline"></n-icon>
@@ -757,7 +777,7 @@
                 <span class="stat-panel-head">
                   <n-icon icon="mdi:database-outline"></n-icon>
                   <span class="stat-panel-title">Token 用量</span>
-                  <span class="stat-panel-value">{{fmtTokExact(usageTotal)}} tok</span>
+                  <span class="stat-panel-value">{{usageHeadText()}}</span>
                 </span>
                 <span class="stat-rule"></span>
                 <span class="stat-rows">
@@ -767,25 +787,35 @@
                       ><span class="stat-dd">{{cacheHitPct()}}%</span></span
                     >
                   </o-if>
-                  <span class="stat-row"
-                    ><span class="stat-dt">未缓存输入</span
-                    ><span class="stat-dd">{{fmtTokExact(usageUncached)}} tok</span></span
-                  >
+                  <o-if :value="usageTotal > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">未缓存输入</span
+                      ><span class="stat-dd">{{fmtTokExact(usageUncached)}} tok</span></span
+                    >
+                  </o-if>
                   <o-if :value="usageCacheRead > 0">
                     <span class="stat-row"
                       ><span class="stat-dt">缓存读取</span
                       ><span class="stat-dd">{{fmtTokExact(usageCacheRead)}} tok</span></span
                     >
                   </o-if>
-                  <span class="stat-row"
-                    ><span class="stat-dt">输出</span
-                    ><span class="stat-dd">{{fmtTokExact(usageOutput)}} tok</span></span
-                  >
+                  <o-if :value="usageTotal > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">输出</span
+                      ><span class="stat-dd">{{fmtTokExact(usageOutput)}} tok</span></span
+                    >
+                  </o-if>
+                  <o-if :value="statMissingTurns > 0">
+                    <span class="stat-row"
+                      ><span class="stat-dt">数据缺失</span
+                      ><span class="stat-dd">{{statMissingTurns}} 个回合无用量记录（异常收场 / 早期会话，无法事后恢复）</span></span
+                    >
+                  </o-if>
                 </span>
               </span>
           </span>
         </o-if>
-        <o-if :value="ctxUsed > 0">
+        <o-if :value="ctxUsed > 0 || ctxUnknown">
           <span class="stat-anchor">
             <button
               class="stat-pill"
@@ -804,14 +834,12 @@
                   attr:stroke-dashoffset="ctxDash"
                 ></circle>
               </svg>
-              <span class="stat-pill-label">{{ctxPct}}%</span>
+              <span class="stat-pill-label">{{ctxPillLabel()}}</span>
             </button>
             <span class="stat-panel" class:open="openStat === 'ctx'">
                 <span class="stat-panel-head">
-                  <span class="stat-panel-title">上下文已用 {{ctxPct}}%</span>
-                  <span class="stat-panel-value"
-                    >~{{fmtTokCompact(ctxUsed)}} / {{ctxWindowText}}</span
-                  >
+                  <span class="stat-panel-title">{{ctxHeadTitle()}}</span>
+                  <span class="stat-panel-value">{{ctxHeadText()}}</span>
                 </span>
                 <span class="stat-bar">
                   <span class="stat-seg seg-sys" :style.width="ctxSegSys + '%'"></span>
@@ -819,6 +847,12 @@
                   <span class="stat-seg seg-msgs" :style.width="ctxSegMsgs + '%'"></span>
                 </span>
                 <span class="stat-rows">
+                  <o-if :value="ctxUnknown">
+                    <span class="stat-row"
+                      ><span class="stat-dt">数据缺失</span
+                      ><span class="stat-dd">会话没有可用的用量记录（异常收场 / 早期会话），占用无法估算</span></span
+                    >
+                  </o-if>
                   <o-fill :value="ctxBreakRows" fill-key="label">
                     <span class="stat-row">
                       <span class="stat-dt">
@@ -1580,9 +1614,11 @@
           ctxPct: 0,
           ctxDash: "50.27",
           ctxTitle: "",
+          ctxUnknown: false, // 会话有 AI 消息但拿不到 usage → 占用未知，胶囊降级显示
           // 底部统计胶囊（syncStats 随消息/状态事件重算）
           statTurns: 0, // 轮 = 会话内用户回合数
           statSteps: 0, // 步 = 模型调用次数（跨回合累计）
+          statMissingTurns: 0, // 已收尾但缺用量记录的回合数（异常收场 / 早期会话）
           statLlmMs: 0,
           statToolMs: 0,
           statTtftAvg: 0,
@@ -1845,13 +1881,20 @@
                 : 0;
             this.ctxUsed = liveUsed > 0 ? liveUsed : info.used;
             if (this.ctxUsed <= 0) {
-              // 空会话回零态：上下文胶囊隐藏
+              // 会话有 AI 消息但拿不到任何 usage → 占用未知，胶囊降级显示
+              // （点开面板说明缺数据）；完全空会话才隐藏
+              this.ctxUnknown = this.messages.some(
+                (m) => m.role === "assistant",
+              );
               this.ctxPct = 0;
               this.ctxDash = "50.27";
-              this.ctxTitle = "";
+              this.ctxTitle = this.ctxUnknown
+                ? "上下文占用未知：会话没有可用的用量记录（异常收场 / 早期会话，无法事后恢复）"
+                : "";
               this.syncStats();
               return;
             }
+            this.ctxUnknown = false;
             const total = Number(this.ctxWindow) || 131072;
             this.ctxPct = Math.round(Math.min(100, (this.ctxUsed / total) * 100) * 10) / 10;
             // r=8 的圆周长 2πr ≈ 50.27，偏移量 = 周长 ×（1 - 进度）
@@ -1883,8 +1926,18 @@
               output = 0,
               cacheRead = 0,
               lastBreakdown = null;
+            // 已收尾（有 turnMs）但没有 usage 的回合：异常收场或早期会话，
+            // 用量胶囊降级提示而不是隐藏
+            let missing = 0;
             for (const m of this.messages) {
               if (m.role === "user") turns++;
+              if (
+                m.role === "assistant" &&
+                typeof m.turnMs === "number" &&
+                !(m.usage?.total_tokens > 0)
+              ) {
+                missing++;
+              }
               const ts = m.turnStats;
               if (ts) {
                 steps += ts.steps || 0;
@@ -1929,6 +1982,7 @@
             }
             this.statTurns = turns;
             this.statSteps = steps;
+            this.statMissingTurns = missing;
             this.statLlmMs = llmMs;
             this.statToolMs = toolMs;
             this.statTtftAvg = ttftSteps > 0 ? ttftMs / ttftSteps : 0;
@@ -1981,6 +2035,34 @@
 
           toggleStat(which) {
             this.openStat = this.openStat === which ? "" : which;
+            this.schedulePanelPlace();
+          },
+
+          // 面板对齐（仅底部统计胶囊）：默认居中于胶囊；居中会超出视口（窄
+          // 窗口 / 视口边缘的胶囊）时改为贴锚点左对齐。对话区的「本轮用量」
+          // 面板不参与测量——它在消息滚动层内会被滚动层左缘裁剪，恒为左对
+          // 齐（模板静态 align-left）。class:open 由 ofa 状态驱动，这里只补
+          // 一个手动 align-left 类（ofa 不管这个类名）
+          schedulePanelPlace() {
+            setTimeout(() => {
+              // this.shadow 是 ofa 包装对象，原生方法经 .ele 中转
+              const root = this.shadow.ele || this.shadow;
+              const panels = root.querySelectorAll(
+                ".stats-dock .stat-panel.open",
+              );
+              const vw = window.innerWidth;
+              const margin = 8;
+              for (const el of panels) {
+                const anchor = el.parentElement;
+                if (!anchor) continue;
+                const ar = anchor.getBoundingClientRect();
+                const w = el.offsetWidth;
+                const centeredLeft = ar.left + ar.width / 2 - w / 2;
+                const overflow =
+                  centeredLeft < margin || centeredLeft + w > vw - margin;
+                el.classList.toggle("align-left", overflow);
+              }
+            }, 30);
           },
 
           compressFromPanel() {
@@ -2036,14 +2118,28 @@
           // 时间胶囊文案（含比较运算的拼串必须走方法：{{}} 文本插值里的
           // > 会被模板 expr 属性序列化成 &gt;，求值报 gt is not defined）
           timePillText() {
+            // 有回合但无步数记录（异常收场 / 早期会话）：降级提示而非隐藏
+            if (!(this.statSteps > 0)) return `${this.statTurns} 轮 · 统计缺失`;
             return (
               `${this.statTurns} 轮 ${this.statSteps} 步` +
               (this.statTps > 0 ? ` · ${this.statTps} tok/s` : "")
             );
           },
 
+          timePillTitle() {
+            if (!(this.statSteps > 0)) {
+              return `会话统计：${this.statTurns} 轮，无步数与用时记录（异常收场 / 早期会话）`;
+            }
+            return (
+              `会话统计：${this.statTurns} 轮 ${this.statSteps} 步` +
+              (this.statTps > 0 ? ` · ${this.statTps} tok/s` : "")
+            );
+          },
+
           // Token 用量胶囊文案
           usagePillText() {
+            // 有已收尾回合但完全无用量记录：降级提示而非隐藏
+            if (!(this.usageTotal > 0)) return "用量缺失";
             return (
               this.fmtTokCompact(this.usageTotal) +
               " tok" +
@@ -2051,6 +2147,46 @@
                 ? ` · 缓存命中 ${this.cacheHitPct()}%`
                 : "")
             );
+          },
+
+          usagePillTitle() {
+            if (!(this.usageTotal > 0)) {
+              return `Token 用量数据缺失：${this.statMissingTurns} 个回合无用量记录（异常收场 / 早期会话，无法事后恢复）`;
+            }
+            return (
+              "Token 用量：共 " +
+              this.fmtTokExact(this.usageTotal) +
+              " tok" +
+              (this.usageCacheRead > 0
+                ? " · 缓存命中 " + this.cacheHitPct() + "%"
+                : "")
+            );
+          },
+
+          usageHeadText() {
+            return this.usageTotal > 0
+              ? this.fmtTokExact(this.usageTotal) + " tok"
+              : "无数据";
+          },
+
+          // 上下文胶囊（占用未知时降级，见 syncCtx 的 ctxUnknown）
+          ctxPillLabel() {
+            return this.ctxUnknown ? "未知" : this.ctxPct + "%";
+          },
+
+          ctxHeadTitle() {
+            return this.ctxUnknown
+              ? "上下文占用未知"
+              : "上下文已用 " + this.ctxPct + "%";
+          },
+
+          ctxHeadText() {
+            return this.ctxUnknown
+              ? "无数据"
+              : "~" +
+                  this.fmtTokCompact(this.ctxUsed) +
+                  " / " +
+                  this.ctxWindowText;
           },
 
           // 紧凑 token 数：517 / 12.2K / 1.2M
@@ -2148,11 +2284,19 @@
             return !!(m?.usage?.total_tokens > 0);
           },
 
+          // 已收尾（有 turnMs）但缺用量记录的回合：胶囊降级显示而非隐藏
+          turnStatsMissing(m) {
+            return (
+              typeof m?.turnMs === "number" && !(m?.usage?.total_tokens > 0)
+            );
+          },
+
           // ---- 本轮用量明细面板（TurnUsagePanel 同款；插值一律走方法，
           // {{}} 文本插值里不能出现比较符） ----
 
           toggleUsagePanel(id) {
-            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）
+            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）；
+            // 对话区面板静态左对齐（见模板 align-left），无需测量
             this.openUsageMsgId = this.openUsageMsgId === id ? 0 : id;
           },
 
@@ -2197,7 +2341,21 @@
           },
 
           turnUsagePillText(m) {
+            if (!this.hasUsage(m)) return "用量缺失";
             return `用量 ${this.fmtTokCompact(this.usageTotalOf(m))} tok`;
+          },
+
+          turnUsageTitle(m) {
+            if (!this.hasUsage(m)) {
+              return "本回合已收尾，但没有落盘用量记录（异常收场 / 早期会话），无法事后恢复";
+            }
+            return "本轮 token 用量（含工具循环的多次模型调用累计），点击查看明细";
+          },
+
+          turnUsageHeadText(m) {
+            return this.hasUsage(m)
+              ? this.fmtTokExact(this.usageTotalOf(m)) + " tok"
+              : "无数据";
           },
 
           toggleReasoning(id) {

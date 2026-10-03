@@ -1213,6 +1213,113 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="回合异常收场也落统计：错误入气泡 / 累计用量照常落末条 AI 消息">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const errFakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo-err",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [],
+                  },
+                ],
+              });
+              // 伪造 chain：chat 先推文本与 usage 中间事件，然后直接抛错——
+              // 模拟工具循环步数上限等异常收场（无 done 事件、无手动停止），
+              // 收尾必须把累计用量补落到回合末条 AI 消息，统计胶囊不能消失
+              const errChat = async ({ onStream }) => {
+                onStream({ type: "text", delta: "跑了很多步" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    prompt_tokens: 7800,
+                    completion_tokens: 900,
+                    total_tokens: 8700,
+                    context_tokens: 8700,
+                  },
+                  stats: {
+                    steps: 80,
+                    llmMs: 240000,
+                    toolMs: 24009,
+                    ttftMs: 40,
+                    ttftSteps: 1,
+                    decodeMs: 200000,
+                    decodeTokens: 900,
+                  },
+                  contextBreakdown: {
+                    systemTokens: 100,
+                    toolsTokens: 2000,
+                    messageTokens: 6600,
+                  },
+                });
+                throw new Error("agent 达到工具循环步数上限 80（防失控保护）");
+              };
+              const errAi = {
+                getApiKeys: () => [
+                  { id: "k1", provider: "openai", maskedKey: "sk-***" },
+                ],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const errStore = createBuilderStore({
+                fs: {}, // 仅需真值让 send 放行；本用例不触达真实 fs 方法
+                mazmotStore: null,
+                selfStore: errFakeStore,
+                load: async (path) => {
+                  if (String(path).includes("/mz/ai/chain/main.js")) {
+                    return {
+                      tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                      createAgent: () => ({ chat: errChat }),
+                    };
+                  }
+                  return errAi;
+                },
+              });
+              await errStore.init({});
+              await errStore.selectApp("demo-err");
+              await errStore.send("写一个简单的hello world");
+
+              const st = errStore.state;
+              const persistedErr =
+                (await errFakeStore.getItem(
+                  `chat:demo-err:${st.currentSessionId}`,
+                )) || [];
+              const lastErrAi = [...persistedErr]
+                .reverse()
+                .find((m) => m.role === "assistant");
+              const checks = {
+                finishedIdle:
+                  st.sending === false && st.stopRequested === false,
+                liveCleared: st.liveTurnStats === null,
+                errorInBubble: (lastErrAi?.content || "").includes(
+                  "出错了：agent 达到工具循环步数上限",
+                ),
+                notManualStop: lastErrAi?.stopped !== true,
+                turnMsRecorded:
+                  typeof lastErrAi?.turnMs === "number" &&
+                  lastErrAi.turnMs >= 0,
+                usageKept: lastErrAi?.usage?.context_tokens === 8700,
+                statsRecorded: lastErrAi?.turnStats?.steps === 80,
+                breakdownRecorded:
+                  lastErrAi?.contextBreakdown?.messageTokens === 6600,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, lastErrAi },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
     <sb-test name="草稿发送即建项目：中断归属项目 / 草稿不积攒 / fresh 提示词与 create_app 过滤">
       <template>
         <script type="module">

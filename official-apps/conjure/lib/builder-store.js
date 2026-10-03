@@ -2262,21 +2262,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       set("liveTurnStats", null);
       cancelPendingForm("回合已结束"); // 表单仍挂起时兜底取消（如 Agent 自行结束）
       set("sending", false);
-      // 本轮耗时 / 手动停止标记 / 停止时的实时用量 patch 到回合内末条 AI
-      // 消息（须在 finishTurn 落盘前 patch，随会话桶一起持久化）
+      // 本轮耗时 / 手动停止标记 / 停止与异常收场的实时用量 patch 到回合内
+      // 末条 AI 消息（须在 finishTurn 落盘前 patch，随会话桶一起持久化）
       if (turnStartAt) {
         const lastAi = [...bucketFor(turnKey)]
           .reverse()
           .find((m) => m.role === "assistant" && m.id >= turnFirstId);
         if (lastAi) {
           const patch = { turnMs: Date.now() - turnStartAt };
-          if (abort.stopped) {
-            patch.stopped = true;
-            if (turnUsage && !lastAi.usage) patch.usage = turnUsage;
-            if (turnStats && !lastAi.turnStats) patch.turnStats = turnStats;
-            if (turnBreakdown && !lastAi.contextBreakdown) {
-              patch.contextBreakdown = turnBreakdown;
-            }
+          if (abort.stopped) patch.stopped = true;
+          // 停止 / 异常收场（步数上限、网络错误…）没有 done 事件把终值落到
+          // 消息，这里统一把累计的实时快照补上，否则统计胶囊整轮消失；
+          // 正常完成时 lastAi.usage 已有值，守卫自动跳过不重复累计
+          if (turnUsage && !lastAi.usage) patch.usage = turnUsage;
+          if (turnStats && !lastAi.turnStats) patch.turnStats = turnStats;
+          if (turnBreakdown && !lastAi.contextBreakdown) {
+            patch.contextBreakdown = turnBreakdown;
           }
           patchMessage(lastAi.id, patch);
         }

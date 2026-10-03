@@ -1536,11 +1536,13 @@ st-icon-button.preview-live::after {
   display: flex;
   flex-direction: column;
   min-width: 250px;
+  max-width: min(460px, calc(100vw - 24px));
   padding: 12px 14px;
   border-radius: 14px;
   background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.24);
-  white-space: nowrap;
+  /* 短行照常单行收缩；超长说明行（数据缺失等）在 max-width 内换行，不撑宽面板 */
+  white-space: normal;
   visibility: hidden;
   opacity: 0;
   transform: translate(-50%, 6px);
@@ -1559,6 +1561,20 @@ st-icon-button.preview-live::after {
   transition:
     opacity 160ms ease,
     transform 160ms ease;
+}
+
+/* 左对齐变体。对话区「本轮用量」面板恒用此形态（在消息滚动层内居中会被
+   滚动层左缘裁掉）。宽度固定 300px：abspos 的收缩宽度计算会随内容摇摆
+   （时宽时窄），固定值最可预期；窄屏由 max-width 兜底 */
+.stat-panel.align-left {
+  left: 0;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  transform: translate(0, 6px);
+}
+
+.stat-panel.align-left.open {
+  transform: translate(0, 0);
 }
 
 .stat-panel-head {
@@ -1612,6 +1628,9 @@ st-icon-button.preview-live::after {
   align-items: center;
   gap: 7px;
   color: var(--md-sys-color-on-surface-variant);
+  /* 标签恒为单行：换行只发生在右侧说明文本（stat-dd）上 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .stat-dd {
