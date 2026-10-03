@@ -532,6 +532,232 @@ st-icon-button.preview-live::after {
   user-select: none;
 }
 
+/* ---------- 回合变更卡（AI 正文下方：改了哪些文件 + 行级 diff + 回滚） ----------
+   Material Design 3 语言：elevated card（surface-container-low 底 + 细描边），
+   与统计明细面板同族；diff 行红绿语义色 */
+
+.turn-changes {
+  align-self: flex-start;
+  min-width: 220px;
+  max-width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+  overflow: hidden;
+}
+
+.tc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tc-head:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.tc-title {
+  font-size: 13px;
+}
+
+.tc-stat {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-head n-icon:last-child {
+  margin-left: auto;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.tc-body {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  padding: 4px 0 8px;
+}
+
+.tc-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.tc-file-row:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.tc-file-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tc-file-op {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.tc-file-op[op="edit"] {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+  color: var(--md-sys-color-primary);
+}
+
+.tc-file-stat {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.tc-diff {
+  margin: 2px 12px 6px;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: var(--md-sys-color-surface-container, var(--md-sys-color-surface));
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.diff-line {
+  display: flex;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 18px;
+  white-space: pre;
+}
+
+.diff-line .diff-ln {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  padding-right: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+  user-select: none;
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.diff-line .diff-txt {
+  padding-left: 6px;
+  color: var(--md-sys-color-on-surface);
+}
+
+.diff-line[type="add"] {
+  background: color-mix(in srgb, #2e7d32 14%, transparent);
+}
+
+.diff-line[type="add"] .diff-txt {
+  color: #4c8c4c;
+}
+
+.diff-line[type="del"] {
+  background: color-mix(in srgb, #c62828 12%, transparent);
+}
+
+.diff-line[type="del"] .diff-txt {
+  color: #b05252;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #c62828 45%, transparent);
+}
+
+.diff-line[type="gap"] {
+  justify-content: center;
+  color: var(--md-sys-color-on-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
+}
+
+.diff-line[type="gap"]::before {
+  content: "⋯";
+}
+
+.tc-diff-empty {
+  margin: 2px 12px 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container, var(--md-sys-color-surface));
+  border: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+}
+
+.tc-rollback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 12px 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: none;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tc-rollback:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.tc-rollback.confirm {
+  border-color: var(--md-sys-color-error);
+  color: var(--md-sys-color-error);
+}
+
+/* 自动错误提示条（输入区上方，宿主回合后检测预览收集） */
+.auto-error-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--chat-w, 768px);
+  margin: 0 auto 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 35%, transparent);
+  color: var(--md-sys-color-on-surface);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.auto-error-row n-icon:first-child {
+  color: var(--md-sys-color-error);
+  flex: none;
+}
+
+.auto-error-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 本轮 token 用量统计（回合末条 AI 消息底部） */
 /* 本轮用量胶囊复用 .stat-pill；明细面板复用 .stat-panel（含开合动画） */
 

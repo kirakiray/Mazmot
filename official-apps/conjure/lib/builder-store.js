@@ -43,6 +43,7 @@ import {
   MODEL_OPTIONS,
   COMPACTION_PROMPT,
 } from "./builder.js";
+import { diffLines, diffStat, compactHunks } from "./diff.js";
 import { createTools } from "./tools/index.js";
 import {
   syncSkills,
@@ -95,6 +96,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     previewBusy: false,
     previewStatus: "",
     previewOnline: false,
+    // 宿主自动检测收集的预览运行错误（回合结束推送预览后读 console 的
+    // error 行；下回合自动注入提示词，用户提示条可见）
+    autoErrors: [],
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -241,6 +245,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
   // 0 = 未设置（不做自动压缩）。仅用于发送前的水位判断，非响应式
   let contextWindow = 0;
+  // 本回合文件变更（[{path, op, adds, dels}]，同文件多次写取最新统计）：
+  // 回合收尾 patch 到末条 AI 消息的 changes 字段，变更卡数据源
+  let turnChanges = [];
+  // 本回合开始快照（createAppBackup 幂等内容寻址 id）：变更 diff 的旧侧 +
+  // 一键回滚目标，收尾随 changes 一起挂到末条 AI 消息
+  let turnSnapshotId = "";
+  // 自动错误回路进行中标记（防重入）；收集到的错误行同步 state.autoErrors
+  let autoCheckBusy = false;
 
   /* ---------- 持久化辅助 ---------- */
 
@@ -375,8 +387,34 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         pendingNewApp = { ...info, mode: lockedMode };
       },
       // 模型覆写 app.json 时回填项目元数据（fresh 项目创建后的正式命名）；
-      // 覆写 AGENTS.md 时失效缓存 Agent——下一回合重建即读到新版项目规则
+      // 覆写 AGENTS.md 时失效缓存 Agent——下一回合重建即读到新版项目规则；
+      // 同时记录本回合变更（prev/next 当场算行级统计，同文件多次写取最新）
       onFileWrite: (info) => {
+        try {
+          const nextText = info?.nextText ?? "";
+          const hunks =
+            info?.prevText != null
+              ? diffLines(info.prevText, nextText)
+              : nextText
+                  .split("\n")
+                  .map((text, i) => ({ type: "add", bLn: i + 1, aLn: null, text }));
+          const { adds, dels } = diffStat(hunks);
+          const hit = turnChanges.find((c) => c.path === info.path);
+          if (hit) {
+            hit.op = info.op || "write";
+            hit.adds = adds;
+            hit.dels = dels;
+          } else {
+            turnChanges.push({
+              path: info.path,
+              op: info.op || "write",
+              adds,
+              dels,
+            });
+          }
+        } catch (err) {
+          console.warn("变更统计失败：", err);
+        }
         if (info?.path === "app.json") {
           syncAppMetaFromDisk(info.appName);
         } else if (info?.path === "AGENTS.md") {
@@ -431,6 +469,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         skills: skillIndex,
         freshProject: isFresh,
         projectRules,
+        // 上回合宿主自动检测收集的预览错误（预览窗口开着时才收集）：
+        // 注入本回合提示词让模型优先修复；driveTurn 开始时取走清空
+        autoErrors: state.autoErrors.length ? [...state.autoErrors] : undefined,
       }),
       checkpointer,
     });
@@ -1270,6 +1311,78 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       "/official-apps/conjure/lib/remote-preview.js",
     );
     return debugPreviewCommand({ load, selfStore, cmd, args, timeoutMs });
+  }
+
+  // 自动快照清理：只保留最近 KEEP 个 auto 备份（手动备份不动），防每回合
+  // 快照把 backup/ 撑爆；id 含时间戳，字典序即时间序（list 新的在前）
+  async function pruneAutoBackups(appName, handle) {
+    const KEEP = 5;
+    const list = await listAppBackups(fs, appName, handle);
+    for (const b of list.filter((x) => x.auto).slice(KEEP)) {
+      await deleteAppBackup(fs, appName, b.id, handle);
+    }
+  }
+
+  // 回合后自动错误检测：推送最新代码 → 等应用重载与首轮报错 → 读 console
+  // 的 error 行挂 state.autoErrors（fire-and-forget，不阻塞回合收尾；重入
+  // 保护防连发回合叠加）。仅在预览窗口已开时被调用，不自动开窗
+  async function autoCheckPreview(appName) {
+    if (autoCheckBusy) return;
+    autoCheckBusy = true;
+    try {
+      const hit = state.apps.find((a) => a.name === appName);
+      await runRemotePreview(appName, hit?.mode || "vfs");
+      await new Promise((r) => setTimeout(r, 2200));
+      const outcome = await previewDebug("console", { limit: 30 });
+      const lines = String(outcome?.result ?? "")
+        .split("\n")
+        .filter((l) => l.includes("[error]"))
+        .slice(-6);
+      set("autoErrors", lines);
+      if (lines.length) invalidateAgent(); // 下回合重建提示词带上错误
+    } catch (err) {
+      console.warn("[autoCheck] 预览自动检测失败：", err);
+    } finally {
+      autoCheckBusy = false;
+    }
+  }
+
+  // 用户忽略自动检测到的错误：清空（下回合提示词不再注入；新错误会重新收集）
+  function dismissAutoErrors() {
+    set("autoErrors", []);
+  }
+
+  // 变更卡展开：快照（该回合开始前）vs 当前盘上指定文件的行级 diff。
+  // 历史回合展开时当前盘可能含后续回合改动（diff 随时间漂移，UI 如实标注）
+  async function getTurnDiff(appName, snapshotId, path) {
+    try {
+      const hit = state.apps.find((a) => a.name === appName);
+      const handle = hit?.mode === "local" ? localRootHandle : undefined;
+      const files = await readBackupFiles(fs, appName, snapshotId, handle);
+      const prev = files.find((f) => f.path === path)?.text ?? "";
+      const cur = (await readAppFile(fs, appName, path, handle)) ?? "";
+      if (prev === cur) return { hunks: [], same: true };
+      return { hunks: compactHunks(diffLines(prev, cur), 3), same: false };
+    } catch (err) {
+      return { hunks: [], same: false, error: err.message };
+    }
+  }
+
+  // 一键回滚到回合前快照（restoreAppBackup 清空 client/ 后按备份写回；
+  // unchanged = 当前内容与快照一致未写入）。回滚后失效 Agent（下回合读到
+  // 回滚后的文件）并同步 app.json 元数据与备份列表
+  async function rollbackTurn(appName, snapshotId) {
+    const hit = state.apps.find((a) => a.name === appName);
+    const handle = hit?.mode === "local" ? localRootHandle : undefined;
+    const res = await restoreAppBackup(fs, appName, snapshotId, handle);
+    invalidateAgent();
+    try {
+      await syncAppMetaFromDisk(appName);
+    } catch {
+      /* meta 同步失败不阻塞回滚结果 */
+    }
+    await refreshBackups();
+    return res;
   }
 
   // preview_screenshot 工具：截图以图片卡片进入聊天流（用户可视核对）
@@ -2189,6 +2302,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     });
     setMany({ turnStartTs: turnStartAt });
 
+    // 上回合自动检测到预览错误：失效缓存 Agent，本回合重建提示词时带上
+    //（ensureAgent 读 state.autoErrors 注入；driveTurn 开始时取走清空）
+    if (state.autoErrors.length) invalidateAgent();
     try {
       await ensureAgent();
     } catch {
@@ -2237,6 +2353,26 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 本回合第一条消息的 id 基线：收尾标记（turnMs / stopped / usage）只
     // patch 本回合内产生的消息，避免误改上一回合的末条 AI 消息
     turnFirstId = state.nextId;
+    // 上回合自动检测的预览错误已随本回合 agent 构建（send 侧失效重建）注入
+    // 提示词，此处取走清空，避免跨回合重复注入
+    if (state.autoErrors.length) set("autoErrors", []);
+    // 回合开始快照：变更卡 diff 的旧侧 + 一键回滚目标。内容寻址幂等——
+    // 未改动的回合与既有备份同 id 零成本；草稿态（项目未建）跳过
+    turnChanges = [];
+    turnSnapshotId = "";
+    if (state.currentAppName) {
+      try {
+        const snapHandle =
+          state.currentAppMode === "local" ? localRootHandle : undefined;
+        const snap = await createAppBackup(fs, state.currentAppName, snapHandle, {
+          auto: true,
+        });
+        turnSnapshotId = snap.id;
+        await pruneAutoBackups(state.currentAppName, snapHandle);
+      } catch (err) {
+        console.warn("回合快照失败：", err);
+      }
+    }
     try {
       await agent.chat({
         messages: inputMessages,
@@ -2273,6 +2409,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         if (lastAi) {
           const patch = { turnMs: Date.now() - turnStartAt };
           if (abort.stopped) patch.stopped = true;
+          // 本回合文件变更（含回滚目标快照 id）：变更卡数据源，随会话持久化
+          if (turnChanges.length) {
+            patch.changes = turnChanges;
+            if (turnSnapshotId) patch.snapshotId = turnSnapshotId;
+          }
           // 停止 / 异常收场（步数上限、网络错误…）没有 done 事件把终值落到
           // 消息，这里统一把累计的实时快照补上，否则统计胶囊整轮消失；
           // 正常完成时 lastAi.usage 已有值，守卫自动跳过不重复累计
@@ -2288,6 +2429,21 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       turnStats = null;
       turnBreakdown = null;
       await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
+      // 自动错误回路：本回合有文件改动且预览窗口开着（不自动开窗打扰）时，
+      // 推送最新代码 → 等应用跑起 → 读 console 的 error 行挂 state.autoErrors，
+      // 下回合提示词自动注入（见 ensureAgent / buildSystemPrompt）
+      const changedFiles = turnChanges;
+      const changedApp = threadId === "draft" ? "" : threadId.split(":")[0];
+      turnChanges = [];
+      turnSnapshotId = "";
+      if (
+        changedFiles.length &&
+        changedApp &&
+        state.previewOnline &&
+        !abort.stopped
+      ) {
+        autoCheckPreview(changedApp);
+      }
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
       turnKey = null;
@@ -2629,6 +2785,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     openApp,
     openAppRemote,
     submitForm,
+    // 变更卡 / 回滚（回合快照体系，见 driveTurn 收尾与 rollbackTurn）
+    getTurnDiff,
+    rollbackTurn,
+    dismissAutoErrors,
     refreshBackups,
     createBackup,
     smartBackup,

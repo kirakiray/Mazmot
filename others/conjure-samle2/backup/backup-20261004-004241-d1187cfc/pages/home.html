@@ -90,7 +90,7 @@
         </o-if>
 
         <div class="row">
-          <st-button on:click="nextLang()">🔄 切换语言</st-button>
+          <st-button on:click="nextLang()">🎲 换个语言</st-button>
           <st-button variant="outlined" color="secondary" on:click="sayHello()">👋 打个招呼</st-button>
         </div>
       </div>
@@ -113,6 +113,10 @@
     const LANGS = [
       { id: "en", flag: "🇬🇧", word: "Hello" },
       { id: "zh", flag: "🇨🇳", word: "你好" },
+      { id: "ja", flag: "🇯🇵", word: "こんにちは" },
+      { id: "fr", flag: "🇫🇷", word: "Bonjour" },
+      { id: "es", flag: "🇪🇸", word: "Hola" },
+      { id: "ko", flag: "🇰🇷", word: "안녕하세요" },
     ];
 
     const EMOJIS = ["👋", "🎉", "✨", "🚀", "🌈", "🍀", "😄"];
@@ -166,12 +170,12 @@
             console.log("[hello] lang ->", id);
           },
           nextLang() {
-            // 只有中英两种语言，直接切到另一种
-            const other = this.langs.find((item) => item.id !== this.langId) || this.langs[0];
-            this.langId = other.id;
+            const rest = this.langs.filter((item) => item.id !== this.langId);
+            const picked = rest[Math.floor(Math.random() * rest.length)] || this.langs[0];
+            this.langId = picked.id;
             this.refresh();
             this.showHint("已切换为「" + this.word + "」");
-            console.log("[hello] lang ->", other.id);
+            console.log("[hello] lang ->", picked.id);
           },
           sayHello() {
             this.bumpTimes += 1;

@@ -188,14 +188,14 @@
               displayName: "X",
             });
             const checks = {
-              sevenDefs: TOOL_DEFS.length === 7,
-              names: ["create_app", "write_file", "read_file", "list_files", "read_skill", "show_form", "preview"]
+              eightDefs: TOOL_DEFS.length === 8,
+              names: ["create_app", "write_file", "edit_file", "read_file", "list_files", "read_skill", "show_form", "preview"]
                 .every((n) => names.includes(n)),
               defShape: TOOL_DEFS.every(
                 (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
               ),
               allHaveSelfTest: TOOL_DEFS.every((d) => /self-test\.js$/.test(d.selfTest || "")),
-              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill", "showForm", "preview"].every(
+              keys: ["createApp", "writeFile", "editFile", "readFile", "listFiles", "readSkill", "showForm", "preview"].every(
                 (k) => tools[k],
               ),
               ctxEvents: seen.length === 1 && seen[0].appName === "x",
@@ -446,6 +446,19 @@
                 buildSystemPrompt({ appName: "old-app" }).includes(
                   "# AGENTS.md — <项目名>",
                 ),
+              // 宿主自动检测的预览错误注入：有则整节带上（优先修复指引），
+              // 无则不出现该节
+              autoErrInjected: buildSystemPrompt({
+                appName: "todo-app",
+                autoErrors: ["[12:00:00.123] [error] Uncaught TypeError: x is not a function"],
+              }).includes("预览自动检测报告"),
+              autoErrGuides: buildSystemPrompt({
+                appName: "todo-app",
+                autoErrors: ["[error] boom"],
+              }).includes("最高优先级"),
+              autoErrAbsent: !buildSystemPrompt({ appName: "todo-app" }).includes(
+                "预览自动检测报告",
+              ),
             };
             return {
               assert: Object.values(checks).every(Boolean),
@@ -812,6 +825,138 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="回合变更卡与自动快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
+      <template>
+        <script type="module">
+          import {
+            listAppBackups,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const fsFake = createVirtualFs();
+
+              // 脚本化 chain：捕获 createAgent 收到的 tools（数组），chat 内
+              // 直接调 invoke 模拟模型写文件（write_file / edit_file 真实走插件层）
+              let agentTools = [];
+              const toolOf = (name) => agentTools.find((t) => t.name === name);
+              let callN = 0;
+              const chat = async ({ onStream }) => {
+                callN++;
+                const app = store.state.currentAppName;
+                if (callN === 1) {
+                  await toolOf("write_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    content: "<html>v1</html>",
+                  });
+                } else {
+                  await toolOf("edit_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    edits: [
+                      { old_string: "v1", new_string: "v2" },
+                    ],
+                  });
+                }
+                onStream({ type: "text", delta: `第${callN}轮` });
+                return {
+                  content: `第${callN}轮`,
+                  usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, context_tokens: 12 },
+                  toolCalls: [],
+                };
+              };
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: (opts) => {
+                  agentTools = opts.tools || [];
+                  return { chat };
+                },
+              };
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 轮 1（fresh）：项目即建 → 回合快照（骨架态）→ 写 app.json 覆盖 + index.html 新增
+              await store.send("做个演示应用");
+              const st = store.state;
+              const persisted1 =
+                (await fakeStore.getItem(`chat:${st.currentAppName}:${st.currentSessionId}`)) || [];
+              const ai1 = [...persisted1].reverse().find((m) => m.role === "assistant");
+              const idx1 = (ai1?.changes || []).find((c) => c.path === "index.html");
+              const appJsonChg = (ai1?.changes || []).find((c) => c.path === "app.json");
+              const backups1 = await listAppBackups(fsFake, st.currentAppName);
+              const autoBk1 = backups1.find((b) => b.auto);
+
+              // 轮 2：edit_file 差量修改 index.html
+              await store.send("把 v1 改成 v2");
+              const persisted2 =
+                (await fakeStore.getItem(`chat:${st.currentAppName}:${st.currentSessionId}`)) || [];
+              const ai2 = [...persisted2]
+                .reverse()
+                .find((m) => m.role === "assistant" && Array.isArray(m.changes));
+              const idx2 = ai2?.changes?.find((c) => c.path === "index.html");
+
+              // diff 查询：轮 2 快照 vs 当前盘（v2）
+              const diffRes = await store.getTurnDiff(
+                st.currentAppName,
+                ai2.snapshotId,
+                "index.html",
+              );
+
+              // 回滚到轮 2 开始前快照：v2 → 骨架后轮 1 结束态？不——轮 2 快照 =
+              // 轮 1 结束态（v1）。回滚后 index.html 应回 v1
+              const rb = await store.rollbackTurn(st.currentAppName, ai2.snapshotId);
+              const after = await readAppFile(fsFake, st.currentAppName, "index.html");
+
+              const checks = {
+                turn1Changes:
+                  !!idx1 && idx1.op === "write" && idx1.dels === 0 && idx1.adds > 0,
+                // 宿主 createAppDir 预写的 app.json 不经 onFileWrite，不应计入变更
+                hostSeededNotTracked: !appJsonChg,
+                turn1Snapshot: typeof ai1?.snapshotId === "string" && ai1.snapshotId.length > 0,
+                autoBackupMarked: !!autoBk1 && autoBk1.id === ai1.snapshotId,
+                turn2Edit: idx2?.op === "edit" && idx2.adds === 1 && idx2.dels === 1,
+                diffHunks:
+                  !diffRes.same &&
+                  diffRes.hunks.some((h) => h.type === "add") &&
+                  diffRes.hunks.some((h) => h.type === "del"),
+                rollbackRestored: rb.restored === true && after === "<html>v1</html>",
+                stateIdle: st.sending === false && st.autoErrors.length === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  checks,
+                  changes1: ai1?.changes,
+                  changes2: ai2?.changes,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="备份还原：覆盖写回 / 无变动检测（统一虚拟空间）">
       <template>
         <script type="module">

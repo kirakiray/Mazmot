@@ -14,6 +14,7 @@
 
 import createApp from "./create-app/index.js";
 import writeFile from "./write-file/index.js";
+import editFile from "./edit-file/index.js";
 import readFile from "./read-file/index.js";
 import listFiles from "./list-files/index.js";
 import readSkill from "./read-skill/index.js";
@@ -23,6 +24,7 @@ import preview from "./preview/index.js";
 export const TOOL_DEFS = [
   createApp,
   writeFile,
+  editFile,
   readFile,
   listFiles,
   readSkill,

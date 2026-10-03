@@ -281,6 +281,61 @@
                     <div class="reasoning-body">{{$data.reasoning}}</div>
                   </o-if>
                   <div class="ai-text" :html="$host.renderMd($data.content)"></div>
+                  <!-- 本回合变更卡：改了哪些文件（+增 −删 行数）；点开逐文件
+                       看行级 diff（快照 vs 当前盘），可一键回滚到本回合前 -->
+                  <o-if :value="$host.turnChanges($data).length > 0">
+                    <div class="turn-changes">
+                      <button class="tc-head" on:click="$host.toggleChanges($data.id)">
+                        <n-icon icon="mdi:file-code-outline"></n-icon>
+                        <span class="tc-title">改了 {{$host.turnChanges($data).length}} 个文件</span>
+                        <span class="tc-stat">{{$host.turnChangesSummary($data)}}</span>
+                        <n-icon attr:icon="$host.changesMsgId === $data.id ? 'mdi:chevron-up' : 'mdi:chevron-down'"></n-icon>
+                      </button>
+                      <o-if :value="$host.changesMsgId === $data.id">
+                        <div class="tc-body">
+                          <o-fill :value="$host.turnChanges($data)" fill-key="path">
+                            <div class="tc-file">
+                              <button class="tc-file-row" on:click="$host.toggleFileDiff($data.path)">
+                                <span class="tc-file-path">{{$data.path}}</span>
+                                <span class="tc-file-op" attr:op="$data.op">{{$host.tcOpText($data)}}</span>
+                                <span class="tc-file-stat">{{$host.tcStatText($data)}}</span>
+                              </button>
+                              <o-if :value="$host.fileDiffPath === $data.path && $host.diffLoading !== $data.path">
+                                <div class="tc-diff">
+                                  <o-if :value="$host.diffEmpty($data.path)">
+                                    <div class="tc-diff-empty">{{$host.diffEmptyText($data.path)}}</div>
+                                  </o-if>
+                                  <o-fill :value="$host.diffHunks">
+                                    <div class="diff-line" attr:type="$data.type">
+                                      <span class="diff-ln">{{$data.type === 'add' ? $data.bLn : $data.aLn}}</span>
+                                      <span class="diff-txt">{{$data.text}}</span>
+                                    </div>
+                                  </o-fill>
+                                </div>
+                              </o-if>
+                              <o-if :value="$host.diffLoading === $data.path">
+                                <div class="tc-diff-empty">正在加载 diff…</div>
+                              </o-if>
+                            </div>
+                          </o-fill>
+                          <o-if :value="$data.snapshotId">
+                            <button
+                              class="tc-rollback"
+                              class:confirm="$host.confirmRollbackId === $data.id"
+                              attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响）'"
+                              on:click="$host.rollbackFrom($data)"
+                            >
+                              <n-icon icon="mdi:restore"></n-icon>
+                              <span>{{$host.confirmRollbackId === $data.id ? '确认回滚？' : '回滚本回合改动'}}</span>
+                            </button>
+                          </o-if>
+                          <o-if :value="!$data.snapshotId">
+                            <div class="tc-diff-empty">本回合没有快照（生成中的首个回合），无法回滚</div>
+                          </o-if>
+                        </div>
+                      </o-if>
+                    </div>
+                  </o-if>
                   <o-if :value="$host.hasUsage($data) || $host.turnStatsMissing($data) || $host.canFork() || $host.aiTime($data) !== '' || $data.stopped">
                     <div class="ai-foot">
                       <o-if :value="$data.stopped">
@@ -507,6 +562,18 @@
     </div>
 
     <footer class="composer-wrap">
+      <!-- 宿主自动检测到预览运行错误：提示条（下条消息自动附带给 AI 修复） -->
+      <o-if :value="autoErrors.length > 0">
+        <div class="auto-error-row" attr:title="autoErrors.join('\n')">
+          <n-icon icon="mdi:alert-circle-outline"></n-icon>
+          <span class="auto-error-text"
+            >预览自动检测到 {{autoErrors.length}} 条运行错误，下条消息将自动附带给 AI 修复</span
+          >
+          <st-icon-button title="忽略（本次不带给 AI）" on:click="dismissAutoErrors">
+            <n-icon icon="mdi:close"></n-icon>
+          </st-icon-button>
+        </div>
+      </o-if>
       <o-if :value="keyError">
         <div class="key-error-row">
           <div class="key-error">{{keyError}}</div>
@@ -1632,6 +1699,17 @@
           ctxSegMsgs: 0,
           openStat: "", // 打开中的统计面板："time" | "usage" | "ctx"（互斥，"" 全关）
           openUsageMsgId: 0, // 展开「本轮用量」明细的消息 id（0 = 全关，同时至多一条）
+          // 变更卡状态：changesMsgId 展开中的消息 id（0 = 全关）；fileDiffPath
+          // 展开中的文件路径（相对当前展开卡，"" = 无）；diffHunks / diffLoading
+          // 该文件的行级 diff（快照 vs 当前盘）与加载态；confirmRollbackId
+          // 回滚两步确认的消息 id（0 = 未确认）
+          changesMsgId: 0,
+          fileDiffPath: "",
+          diffHunks: [],
+          diffLoading: "",
+          diffError: "",
+          confirmRollbackId: 0,
+          autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；提示条数据源）
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
           modelValueText: "自动（供应商默认）",
@@ -2303,8 +2381,114 @@
           // ---- 本轮用量明细面板（插值一律走方法，
           // {{}} 文本插值里不能出现比较符） ----
 
-          toggleUsagePanel(id) {
-            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）；
+          // ---- 回合变更卡（changes / snapshotId 挂在回合末条 AI 消息上） ----
+
+          turnChanges(msg) {
+            return Array.isArray(msg?.changes) ? msg.changes : [];
+          },
+
+          turnChangesSummary(msg) {
+            let adds = 0;
+            let dels = 0;
+            for (const c of this.turnChanges(msg)) {
+              adds += c.adds || 0;
+              dels += c.dels || 0;
+            }
+            return `+${adds} −${dels}`;
+          },
+
+          tcOpText(c) {
+            if (c.op === "edit") return "编辑";
+            if (!c.dels) return "新增";
+            return "重写";
+          },
+
+          tcStatText(c) {
+            return `+${c.adds || 0} −${c.dels || 0}`;
+          },
+
+          toggleChanges(id) {
+            this.changesMsgId = this.changesMsgId === id ? 0 : id;
+            this.fileDiffPath = "";
+            this.diffHunks = [];
+            this.diffError = "";
+            this.confirmRollbackId = 0;
+          },
+
+          async toggleFileDiff(path) {
+            if (this.fileDiffPath === path) {
+              this.fileDiffPath = "";
+              this.diffHunks = [];
+              return;
+            }
+            const msg = this.messages.find((m) => m.id === this.changesMsgId);
+            if (!msg) return;
+            this.fileDiffPath = path;
+            this.diffHunks = [];
+            this.diffError = "";
+            this.diffLoading = path;
+            try {
+              const res = await store.getTurnDiff(
+                this.currentAppName,
+                msg.snapshotId,
+                path,
+              );
+              this.diffHunks = res.hunks || [];
+              this.diffError = res.error || "";
+            } finally {
+              this.diffLoading = "";
+            }
+          },
+
+          diffEmpty(path) {
+            return (
+              this.fileDiffPath === path &&
+              this.diffLoading !== path &&
+              this.diffHunks.length === 0
+            );
+          },
+
+          diffEmptyText(path) {
+            if (this.fileDiffPath === path && this.diffError) {
+              return `diff 加载失败：${this.diffError}`;
+            }
+            return "该文件当前内容与本回合开始前一致（后续回合已改回，或此文件为新增后又被删除）";
+          },
+
+          // 两步确认后回滚到本回合开始前的快照（对话记录不受影响）
+          async rollbackFrom(msg) {
+            if (!msg?.snapshotId) return;
+            if (this.confirmRollbackId !== msg.id) {
+              this.confirmRollbackId = msg.id;
+              setTimeout(() => {
+                if (this.confirmRollbackId === msg.id) this.confirmRollbackId = 0;
+              }, 4000);
+              return;
+            }
+            this.confirmRollbackId = 0;
+            const { default: alertDlg } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+            );
+            try {
+              const res = await store.rollbackTurn(
+                this.currentAppName,
+                msg.snapshotId,
+              );
+              const text = res?.restored
+                ? `已回滚：写回 ${res.files} 个文件（本回合开始前的状态）`
+                : "当前内容与快照一致，无需回滚";
+              await alertDlg({ title: "回滚本回合改动", message: text });
+            } catch (err) {
+              await alertDlg({ title: "回滚失败", message: err.message });
+            }
+          },
+
+          // 忽略自动检测到的预览错误（本次不再带给 AI）
+          dismissAutoErrors() {
+            store.dismissAutoErrors?.();
+          },
+
+          toggleUsagePanel(id) {            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）；
             // 对话区面板静态左对齐（见模板 align-left），无需测量
             this.openUsageMsgId = this.openUsageMsgId === id ? 0 : id;
           },

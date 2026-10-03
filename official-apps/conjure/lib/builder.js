@@ -391,6 +391,8 @@ export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
   const prev = await base.get(rel + relPath).catch(() => null);
   const created = !prev || prev.kind !== "file";
+  // 改前内容（变更卡 diff 的旧侧；新文件为 null）
+  const prevText = created ? null : await prev.text();
   const file = await base.get(rel + relPath, { create: "file" });
   await file.write(text);
   return {
@@ -399,6 +401,63 @@ export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
     name: clean,
     initialized,
     created,
+    prevText,
+  };
+}
+
+/**
+ * 差量编辑一个已有文件：edits 逐条应用（old_string → new_string 字面量替换）。
+ * old_string 必须在文件中唯一命中（多处命中须 replace_all 或扩大上下文再试），
+ * 找不到直接报错——模型须先 read_file 拿到真实内容，防止凭猜测改坏文件。
+ * @param {Array<{old_string: string, new_string: string, replace_all?: boolean}>} edits
+ * @returns {Promise<{ path, bytes, name, applied: number, prevText, nextText }>}
+ */
+export async function editAppFile(fs, appName, relPath, edits, rootHandle) {
+  const check = validateRelPath(relPath);
+  if (!check.ok) throw new Error(check.reason);
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  if (!Array.isArray(edits) || edits.length === 0) {
+    throw new Error("edits 必须是至少一条 { old_string, new_string } 的数组");
+  }
+
+  const prevText = await readAppFile(fs, clean, relPath, rootHandle);
+  if (prevText === null) {
+    throw new Error(`文件不存在：${relPath}（新建文件请用 write_file）`);
+  }
+
+  let next = prevText;
+  for (let k = 0; k < edits.length; k++) {
+    const e = edits[k] || {};
+    const oldStr = String(e.old_string ?? "");
+    const newStr = String(e.new_string ?? "");
+    if (!oldStr) throw new Error(`edits[${k}].old_string 不能为空`);
+    const hits = next.split(oldStr).length - 1;
+    if (hits === 0) {
+      throw new Error(
+        `edits[${k}] 未命中：文件里找不到 old_string。请先 read_file 读取当前内容后按原文精确引用（注意空格与换行）`,
+      );
+    }
+    if (hits > 1 && !e.replace_all) {
+      throw new Error(
+        `edits[${k}] 命中 ${hits} 处：请扩大 old_string 上下文使其唯一，或设 replace_all: true 全部替换`,
+      );
+    }
+    next = e.replace_all
+      ? next.split(oldStr).join(newStr)
+      : next.replace(oldStr, newStr);
+  }
+
+  const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const file = await base.get(rel + relPath, { create: "file" });
+  await file.write(next);
+  return {
+    path: relPath,
+    bytes: new Blob([next]).size,
+    name: clean,
+    applied: edits.length,
+    prevText,
+    nextText: next,
   };
 }
 
@@ -650,7 +709,7 @@ export async function readBackupFiles(fs, appName, backupId, rootHandle) {
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ id: string, files: number, bytes: number, skipped: boolean }>}
  */
-export async function createAppBackup(fs, appName, rootHandle) {
+export async function createAppBackup(fs, appName, rootHandle, opts = {}) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
@@ -671,6 +730,12 @@ export async function createAppBackup(fs, appName, rootHandle) {
     await dest.write(f.text);
     bytes += new Blob([f.text]).size;
   }
+  // 回合自动快照：__meta.json 标记 auto（备份列表展示「自动」徽标用；
+  // 后续 rename / setNote 照常合并写入，标记保留）
+  if (opts.auto) {
+    const metaFile = await bBase.get(`${prefix}${id}/__meta.json`, { create: "file" });
+    await metaFile.write(JSON.stringify({ auto: true }));
+  }
   return { id, files: files.length, bytes, skipped: false };
 }
 
@@ -687,9 +752,10 @@ const readBackupMeta = async (dir) => {
 
 /**
  * 列出已有备份（backup/ 下的目录，新的在前）。
- * 每项带 label（自定义名称）与 note（备注），均存目录内 __meta.json。
+ * 每项带 label（自定义名称）与 note（备注），均存目录内 __meta.json；
+ * auto 标记回合自动快照（UI「自动」徽标）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
- * @returns {Promise<{ id: string, label: string, note: string }[]>}
+ * @returns {Promise<{ id: string, label: string, note: string, auto?: boolean }[]>}
  */
 export async function listAppBackups(fs, appName, rootHandle) {
   const clean = sanitizeAppName(appName);
@@ -702,7 +768,12 @@ export async function listAppBackups(fs, appName, rootHandle) {
     const item = await dir.get(key);
     if (!item || item.kind !== "dir" || !isBackupId(key)) continue;
     const meta = await readBackupMeta(item);
-    out.push({ id: key, label: meta.label || "", note: meta.note || "" });
+    out.push({
+      id: key,
+      label: meta.label || "",
+      note: meta.note || "",
+      ...(meta.auto ? { auto: true } : {}),
+    });
   }
   return out.sort((a, b) => (a.id < b.id ? 1 : -1));
 }
@@ -852,7 +923,7 @@ export async function loadProjectChats(rootHandle) {
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
-export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。你可调用的工具（write_file / read_file / list_files / create_app / preview / show_form / read_skill）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
+export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。你可调用的工具（write_file / edit_file / read_file / list_files / create_app / preview / show_form / read_skill）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
 
 ## 工作流程
 1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。
@@ -930,7 +1001,7 @@ export default async ({ load }) => {
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。
 - 单个文件尽量小于 300 行，功能聚焦，一次对话先交付可运行的最小版本。
-- 修改已有应用：先用 read_file / list_files 查看，再 write_file 覆盖对应文件；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后按项目 AGENTS.md 的「文档同步规则」同步文档——CONTEXT.md 对应小节 + MEMORY.md 登记，踩了新坑沉淀到 pitfalls/ 并登记索引（沉淀出新硬规则则追加进 AGENTS.md）。
+- 修改已有应用：先用 read_file / list_files 查看，改动局部内容**优先用 edit_file 差量编辑**（old_string 按原文精确引用，省 token 且不碰未提及部分；未命中时重新 read_file 对照原文），新建文件或整体重写才用 write_file；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后按项目 AGENTS.md 的「文档同步规则」同步文档——CONTEXT.md 对应小节 + MEMORY.md 登记，踩了新坑沉淀到 pitfalls/ 并登记索引（沉淀出新硬规则则追加进 AGENTS.md）。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
@@ -1026,6 +1097,19 @@ ${lines}
 
 ## 可用知识库（read_skill 工具）
 当前没有已安装的知识库（同步可能失败或仍在进行），不要调用 read_skill，直接按下方技术规范编写。`;
+  }
+  // 宿主自动检测的预览运行错误（上回合结束后推送预览、读 console 收集）：
+  // 注入本回合提示词——修复它们是默认优先项（除非用户本回合另有明确指示）
+  const autoErrs = Array.isArray(ctx.autoErrors) ? ctx.autoErrors.filter(Boolean) : [];
+  if (autoErrs.length) {
+    const clippedErrs = autoErrs.slice(0, 6).join("\n");
+    prompt += `
+
+## 预览自动检测报告（宿主）
+宿主在上一回合结束后自动推送了最新代码并检查了预览窗口的控制台，发现 ${autoErrs.length} 条运行错误（用户已看到同样信息）：
+${clippedErrs}
+
+除非用户本条消息另有明确指示，修复这些错误是本回合的最高优先级：先用 read_file 查看相关文件定位原因，edit_file 修复后用 preview（action=app 推送，再 console 确认错误消失）验证。`;
   }
   return prompt;
 }
