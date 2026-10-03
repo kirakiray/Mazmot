@@ -287,27 +287,27 @@
                         </span>
                       </o-if>
                       <o-if :value="$host.hasUsage($data) || $host.turnStatsMissing($data)">
-                        <!-- 本轮用量（TurnUsagePanel 同款）：胶囊显示紧凑总量，
-                             点击弹出明细面板（缓存命中 / 未缓存输入 / 缓存读取 / 输出）；
+                        <!-- 本轮用量：描边 Chip 显示紧凑总量，点击弹出明细面板
+                             （缓存命中 / 未缓存输入 / 缓存读取 / 输出）；
                              回合已收尾但缺用量记录时降级显示「用量缺失」并说明原因 -->
                         <span class="stat-anchor">
                           <button
-                            class="stat-pill"
+                            class="stat-pill sm"
+                            class:open="$host.openUsageMsgId === $data.id"
                             attr:title="$host.turnUsageTitle($data)"
                             on:click="$host.toggleUsagePanel($data.id)"
                           >
-                            <n-icon icon="mdi:database-outline"></n-icon>
+                            <n-icon icon="mdi:coins"></n-icon>
                             <span>{{$host.turnUsagePillText($data)}}</span>
                           </button>
                           <!-- 对话区面板恒为左对齐（align-left 静态类）：居中
                                会溢出消息滚动层左缘被裁掉，滚动层宽度视口测量不到 -->
                           <span class="stat-panel align-left" class:open="$host.openUsageMsgId === $data.id">
                             <span class="stat-panel-head">
-                              <n-icon icon="mdi:database-outline"></n-icon>
+                              <n-icon icon="mdi:coins"></n-icon>
                               <span class="stat-panel-title">本轮用量</span>
                               <span class="stat-panel-value">{{$host.turnUsageHeadText($data)}}</span>
                             </span>
-                            <span class="stat-rule"></span>
                             <span class="stat-rows">
                               <o-if :value="$data.model">
                                 <span class="stat-row"
@@ -581,9 +581,7 @@
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <!-- 模型 + 推理等级 + Key + 窗口：钻入式选择菜单（对齐 deepseek harness ModelSelect） -->
-          <!-- 模型 / 推理等级 / Key / 窗口：st-menu 钻入式选择（子菜单 hover 展开，
-               选中任意项整链自动关闭；面板 fixed 定位自动翻转避让视口） -->
+          <!-- 模型 + 推理等级 + Key + 窗口：st-menu 钻入式选择菜单 -->
           <st-menu align="right">
             <button
               slot="trigger"
@@ -716,18 +714,18 @@
           <span class="stat-anchor">
             <button
               class="stat-pill"
+              class:open="openStat === 'time'"
               attr:title="timePillTitle()"
               on:click="toggleStat('time')"
             >
-              <n-icon icon="mdi:speedometer"></n-icon>
+              <n-icon icon="mdi:timer-outline"></n-icon>
               <span class="stat-pill-label">{{timePillText()}}</span>
             </button>
             <span class="stat-panel" class:open="openStat === 'time'">
                 <span class="stat-panel-head">
-                  <n-icon icon="mdi:speedometer"></n-icon>
+                  <n-icon icon="mdi:timer-outline"></n-icon>
                   <span class="stat-panel-title">会话统计</span>
                 </span>
-                <span class="stat-rule"></span>
                 <span class="stat-rows">
                   <o-if :value="statLlmMs > 0">
                     <span class="stat-row"
@@ -767,19 +765,19 @@
           <span class="stat-anchor">
             <button
               class="stat-pill"
+              class:open="openStat === 'usage'"
               attr:title="usagePillTitle()"
               on:click="toggleStat('usage')"
             >
-              <n-icon icon="mdi:database-outline"></n-icon>
+              <n-icon icon="mdi:coins"></n-icon>
               <span class="stat-pill-label">{{usagePillText()}}</span>
             </button>
             <span class="stat-panel" class:open="openStat === 'usage'">
                 <span class="stat-panel-head">
-                  <n-icon icon="mdi:database-outline"></n-icon>
+                  <n-icon icon="mdi:coins"></n-icon>
                   <span class="stat-panel-title">Token 用量</span>
                   <span class="stat-panel-value">{{usageHeadText()}}</span>
                 </span>
-                <span class="stat-rule"></span>
                 <span class="stat-rows">
                   <o-if :value="usageCacheRead > 0">
                     <span class="stat-row"
@@ -819,21 +817,13 @@
           <span class="stat-anchor">
             <button
               class="stat-pill"
+              class:open="openStat === 'ctx'"
               attr:title="ctxTitle"
               on:click="toggleStat('ctx')"
             >
-              <svg class="stat-ring" viewBox="0 0 20 20">
-                <circle class="ctx-ring-bg" cx="10" cy="10" r="8"></circle>
-                <circle
-                  class="ctx-ring-fill"
-                  class:warn="ctxPct >= 80"
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  stroke-dasharray="50.27"
-                  attr:stroke-dashoffset="ctxDash"
-                ></circle>
-              </svg>
+              <span class="ctx-track">
+                <span class="ctx-fill" class:warn="ctxPct >= 80" :style.width="ctxPct + '%'"></span>
+              </span>
               <span class="stat-pill-label">{{ctxPillLabel()}}</span>
             </button>
             <span class="stat-panel" class:open="openStat === 'ctx'">
@@ -1609,10 +1599,9 @@
           dragOverSid: "", // 拖拽排序：悬停目标会话 id（高亮）
           toolDefs,
           skills: [],
-          // 上下文占用进度（applyMessageEvent 时由 contextInfo 重算；ctx 胶囊用）
+          // 上下文占用进度（applyMessageEvent 时由 contextInfo 重算；ctx Chip 用）
           ctxUsed: 0,
           ctxPct: 0,
-          ctxDash: "50.27",
           ctxTitle: "",
           ctxUnknown: false, // 会话有 AI 消息但拿不到 usage → 占用未知，胶囊降级显示
           // 底部统计胶囊（syncStats 随消息/状态事件重算）
@@ -1887,7 +1876,6 @@
                 (m) => m.role === "assistant",
               );
               this.ctxPct = 0;
-              this.ctxDash = "50.27";
               this.ctxTitle = this.ctxUnknown
                 ? "上下文占用未知：会话没有可用的用量记录（异常收场 / 早期会话，无法事后恢复）"
                 : "";
@@ -1897,8 +1885,6 @@
             this.ctxUnknown = false;
             const total = Number(this.ctxWindow) || 131072;
             this.ctxPct = Math.round(Math.min(100, (this.ctxUsed / total) * 100) * 10) / 10;
-            // r=8 的圆周长 2πr ≈ 50.27，偏移量 = 周长 ×（1 - 进度）
-            this.ctxDash = (50.27 * (1 - this.ctxPct / 100)).toFixed(2);
             const k = (v) => {
               if (v >= 1024) return (v / 1024).toFixed(1).replace(/\.0$/, "") + "k";
               return String(v);
@@ -1993,7 +1979,7 @@
             this.usageCacheRead = cacheRead;
             this.usageUncached = Math.max(0, prompt - cacheRead);
             this.usageTotal = prompt + output;
-            // 分解色条宽度 = 占用百分比 × 各部分占比（harness ContextMeter 同款）
+            // 分解色条宽度 = 占用百分比 × 各部分占比
             const bd = lastBreakdown;
             const total = bd
               ? (bd.systemTokens || 0) +
@@ -2291,7 +2277,7 @@
             );
           },
 
-          // ---- 本轮用量明细面板（TurnUsagePanel 同款；插值一律走方法，
+          // ---- 本轮用量明细面板（插值一律走方法，
           // {{}} 文本插值里不能出现比较符） ----
 
           toggleUsagePanel(id) {

@@ -315,12 +315,13 @@ st-icon-button.preview-live::after {
 
 .chip {
   padding: 7px 14px;
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 15%, transparent);
-  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   font: inherit;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition:
     background-color 100ms ease,
@@ -328,7 +329,7 @@ st-icon-button.preview-live::after {
 }
 
 .chip:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -1458,8 +1459,10 @@ st-icon-button.preview-live::after {
 
 /* ---------- 上下文占用进度 + 底部统计胶囊 ---------- */
 
-/* ---------- 底部统计胶囊（会话统计 / Token 用量 / 上下文占用） ----------
-   对齐 deepseek harness StatsPills：点击开合明细面板，openStat 互斥收口 */
+/* ---------- 底部统计条（会话统计 / Token 用量 / 上下文占用） ----------
+   Material Design 3 语言：触发器为描边 Chip（8px 圆角 + outline-variant 描边，
+   悬停 8% state-layer，开启时 secondary-container 实底）；明细为 elevated
+   card（16px 圆角 + 细描边 + emphasized 缩放入场）。点击开合互斥收口 openStat */
 
 .stat-anchor {
   position: relative;
@@ -1470,64 +1473,85 @@ st-icon-button.preview-live::after {
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: none;
-  padding: 3px 10px;
-  border: none;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   font: inherit;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   transition:
     background-color 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .stat-pill:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
   color: var(--md-sys-color-on-surface);
 }
 
+.stat-pill.open {
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
 .stat-pill n-icon {
+  font-size: 15px;
+  color: var(--md-sys-color-primary);
+}
+
+.stat-pill.open n-icon {
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* 消息流内嵌的小号变体（本轮用量 Chip） */
+.stat-pill.sm {
+  height: 24px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.stat-pill.sm n-icon {
   font-size: 13px;
-  opacity: 0.8;
 }
 
-/* 上下文胶囊的进度环（r=8 圈环复用 ctx-ring-* 描边类） */
-.stat-ring {
-  width: 14px;
-  height: 14px;
-  transform: rotate(-90deg); /* 进度从顶部起 */
+/* 上下文 Chip 的微线型进度（M3 linear progress：4px 全圆角轨道 + 填充条，
+   占用接近上限 ≥80% 转警示色） */
+.ctx-track {
+  flex: none;
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
 }
 
-.ctx-ring-bg,
-.ctx-ring-fill {
-  fill: none;
-  stroke-width: 3;
+.ctx-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--md-sys-color-primary);
+  transition: width 300ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.ctx-ring-bg {
-  stroke: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+.ctx-fill.warn {
+  background: var(--md-sys-color-error);
 }
 
-.ctx-ring-fill {
-  stroke: var(--md-sys-color-primary);
-  transition: stroke-dashoffset 300ms ease;
-}
-
-/* 占用接近上限（≥80%）转警示色 */
-.ctx-ring-fill.warn {
-  stroke: var(--md-sys-color-error);
-}
-
-/* 明细面板：锚点上方弹出、水平居中于胶囊。常驻渲染，透明度 + 位移做
-   淡入上浮/淡出下沉（o-if 挂卸做不了退场动画；visibility 延迟切换保证
-   退场可点击穿透；X 居中与 Y 动画合并在同一个 transform 里） */
+/* 明细面板：M3 elevated card——锚点上方弹出、水平居中于 Chip。常驻渲染，
+   透明度 + 自锚点缩放做 emphasized 入场/退场（o-if 挂卸做不了退场动画；
+   visibility 延迟切换保证退场可点击穿透；X 居中与缩放合并在同一 transform） */
 .stat-panel {
   position: absolute;
   bottom: calc(100% + 10px);
@@ -1537,30 +1561,34 @@ st-icon-button.preview-live::after {
   flex-direction: column;
   min-width: 250px;
   max-width: min(460px, calc(100vw - 24px));
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface-variant));
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.24);
+  padding: 14px 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 16px;
+  background: var(--md-sys-color-surface-container, var(--md-sys-color-surface-variant));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    0 2px 6px 2px rgba(0, 0, 0, 0.12);
   /* 短行照常单行收缩；超长说明行（数据缺失等）在 max-width 内换行，不撑宽面板 */
   white-space: normal;
+  transform-origin: bottom center;
   visibility: hidden;
   opacity: 0;
-  transform: translate(-50%, 6px);
+  transform: translate(-50%, 0) scale(0.9);
   pointer-events: none;
   transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    visibility 0s linear 160ms;
+    opacity 140ms ease,
+    transform 220ms cubic-bezier(0.2, 0, 0, 1),
+    visibility 0s linear 220ms;
 }
 
 .stat-panel.open {
   visibility: visible;
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, 0) scale(1);
   pointer-events: auto;
   transition:
-    opacity 160ms ease,
-    transform 160ms ease;
+    opacity 140ms ease,
+    transform 220ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* 左对齐变体。对话区「本轮用量」面板恒用此形态（在消息滚动层内居中会被
@@ -1570,25 +1598,27 @@ st-icon-button.preview-live::after {
   left: 0;
   width: 300px;
   max-width: calc(100vw - 24px);
-  transform: translate(0, 6px);
+  transform-origin: bottom left;
+  transform: translate(0, 0) scale(0.9);
 }
 
 .stat-panel.align-left.open {
-  transform: translate(0, 0);
+  transform: translate(0, 0) scale(1);
 }
 
 .stat-panel-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 13px;
   line-height: 20px;
   color: var(--md-sys-color-on-surface);
 }
 
 .stat-panel-head n-icon {
-  font-size: 15px;
-  color: var(--md-sys-color-on-surface-variant);
+  font-size: 16px;
+  color: var(--md-sys-color-primary);
 }
 
 .stat-panel-title {
@@ -1602,16 +1632,10 @@ st-icon-button.preview-live::after {
   font-variant-numeric: tabular-nums;
 }
 
-.stat-rule {
-  height: 1px;
-  margin: 8px 0;
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
-}
-
 .stat-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .stat-row {
@@ -1638,24 +1662,23 @@ st-icon-button.preview-live::after {
   font-variant-numeric: tabular-nums;
 }
 
-/* 上下文分解色条 + 图例色块（系统提示词 / 工具定义 / 对话消息） */
+/* 上下文分解色条 + 图例色块（系统提示词 / 工具定义 / 对话消息）：
+   M3 三角色配色，分段各自全圆角、段间留缝（expressive gap 风格） */
 .stat-bar {
   display: flex;
-  gap: 2px;
-  height: 6px;
-  margin: 10px 0 2px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  gap: 3px;
+  height: 8px;
+  margin: 0 0 12px;
 }
 
 .stat-seg {
   height: 100%;
   min-width: 0;
+  border-radius: 999px;
 }
 
 .seg-sys {
-  background: var(--md-sys-color-outline);
+  background: var(--md-sys-color-secondary);
 }
 
 .seg-tools {
@@ -1668,10 +1691,10 @@ st-icon-button.preview-live::after {
 
 .stat-swatch {
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 2.5px;
-  background: var(--md-sys-color-outline);
+  background: var(--md-sys-color-secondary);
 }
 
 .stat-swatch[data-k="tools"] {
@@ -1683,58 +1706,69 @@ st-icon-button.preview-live::after {
 }
 
 .stat-panel-foot {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  margin-top: 12px;
 }
 
+/* M3 filled-tonal 按钮（全圆角） */
 .stat-compress {
   width: 100%;
-  padding: 6px 0;
+  height: 32px;
+  padding: 0 16px;
   border: none;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
-  color: var(--md-sys-color-primary);
+  border-radius: 999px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
   font: inherit;
   font-size: 12.5px;
-  line-height: 18px;
+  font-weight: 500;
+  line-height: 32px;
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .stat-compress:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-secondary-container) 10%,
+    var(--md-sys-color-secondary-container)
+  );
 }
 
 .stat-compress:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 /* ---------- 右侧模型选择菜单（st-menu，模型 / 推理等级 / Key / 窗口） ----------
-   面板/子菜单/动画/翻转定位由 st-menu 组件自理；视觉向 stat-panel 一族对齐：
-   字号缩小联动内部 em 布局（圆角/内边距随之收窄），底色经主题变量换成
-   surface-container-high（与 .stat-panel 同色） */
+   面板/子菜单/动画/翻转定位由 st-menu 组件自理；触发器与统计条同族（描边
+   Chip），弹出层保持组件默认的 surface-container 底（与明细卡片同色），仅
+   缩小字号联动内部 em 布局 */
 
 .model-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: none;
   max-width: 260px;
-  padding: 4px 10px;
-  border: none;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   font: inherit;
   font-size: 12px;
-  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .model-trigger:hover {
-  background: var(--md-sys-color-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -1751,10 +1785,6 @@ st-icon-button.preview-live::after {
 
 .composer-row st-menu {
   font-size: 12.5px;
-  --md-sys-color-surface-container: var(
-    --md-sys-color-surface-container-high,
-    var(--md-sys-color-surface-variant)
-  );
 }
 
 /* 菜单行右侧的当前取值（suffix slot）与选中项 ✓（prefix slot） */
@@ -2493,7 +2523,7 @@ st-icon-button.preview-live::after {
   }
 
   .stat-panel,
-  .ctx-ring-fill {
+  .ctx-fill {
     transition: none;
   }
 }
