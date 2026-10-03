@@ -14,6 +14,7 @@ const N_CALLBACK = "onFileWrite 回调（appName / path / bytes）";
 const N_AUTO_INIT = "跳过 create_app 直接写：自动补 app.json 且 onAppCreated 恰一次";
 const N_INVALID_PATH = "非法路径返回可读失败文案（逃逸 / 二进制扩展名）";
 const N_OVERWRITE = "覆盖重写后读回新内容";
+const N_PUSH_HINT = "新文件回报「需 action=app 推送」提示，覆盖重写不提示";
 
 const testPlan = [
   N_SHAPE,
@@ -22,6 +23,7 @@ const testPlan = [
   N_AUTO_INIT,
   N_INVALID_PATH,
   N_OVERWRITE,
+  N_PUSH_HINT,
 ];
 
 const writeFileTest = defineSelfTest({
@@ -129,6 +131,17 @@ const writeFileTest = defineSelfTest({
       N_OVERWRITE,
       text2 === "v2" && res2.includes("2 字节"),
       `text=${text2} res=${res2}`,
+    );
+
+    // 新文件带「需 preview action=app 推送」提示；覆盖重写（res2）不重复提示
+    const resNew = await plugin.exec(
+      { appName: "demo-app", path: "pages/probe.html", content: "p" },
+      ctx,
+    );
+    await check(
+      N_PUSH_HINT,
+      resNew.includes("action=app") && !res2.includes("action=app"),
+      `new=${resNew} overwrite=${res2}`,
     );
   },
 });

@@ -30,7 +30,10 @@ export default {
         });
       }
       ctx.onFileWrite?.({ appName: r.name, path: r.path, bytes: r.bytes });
-      return `已写入 ${r.path}（${r.bytes} 字节）`;
+      // 预览窗口只服务已推送的文件快照：新文件在 action=app 推送前直接访问会 404
+      return r.created
+        ? `已写入 ${r.path}（${r.bytes} 字节）；新文件需先 preview action=app 推送，预览窗口才能访问`
+        : `已写入 ${r.path}（${r.bytes} 字节）`;
     } catch (err) {
       return `写入失败：${err.message}`;
     }

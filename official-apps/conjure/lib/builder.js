@@ -360,7 +360,9 @@ export async function createAppDir(
 /**
  * 往应用写入一个文件（自动创建中间目录）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
- * @returns {Promise<{ path: string, bytes: number }>}
+ * @returns {Promise<{ path: string, bytes: number, name: string, initialized: boolean, created: boolean }>}
+ *          created 表示本次写入的是新文件（此前不存在），供调用方给出
+ *          「需 preview 推送后预览端才可访问」类提示
  */
 /**
  * 确保目标应用已完成初始化（client/ 下存在 app.json）；缺失时自动补写一份
@@ -387,9 +389,17 @@ export async function writeAppFile(fs, appName, relPath, content, rootHandle) {
   const text = String(content ?? "");
   const initialized = await ensureAppInitialized(fs, clean, rootHandle);
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+  const prev = await base.get(rel + relPath).catch(() => null);
+  const created = !prev || prev.kind !== "file";
   const file = await base.get(rel + relPath, { create: "file" });
   await file.write(text);
-  return { path: relPath, bytes: new Blob([text]).size, name: clean, initialized };
+  return {
+    path: relPath,
+    bytes: new Blob([text]).size,
+    name: clean,
+    initialized,
+    created,
+  };
 }
 
 /** 读取应用的一个文件，不存在返回 null */
@@ -854,6 +864,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - 尽早首跑：写完入口骨架（index.html / app-config.js / 首个页面）就先用 preview 工具（action=app，appName 必填）跑一次，确认应用能打开、骨架无报错，再继续写功能——不要全部写完才第一次运行，越早看到真实运行越早暴露问题；
    - 每完成一层功能（一个页面 / 一块交互 / 一组数据逻辑）都 write_file 后用 preview action=app 刷新实际运行验证，小步推进；
    - 发现问题先取证再改，禁止不看证据凭猜测连环改代码：控制台报错 → action=console 读日志；渲染不对 → action=dom / text 看真实 DOM；交互失灵 → action=click / type 复现用户操作；
+   - 预览页内容渲染在 \`o-app\`/\`o-page\` 的 shadow DOM 里：action=text 读不到页面文本，用 action=dom 或 eval 查 \`shadowRoot\`；白屏或报「加载页面模块 … 失败」时，真实错误栈在 \`document.querySelector('o-app > o-page').shadowRoot.textContent\` 里（该报错不带原因、status 的 errors 计数也不含它），先 eval 取证再改；
    - 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互实测可用为止；
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
@@ -906,13 +917,14 @@ export const home = "./pages/home.html";
 - 需要弹窗/提示时可用 senti-ui 的 st-dialog / toast（先 \`<l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/st-dialog.html"></l-m>\` 声明）。
 
 ### 数据持久化（如应用需要保存数据）
-- 统一用 /nos/storage/main.js，禁止 localStorage：
+- 统一用 /nos/storage/main.js，禁止 localStorage。页面模块顶层禁止 import /nos/*，必须运行时用**页面工厂参数注入的 load** 加载（**禁止 \`lm(import.meta)\`**——页面脚本被编译成 \`data:\` URL 模块执行，import.meta 不能作 URL base，解析任何路径都抛 Invalid URL，整页加载失败且报错不带原因）：
 \`\`\`js
-// 页面模块顶层禁止 import /nos/*，必须运行时加载：
-const load = lm(import.meta);
-const { getStorage } = await load("/nos/storage/main.js");
-const store = getStorage("<app-独立空间>");
-await store.setItem("key", value);
+export default async ({ load }) => {
+  const { getStorage } = await load("/nos/storage/main.js");
+  const store = getStorage("<app-独立空间>");
+  await store.setItem("key", value);
+  return { data: { /* 声明模板用到的 data 安全默认值 */ } };
+};
 \`\`\`
 
 ## 硬性约束

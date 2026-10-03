@@ -43,8 +43,9 @@ ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片�
   - 如果该入口对应的页面**确信 Core 已就绪**（比如紧跟入口 HTML 的校验），允许顶层 `await init("mazmot")`，参考 [apps/main/app-config.js](apps/main/app-config.js)。
   - 如果该入口的页面模块会自己装 Core（如 [apps/run-app/app-config.js](apps/run-app/app-config.js)），**禁止**在 `app-config.js` 顶层调用 `init()` 或 import `/nos/*`。
 - **页面模块 / 普通模块 / 组件**
-  - 顶层**禁止** `import "/nos/*"`；必须用 `const load = lm(import.meta); await load("/nos/xxx/main.js")` 在 `attached` 或运行时按需加载。
-  - 参考实现：[apps/run-app/run-app.html](apps/run-app/run-app.html) 的 Core 就绪 Promise + `load(...)` 并行加载模式。
+  - 顶层**禁止** `import "/nos/*"`，必须运行时按需加载。
+  - **页面模块**：用页面工厂参数注入的 load——`export default async ({ load }) => { const mod = await load("/nos/xxx/main.js"); }`。**页面模块内禁止 `lm(import.meta)`**：页面脚本被 ofa 编译为 `data:` URL 模块执行，`import.meta` 不能作 URL base，用它加载任何路径都抛 `Invalid URL`、整页加载失败（且 ofa 只报「加载页面模块失败」不带原因）。参考实现：[apps/run-app/run-app.html](apps/run-app/run-app.html) 的 Core 就绪 Promise + `load(...)` 并行加载模式。
+  - **以真实 URL 加载的普通 JS 模块**：`const load = lm(import.meta); await load("/nos/xxx/main.js")`。
 
 > 违反这条规则最典型的现象：首次访问或 Core 升级后白屏，因为模块加载早于 Core 注册 SW。
 

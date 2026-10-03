@@ -379,6 +379,14 @@
               appFollowsAgents: withApp.includes("严格遵守项目 AGENTS.md"),
               vfsPath: withApp.includes("/$ai-apps/todo-app"),
               localNoVfsPath: !local.includes("/$ai-apps/demo"),
+              // 存储示例教工厂参数 load，且不再出现 lm(import.meta)
+              // （页面模块内 lm(import.meta) 因 data: URL 模块必崩，实测踩坑）
+              storagePattern:
+                draft.includes("export default async ({ load }) =>") &&
+                draft.includes('load("/nos/storage/main.js")') &&
+                !draft.includes("const load = lm(import.meta)"),
+              // 页面加载失败 / shadow DOM 取证捷径进基础提示词
+              shadowDomProbe: draft.includes("shadowRoot.textContent"),
               // 工作流程的文档体系：宿主预写四份骨架 → 模型填充、不留占位
               docsSystem:
                 draft.includes(

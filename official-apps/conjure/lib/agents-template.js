@@ -26,6 +26,7 @@ export const AGENTS_MD_TEMPLATE = `# AGENTS.md — <项目名>
 
 - 技术栈固定：ofa.js（无构建步骤）+ senti-ui（M3 组件）+ o-router 微应用结构；依赖一律走 CDN \`/gh/ofajs/...@latest\`，禁止引入打包器、npm 依赖或额外运行时。
 - 目录职责：\`index.html\`（入口，勿改结构）、\`app-config.js\`（只导出 \`home\`）、\`pages/*.html\`（页面模块）。
+- **页面模块内运行时加载 \`/nos/*\`（如 storage）必须用页面工厂参数注入的 load**：\`export default async ({ load }) => { const { getStorage } = await load("/nos/storage/main.js"); }\`；**禁止 \`lm(import.meta)\`**——页面脚本被编译成 \`data:\` URL 模块执行，\`import.meta\` 不能作 URL base，解析任何路径都抛 Invalid URL，会让整页加载失败且报错不带原因。
 - **write_file 是整文件覆盖，改前保证手上有当前完整内容**：只发片段会把整个文件截断成残片。上下文里已有该文件的完整当前内容（本会话刚 read_file 过且无变更迹象，或自己刚 write_file 写入过）→ 直接基于上下文里的内容改、**不重复 read_file**（省 token）；首次修改、上下文经过压缩摘要、或对内容没把握 → **先 read_file 再改**——多读一次的代价远小于凭模糊记忆整体重写丢内容的返工。
 - **页面模块的 \`:host\` 必须是滚动容器**（\`height:100%; overflow-y:auto\`）——\`o-router fix-body\` 给自身 shadow 写死了 \`overflow:hidden\`，删掉这条整页无法滚动。
 - 颜色只用 M3 变量 \`--md-sys-color-*\`；canvas 里绘制的色值属于图片内容，不受此约束。
