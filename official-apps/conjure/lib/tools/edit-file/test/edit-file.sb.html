@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>edit_file 工具包测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="editAppFile 差量编辑语义（唯一命中 / 多条链式 / 歧义 / replace_all / 新文件）">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            editAppFile,
+            readAppFile,
+          } from "../../../builder.js";
+          import {
+            createVirtualFs,
+            seedVirtualFiles,
+          } from "../../../test-space/virtual-space.js";
+          {
+            try {
+              const fs = createVirtualFs();
+              await createAppDir(fs, { name: "demo", displayName: "Demo" });
+              const root = await fs.init("ai-apps");
+              await seedVirtualFiles(root, {
+                "demo/client/pages/home.html":
+                  "line1\nline2 目标\nline3\nline2 目标\nline5",
+              });
+
+              // 唯一命中（带上下文消除歧义）+ 未提及内容保留
+              const r1 = await editAppFile(fs, "demo", "pages/home.html", [
+                {
+                  old_string: "line2 目标\nline3",
+                  new_string: "line2 改过\nline3",
+                },
+              ]);
+              const t1 = await readAppFile(fs, "demo", "pages/home.html");
+
+              // 多条链式：第二条引用第一条的产物
+              const r2 = await editAppFile(fs, "demo", "pages/home.html", [
+                { old_string: "line2 改过", new_string: "A" },
+                { old_string: "A\nline3", new_string: "B\nline3" },
+              ]);
+
+              // 未命中
+              let missed = false;
+              try {
+                await editAppFile(fs, "demo", "pages/home.html", [
+                  { old_string: "不存在", new_string: "x" },
+                ]);
+              } catch (e) {
+                missed = e.message.includes("read_file");
+              }
+
+              // 歧义：两处 "line2 目标" 剩余一处（第一次编辑改掉了一处）……
+              // 重新构造：文件里两处相同片段且未带 replace_all
+              await writeAppFile(fs, "demo", "dup.txt", "x\nx\nx");
+              let amb = "";
+              try {
+                await editAppFile(fs, "demo", "dup.txt", [
+                  { old_string: "x", new_string: "y" },
+                ]);
+              } catch (e) {
+                amb = e.message;
+              }
+
+              // replace_all 全替换
+              await editAppFile(fs, "demo", "dup.txt", [
+                { old_string: "x", new_string: "y", replace_all: true },
+              ]);
+              const dup = await readAppFile(fs, "demo", "dup.txt");
+
+              // 新文件引导 write_file
+              let noFile = false;
+              try {
+                await editAppFile(fs, "demo", "no-such.js", [
+                  { old_string: "a", new_string: "b" },
+                ]);
+              } catch (e) {
+                noFile = e.message.includes("write_file");
+              }
+
+              const checks = {
+                applied1: r1.applied === 1 && t1.includes("line2 改过") && t1.includes("line5"),
+                prevNext: r1.prevText.includes("line2 目标") && r1.nextText.includes("line2 改过"),
+                chained: r2.applied === 2 && (await readAppFile(fs, "demo", "pages/home.html")).includes("B\nline3"),
+                missGuided: missed,
+                ambiguousCount: amb.includes("3 处") && amb.includes("replace_all"),
+                replaceAll: dup === "y\ny\ny",
+                newFileGuided: noFile,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, amb },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="diffLines / diffStat / compactHunks 行级 diff">
+      <template>
+        <script type="module">
+          import {
+            diffLines,
+            diffStat,
+            compactHunks,
+          } from "../../../diff.js";
+          {
+            const a = "a\nb\nc\nd\ne";
+            const b = "a\nX\nc\nd\nf\ne";
+            const hunks = diffLines(a, b);
+            const stat = diffStat(hunks);
+            const compact = compactHunks(hunks, 1);
+            const same = diffLines("x\ny", "x\ny");
+            const empty = diffLines("", "");
+            // 降级路径：超长文件不再走 LCS（结果仍是全量增删序列）
+            const bigA = "p\n".repeat(3000);
+            const bigB = "q\n".repeat(3000);
+            const big = diffLines(bigA, bigB);
+            const checks = {
+              // LCS 对齐：b 删除、X/f 新增，e 仍是公共行（dels=1 而非 2）
+              stat: stat.adds === 2 && stat.dels === 1,
+              types: hunks.filter((h) => h.type === "del").map((h) => h.text).join("|") === "b",
+              addTexts: hunks.filter((h) => h.type === "add").map((h) => h.text).join("|") === "X|f",
+              lineNos: hunks.every((h) => h.type === "ctx" || (h.type === "add" ? h.bLn > 0 : h.aLn > 0)),
+              orderFirst: hunks[0].type === "ctx" && hunks[0].text === "a",
+              // context=1 时相邻变更（X@2、f@5）的上下文恰好覆盖全部中间行：
+              // 无折叠；context=0 才出现 gap 折叠
+              compactNoGapWhenCovered: compact.every((h) => h.type !== "gap"),
+              compactGapsAtCtx0: compactHunks(hunks, 0).some((h) => h.type === "gap"),
+              compactNoIsolated: compactHunks(same.map((h) => ({ ...h, type: "ctx" })), 2).length === 0,
+              sameAllCtx: same.every((h) => h.type === "ctx") && same.length === 2,
+              emptyOk: empty.length === 1 && empty[0].type === "ctx",
+              // 降级：3000 行 "p\n" split 出 3001 行（含末尾空行）全删全增
+              degrade: big.filter((h) => h.type === "del").length === 3001 && diffStat(big).adds === 3001,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, stat, compactCount: compact.length },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createAppBackup opts.auto 标记与 listAppBackups 透出">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            listAppBackups,
+            renameAppBackup,
+          } from "../../../builder.js";
+          import { createVirtualFs } from "../../../test-space/virtual-space.js";
+          {
+            try {
+              const fs = createVirtualFs();
+              await createAppDir(fs, { name: "demo", displayName: "Demo" });
+              await writeAppFile(fs, "demo", "index.html", "<html></html>");
+
+              const auto = await createAppBackup(fs, "demo", undefined, { auto: true });
+              await writeAppFile(fs, "demo", "index.html", "<html>v2</html>");
+              const manual = await createAppBackup(fs, "demo");
+
+              const list = await listAppBackups(fs, "demo");
+              const autoHit = list.find((b) => b.id === auto.id);
+              const manualHit = list.find((b) => b.id === manual.id);
+
+              // 自动快照照常可更名（meta 合并保留 auto 标记）
+              await renameAppBackup(fs, "demo", auto.id, "回合前");
+              const list2 = await listAppBackups(fs, "demo");
+              const renamed = list2.find((b) => b.id === auto.id);
+
+              const checks = {
+                autoMarked: autoHit?.auto === true,
+                manualPlain: manualHit && !("auto" in manualHit),
+                bothListed: !!autoHit && !!manualHit,
+                labelKept: renamed.label === "回合前" && renamed.auto === true,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, list2 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

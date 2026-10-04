@@ -188,14 +188,14 @@
               displayName: "X",
             });
             const checks = {
-              sevenDefs: TOOL_DEFS.length === 7,
-              names: ["create_app", "write_file", "read_file", "list_files", "read_skill", "show_form", "preview"]
+              eightDefs: TOOL_DEFS.length === 8,
+              names: ["create_app", "write_file", "edit_file", "read_file", "list_files", "read_skill", "show_form", "preview"]
                 .every((n) => names.includes(n)),
               defShape: TOOL_DEFS.every(
                 (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
               ),
               allHaveSelfTest: TOOL_DEFS.every((d) => /self-test\.js$/.test(d.selfTest || "")),
-              keys: ["createApp", "writeFile", "readFile", "listFiles", "readSkill", "showForm", "preview"].every(
+              keys: ["createApp", "writeFile", "editFile", "readFile", "listFiles", "readSkill", "showForm", "preview"].every(
                 (k) => tools[k],
               ),
               ctxEvents: seen.length === 1 && seen[0].appName === "x",
@@ -221,6 +221,7 @@
             renameAppBackup,
             setBackupNote,
             restoreAppBackup,
+            currentAppHash,
             currentAppFiles,
             readBackupFiles,
           } from "../lib/builder.js";
@@ -446,6 +447,45 @@
                 buildSystemPrompt({ appName: "old-app" }).includes(
                   "# AGENTS.md — <项目名>",
                 ),
+              // 宿主自动检测的预览错误注入：有则整节带上（优先修复指引），
+              // 无则不出现该节
+              autoErrInjected: buildSystemPrompt({
+                appName: "todo-app",
+                autoErrors: ["[12:00:00.123] [error] Uncaught TypeError: x is not a function"],
+              }).includes("预览自动检测报告"),
+              autoErrGuides: buildSystemPrompt({
+                appName: "todo-app",
+                autoErrors: ["[error] boom"],
+              }).includes("最高优先级"),
+              autoErrAbsent: !buildSystemPrompt({ appName: "todo-app" }).includes(
+                "预览自动检测报告",
+              ),
+              // 回滚通知注入：不满意（带被否决回合的请求摘要）与中性两种措辞；
+              // 无 rollback 参数不出现该节
+              rollbackDissatisfied:
+                buildSystemPrompt({
+                  appName: "todo-app",
+                  rollback: {
+                    appName: "todo-app",
+                    sentiment: "dissatisfied",
+                    requestText: "把按钮改成蓝色",
+                  },
+                }).includes("表示不满意") &&
+                buildSystemPrompt({
+                  appName: "todo-app",
+                  rollback: {
+                    appName: "todo-app",
+                    sentiment: "dissatisfied",
+                    requestText: "把按钮改成蓝色",
+                  },
+                }).includes("把按钮改成蓝色"),
+              rollbackNeutral: buildSystemPrompt({
+                appName: "todo-app",
+                rollback: { appName: "todo-app", sentiment: "neutral" },
+              }).includes("不含不满含义"),
+              rollbackAbsent: !buildSystemPrompt({
+                appName: "todo-app",
+              }).includes("回滚通知"),
             };
             return {
               assert: Object.values(checks).every(Boolean),
@@ -812,6 +852,195 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="回合变更卡与自动快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
+      <template>
+        <script type="module">
+          import {
+            listAppBackups,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const fsFake = createVirtualFs();
+
+              // 脚本化 chain：捕获 createAgent 收到的 tools 与 systemPrompt，
+              // chat 内直接调 invoke 模拟模型写文件（真实走插件层）
+              const agentPrompts = [];
+              let agentTools = [];
+              const toolOf = (name) => agentTools.find((t) => t.name === name);
+              let callN = 0;
+              const chat = async ({ onStream }) => {
+                callN++;
+                const app = store.state.currentAppName;
+                if (callN === 1) {
+                  await toolOf("write_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    content: "<html>v1</html>",
+                  });
+                } else if (callN === 2) {
+                  await toolOf("edit_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    edits: [
+                      { old_string: "v1", new_string: "v2" },
+                    ],
+                  });
+                } else if (callN === 3) {
+                  // 同回合两次写：冻结 diff 应为 首改前(v1) → 末改后(v1b)
+                  await toolOf("write_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    content: "<html>v1a</html>",
+                  });
+                  await toolOf("edit_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    edits: [
+                      { old_string: "v1a", new_string: "v1b" },
+                    ],
+                  });
+                }
+                // callN >= 4：纯文本回合（回滚通知流转验证，不动文件）
+                onStream({ type: "text", delta: `第${callN}轮` });
+                return {
+                  content: `第${callN}轮`,
+                  usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, context_tokens: 12 },
+                  toolCalls: [],
+                };
+              };
+              const fakeChain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: (opts) => {
+                  agentTools = opts.tools || [];
+                  agentPrompts.push(opts.systemPrompt || "");
+                  return { chat };
+                },
+              };
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js") ? fakeChain : aiFake,
+              });
+              await store.init({});
+
+              // 轮 1（fresh）：项目即建 → 回合快照（骨架态）→ 写 app.json 覆盖 + index.html 新增
+              await store.send("做个演示应用");
+              const st = store.state;
+              const persisted1 =
+                (await fakeStore.getItem(`chat:${st.currentAppName}:${st.currentSessionId}`)) || [];
+              const ai1 = [...persisted1].reverse().find((m) => m.role === "assistant");
+              const idx1 = (ai1?.changes || []).find((c) => c.path === "index.html");
+              const appJsonChg = (ai1?.changes || []).find((c) => c.path === "app.json");
+              const backups1 = await listAppBackups(fsFake, st.currentAppName);
+              const autoBk1 = backups1.find((b) => b.auto);
+
+              // 轮 2：edit_file 差量修改 index.html
+              await store.send("把 v1 改成 v2");
+              const persisted2 =
+                (await fakeStore.getItem(`chat:${st.currentAppName}:${st.currentSessionId}`)) || [];
+              const ai2 = [...persisted2]
+                .reverse()
+                .find((m) => m.role === "assistant" && Array.isArray(m.changes));
+              const idx2 = ai2?.changes?.find((c) => c.path === "index.html");
+
+              // diff 查询：轮 2 快照 vs 当前盘（v2）
+              const diffRes = await store.getTurnDiff(
+                st.currentAppName,
+                ai2.snapshotId,
+                "index.html",
+              );
+
+              // 回滚到轮 2 开始前快照（标记不满意 + 带该回合请求摘要）：
+              // 轮 2 快照 = 轮 1 结束态（v1），回滚后 index.html 应回 v1
+              const rb = await store.rollbackTurn(st.currentAppName, ai2.snapshotId, {
+                sentiment: "dissatisfied",
+                requestText: "把 v1 改成 v2",
+              });
+              const after = await readAppFile(fsFake, st.currentAppName, "index.html");
+
+              // 回滚后的下一回合：提示词带「不满意」回滚通知（含请求摘要）；
+              // 通知一次性消费，再下一回合不再出现
+              await store.send("重新设计一下");
+              const prompt3 = agentPrompts[2] || "";
+              const persisted3 =
+                (await fakeStore.getItem(
+                  `chat:${st.currentAppName}:${st.currentSessionId}`,
+                )) || [];
+              const ai3 = [...persisted3]
+                .reverse()
+                .find(
+                  (m) =>
+                    m.role === "assistant" &&
+                    Array.isArray(m.changes) &&
+                    m.id > ai2.id,
+                );
+              const idx3 = ai3?.changes?.find((c) => c.path === "index.html");
+              await store.send("再看看");
+              const prompt4 = agentPrompts[3] || "";
+
+              const checks = {
+                turn1Changes:
+                  !!idx1 && idx1.op === "write" && idx1.dels === 0 && idx1.adds > 0,
+                // 宿主 createAppDir 预写的 app.json 不经 onFileWrite，不应计入变更
+                hostSeededNotTracked: !appJsonChg,
+                turn1Snapshot: typeof ai1?.snapshotId === "string" && ai1.snapshotId.length > 0,
+                autoBackupMarked: !!autoBk1 && autoBk1.id === ai1.snapshotId,
+                turn2Edit: idx2?.op === "edit" && idx2.adds === 1 && idx2.dels === 1,
+                diffHunks:
+                  !diffRes.same &&
+                  diffRes.hunks.some((h) => h.type === "add") &&
+                  diffRes.hunks.some((h) => h.type === "del"),
+                rollbackRestored: rb.restored === true && after === "<html>v1</html>",
+                notifyInjected:
+                  prompt3.includes("回滚通知") &&
+                  prompt3.includes("不满意") &&
+                  prompt3.includes("把 v1 改成 v2"),
+                notifyConsumed: !prompt4.includes("回滚通知"),
+                // 冻结 diff = 该回合净变化（首改前 v1 → 末改后 v1b），且
+                // 两次写的中间态 v1a 不出现
+                turn3Frozen:
+                  Array.isArray(idx3?.hunks) &&
+                  idx3.hunks.some(
+                    (h) => h.type === "add" && h.text === "<html>v1b</html>",
+                  ) &&
+                  idx3.hunks.some(
+                    (h) => h.type === "del" && h.text === "<html>v1</html>",
+                  ) &&
+                  !idx3.hunks.some((h) => h.text.includes("v1a")),
+                stateIdle: st.sending === false && st.autoErrors.length === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  checks,
+                  changes1: ai1?.changes,
+                  changes2: ai2?.changes,
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+
     <sb-test name="备份还原：覆盖写回 / 无变动检测（统一虚拟空间）">
       <template>
         <script type="module">
@@ -885,6 +1114,195 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="思考 token 分摊：usage 累计差值落各气泡 / 末条为最后一次调用的增量">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              // 两次模型调用：第一次思考消耗 100，第二次 50（usage 为回合累计）
+              const chat = async ({ onStream }) => {
+                // 真实链路事件顺序：text → usage（调用末尾累计快照）→ toolCalls
+                onStream({ type: "text", delta: "第一次思考完成" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    completion_tokens: 300,
+                    reasoning_tokens: 100,
+                    context_tokens: 400,
+                  },
+                });
+                onStream({ type: "toolCalls", toolCalls: [] });
+                onStream({ type: "text", delta: "第二次思考完成" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    completion_tokens: 350,
+                    reasoning_tokens: 150,
+                    context_tokens: 450,
+                  },
+                });
+                return {
+                  content: "第二次思考完成",
+                  usage: {
+                    completion_tokens: 350,
+                    reasoning_tokens: 150,
+                    context_tokens: 450,
+                  },
+                  toolCalls: [],
+                };
+              };
+              const store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js")
+                    ? {
+                        tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                        createAgent: () => ({ chat }),
+                      }
+                    : {
+                        getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                        getAssistant: () => ({ providerName: "Fake" }),
+                        onApiKeysChange: () => {},
+                      },
+              });
+              await store.init({});
+              await store.send("做点东西");
+              const app = store.state.currentAppName;
+              const st = store.state;
+              const bucket =
+                (await fakeStore.getItem(`chat:${app}:${st.currentSessionId}`)) || [];
+              const bubbles = bucket.filter((m) => m.role === "assistant");
+              const checks = {
+                twoBubbles: bubbles.length === 2,
+                firstRT: bubbles[0]?.reasoningTokens === 100,
+                secondRT: bubbles[1]?.reasoningTokens === 50,
+                lastUsageKept:
+                  bubbles[1]?.usage?.reasoning_tokens === 150,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  checks,
+                  rts: bubbles.map((b) => b.reasoningTokens),
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="备份代码按钮感知：回合后刷新备份清单 / 智能备份后 current 标记 / 重复跳过">
+      <template>
+        <script type="module">
+          import {
+            currentAppHash,
+            currentAppFiles,
+            readBackupFiles,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              let tools = [];
+              const chat = async ({ onStream }) => {
+                await tools
+                  .find((t) => t.name === "write_file")
+                  .invoke({
+                    appName: store.state.currentAppName,
+                    path: "index.html",
+                    content: "<html>v1</html>",
+                  });
+                onStream({ type: "text", delta: "写好了" });
+                return {
+                  content: "写好了",
+                  usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6, context_tokens: 6 },
+                  toolCalls: [],
+                };
+              };
+              const fsFake = createVirtualFs();
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore: createVirtualStorage(),
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js")
+                    ? {
+                        tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                        createAgent: (opts) => {
+                          tools = opts.tools || [];
+                          return { chat };
+                        },
+                      }
+                    : {
+                        getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                        // getAssistant 的返回值带 chat：generateBackupMeta
+                        // 直接调 assistant.chat 生成备份标题/备注
+                        getAssistant: () => ({
+                          providerName: "Fake",
+                          chat: async () => ({
+                            content: '{"label":"初始版本","note":"包含基础页面"}',
+                          }),
+                        }),
+                        onApiKeysChange: () => {},
+                      },
+              });
+              await store.init({});
+
+              // 轮 1：写 index.html；回合结束 driveTurn 异步刷新备份清单
+              //（fire-and-forget，轮询等待其完成——真实 UI 由 patch 驱动按钮）
+              await store.send("做个演示应用");
+              const app = store.state.currentAppName;
+              const st = store.state;
+              for (let i = 0; i < 100 && st.backups.length === 0; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+              }
+              // 回合开始自动快照 = 回合前骨架态，当前内容（含 index.html）与它不同
+              // → 无任何备份的 current 标记 → 按钮应可点
+              const notBackedUp =
+                st.backups.length >= 1 && !st.backups.some((b) => b.current);
+
+              // 智能备份（打包 + AI 标题备注）→ 当前内容出现 current 项 → 已备份态
+              const res = await store.smartBackup();
+              const backedUp = st.backups.some((b) => b.current);
+              const labeled = st.backups.find((b) => b.current)?.label;
+
+              // 再点：内容未变化 → 跳过；current 标记保持
+              const res2 = await store.smartBackup();
+              const stillBacked = st.backups.some((b) => b.current);
+
+              const checks = {
+                listRefreshedAfterTurn: notBackedUp,
+                smartBackupCreated: !!res && !res.skipped,
+                currentMarked: backedUp && labeled === "初始版本",
+                reskipped: !!res2?.skipped && stillBacked,
+                stateIdle: st.sending === false && st.backupBusy === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, backups: st.backups, keyError: st.keyError },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="会话拖拽排序：reorderSessions 持久化与展示同步">
       <template>
         <script type="module">

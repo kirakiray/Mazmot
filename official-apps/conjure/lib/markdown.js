@@ -1,7 +1,7 @@
 /**
  * 安全的轻量 Markdown 渲染器（GFM 子集），服务 AI 聊天的助手消息渲染。
  *
- * 安全模型（参照 deepseek-harness markdown 渲染器的不可信输出策略）：
+ * 安全模型（不可信输出策略——所有输入按敌意处理）：
  * - 所有源文本先经 HTML 转义，raw HTML 一律按字面文本渲染，不会有 HTML 进入 DOM
  * - 链接仅放行 http / https / mailto 协议；图片额外要求绝对 http(s) 地址
  * - 生成的标签全部来自本模块自身模板，属性值（href / data-code / text-align）不含源文本原文

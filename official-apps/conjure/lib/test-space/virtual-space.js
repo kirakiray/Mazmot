@@ -13,7 +13,8 @@
 //         keys() 子名异步迭代器；values() 子句柄异步迭代器；
 //         flat() 全量后代文件句柄（Core 新版能力，builder 优先用它列举）；
 //         remove() 递归删除自己（根目录则清空子项）
-//   文件：kind "file"、path、text() → Promise<string>、write(content) → Promise
+//   文件：kind "file"、path、text() → Promise<string>、json() → Promise、
+//         write(content) → Promise
 //   句柄 path 一律从所属根目录算起（如 "todo-app/client/index.html"，
 //   与 Core「flat()/path 可能带命名空间前缀」的行为一致）
 //
@@ -26,6 +27,9 @@ const makeFileHandle = (dirNode, name, text) => ({
   path: pathOf(dirNode) ? `${pathOf(dirNode)}/${name}` : name,
   async text() {
     return text;
+  },
+  async json() {
+    return JSON.parse(text);
   },
   async write(content) {
     text = String(content ?? "");
