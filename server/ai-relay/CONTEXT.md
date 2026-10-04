@@ -14,7 +14,8 @@ server/ai-relay/
     ├── store.rs        # 数据模型（UserRec / ApiKeyRec / UsageRec）、redb 三表、随机 token、邀请码编解码、单测
     ├── identity.rs     # NoneOS 用户绑定：ECDSA P-256 验签（对齐 noneos-core `_sign`）、userId 哈希校验、单测
     ├── admin.rs        # /admin/* 管理 API（CRUD + 邀请码 + 用量 + 绑定查看/解绑）
-    └── proxy.rs        # /v1/* 用户 API（chat 转发 + 流式透传统计、models 合并、usage 查询、activate 激活绑定）
+    ├── proxy.rs        # /v1/* 用户 API（chat 转发 + 流式透传统计、models 合并、usage 查询、activate 激活绑定；auth_user / check_bound_signature 供 web 模块复用）
+    └── web.rs          # /v1/web/fetch 服务端网页抓取（SSRF 防护 + 手动重定向逐跳校验 + 大小/超时/类型上限，单测）
 ```
 
 ## 配置（环境变量优先，其次 TOML `[vars]` 同名键）
@@ -49,11 +50,12 @@ server/ai-relay/
   - `GET /v1/models`：合并 key 池各上游模型（去重 + 按白名单过滤）；chat 对白名单外模型返回 403
   - `GET /v1/usage`：`{ serverName, quotaTokens, usedTokens, totalRequests, remainingTokens }`
   - `GET /v1/server`：`{ name }` 服务器命名（公开、无需鉴权，客户端展示用）
+  - `POST /v1/web/fetch`：服务端代理抓取网页文本（浏览器 CORS 不可达的补充能力），body `{ url }`，成功 200 `{ url, status, contentType, text, truncated }`（status 为上游状态码，404 等不算网关错误），失败 `{ error: { message, type } }`。鉴权与 chat 一致；抓取不计入 token 配额。安全约束：仅 http/https、内部主机名与私网 IP 黑名单（域名解析后逐 IP 校验）、重定向手动跟随最多 3 跳每跳重新校验、响应体 2MB 截断、总超时 15s、Content-Type 仅放行文本类。协议契约与客户端见 `mz/net/README.md`（单一事实来源）。
 
 ## 部署 / 测试
 
 - 本地跑：仓库根 `npm run ai-relay`（= `cd server/ai-relay && cargo run --release`），或直接 `AI_RELAY_ADMIN_TOKEN=xxx cargo run`；配置示例见 `ai-relay.toml.example`。
-- 单测：`cargo test`（邀请码编解码、模型前缀路由、redb 持久化 roundtrip 等）。
+- 单测：`cargo test`（邀请码编解码、模型前缀路由、redb 持久化 roundtrip、web 模块私网黑名单与目标校验等）。
 - 管理 UI e2e：`npm run ai-relay-e2e`（= `cd server/ai-relay/e2e && npx playwright test --project=chrome`，首次需在该目录 `npm install` 装 @playwright/test）。三 webServer 起真服务器 ×2（18974 / 18976 端口、独立数据文件，第二台供多账户用例）+ 仓库静态服务器（18975）；浏览器先经根入口安装 NoneOS Core 再打开 `server/ai-relay-admin/`，覆盖：连接 → 添加上游 key（masked 展示）→ 新建用户（配额 / key 池勾选）→ 详情邀请码解码与服务器交叉校验 → 清零用量 → 删除用户 → 断开连接（账户保留）→ 已保存账户一键重连 → 添加第二台服务器 → 切换弹窗来回切换（当前账户标记 + 两台状态独立）→ 删除账户（非活跃仅移除 / 活跃断开回连接页）。需外网装 Core 时给浏览器挂代理：`E2E_PROXY=http://127.0.0.1:8118 npm run ai-relay-e2e`。
 - 功能 e2e：`cd server/ai-relay && node e2e/e2e.mjs`——自动以随机端口 / 临时数据目录 / 随机 admin token 起真服务器，读取仓库根 `test-api-keys.json` 的 deepseek key 打真实上游，覆盖：管理 API 鉴权（401）、添加 key（明文不回传）、建用户、邀请码签发与解码校验、错误 bearkey 拒绝（401）、/v1/models、非流式与流式 chat（SSE 透传 + 末 chunk usage）、用量流水与 usedTokens 累计、超额 402（配额语义=用满即拒，首次请求前 used=0 必然放行）、重置 bearkey 后旧码作废、用户绑定（node webcrypto 模拟 noneos `_sign`：创建 bound 用户 → 未签名 403 → 激活 → 签名对话成功 → 篡改 body / 过期时间戳 403 → 第二用户激活 409 → admin 查看绑定者与解绑）。走真实上游会产生少量 token 消耗（统一 max_tokens=16）。
 - x86 Linux 打包：`cargo zigbuild --release --target x86_64-unknown-linux-musl`（依赖 cargo-zigbuild + zig；reqwest 用 rustls-tls 特性，无 OpenSSL 依赖，产物为静态链接单文件），发布包放 `dist/<name>/`（含二进制 + 配置示例 + README，同级打 tar.gz），`dist/` 不入 git 忽略。

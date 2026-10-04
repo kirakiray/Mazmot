@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>web_fetch 工具测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 conjure web_fetch 工具插件（不出网：mock ctx.netFetch）：
+      - 包结构完整
+      - exec 调用注入的 netFetch 并透传 raw 参数
+      - 返回文本带元信息头（provider / 状态 / URL）
+      - 超长文本工具层二次截断（12k 上限）
+      - 宿主未注入 netFetch 抛可读错误；netFetch 抛错原样上抛
+    -->
+
+    <sb-test name="web_fetch 包结构完整">
+      <template>
+        <script type="module">
+          const plugin = await import("../index.js");
+          const def = plugin.default;
+          const checks = {
+            key: def.key === "webFetch",
+            name: def.name === "web_fetch",
+            desc: !!def.description,
+            schema: !!def.schema?.url,
+            exec: typeof def.exec === "function",
+            selfTest: /self-test\.js$/.test(def.selfTest || ""),
+          };
+          return { assert: Object.values(checks).every(Boolean), content: { checks, selfTest: def.selfTest } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="exec 透传参数并返回元信息头 + 正文">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          let captured = null;
+          const ctx = {
+            netFetch: async (url, opts) => {
+              captured = { url, opts };
+              return {
+                url: "https://example.com/final",
+                status: 200,
+                contentType: "text/html",
+                text: "<p>hello</p>",
+                truncated: false,
+                provider: "relay",
+              };
+            },
+          };
+          const out = await def.exec({ url: "https://example.com/docs", raw: true }, ctx);
+          return {
+            assert:
+              captured.url === "https://example.com/docs" &&
+              captured.opts.raw === true &&
+              out.startsWith("[web_fetch · relay] HTTP 200 https://example.com/final") &&
+              out.includes("hello"),
+            content: { captured, head: out.split("\n")[0], out },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="超长文本工具层二次截断（12k 上限）">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          const ctx = {
+            netFetch: async () => ({
+              url: "",
+              status: 200,
+              contentType: "text/plain",
+              text: "x".repeat(15000),
+              truncated: true,
+              provider: "hub",
+            }),
+          };
+          const out = await def.exec({ url: "https://example.com/big" }, ctx);
+          return {
+            assert: out.length < 14000 && out.includes("工具层二次截断"),
+            content: { outLen: out.length },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="未注入 netFetch 与上游抛错的可读错误">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          let noCtx = "";
+          try {
+            await def.exec({ url: "https://x.com" }, {});
+          } catch (e) {
+            noCtx = e.message;
+          }
+          let upstream = "";
+          try {
+            await def.exec(
+              { url: "https://x.com" },
+              { netFetch: async () => { throw new Error("web-hub 不可用"); } },
+            );
+          } catch (e) {
+            upstream = e.message;
+          }
+          return {
+            assert: noCtx.includes("netFetch") && upstream.includes("web-hub 不可用"),
+            content: { noCtx, upstream },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mz/net 联网能力测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 mz/net/main.js：
+      - extractText：HTML → 正文（去脚本样式注释、实体解码、块级结构）
+      - sha256Hex：已知向量
+      - fetchText：非法 URL 客户端预检拒绝（不出网）
+      - RelayAssistant.webFetch：请求路径 / 鉴权头 / 返回映射（mock fetch）
+      说明：依赖 /nos/storage 的 custom 端点读写不在浏览器测试范围（sb-test 环境
+      无 NoneOS SW），provider 链的存储部分由部署环境人工验证。
+    -->
+
+    <sb-test name="extractText：去脚本样式注释与标签，保块级结构">
+      <template>
+        <script type="module">
+          const { extractText } = await import("/mz/net/main.js");
+          const html = `<!doctype html><html><head><style>body{color:red}</style></head>
+<body><!-- c --><h1>Hi&nbsp;&amp; bye</h1><script>alert(1)</` + `script>
+<p>One.</p><ul><li>a</li><li>b</li></ul><div>&#x4F60;好</div></body></html>`;
+          const text = extractText(html);
+          const checks = {
+            noStyle: !text.includes("color:red"),
+            noScript: !text.includes("alert"),
+            noComment: !text.includes("c--"),
+            noTag: !text.includes("<p>"),
+            entity: text.includes("Hi & bye"),
+            block: text.includes("One."),
+            list: text.includes("a") && text.includes("b"),
+            unicode: text.includes("你好"),
+          };
+          return { assert: Object.values(checks).every(Boolean), content: { text, checks } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="extractText：非字符串输入返回空串" parallel>
+      <template>
+        <script type="module">
+          const { extractText } = await import("/mz/net/main.js");
+          return {
+            assert: extractText(null) === "" && extractText(undefined) === "" && extractText(123) === "",
+            content: { a: extractText(null), b: extractText(undefined), c: extractText(123) },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="sha256Hex 已知向量" parallel>
+      <template>
+        <script type="module">
+          const { sha256Hex } = await import("/mz/net/main.js");
+          const got = await sha256Hex("abc");
+          return {
+            assert:
+              got === "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            content: { got },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="fetchText 拒绝非 http/https URL（不出网）">
+      <template>
+        <script type="module">
+          const { fetchText } = await import("/mz/net/main.js");
+          const results = {};
+          for (const bad of ["ftp://x.com", "javascript:alert(1)", "not-a-url", "", null]) {
+            try {
+              await fetchText(bad);
+              results[bad] = "no-throw";
+            } catch (e) {
+              results[bad] = e.message.slice(0, 40);
+            }
+          }
+          const allRejected = Object.values(results).every((m) => m !== "no-throw");
+          return { assert: allRejected, content: results };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="fetchText 自定义端点配置校验：非法 URL 抛错（不触存储）">
+      <template>
+        <script type="module">
+          const { setCustomEndpoint } = await import("/mz/net/main.js");
+          let threw = "";
+          try {
+            await setCustomEndpoint({ url: "not-http" });
+          } catch (e) {
+            threw = e.message;
+          }
+          return { assert: threw.includes("http/https"), content: { threw } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="RelayAssistant.webFetch：请求路径 / 鉴权头 / 返回映射（mock fetch）">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-net" }));
+          const assistant = new RelayAssistant("key-net-1", code);
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                url: "https://example.com/final",
+                status: 200,
+                contentType: "text/html",
+                text: "<p>hello</p>",
+                truncated: false,
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const result = await assistant.webFetch("https://example.com");
+            window.fetch = originalFetch;
+            const headers = capturedOptions.headers;
+            return {
+              assert:
+                capturedUrl === "https://relay.example.com/v1/web/fetch" &&
+                capturedOptions.method === "POST" &&
+                capturedOptions.body === JSON.stringify({ url: "https://example.com" }) &&
+                headers.Authorization === "Bearer bk-net" &&
+                result.text === "<p>hello</p>" &&
+                result.url === "https://example.com/final" &&
+                result.status === 200 &&
+                result.truncated === false,
+              content: { capturedUrl, body: capturedOptions.body, result, headers: { auth: headers.Authorization } },
+            };
+          } catch (e) {
+            window.fetch = originalFetch;
+            return { assert: false, content: { error: e.message, capturedUrl } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="RelayAssistant.webFetch：端点错误透出 message">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-net" }));
+          const assistant = new RelayAssistant("key-net-2", code);
+          const originalFetch = window.fetch;
+          window.fetch = async () =>
+            new Response(
+              JSON.stringify({ error: { message: "拒绝访问私有地址", type: "web_fetch_error" } }),
+              { status: 422 },
+            );
+          let msg = "";
+          try {
+            await assistant.webFetch("http://192.168.1.1");
+          } catch (e) {
+            msg = e.message;
+          }
+          window.fetch = originalFetch;
+          return { assert: msg.includes("拒绝访问私有地址"), content: { msg } };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="net.fetch 同形：custom provider + 请求映射 + Response 形状">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          // sb-test 环境无 NoneOS SW → storage 降级内存模式，自定义端点走内存
+          await net.setCustomEndpoint({ url: "https://mock-hub.example/", token: "tk-sb" });
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = globalThis.fetch;
+          globalThis.fetch = async (url, options) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                url: "https://example.com/final",
+                status: 200,
+                contentType: "application/json",
+                text: '{"hi":[1,2]}',
+                truncated: false,
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const res = await net.fetch("https://example.com/api");
+            const body = JSON.parse(capturedOptions.body);
+            const data = await res.json();
+            const checks = {
+              endpoint: capturedUrl === "https://mock-hub.example/fetch",
+              bodyUrl: body.url === "https://example.com/api",
+              token: capturedOptions.headers["X-Web-Fetch-Token"] === "tk-sb",
+              ok: res.ok === true,
+              status: res.status === 200,
+              finalUrl: res.url === "https://example.com/final",
+              provider: res.provider === "custom",
+              contentType: res.headers.get("content-type") === "application/json",
+              json: data.hi.length === 2,
+              text: (await res.text()).includes("hi"),
+            };
+            return { assert: Object.values(checks).every(Boolean), content: { capturedUrl, checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message, capturedUrl } };
+          } finally {
+            globalThis.fetch = originalFetch;
+            await net.clearCustomEndpoint();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="net.fetch 拒绝非 GET 语义">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let threw = "";
+          try {
+            await net.fetch("https://example.com", { method: "POST" });
+          } catch (e) {
+            threw = e.message;
+          }
+          return { assert: threw.includes("GET"), content: { threw } };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

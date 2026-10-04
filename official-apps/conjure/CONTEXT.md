@@ -41,6 +41,9 @@ conjure/
 │   │   ├── read-skill/ # read_skill 包：读框架知识库文档（经 ctx.readSkill）
 │   │   ├── show-form/  # 视觉交互表单工具包：index.js（插件）+ form-card.html（视觉组件）+
 │   │   │               #   self-test.js（内置测试模组）+ README.md + test/show-form.sb.html
+│   │   ├── web-fetch/  # 联网抓取工具包：经 /mz/net 抓取网页/接口文本（正文提取与 provider
+│   │   │               #   解析都在 mz/net 层；index.js + self-test.js（mock netFetch 不出网）+
+│   │   │               #   README.md + test/web-fetch.sb.html；协议契约见 /mz/net/README.md）
 │   │   └── preview/    # 隔离预览统一工具包：单个 preview 工具，action 参数分发
 │   │                    #   app/status/console/dom/text/click/type/wait/eval/screenshot
 │   │                    #   （见「隔离预览调试」小节）
@@ -73,13 +76,14 @@ conjure/
   - `/nos/fs/main.js`：VFS 写入（`init("ai-apps")`）与本地目录选择（`fs.open()`，仅 Chrome）
   - `/nos/storage/main.js`：持久化——本应用自身状态存 `getStorage("conjure")` 独立空间，生成应用登记读写 `getStorage("mazmot")` 空间的 `apps` 键（详见「数据模型」）
   - `/mz/app-runner.js`：`readAppFiles`（隔离预览本地渠道收集文件，优先 client/ 子目录）；原主域直开 `getRunUrl({ source: "local", _handle: appDir })` 已退居兜底
+  - `/mz/net/main.js`：联网能力（web_fetch 工具底层）——`fetchText` 抓取网页文本，provider 自动解析（自定义端点 > relay 邀请码 > 官方 web-hub > Jina 兜底），`ensureAgent` 惰性加载后经 `netFetch` 注入工具 ctx
 - **数据安全约定**：写库前把响应式对象拍平为纯对象（避免代理入库）；noneos 句柄等非响应式数据放下划线开头的模块变量（如 `localRootHandle`），防 ofa.js 响应式包装
 - **图标**：删除按钮等图标用 `<n-icon icon="mdi:xxx">`（页面已声明 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`），禁止直接依赖 `iconify-icon`；其余 UI 主要用 emoji 与内联 SVG
 - **视觉**：不强制 senti-ui 组件，可按需自写；颜色体系遵循 M3 设计语言（CSS 变量 `--md-sys-color-*` 配对 token），不写死十六进制色
 
 ## 工具插件体系
 
-`lib/tools/` 下每个工具一个**独立包目录** `<tool>/`：`index.js`（插件本体，默认导出 `{ key, name, description, schema, exec(args, ctx) }`，具名导出 `selfTest` 内置测试模组地址；视觉工具另导出 `visual` / `tags` / `testTags`）、`self-test.js`（内置测试模组，见「工具详情对话框与包内置测试」）、`README.md`、`test/<tool>.sb.html`（包测试，不分发）。`index.js` 注册中心的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。新增工具 = 建包目录 + 在注册中心登记，导出 `selfTest` 即自动获得对话框「内置测试」Tab。
+`lib/tools/` 下每个工具一个**独立包目录** `<tool>/`：`index.js`（插件本体，默认导出 `{ key, name, description, schema, exec(args, ctx) }`，具名导出 `selfTest` 内置测试模组地址；视觉工具另导出 `visual` / `tags` / `testTags`）、`self-test.js`（内置测试模组，见「工具详情对话框与包内置测试」）、`README.md`、`test/<tool>.sb.html`（包测试，不分发）。`index.js` 注册中心的 `createTools({ tool, fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot, netFetch })` 构造共享 `ctx` 并用 chain 的 `tool` 工厂包装，返回按 `key` 索引的映射（页面用 `Object.values(tools)` 喂给 Agent）。新增工具 = 建包目录 + 在注册中心登记，导出 `selfTest` 即自动获得对话框「内置测试」Tab。
 
 现有工具：
 
@@ -92,6 +96,7 @@ conjure/
 | `read_skill` | 读框架知识库文档 | 经 `ctx.readSkill` 注入 `lib/skills/index.js` 的 `readSkillFile`；提示词硬性规则要求写 ofa.js 模板 / 用 senti-ui 组件前先查文档 |
 | `show_form` | 视觉交互表单（见下节「视觉交互表单」）；插件带 `tags: ["视觉"]`，资源面板工具列表以「👁 视觉」徽标标注 | 经 `ctx.requestForm` 注入 builder-store 的 `requestForm(spec)`；工具描述内含字段规范（text/textarea/number/select/radio/checkbox + options/placeholder/required），提交后模型收到 `{"data":{key:值}}`，取消收到 `{"cancelled":true}` |
 | `preview` | 隔离预览统一工具（见「隔离预览调试」小节）：一个工具 + `action` 参数分发 `app / status / console / dom / text / click / type / wait / eval / screenshot`，操作专属参数放 `args` 对象 | action=app 经 `ctx.openPreview`（仓库 `runRemotePreview`）推送；其余 action 经 `ctx.previewDebug`（remote-preview 的 `debugPreviewCommand`）下 dbg 指令；screenshot 经 `ctx.onPreviewShot` 以 `role:"image"` 图片卡片进聊天流 |
+| `web_fetch` | 联网抓取公开网页 / HTTP 接口的文本内容 | 经 `ctx.netFetch`（builder-store 注入的 `/mz/net` `fetchText`）服务端中转抓取（浏览器 CORS 无法直抓）；mz/net 层做 provider 解析（自定义端点 > relay 邀请码 > 官方 web-hub > Jina 兜底）与 HTML 正文提取 + 2 万字符截断，工具层再二次截断到 1.2 万字符并附加元信息头（provider / HTTP 状态 / 最终 URL / 是否截断）；`raw: true` 跳过正文提取；协议契约见 `/mz/net/README.md` |
 
 ## 视觉交互表单（show_form 工具）
 

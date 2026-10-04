@@ -237,9 +237,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 技能索引（plain 数组，对外经 state.skills 同步）
   let skillIndex = [];
   // /mz/ai 模块与 checkpointer 惰性产物
+
   let aiModules = null;
   let chainModules = null;
   let checkpointer = null;
+  // /mz/net 联网能力模块（web_fetch 工具底层）
+  let netModules = null;
   // 当前 Agent 实际使用的模型标识（deepseek 固定模型名，其余用 provider 名兜底）
   let activeModel = "";
   // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
@@ -356,6 +359,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (!chainModules) {
       chainModules = await load("/mz/ai/chain/main.js");
     }
+    if (!netModules) {
+      // 联网能力（web_fetch 工具的底层）：provider 解析见 /mz/net/README.md
+      netModules = await load("/mz/net/main.js");
+    }
     if (!checkpointer) {
       checkpointer = selfStore
         ? {
@@ -421,6 +428,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       },
       previewDebug,
       onPreviewShot: pushPreviewShot,
+      // web_fetch 工具：平台联网能力（mz/net 负责 provider 解析与正文提取）
+      netFetch: (url, opts) => netModules.fetchText(url, opts),
     });
     // 全新项目首回合：项目已由宿主建好，移除 create_app 并换「空项目生成」提示词
     const isFresh =

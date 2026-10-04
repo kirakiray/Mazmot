@@ -19,7 +19,8 @@ use crate::{api_error, identity, AppState};
 const AUTH_HEADER: &str = "x-relay-auth";
 
 /// 绑定模式下的请求签名校验：未绑定记录时报"需先激活"，否则验签并核对 userId
-fn check_bound_signature(
+/// （web 模块的 /v1/web/fetch 复用同一鉴权，故 pub(crate)）
+pub(crate) fn check_bound_signature(
     user: &UserRec,
     headers: &HeaderMap,
     method: &str,
@@ -55,8 +56,8 @@ fn check_bound_signature(
     Ok(())
 }
 
-/// 按 bearkey 找用户（未命中 / 已禁用分别处理）
-async fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<UserRec, (StatusCode, Json<Value>)> {
+/// 按 bearkey 找用户（未命中 / 已禁用分别处理）；web 模块复用，故 pub(crate)
+pub(crate) async fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<UserRec, (StatusCode, Json<Value>)> {
     let Some(given) = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
