@@ -4,12 +4,6 @@
 
 ## 记录
 
-### 2026-06-04 · 再加德语，语言种数 4 → 5（英 / 中 / 日 / 法 / 德）
-
-- **改了什么**：`pages/home.html` 的 `LANGS` 在 `fr` 之后追加 `{ id: "de", flag: "🇩🇪", word: "Hallo" }`；`CONTEXT.md` 定位 / 使用指南 / 数据模型 / 关键流程同步为 5 种（nextLang 的「其余」数量、气泡数、`langId` 候选值）；新增 `pitfalls/003`（推送后立即 eval 超时需重试）并登记进踩坑索引。业务逻辑零改动。
-- **为什么**：用户要求「再加一个德语」。
-- **验证结论**（preview 实测）：`action=app` 刷新正常（首次 eval 超时 30s，重发即返——已沉淀为坑 003）；气泡实测 5 个（🇬🇧 / 🇨🇳 / 🇯🇵 / 🇫🇷 / 🇩🇪 Hallo）；`action=click` 点第 5 个气泡 → 问候语「🇩🇪Hallo, World!」、提示条「已切换为「Hallo」」、高亮态正确；滚动容器 805/805 无溢出；`action=console` 增量无应用报错（仅 `[hello] lang -> de` 定位日志与 `[bridge-link]` 噪声）。
-
 ### 2026-06-04 · 加回法语，语言种数 3 → 4（英 / 中 / 日 / 法）
 
 - **改了什么**：`pages/home.html` 的 `LANGS` 常量在 `ja` 之后追加 `{ id: "fr", flag: "🇫🇷", word: "Bonjour" }`；`CONTEXT.md` 的定位 / 使用指南 / 数据模型（`langs`·`langId`）/ 关键流程 3 同步改为 4 种语言（并把 nextLang 的「其余 2 种」改为「其余 3 种」、气泡数 3 → 4）。`pitfalls/002` 补了两条实测细节（`o-app` shadowRoot 里查不到 `o-page`；滚动测量用 `$deep('.wrap').getRootNode().host`）。逻辑零改动——`o-fill` + `fill-key`、`nextLang()` 的 filter+random 都自适应语言数量。
