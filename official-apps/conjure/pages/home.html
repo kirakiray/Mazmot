@@ -320,7 +320,7 @@
                                 <div class="tc-diff-head">
                                   <n-icon icon="mdi:file-code-outline"></n-icon>
                                   <span class="tc-diff-path">{{$host.fileDiffPath}}</span>
-                                  <span class="tc-diff-note" attr:hidden="$host.diffNoteHidden()">正在加载…</span>
+                                  <span class="tc-diff-note" attr:hidden="$host.diffNoteText() === ''">{{$host.diffNoteText()}}</span>
                                 </div>
                                 <div class="tc-diff">
                                   <o-if :value="$host.showDiffEmpty()">
@@ -337,9 +337,9 @@
                             </div>
                           </div>
                           <div class="tc-foot">
-                            <o-if :value="$data.snapshotId">
-                              <!-- 三种回滚语义：回滚对话重来（fork 分支）/ 不满意并回滚（负反馈）/ 回滚代码（中性）；
-                                   均两步确认（confirmRollbackId + confirmRollbackKind，4s 超时复位） -->
+                            <o-if :value="$host.turnActionsAvailable($data) && $data.snapshotId">
+                              <!-- 仅当前会话最后一个带改动的回合可操作（旧回合只读）；
+                                   三种回滚语义 + 智能备份，均两步确认 -->
                               <button
                                 class="tc-rollback ghost"
                                 class:confirm="$host.isConfirm($data.id, 'fork')"
@@ -380,8 +380,11 @@
                                 <span>{{$host.backupBtnText()}}</span>
                               </button>
                             </o-if>
-                            <o-if :value="!$data.snapshotId">
+                            <o-if :value="$host.turnActionsAvailable($data) && !$data.snapshotId">
                               <span class="tc-foot-note">本回合没有快照，无法回滚</span>
+                            </o-if>
+                            <o-if :value="!$host.turnActionsAvailable($data)">
+                              <span class="tc-foot-note">历史回合，仅可查看当时的改动</span>
                             </o-if>
                           </div>
                         </div>
@@ -1760,6 +1763,7 @@
           diffHunks: [],
           diffLoading: "",
           diffError: "",
+          diffFromDisk: false, // true = 旧卡片兼容模式（对比当前盘，非冻结内容）
           confirmRollbackId: 0,
           autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；提示条数据源）
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
@@ -2461,6 +2465,7 @@
               this.fileDiffPath = "";
               this.diffHunks = [];
               this.diffError = "";
+              this.diffFromDisk = false;
               return;
             }
             const msg = this.messages.find((m) => m.id === this.changesMsgId);
@@ -2472,45 +2477,81 @@
             const fromH = wrap ? wrap.getBoundingClientRect().height : 0;
             this.fileDiffPath = path;
             this.diffError = "";
-            this.diffLoading = path;
-            // 过期响应守卫：快速连点时只认最后一次选择
+            const change = this.turnChanges(msg).find((c) => c.path === path);
             const token = (this._diffToken = (this._diffToken || 0) + 1);
-            try {
-              const res = await store.getTurnDiff(
-                this.currentAppName,
-                msg.snapshotId,
-                path,
-              );
-              if (token !== this._diffToken) return;
-              this.diffHunks = res.hunks || [];
-              this.diffError = res.error || "";
-              // 等新内容渲染完成量目标高度（双 rAF 确保布局已更新）
-              await new Promise((r) =>
-                requestAnimationFrame(() => requestAnimationFrame(r)),
-              );
-              if (token !== this._diffToken) return;
-              const toH = wrap ? wrap.getBoundingClientRect().height : 0;
-              if (
-                wrap &&
-                fromH > 0 &&
-                toH > 0 &&
-                Math.abs(toH - fromH) > 1 &&
-                !matchMedia("(prefers-reduced-motion: reduce)").matches
-              ) {
-                wrap.style.height = fromH + "px";
-                wrap.style.overflow = "hidden";
-                wrap.getBoundingClientRect(); // 强制 reflow 后再过渡
-                wrap.style.transition = "height 200ms cubic-bezier(0.2, 0, 0, 1)";
-                wrap.style.height = toH + "px";
-                setTimeout(() => {
-                  wrap.style.height = "";
-                  wrap.style.overflow = "";
-                  wrap.style.transition = "";
-                }, 220);
+            if (Array.isArray(change?.hunks)) {
+              // 冻结在消息里的行级内容：永远显示该回合自己的改动
+              this.diffFromDisk = false;
+              this.diffHunks = change.hunks;
+              this.diffLoading = "";
+            } else if (msg.snapshotId) {
+              // 旧卡片兼容（未记录行级内容的回合）：现场对比快照与当前盘，
+              // 结果可能含后续回合的改动，头部会标注
+              this.diffFromDisk = true;
+              this.diffLoading = path;
+              try {
+                const res = await store.getTurnDiff(
+                  this.currentAppName,
+                  msg.snapshotId,
+                  path,
+                );
+                if (token !== this._diffToken) return;
+                this.diffHunks = res.hunks || [];
+                this.diffError = res.error || "";
+              } finally {
+                if (token === this._diffToken) this.diffLoading = "";
               }
-            } finally {
-              if (token === this._diffToken) this.diffLoading = "";
+            } else {
+              this.diffFromDisk = false;
+              this.diffHunks = [];
             }
+            if (token !== this._diffToken) return;
+            // 等新内容渲染完成后量目标高度，做一次显式高度过渡（尊重
+            // reduced-motion）
+            await new Promise((r) =>
+              requestAnimationFrame(() => requestAnimationFrame(r)),
+            );
+            if (token !== this._diffToken) return;
+            const toH = wrap ? wrap.getBoundingClientRect().height : 0;
+            if (
+              wrap &&
+              fromH > 0 &&
+              toH > 0 &&
+              Math.abs(toH - fromH) > 1 &&
+              !matchMedia("(prefers-reduced-motion: reduce)").matches
+            ) {
+              wrap.style.height = fromH + "px";
+              wrap.style.overflow = "hidden";
+              wrap.getBoundingClientRect(); // 强制 reflow 后再过渡
+              wrap.style.transition = "height 200ms cubic-bezier(0.2, 0, 0, 1)";
+              wrap.style.height = toH + "px";
+              setTimeout(() => {
+                wrap.style.height = "";
+                wrap.style.overflow = "";
+                wrap.style.transition = "";
+              }, 220);
+            }
+          },
+
+          // 面板头部提示：加载中 / 旧卡片对比当前盘的兼容标注
+          diffNoteText() {
+            if (this.diffLoading) return "正在加载…";
+            if (this.diffFromDisk && this.fileDiffPath) {
+              return "该回合未记录行级内容，正在对比当前盘";
+            }
+            return "";
+          },
+
+          // 仅当前会话内最后一个带改动的回合可操作；历史回合只读（diff 仍可看，
+          // 冻结内容不受影响）
+          turnActionsAvailable(msg) {
+            for (let i = this.messages.length - 1; i >= 0; i--) {
+              const m = this.messages[i];
+              if (Array.isArray(m.changes) && m.changes.length) {
+                return m.id === msg.id;
+              }
+            }
+            return false;
           },
 
           diffEmpty(path) {
@@ -2521,10 +2562,14 @@
             );
           },
 
-          // 共享 diff 面板的守卫（根作用域不能引用 $host，且 && 不进模板
-          // 表达式——统一方法化）
-          diffNoteHidden() {
-            return this.diffLoading === "" || this.diffLoading !== this.fileDiffPath;
+          // 面板头部提示：加载中 / 旧卡片对比当前盘的兼容标注（根作用域不能
+          // 引用 $host，&& 不进模板表达式——统一方法化）
+          diffNoteText() {
+            if (this.diffLoading) return "正在加载…";
+            if (this.diffFromDisk && this.fileDiffPath) {
+              return "该回合未记录行级内容，正在对比当前盘";
+            }
+            return "";
           },
 
           showDiffEmpty() {
@@ -2536,10 +2581,19 @@
           },
 
           diffEmptyText(path) {
-            if (this.fileDiffPath === path && this.diffError) {
+            if (this.diffError) {
               return `diff 加载失败：${this.diffError}`;
             }
-            return "该文件当前内容与本回合开始前一致（后续回合已改回，或此文件为新增后又被删除）";
+            const msg = this.messages.find((m) => m.id === this.changesMsgId);
+            const change =
+              msg && this.turnChanges(msg).find((c) => c.path === path);
+            if (change?.tooLarge) {
+              return "该回合对该文件的改动过大，未保留行级内容（+增 −删 统计仍准确）";
+            }
+            if (this.diffFromDisk) {
+              return "该文件当前内容与本回合开始前一致（后续回合可能已改回）";
+            }
+            return "该文件在本回合没有行级变化";
           },
 
           // 回滚动作两步确认：confirmRollbackId + confirmRollbackKind 组合，

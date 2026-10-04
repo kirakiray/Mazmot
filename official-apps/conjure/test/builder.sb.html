@@ -893,8 +893,22 @@
                       { old_string: "v1", new_string: "v2" },
                     ],
                   });
+                } else if (callN === 3) {
+                  // 同回合两次写：冻结 diff 应为 首改前(v1) → 末改后(v1b)
+                  await toolOf("write_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    content: "<html>v1a</html>",
+                  });
+                  await toolOf("edit_file").invoke({
+                    appName: app,
+                    path: "index.html",
+                    edits: [
+                      { old_string: "v1a", new_string: "v1b" },
+                    ],
+                  });
                 }
-                // callN >= 3：纯文本回合（回滚通知流转验证，不动文件）
+                // callN >= 4：纯文本回合（回滚通知流转验证，不动文件）
                 onStream({ type: "text", delta: `第${callN}轮` });
                 return {
                   content: `第${callN}轮`,
@@ -963,6 +977,19 @@
               // 通知一次性消费，再下一回合不再出现
               await store.send("重新设计一下");
               const prompt3 = agentPrompts[2] || "";
+              const persisted3 =
+                (await fakeStore.getItem(
+                  `chat:${st.currentAppName}:${st.currentSessionId}`,
+                )) || [];
+              const ai3 = [...persisted3]
+                .reverse()
+                .find(
+                  (m) =>
+                    m.role === "assistant" &&
+                    Array.isArray(m.changes) &&
+                    m.id > ai2.id,
+                );
+              const idx3 = ai3?.changes?.find((c) => c.path === "index.html");
               await store.send("再看看");
               const prompt4 = agentPrompts[3] || "";
 
@@ -984,6 +1011,17 @@
                   prompt3.includes("不满意") &&
                   prompt3.includes("把 v1 改成 v2"),
                 notifyConsumed: !prompt4.includes("回滚通知"),
+                // 冻结 diff = 该回合净变化（首改前 v1 → 末改后 v1b），且
+                // 两次写的中间态 v1a 不出现
+                turn3Frozen:
+                  Array.isArray(idx3?.hunks) &&
+                  idx3.hunks.some(
+                    (h) => h.type === "add" && h.text === "<html>v1b</html>",
+                  ) &&
+                  idx3.hunks.some(
+                    (h) => h.type === "del" && h.text === "<html>v1</html>",
+                  ) &&
+                  !idx3.hunks.some((h) => h.text.includes("v1a")),
                 stateIdle: st.sending === false && st.autoErrors.length === 0,
               };
               return {

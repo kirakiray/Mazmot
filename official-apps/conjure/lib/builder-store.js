@@ -245,8 +245,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
   // 0 = 未设置（不做自动压缩）。仅用于发送前的水位判断，非响应式
   let contextWindow = 0;
-  // 本回合文件变更（[{path, op, adds, dels}]，同文件多次写取最新统计）：
-  // 回合收尾 patch 到末条 AI 消息的 changes 字段，变更卡数据源
+  // 本回合文件变更（[{path, op, prevText, nextText}]，同文件多次写保留
+  // 「首改前 + 末改后」）：回合收尾统一算统计与行级内容，冻结进末条 AI 消息
   let turnChanges = [];
   // 本回合开始快照（createAppBackup 幂等内容寻址 id）：变更 diff 的旧侧 +
   // 一键回滚目标，收尾随 changes 一起挂到末条 AI 消息
@@ -392,32 +392,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       },
       // 模型覆写 app.json 时回填项目元数据（fresh 项目创建后的正式命名）；
       // 覆写 AGENTS.md 时失效缓存 Agent——下一回合重建即读到新版项目规则；
-      // 同时记录本回合变更（prev/next 当场算行级统计，同文件多次写取最新）
+      // 同时记录本回合变更：同文件多次写只保留「首次写前内容 + 末次写后
+      // 内容」，回合收尾一次性算行级 diff（即该回合真实的净变化）
       onFileWrite: (info) => {
-        try {
-          const nextText = info?.nextText ?? "";
-          const hunks =
-            info?.prevText != null
-              ? diffLines(info.prevText, nextText)
-              : nextText
-                  .split("\n")
-                  .map((text, i) => ({ type: "add", bLn: i + 1, aLn: null, text }));
-          const { adds, dels } = diffStat(hunks);
-          const hit = turnChanges.find((c) => c.path === info.path);
-          if (hit) {
-            hit.op = info.op || "write";
-            hit.adds = adds;
-            hit.dels = dels;
-          } else {
-            turnChanges.push({
-              path: info.path,
-              op: info.op || "write",
-              adds,
-              dels,
-            });
-          }
-        } catch (err) {
-          console.warn("变更统计失败：", err);
+        const hit = turnChanges.find((c) => c.path === info.path);
+        if (hit) {
+          hit.op = info.op || "write";
+          hit.nextText = info.nextText ?? "";
+        } else {
+          turnChanges.push({
+            path: info.path,
+            op: info.op || "write",
+            prevText: info.prevText ?? null,
+            nextText: info.nextText ?? "",
+          });
         }
         if (info?.path === "app.json") {
           syncAppMetaFromDisk(info.appName);
@@ -1329,9 +1317,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 自动快照清理：只保留最近 KEEP 个 auto 备份（手动备份不动），防每回合
-  // 快照把 backup/ 撑爆；id 含时间戳，字典序即时间序（list 新的在前）
+  // 快照把 backup/ 撑爆；id 含时间戳，字典序即时间序（list 新的在前）。
+  // 被 recent 之外回合的变更卡引用到的快照若被清理，其回滚按钮会随
+  // snapshotAvailable 失效（diff 内容已冻结进消息，不受影响）
   async function pruneAutoBackups(appName, handle) {
-    const KEEP = 5;
+    const KEEP = 10;
     const list = await listAppBackups(fs, appName, handle);
     for (const b of list.filter((x) => x.auto).slice(KEEP)) {
       await deleteAppBackup(fs, appName, b.id, handle);
@@ -2485,9 +2475,32 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         if (lastAi) {
           const patch = { turnMs: Date.now() - turnStartAt };
           if (abort.stopped) patch.stopped = true;
-          // 本回合文件变更（含回滚目标快照 id）：变更卡数据源，随会话持久化
+          // 本回合文件变更（含回滚目标快照 id）：统计与行级内容统一从
+          // 「首改前 + 末改后」重算——即该回合自己的净变化，冻结进消息，
+          // 此后无论磁盘如何变化（后续回合 / 回滚），展开看到的都是当时的改动
           if (turnChanges.length) {
-            patch.changes = turnChanges;
+            patch.changes = turnChanges.map((c) => {
+              // prevText 为 null = 新文件（无旧内容）：全行 add，不产生 del
+              const full =
+                c.prevText == null
+                  ? (c.nextText ?? "")
+                      .split("\n")
+                      .map((text, i) => ({
+                        type: "add",
+                        aLn: null,
+                        bLn: i + 1,
+                        text,
+                      }))
+                  : diffLines(c.prevText, c.nextText ?? "");
+              const stat = diffStat(full);
+              const out = { path: c.path, op: c.op, ...stat };
+              // 行级内容冻结（±3 行上下文折叠）；单文件超 200 行不保留，
+              // 只留统计（展开时提示改动过大）
+              const compacted = compactHunks(full, 3);
+              if (compacted.length <= 200) out.hunks = compacted;
+              else out.tooLarge = true;
+              return out;
+            });
             if (turnSnapshotId) patch.snapshotId = turnSnapshotId;
           }
           // 停止 / 异常收场（步数上限、网络错误…）没有 done 事件把终值落到
