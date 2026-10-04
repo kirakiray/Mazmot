@@ -338,14 +338,46 @@
                           </div>
                           <div class="tc-foot">
                             <o-if :value="$data.snapshotId">
+                              <!-- 三种回滚语义：回滚对话重来（fork 分支）/ 不满意并回滚（负反馈）/ 回滚代码（中性）；
+                                   均两步确认（confirmRollbackId + confirmRollbackKind，4s 超时复位） -->
+                              <button
+                                class="tc-rollback ghost"
+                                class:confirm="$host.isConfirm($data.id, 'fork')"
+                                attr:title="'创建一个截到该回合之前的分支会话并切换（原会话保留），同时把文件还原到该回合前'"
+                                on:click="$host.rollbackFrom($data, 'fork')"
+                              >
+                                <n-icon icon="mdi:source-branch"></n-icon>
+                                <span>{{$host.isConfirm($data.id, 'fork') ? '确认重来？' : '回滚对话重来'}}</span>
+                              </button>
+                              <button
+                                class="tc-rollback danger"
+                                class:confirm="$host.isConfirm($data.id, 'dissatisfied')"
+                                attr:title="'还原文件到该回合前，并告知 AI 你对这次改动不满意（下次对话生效）'"
+                                on:click="$host.rollbackFrom($data, 'dissatisfied')"
+                              >
+                                <n-icon icon="mdi:thumb-down-outline"></n-icon>
+                                <span>{{$host.isConfirm($data.id, 'dissatisfied') ? '确认不满意？' : '不满意并回滚'}}</span>
+                              </button>
                               <button
                                 class="tc-rollback"
-                                class:confirm="$host.confirmRollbackId === $data.id"
-                                attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响）'"
-                                on:click="$host.rollbackFrom($data)"
+                                class:confirm="$host.isConfirm($data.id, 'neutral')"
+                                attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响，AI 下次对话会感知回滚）'"
+                                on:click="$host.rollbackFrom($data, 'neutral')"
                               >
                                 <n-icon icon="mdi:restore"></n-icon>
-                                <span>{{$host.confirmRollbackId === $data.id ? '确认回滚？' : '回滚本回合改动'}}</span>
+                                <span>{{$host.isConfirm($data.id, 'neutral') ? '确认回滚？' : '回滚代码'}}</span>
+                              </button>
+                              <!-- 备份代码：相当于一次智能备份（打包 + AI 标题备注）；
+                                   当前内容已有备份（backups 含 current 项）时禁用并显示已备份 -->
+                              <button
+                                class="tc-rollback save"
+                                class:done="$host.curBackedUp()"
+                                attr:disabled="$host.curBackedUp() || backupBusy || smartBackupBusy"
+                                attr:title="$host.curBackedUp() ? '当前内容已有备份（备份管理中标记为「与当前一致」）' : '智能备份当前代码：打包 + AI 生成标题与备注，可在备份管理查看'"
+                                on:click="backupTurnCode"
+                              >
+                                <n-icon icon="mdi:content-save-check-outline"></n-icon>
+                                <span>{{$host.backupBtnText()}}</span>
                               </button>
                             </o-if>
                             <o-if :value="!$data.snapshotId">
@@ -2425,26 +2457,59 @@
 
           async toggleFileDiff(path) {
             if (this.fileDiffPath === path) {
+              // 再点同一枚：收起面板（grid 动画收尾）
               this.fileDiffPath = "";
               this.diffHunks = [];
+              this.diffError = "";
               return;
             }
             const msg = this.messages.find((m) => m.id === this.changesMsgId);
             if (!msg) return;
+            // 切换前量当前面板高度：新内容就位后再量目标高度，做一次显式
+            // 高度过渡——不清空旧内容（保留展示 + 头部加载提示），消除
+            // 「清空再填充」的高度跳变闪动
+            const wrap = this.shadow.$(".turn-changes.open .tc-diff-wrap")?.ele;
+            const fromH = wrap ? wrap.getBoundingClientRect().height : 0;
             this.fileDiffPath = path;
-            this.diffHunks = [];
             this.diffError = "";
             this.diffLoading = path;
+            // 过期响应守卫：快速连点时只认最后一次选择
+            const token = (this._diffToken = (this._diffToken || 0) + 1);
             try {
               const res = await store.getTurnDiff(
                 this.currentAppName,
                 msg.snapshotId,
                 path,
               );
+              if (token !== this._diffToken) return;
               this.diffHunks = res.hunks || [];
               this.diffError = res.error || "";
+              // 等新内容渲染完成量目标高度（双 rAF 确保布局已更新）
+              await new Promise((r) =>
+                requestAnimationFrame(() => requestAnimationFrame(r)),
+              );
+              if (token !== this._diffToken) return;
+              const toH = wrap ? wrap.getBoundingClientRect().height : 0;
+              if (
+                wrap &&
+                fromH > 0 &&
+                toH > 0 &&
+                Math.abs(toH - fromH) > 1 &&
+                !matchMedia("(prefers-reduced-motion: reduce)").matches
+              ) {
+                wrap.style.height = fromH + "px";
+                wrap.style.overflow = "hidden";
+                wrap.getBoundingClientRect(); // 强制 reflow 后再过渡
+                wrap.style.transition = "height 200ms cubic-bezier(0.2, 0, 0, 1)";
+                wrap.style.height = toH + "px";
+                setTimeout(() => {
+                  wrap.style.height = "";
+                  wrap.style.overflow = "";
+                  wrap.style.transition = "";
+                }, 220);
+              }
             } finally {
-              this.diffLoading = "";
+              if (token === this._diffToken) this.diffLoading = "";
             }
           },
 
@@ -2477,29 +2542,68 @@
             return "该文件当前内容与本回合开始前一致（后续回合已改回，或此文件为新增后又被删除）";
           },
 
-          // 两步确认后回滚到本回合开始前的快照（对话记录不受影响）
-          async rollbackFrom(msg) {
+          // 回滚动作两步确认：confirmRollbackId + confirmRollbackKind 组合，
+          // 4s 超时复位；kind：neutral 中性回滚 / dissatisfied 不满意 / fork 回滚对话
+          isConfirm(id, kind) {
+            return this.confirmRollbackId === id && this.confirmRollbackKind === kind;
+          },
+
+          async rollbackFrom(msg, kind = "neutral") {
             if (!msg?.snapshotId) return;
-            if (this.confirmRollbackId !== msg.id) {
+            if (!this.isConfirm(msg.id, kind)) {
               this.confirmRollbackId = msg.id;
+              this.confirmRollbackKind = kind;
               setTimeout(() => {
-                if (this.confirmRollbackId === msg.id) this.confirmRollbackId = 0;
+                if (this.isConfirm(msg.id, kind)) {
+                  this.confirmRollbackId = 0;
+                  this.confirmRollbackKind = "";
+                }
               }, 4000);
               return;
             }
             this.confirmRollbackId = 0;
+            this.confirmRollbackKind = "";
             const { default: alertDlg } = await load(
               "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
             );
             try {
+              if (kind === "fork") {
+                const res = await store.forkRollback(
+                  this.currentAppName,
+                  msg.snapshotId,
+                  msg.id,
+                );
+                await alertDlg({
+                  title: "回滚对话重来",
+                  message: res?.restored
+                    ? `已创建分支会话并还原文件（写回 ${res.files} 个）；原会话原样保留，可随时切回查看`
+                    : "文件与该回合前状态一致，已创建分支会话",
+                });
+                return;
+              }
+              // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
+              const turnUser = [...this.messages]
+                .reverse()
+                .find((m) => m.role === "user" && m.newGroup && m.id < msg.id);
               const res = await store.rollbackTurn(
                 this.currentAppName,
                 msg.snapshotId,
+                {
+                  sentiment: kind,
+                  requestText: String(turnUser?.content || "").slice(0, 120),
+                },
               );
-              const text = res?.restored
+              const base = res?.restored
                 ? `已回滚：写回 ${res.files} 个文件（本回合开始前的状态）`
                 : "当前内容与快照一致，无需回滚";
-              await alertDlg({ title: "回滚本回合改动", message: text });
+              const tail =
+                kind === "dissatisfied"
+                  ? "下次对话 AI 会感知你对该回合改动不满意"
+                  : "下次对话 AI 会感知此次回滚";
+              await alertDlg({
+                title: kind === "dissatisfied" ? "不满意并回滚" : "回滚代码",
+                message: `${base}；${tail}`,
+              });
             } catch (err) {
               await alertDlg({ title: "回滚失败", message: err.message });
             }
@@ -2508,6 +2612,30 @@
           // 忽略自动检测到的预览错误（本次不再带给 AI）
           dismissAutoErrors() {
             store.dismissAutoErrors?.();
+          },
+
+          // ---- 变更卡「备份代码」：当前内容是否已有备份（backups 的 current
+          // 标记由 store.refreshBackups 计算，应用切换 / 回合结束 / 备份操作后刷新）----
+
+          curBackedUp() {
+            return this.backups.some((b) => b.current);
+          },
+
+          backupBtnText() {
+            if (this.curBackedUp()) return "已备份";
+            if (this.smartBackupBusy || this.backupBusy) return "备份中…";
+            return "备份代码";
+          },
+
+          async backupTurnCode() {
+            if (this.curBackedUp() || this.backupBusy || this.smartBackupBusy) return;
+            const res = await store.smartBackup();
+            if (res?.skipped) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              );
+              toast("内容未变化，已跳过重复备份");
+            }
           },
 
           toggleUsagePanel(id) {            // 同一时间至多展开一条（面板复用 .stat-panel 的开合动画）；

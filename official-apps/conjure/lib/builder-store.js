@@ -253,6 +253,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let turnSnapshotId = "";
   // 自动错误回路进行中标记（防重入）；收集到的错误行同步 state.autoErrors
   let autoCheckBusy = false;
+  // 待消费的回滚通知：rollbackTurn / forkRollback 写入（appName 级），下一轮
+  // 对话注入提示词后清除（exceptSid 的会话豁免——fork 出的新分支记忆与文件
+  // 一致，无需感知）
+  let pendingRollback = null;
 
   /* ---------- 持久化辅助 ---------- */
 
@@ -472,6 +476,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         // 上回合宿主自动检测收集的预览错误（预览窗口开着时才收集）：
         // 注入本回合提示词让模型优先修复；driveTurn 开始时取走清空
         autoErrors: state.autoErrors.length ? [...state.autoErrors] : undefined,
+        // 待消费的回滚通知（中性 / 不满意；fork 新分支豁免）
+        rollback:
+          pendingRollback &&
+          pendingRollback.appName === state.currentAppName &&
+          pendingRollback.exceptSid !== state.currentSessionId
+            ? { ...pendingRollback }
+            : undefined,
       }),
       checkpointer,
     });
@@ -635,6 +646,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const hit = reg.find((a) => a.name === name);
     if (!hit) return;
     await applyApp(hit);
+    // 刷新备份清单（含每项 current 标记）：变更卡「备份代码」的已备份感知依赖它
+    refreshBackups();
     const latest = [...(hit.sessions || [])].sort(
       (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
     )[0];
@@ -960,21 +973,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 从当前会话的某条消息处 fork：新会话复制截至该消息（含）的聊天记录，
   // Agent 记忆按完整回合截断复制；成功后切换到新会话。草稿与发送中不支持。
-  async function forkSession(fromMessageId) {
-    if (!selfStore || state.sending) return;
-    const name = state.currentAppName;
-    const srcSid = state.currentSessionId;
-    if (!name || !srcSid) return; // 草稿没有会话实体，fork 无从谈起
-    const srcKey = `chat:${name}:${srcSid}`;
-    const bucket = bucketFor(srcKey);
-    const idx = bucket.findIndex((m) => m.id === fromMessageId);
-    if (idx < 0) return;
-    const kept = bucket.slice(0, idx + 1).map((m) => ({ ...m }));
-
-    // 新会话登记（标题沿用原会话并标注分支）
+  // fork 共用尾段：登记新会话（titleMark 标注后缀）→ 复制聊天桶与 Agent 记忆
+  //（按 kept 内完整回合数截断）→ 刷新列表并切换到新会话；返回新会话 id
+  async function forkTo(name, srcSid, kept, titleMark) {
     const reg = await loadRegistry();
     const app = reg.find((a) => a.name === name);
-    if (!app) return;
+    if (!app) return null;
     const baseTitle =
       app.sessions?.find((s) => s.id === srcSid)?.title ||
       (kept.find((m) => m.role === "user")?.content || "").slice(0, 24) ||
@@ -983,18 +987,16 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     app.sessions = app.sessions || [];
     app.sessions.push({
       id: sid,
-      title: `${baseTitle} ⎇`.slice(0, 40),
+      title: `${baseTitle} ${titleMark}`.slice(0, 40),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
     await saveRegistry(reg);
 
-    // 复制聊天记录（实时桶 + 落盘）
     const dstKey = `chat:${name}:${sid}`;
     sessionBuckets.set(dstKey, kept);
     await selfStore.setItem(dstKey, kept.map((m) => ({ ...m })));
 
-    // 复制 Agent 记忆：按完整回合截断（fork 点所在回合若未闭合则整段舍弃）
     const userTurns = kept.filter((m) => m.role === "user").length;
     const srcThread = (await selfStore.getItem(`thread:${name}:${srcSid}`)) || [];
     await selfStore.setItem(
@@ -1004,6 +1006,19 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
     await reloadApps();
     await loadSessionById(sid, state.apps);
+    return sid;
+  }
+
+  async function forkSession(fromMessageId) {
+    if (!selfStore || state.sending) return;
+    const name = state.currentAppName;
+    const srcSid = state.currentSessionId;
+    if (!name || !srcSid) return; // 草稿没有会话实体，fork 无从谈起
+    const bucket = bucketFor(`chat:${name}:${srcSid}`);
+    const idx = bucket.findIndex((m) => m.id === fromMessageId);
+    if (idx < 0) return;
+    const kept = bucket.slice(0, idx + 1).map((m) => ({ ...m }));
+    await forkTo(name, srcSid, kept, "⎇");
   }
 
   /* ---------- 上下文压缩 ---------- */
@@ -1369,12 +1384,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 一键回滚到回合前快照（restoreAppBackup 清空 client/ 后按备份写回；
-  // unchanged = 当前内容与快照一致未写入）。回滚后失效 Agent（下回合读到
-  // 回滚后的文件）并同步 app.json 元数据与备份列表
-  async function rollbackTurn(appName, snapshotId) {
+  // unchanged = 当前内容与快照一致未写入）。opts.sentiment："neutral"（默认）
+  // / "dissatisfied"（用户对该回合改动不满意）；opts.requestText 为该回合的
+  // 用户请求摘要（不满意通知里带给模型，让它知道否决的是哪次改动）。
+  // 回滚后失效 Agent 并登记待消费通知——下次对话（同应用、非豁免会话）注入
+  // 「回滚通知」，AI 感知回滚与反馈，不凭旧记忆把撤销的内容写回
+  async function rollbackTurn(appName, snapshotId, opts = {}) {
     const hit = state.apps.find((a) => a.name === appName);
     const handle = hit?.mode === "local" ? localRootHandle : undefined;
     const res = await restoreAppBackup(fs, appName, snapshotId, handle);
+    pendingRollback = {
+      appName,
+      sentiment: opts.sentiment === "dissatisfied" ? "dissatisfied" : "neutral",
+      requestText: String(opts.requestText || "").slice(0, 120),
+    };
     invalidateAgent();
     try {
       await syncAppMetaFromDisk(appName);
@@ -1383,6 +1406,42 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
     await refreshBackups();
     return res;
+  }
+
+  // 回滚对话重来：fork 一个截到该回合之前的新会话并切换（原会话原样保留，
+  // 经验不丢）+ 文件还原到该回合前快照。新分支的记忆与还原后的文件一致
+  //（都停在回合前），无需回滚通知；原会话若继续对话则由 pendingRollback
+  // 兜底中性通知（exceptSid 豁免新分支）
+  async function forkRollback(appName, snapshotId, aiMsgId) {
+    if (!selfStore || state.sending) return null;
+    const srcSid = state.currentSessionId;
+    if (!appName || !srcSid || appName !== state.currentAppName) return null;
+    const bucket = bucketFor(`chat:${appName}:${srcSid}`);
+    // 该回合的起点：末条 AI 消息之前最近的一条用户消息（newGroup 标记回合开始）
+    const turnUser = [...bucket]
+      .reverse()
+      .find((m) => m.role === "user" && m.newGroup && m.id < aiMsgId);
+    if (!turnUser) return null;
+    const kept = bucket.filter((m) => m.id < turnUser.id).map((m) => ({ ...m }));
+    // 先还原文件，成功后再建分支（还原失败不产生半截分支）
+    const hit = state.apps.find((a) => a.name === appName);
+    const handle = hit?.mode === "local" ? localRootHandle : undefined;
+    const res = await restoreAppBackup(fs, appName, snapshotId, handle);
+    const newSid = await forkTo(appName, srcSid, kept, "回滚重来");
+    pendingRollback = {
+      appName,
+      exceptSid: newSid, // 新分支记忆与文件一致，豁免通知
+      sentiment: "neutral",
+      requestText: "",
+    };
+    invalidateAgent();
+    try {
+      await syncAppMetaFromDisk(appName);
+    } catch {
+      /* meta 同步失败不阻塞 */
+    }
+    await refreshBackups();
+    return { ...res, sid: newSid };
   }
 
   // preview_screenshot 工具：截图以图片卡片进入聊天流（用户可视核对）
@@ -2305,6 +2364,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 上回合自动检测到预览错误：失效缓存 Agent，本回合重建提示词时带上
     //（ensureAgent 读 state.autoErrors 注入；driveTurn 开始时取走清空）
     if (state.autoErrors.length) invalidateAgent();
+    // 存在待消费的回滚通知（且当前会话不在豁免名单）：失效 Agent 让本回合
+    // 提示词带上；driveTurn 开始时消费清除
+    if (
+      pendingRollback &&
+      pendingRollback.appName === state.currentAppName &&
+      pendingRollback.exceptSid !== state.currentSessionId
+    ) {
+      invalidateAgent();
+    }
     try {
       await ensureAgent();
     } catch {
@@ -2356,6 +2424,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 上回合自动检测的预览错误已随本回合 agent 构建（send 侧失效重建）注入
     // 提示词，此处取走清空，避免跨回合重复注入
     if (state.autoErrors.length) set("autoErrors", []);
+    // 回滚通知同理：本回合 agent 的提示词已带上（send 侧失效重建），消费清除
+    if (
+      pendingRollback &&
+      pendingRollback.appName === state.currentAppName &&
+      pendingRollback.exceptSid !== state.currentSessionId
+    ) {
+      pendingRollback = null;
+    }
     // 回合开始快照：变更卡 diff 的旧侧 + 一键回滚目标。内容寻址幂等——
     // 未改动的回合与既有备份同 id 零成本；草稿态（项目未建）跳过
     turnChanges = [];
@@ -2429,6 +2505,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       turnStats = null;
       turnBreakdown = null;
       await finishTurn(firstUserText, threadId, Date.now() - turnStartAt);
+      // 回合结束刷新备份清单：回合开始的自动快照 + 当前内容是否已有备份
+      //（变更卡「备份代码」按钮的已备份感知数据源）；不阻塞收尾
+      refreshBackups();
       // 自动错误回路：本回合有文件改动且预览窗口开着（不自动开窗打扰）时，
       // 推送最新代码 → 等应用跑起 → 读 console 的 error 行挂 state.autoErrors，
       // 下回合提示词自动注入（见 ensureAgent / buildSystemPrompt）
@@ -2788,6 +2867,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 变更卡 / 回滚（回合快照体系，见 driveTurn 收尾与 rollbackTurn）
     getTurnDiff,
     rollbackTurn,
+    forkRollback,
     dismissAutoErrors,
     refreshBackups,
     createBackup,

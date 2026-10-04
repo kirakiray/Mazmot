@@ -221,6 +221,7 @@
             renameAppBackup,
             setBackupNote,
             restoreAppBackup,
+            currentAppHash,
             currentAppFiles,
             readBackupFiles,
           } from "../lib/builder.js";
@@ -459,6 +460,32 @@
               autoErrAbsent: !buildSystemPrompt({ appName: "todo-app" }).includes(
                 "预览自动检测报告",
               ),
+              // 回滚通知注入：不满意（带被否决回合的请求摘要）与中性两种措辞；
+              // 无 rollback 参数不出现该节
+              rollbackDissatisfied:
+                buildSystemPrompt({
+                  appName: "todo-app",
+                  rollback: {
+                    appName: "todo-app",
+                    sentiment: "dissatisfied",
+                    requestText: "把按钮改成蓝色",
+                  },
+                }).includes("表示不满意") &&
+                buildSystemPrompt({
+                  appName: "todo-app",
+                  rollback: {
+                    appName: "todo-app",
+                    sentiment: "dissatisfied",
+                    requestText: "把按钮改成蓝色",
+                  },
+                }).includes("把按钮改成蓝色"),
+              rollbackNeutral: buildSystemPrompt({
+                appName: "todo-app",
+                rollback: { appName: "todo-app", sentiment: "neutral" },
+              }).includes("不含不满含义"),
+              rollbackAbsent: !buildSystemPrompt({
+                appName: "todo-app",
+              }).includes("回滚通知"),
             };
             return {
               assert: Object.values(checks).every(Boolean),
@@ -843,8 +870,9 @@
               const mazmotStore = createVirtualStorage();
               const fsFake = createVirtualFs();
 
-              // 脚本化 chain：捕获 createAgent 收到的 tools（数组），chat 内
-              // 直接调 invoke 模拟模型写文件（write_file / edit_file 真实走插件层）
+              // 脚本化 chain：捕获 createAgent 收到的 tools 与 systemPrompt，
+              // chat 内直接调 invoke 模拟模型写文件（真实走插件层）
+              const agentPrompts = [];
               let agentTools = [];
               const toolOf = (name) => agentTools.find((t) => t.name === name);
               let callN = 0;
@@ -857,7 +885,7 @@
                     path: "index.html",
                     content: "<html>v1</html>",
                   });
-                } else {
+                } else if (callN === 2) {
                   await toolOf("edit_file").invoke({
                     appName: app,
                     path: "index.html",
@@ -866,6 +894,7 @@
                     ],
                   });
                 }
+                // callN >= 3：纯文本回合（回滚通知流转验证，不动文件）
                 onStream({ type: "text", delta: `第${callN}轮` });
                 return {
                   content: `第${callN}轮`,
@@ -877,6 +906,7 @@
                 tool: (exec, meta) => ({ ...meta, invoke: exec }),
                 createAgent: (opts) => {
                   agentTools = opts.tools || [];
+                  agentPrompts.push(opts.systemPrompt || "");
                   return { chat };
                 },
               };
@@ -921,10 +951,20 @@
                 "index.html",
               );
 
-              // 回滚到轮 2 开始前快照：v2 → 骨架后轮 1 结束态？不——轮 2 快照 =
-              // 轮 1 结束态（v1）。回滚后 index.html 应回 v1
-              const rb = await store.rollbackTurn(st.currentAppName, ai2.snapshotId);
+              // 回滚到轮 2 开始前快照（标记不满意 + 带该回合请求摘要）：
+              // 轮 2 快照 = 轮 1 结束态（v1），回滚后 index.html 应回 v1
+              const rb = await store.rollbackTurn(st.currentAppName, ai2.snapshotId, {
+                sentiment: "dissatisfied",
+                requestText: "把 v1 改成 v2",
+              });
               const after = await readAppFile(fsFake, st.currentAppName, "index.html");
+
+              // 回滚后的下一回合：提示词带「不满意」回滚通知（含请求摘要）；
+              // 通知一次性消费，再下一回合不再出现
+              await store.send("重新设计一下");
+              const prompt3 = agentPrompts[2] || "";
+              await store.send("再看看");
+              const prompt4 = agentPrompts[3] || "";
 
               const checks = {
                 turn1Changes:
@@ -939,6 +979,11 @@
                   diffRes.hunks.some((h) => h.type === "add") &&
                   diffRes.hunks.some((h) => h.type === "del"),
                 rollbackRestored: rb.restored === true && after === "<html>v1</html>",
+                notifyInjected:
+                  prompt3.includes("回滚通知") &&
+                  prompt3.includes("不满意") &&
+                  prompt3.includes("把 v1 改成 v2"),
+                notifyConsumed: !prompt4.includes("回滚通知"),
                 stateIdle: st.sending === false && st.autoErrors.length === 0,
               };
               return {
@@ -948,6 +993,119 @@
                   changes1: ai1?.changes,
                   changes2: ai2?.changes,
                 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="回滚对话重来：fork 分支 + 文件还原 + 新分支豁免通知 / 原会话兜底">
+      <template>
+        <script type="module">
+          import { readAppFile } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const fsFake = createVirtualFs();
+              const prompts = [];
+              let tools = [];
+              let callN = 0;
+              const chat = async ({ onStream }) => {
+                callN++;
+                if (callN === 1) {
+                  await tools
+                    .find((t) => t.name === "write_file")
+                    .invoke({
+                      appName: store.state.currentAppName,
+                      path: "index.html",
+                      content: "<html>v1</html>",
+                    });
+                }
+                onStream({ type: "text", delta: `第${callN}轮` });
+                return {
+                  content: `第${callN}轮`,
+                  usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6, context_tokens: 6 },
+                  toolCalls: [],
+                };
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore: createVirtualStorage(),
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js")
+                    ? {
+                        tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                        createAgent: (opts) => {
+                          tools = opts.tools || [];
+                          prompts.push(opts.systemPrompt || "");
+                          return { chat };
+                        },
+                      }
+                    : {
+                        getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                        getAssistant: () => ({ providerName: "Fake" }),
+                        onApiKeysChange: () => {},
+                      },
+              });
+              await store.init({});
+
+              // 轮 1：建项目 + 写 index.html
+              await store.send("做个演示应用");
+              const app = store.state.currentAppName;
+              const sid1 = store.state.currentSessionId;
+              const bucket1 =
+                (await fakeStore.getItem(`chat:${app}:${sid1}`)) || [];
+              const ai1 = bucket1.find(
+                (m) => m.role === "assistant" && m.snapshotId,
+              );
+
+              // 回滚对话重来：fork 截到轮 1 之前 + 文件还原
+              const fr = await store.forkRollback(app, ai1.snapshotId, ai1.id);
+              const sid2 = store.state.currentSessionId;
+              const newBucket =
+                (await fakeStore.getItem(`chat:${app}:${sid2}`)) || [];
+              const reg = (await fakeStore.getItem("apps-registry")) || [];
+              const hit = reg.find((a) => a.name === app);
+
+              // 新分支发消息：提示词应豁免回滚通知（分支记忆与文件一致）
+              await store.send("换个思路重新做");
+              const promptInBranch = prompts[prompts.length - 1] || "";
+
+              // 切回原会话发消息：应兜底中性回滚通知
+              await store.loadSession(sid1);
+              await store.send("看看原来那版");
+              const promptOriginal = prompts[prompts.length - 1] || "";
+
+              const checks = {
+                forked: !!fr && fr.sid && fr.sid !== sid1,
+                switched: sid2 === fr.sid,
+                newBucketEmpty: newBucket.length === 0,
+                threadTruncated:
+                  ((await fakeStore.getItem(`thread:${app}:${sid2}`)) || [])
+                    .length === 0,
+                fileRestored:
+                  (await readAppFile(fsFake, app, "index.html")) === null,
+                // 原会话原样保留：轮 1 桶 = user + assistant + 预览卡共 3 条
+                originalKept: bucket1.length === newBucket.length + 3,
+                twoSessions: hit?.sessions?.length === 2,
+                branchExempt: !promptInBranch.includes("回滚通知"),
+                originalNotified:
+                  promptOriginal.includes("回滚通知") &&
+                  promptOriginal.includes("不含不满含义"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, fr, sid1, sid2 },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };
@@ -1030,6 +1188,108 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="备份代码按钮感知：回合后刷新备份清单 / 智能备份后 current 标记 / 重复跳过">
+      <template>
+        <script type="module">
+          import {
+            currentAppHash,
+            currentAppFiles,
+            readBackupFiles,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              let tools = [];
+              const chat = async ({ onStream }) => {
+                await tools
+                  .find((t) => t.name === "write_file")
+                  .invoke({
+                    appName: store.state.currentAppName,
+                    path: "index.html",
+                    content: "<html>v1</html>",
+                  });
+                onStream({ type: "text", delta: "写好了" });
+                return {
+                  content: "写好了",
+                  usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6, context_tokens: 6 },
+                  toolCalls: [],
+                };
+              };
+              const fsFake = createVirtualFs();
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore: createVirtualStorage(),
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js")
+                    ? {
+                        tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                        createAgent: (opts) => {
+                          tools = opts.tools || [];
+                          return { chat };
+                        },
+                      }
+                    : {
+                        getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                        // getAssistant 的返回值带 chat：generateBackupMeta
+                        // 直接调 assistant.chat 生成备份标题/备注
+                        getAssistant: () => ({
+                          providerName: "Fake",
+                          chat: async () => ({
+                            content: '{"label":"初始版本","note":"包含基础页面"}',
+                          }),
+                        }),
+                        onApiKeysChange: () => {},
+                      },
+              });
+              await store.init({});
+
+              // 轮 1：写 index.html；回合结束 driveTurn 异步刷新备份清单
+              //（fire-and-forget，轮询等待其完成——真实 UI 由 patch 驱动按钮）
+              await store.send("做个演示应用");
+              const app = store.state.currentAppName;
+              const st = store.state;
+              for (let i = 0; i < 100 && st.backups.length === 0; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+              }
+              // 回合开始自动快照 = 回合前骨架态，当前内容（含 index.html）与它不同
+              // → 无任何备份的 current 标记 → 按钮应可点
+              const notBackedUp =
+                st.backups.length >= 1 && !st.backups.some((b) => b.current);
+
+              // 智能备份（打包 + AI 标题备注）→ 当前内容出现 current 项 → 已备份态
+              const res = await store.smartBackup();
+              const backedUp = st.backups.some((b) => b.current);
+              const labeled = st.backups.find((b) => b.current)?.label;
+
+              // 再点：内容未变化 → 跳过；current 标记保持
+              const res2 = await store.smartBackup();
+              const stillBacked = st.backups.some((b) => b.current);
+
+              const checks = {
+                listRefreshedAfterTurn: notBackedUp,
+                smartBackupCreated: !!res && !res.skipped,
+                currentMarked: backedUp && labeled === "初始版本",
+                reskipped: !!res2?.skipped && stillBacked,
+                stateIdle: st.sending === false && st.backupBusy === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, backups: st.backups, keyError: st.keyError },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="会话拖拽排序：reorderSessions 持久化与展示同步">
       <template>
         <script type="module">
