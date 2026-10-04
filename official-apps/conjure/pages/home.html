@@ -259,6 +259,8 @@
                       <button
                         class="reasoning-toggle"
                         class:open="$data.reasoningOpen"
+                        class:live="$host.reasoningLive($data)"
+                        attr:title="$data.reasoningOpen ? '收起思考过程' : '展开思考过程'"
                         on:click="$host.toggleReasoning($data.id)"
                       >
                         <span class="tool-chev">
@@ -273,7 +275,12 @@
                             <path d="M9 6l6 6-6 6" />
                           </svg>
                         </span>
-                        <span class="reasoning-toggle-label">思考过程</span>
+                        <span class="reasoning-toggle-label">{{$host.reasoningLive($data) ? '正在思考' : '思考'}}</span>
+                        <!-- 收起态：滚动展示思考的最后一行（流式中不停变化） -->
+                        <span class="reasoning-tail" attr:hidden="$host.reasoningTailHidden($data)">{{$host.reasoningTail($data)}}</span>
+                        <o-if :value="$host.reasoningTokens($data) !== ''">
+                          <span class="reasoning-tok" attr:title="'本次思考消耗的输出 token'">{{$host.reasoningTokens($data)}}</span>
+                        </o-if>
                       </button>
                     </o-if>
                   </div>
@@ -1999,6 +2006,8 @@
             }
             // usage 挂在回合末条 AI 消息上，done patch 时刷新进度条
             this.syncCtx();
+            // 思考正文流式跟随：展开中的思考自动停在底部（rAF 节流）
+            this.scrollReasoningToBottom();
           },
 
           // API Key 选择器的当前展示文案 + 模型清单合法性（清单由仓库经
@@ -2423,6 +2432,52 @@
             return !!(m?.reasoning);
           },
 
+          // ---- 思考展示（ZCode 式）：默认收起，头部滚动最后一行；展开限高
+          // 自动滚底；推理 token 数随用量落位后显示 ----
+
+          reasoningLive(m) {
+            // 思考进行中：有思考内容、正文未开始、回合未收尾（工具循环里
+            // turnMs 很晚才补，content 开始输出才是思考结束的标志）
+            return !!m?.reasoning && !m?.content && !m?.turnMs;
+          },
+
+          // 思考最后一行非空行（收起态的滚动展示内容）
+          reasoningTail(m) {
+            const lines = String(m?.reasoning || "")
+              .split("\n")
+              .filter((l) => l.trim());
+            const line = lines[lines.length - 1] || "";
+            return line.length > 120 ? line.slice(0, 120) + "…" : line;
+          },
+
+          reasoningTailHidden(m) {
+            return !!m?.reasoningOpen || this.reasoningTail(m) === "";
+          },
+
+          // 本次思考消耗的输出 token：气泡增量（store 在气泡关闭时落的
+          // reasoningTokens）优先；旧数据回退 usage 平铺 / 供应商明细
+          reasoningTokens(m) {
+            const rt =
+              m?.reasoningTokens ??
+              m?.usage?.reasoning_tokens ??
+              m?.usage?.completion_tokens_details?.reasoning_tokens;
+            return rt > 0 ? this.fmtTokCompact(rt) + " tok" : "";
+          },
+
+          // 展开中的思考正文滚到底部（流式跟随；force 供手动展开时立即定位）
+          scrollReasoningToBottom(force) {
+            if (!force && !this.sending) return;
+            if (this._rScrollRaf) return;
+            this._rScrollRaf = requestAnimationFrame(() => {
+              this._rScrollRaf = null;
+              this.shadow.ele
+                .querySelectorAll(".reasoning-body")
+                .forEach((el) => {
+                  el.scrollTop = el.scrollHeight;
+                });
+            });
+          },
+
           // 本轮 token 用量统计（挂在回合末条 AI 消息上，随消息持久化）
           hasUsage(m) {
             return !!(m?.usage?.total_tokens > 0);
@@ -2723,11 +2778,12 @@
             return String(Math.round(p));
           },
 
-          // 输出及推理 token（供应商回报 completion_tokens_details 时显示）
+          // 输出及推理 token（chain 归一化的 reasoning_tokens 平铺字段，
+          // 或供应商原生 completion_tokens_details）
           usageOutputText(m) {
             const u = m?.usage || {};
             const out = `${this.fmtTokExact(u.completion_tokens || 0)} tok`;
-            const rt = u.completion_tokens_details?.reasoning_tokens;
+            const rt = u.reasoning_tokens ?? u.completion_tokens_details?.reasoning_tokens;
             if (rt > 0) return `${out}（其中推理 ${this.fmtTokExact(rt)} tok）`;
             return out;
           },
@@ -2752,6 +2808,8 @@
 
           toggleReasoning(id) {
             store.toggleReasoning(id);
+            // 展开时定位到思考的底部（流式中跟随，历史消息停在末尾）
+            setTimeout(() => this.scrollReasoningToBottom(true), 60);
           },
 
           // fork 按钮可见性：仅已落地的应用会话（草稿没有会话实体）且非发送中

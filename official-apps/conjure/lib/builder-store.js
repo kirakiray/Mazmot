@@ -1634,10 +1634,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       content: "",
       reasoning: "",
       model: activeModel,
-      reasoningOpen: true, // 思考过程默认展开（流式可见），用户可手动收起
+      reasoningOpen: false, // 思考默认收起：头部只滚动展示最后一行，点击展开
       newGroup: false,
     });
     activeBubble = item;
+    bubbleRTStart = turnUsage?.reasoning_tokens ?? 0;
     return item;
   }
 
@@ -1655,6 +1656,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       patchMessage(bubble.id, patch);
     } else if (ev.type === "toolCalls") {
+      // 气泡关闭：本模型调用的思考 token 增量落独立字段（turnUsage 为回合
+      // 累计，差值即该次调用的思考消耗；统计聚合只读 usage，互不影响）
+      if (activeBubble) {
+        const rtDelta = (turnUsage?.reasoning_tokens ?? 0) - bubbleRTStart;
+        if (rtDelta > 0) {
+          patchMessage(activeBubble.id, { reasoningTokens: rtDelta });
+        }
+      }
       if (activeBubble && !activeBubble.content) {
         removeMessage(activeBubble.id);
       }
@@ -2260,7 +2269,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 同一 thread）；turnUsage 暂存本轮最近一次模型调用的用量（停止收尾补挂）
   let currentAbort = null;
   let currentAbortCtrl = null;
-  let turnUsage = null; // 本回合最近一次模型调用的用量快照（停止收尾补挂用）
+  let turnUsage = null;
+  // 当前气泡（模型调用）开始时的回合累计推理 token：气泡关闭时差值即
+  // 本次思考消耗，落独立字段 reasoningTokens（统计聚合读 usage，互不影响）
+  let bubbleRTStart = 0; // 本回合最近一次模型调用的用量快照（停止收尾补挂用）
   let turnStats = null; // 本回合执行统计快照（步数/模型用时/工具用时/TTFT/TPS 分母）
   let turnBreakdown = null; // 本回合上下文构成估算快照（系统提示词/工具定义/对话消息）
   let turnFirstId = 0; // 本回合第一条消息的 id 基线（单载体剥离只看本回合消息）
@@ -2461,6 +2473,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           // 消息，这里统一把累计的实时快照补上，否则统计胶囊整轮消失；
           // 正常完成时 lastAi.usage 已有值，守卫自动跳过不重复累计
           if (turnUsage && !lastAi.usage) patch.usage = turnUsage;
+          // 末条气泡的思考 token 增量（badge 显示「本次思考」而非回合累计）
+          const rtDelta = (turnUsage?.reasoning_tokens ?? 0) - bubbleRTStart;
+          if (rtDelta > 0) patch.reasoningTokens = rtDelta;
           if (turnStats && !lastAi.turnStats) patch.turnStats = turnStats;
           if (turnBreakdown && !lastAi.contextBreakdown) {
             patch.contextBreakdown = turnBreakdown;

@@ -4,12 +4,6 @@
 
 ## 记录
 
-### 2026-06-04 · 去掉法语，定稿 4 种语言（英 / 中 / 日 / 越）
-
-- **改了什么**：`pages/home.html` 的 `LANGS` 删除 `{ id: "fr", flag: "🇫🇷", word: "Bonjour" }`，剩下 `en` / `zh` / `ja` / `vi`；`CONTEXT.md` 定位 / 使用指南（nextLang 的「其余 3 种」、气泡数 4）/ 数据模型（`langs`·`langId`）/ 关键流程同步改写。逻辑零改动。
-- **为什么**：用户要求「把法语去掉」。
-- **验证结论**（preview 实测）：`action=app` 刷新正常；气泡实测 4 个且全页文本不再含「Bonjour」；`action=click` 点第 4 个气泡（现为越南语）→ 问候语「🇻🇳Xin chào, World!」、提示条「已切换为「Xin chào」」；滚动容器 805/805 无溢出；`action=console` 增量无应用报错（仅 `[bridge-link]` 噪声）。
-
 ### 2026-06-04 · 德语换成越南语（语言仍 5 种：英 / 中 / 日 / 法 / 越）
 
 - **改了什么**：`pages/home.html` 的 `LANGS` 末尾 `{ id: "de", flag: "🇩🇪", word: "Hallo" }` → `{ id: "vi", flag: "🇻🇳", word: "Xin chào" }`（位置不变，仍排第 5）；`CONTEXT.md` 定位 / 气泡行 / 数据模型（`langs`·`langId`）同步改写。逻辑零改动。

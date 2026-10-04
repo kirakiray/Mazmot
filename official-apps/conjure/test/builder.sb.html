@@ -1114,6 +1114,93 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="思考 token 分摊：usage 累计差值落各气泡 / 末条为最后一次调用的增量">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              // 两次模型调用：第一次思考消耗 100，第二次 50（usage 为回合累计）
+              const chat = async ({ onStream }) => {
+                // 真实链路事件顺序：text → usage（调用末尾累计快照）→ toolCalls
+                onStream({ type: "text", delta: "第一次思考完成" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    completion_tokens: 300,
+                    reasoning_tokens: 100,
+                    context_tokens: 400,
+                  },
+                });
+                onStream({ type: "toolCalls", toolCalls: [] });
+                onStream({ type: "text", delta: "第二次思考完成" });
+                onStream({
+                  type: "usage",
+                  usage: {
+                    completion_tokens: 350,
+                    reasoning_tokens: 150,
+                    context_tokens: 450,
+                  },
+                });
+                return {
+                  content: "第二次思考完成",
+                  usage: {
+                    completion_tokens: 350,
+                    reasoning_tokens: 150,
+                    context_tokens: 450,
+                  },
+                  toolCalls: [],
+                };
+              };
+              const store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("/mz/ai/chain/main.js")
+                    ? {
+                        tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                        createAgent: () => ({ chat }),
+                      }
+                    : {
+                        getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                        getAssistant: () => ({ providerName: "Fake" }),
+                        onApiKeysChange: () => {},
+                      },
+              });
+              await store.init({});
+              await store.send("做点东西");
+              const app = store.state.currentAppName;
+              const st = store.state;
+              const bucket =
+                (await fakeStore.getItem(`chat:${app}:${st.currentSessionId}`)) || [];
+              const bubbles = bucket.filter((m) => m.role === "assistant");
+              const checks = {
+                twoBubbles: bubbles.length === 2,
+                firstRT: bubbles[0]?.reasoningTokens === 100,
+                secondRT: bubbles[1]?.reasoningTokens === 50,
+                lastUsageKept:
+                  bubbles[1]?.usage?.reasoning_tokens === 150,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: {
+                  checks,
+                  rts: bubbles.map((b) => b.reasoningTokens),
+                },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
     <sb-test name="备份代码按钮感知：回合后刷新备份清单 / 智能备份后 current 标记 / 重复跳过">
       <template>
         <script type="module">

@@ -4,7 +4,7 @@
 
 ## 一句话定位
 
-一个最小可用的 ofa.js + senti-ui 示例应用（无构建步骤）：展示「Hello, World!」问候语，用户可以输入自己的名字、在 4 种语言（英 / 中 / 日 / 越）间切换问候语、点按钮打声招呼，用来验证微应用骨架（入口 / 路由 / 页面模块 / M3 配色）是否跑通。
+一个最小可用的 ofa.js + senti-ui 示例应用（无构建步骤）：展示「Hello, World!」问候语，用户可以输入自己的名字、在 5 种语言（英 / 中 / 日 / 法 / 越）间切换问候语、点按钮打声招呼，用来验证微应用骨架（入口 / 路由 / 页面模块 / M3 配色）是否跑通。
 
 ## 使用指南
 
@@ -14,10 +14,10 @@
 - **主卡片（st-card，`variant="outlined"`）**：
   - `st-input` 输入框 —— 输入名字后，下方问候语实时变为「问候词, 名字!」（留空时用 `World`）；
   - 问候语大字 —— 前面跟当前语言的国旗 emoji；
-  - st-button「🎲 换个语言」—— 从其余 3 种语言里随机切一种；
+  - st-button「🎲 换个语言」—— 从其余 4 种语言里随机切一种；
   - st-button「👋 打个招呼」（`variant="outlined"`）—— 打招呼次数 +1、顶部 emoji 随机换一个；
   - 操作提示条（`o-if` 条件渲染）—— 显示最近一次操作结果，2.4 秒后自动消失；
-- **语言气泡行（`o-fill` 渲染）**：4 个国旗+问候语气泡（🇬🇧 Hello / 🇨🇳 你好 / 🇯🇵 こんにちは / 🇻🇳 Xin chào），点击即切换该语言，当前语言的气泡为高亮态（`class:is-active`）；
+- **语言气泡行（`o-fill` 渲染）**：5 个国旗+问候语气泡（🇬🇧 Hello / 🇨🇳 你好 / 🇯🇵 こんにちは / 🇫🇷 Bonjour / 🇻🇳 Xin chào），点击即切换该语言，当前语言的气泡为高亮态（`class:is-active`）；
 - **底部**：`已打招呼 N 次` 统计。
 
 数据都在内存里，刷新即重置，无持久化。
@@ -39,8 +39,8 @@ client/
 
 | 字段 | 类型 | 含义 |
 | ---- | ---- | ---- |
-| `langs` | `{id, flag, word}[]` | 4 种问候语字典（模块常量 `LANGS`：英 / 中 / 日 / 越），`fill-key="id"` 用于 `o-fill` |
-| `langId` | string | 当前语言 id（`en` / `zh` / `ja` / `vi`） |
+| `langs` | `{id, flag, word}[]` | 5 种问候语字典（模块常量 `LANGS`：英 / 中 / 日 / 法 / 越），`fill-key="id"` 用于 `o-fill` |
+| `langId` | string | 当前语言 id（`en` / `zh` / `ja` / `fr` / `vi`） |
 | `flag` / `word` | string | 当前语言的国旗 emoji 与问候词（由 `refresh()` 同步，供模板直接插值） |
 | `name` | string | 用户输入的名字（`st-input` 的 `input` 事件写入，空值按 `World` 处理） |
 | `greeting` | string | 完整问候语 `${word}, ${who}!`，由 `refresh()` 计算 |
@@ -52,7 +52,7 @@ client/
 
 1. **启动**：`index.html` → `<o-router fix-body>` → `<o-app src="./app-config.js">` → `app-config.js` 的 `home` → 渲染 `pages/home.html`（渲染后 `ready()` 打定位日志并置 `window.__helloReady = true`）。
 2. **改名换问候**：`st-input` 触发 `input` → `onNameInput($event)` 写 `data.name` → `refresh()` 依据 `langId` 重算 `flag` / `word` / `greeting`。
-3. **切换语言**：点语言气泡 → `pickLang($data.id)`（`o-fill` 内，共 4 个气泡）或点「换个语言」→ `nextLang()`（在其余 3 种语言里随机取一个）→ `refresh()` + `showHint()`；高亮态由 `class:is-active="$data.id === $host.langId"` 驱动。
+3. **切换语言**：点语言气泡 → `pickLang($data.id)`（`o-fill` 内，共 5 个气泡）或点「换个语言」→ `nextLang()`（在其余 4 种语言里随机取一个）→ `refresh()` + `showHint()`；高亮态由 `class:is-active="$data.id === $host.langId"` 驱动。
 4. **打招呼**：点「打个招呼」→ `sayHello()` → `bumpTimes++`、`emoji` 随机替换、`showHint(问候语 + 欢迎语)`。
 
 > 以上 2–4 三条即「完成标准」里必须实测的核心链路。
