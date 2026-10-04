@@ -27,6 +27,7 @@ Mazmot/
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
+├── 404.html                  # 部署产物含顶层 404.html 即关闭 Cloudflare Pages 的 SPA 回退（否则未命中路径被回退成 index.html + 200，模块加载报错伪装成 MIME 错误）；Pages 对未命中路径以 404 状态返回本页；本页正是 SW 未命中透传时由源站返回，必须零依赖内联样式（禁止 /gh/ /nos/ /mz/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
