@@ -318,7 +318,7 @@
                             <div class="tc-collapse">
                               <div class="tc-diff-wrap">
                                 <div class="tc-diff-head">
-                                  <n-icon icon="mdi:diff"></n-icon>
+                                  <n-icon icon="mdi:file-code-outline"></n-icon>
                                   <span class="tc-diff-path">{{$host.fileDiffPath}}</span>
                                   <span class="tc-diff-note" attr:hidden="$host.diffNoteHidden()">正在加载…</span>
                                 </div>
@@ -372,9 +372,9 @@
                               <button
                                 class="tc-rollback save"
                                 class:done="$host.curBackedUp()"
-                                attr:disabled="$host.curBackedUp() || backupBusy || smartBackupBusy"
+                                attr:disabled="$host.backupDisabled()"
                                 attr:title="$host.curBackedUp() ? '当前内容已有备份（备份管理中标记为「与当前一致」）' : '智能备份当前代码：打包 + AI 生成标题与备注，可在备份管理查看'"
-                                on:click="backupTurnCode"
+                                on:click="$host.backupTurnCode()"
                               >
                                 <n-icon icon="mdi:content-save-check-outline"></n-icon>
                                 <span>{{$host.backupBtnText()}}</span>
@@ -2619,6 +2619,13 @@
 
           curBackedUp() {
             return this.backups.some((b) => b.current);
+          },
+
+          // 禁用态（o-fill 项作用域禁裸字段名，条件统一收进方法）
+          backupDisabled() {
+            return (
+              this.curBackedUp() || this.backupBusy || this.smartBackupBusy
+            );
           },
 
           backupBtnText() {
