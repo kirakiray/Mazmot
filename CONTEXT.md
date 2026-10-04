@@ -100,7 +100,7 @@ Mazmot/
 │       ├── rdn-network/      # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
 │       └── rnd-box/          # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │
-├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载
+├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载；各应用 __app.json 的 files 安装清单由 [scripts/update-app-manifests.js](scripts/update-app-manifests.js) 扫描磁盘自动同步（`npm run update:apps`，--check 供 CI 校验；文件增删时自动 bump 该应用 app.json 的 version 末段），**禁止手工增删 files 数组**
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js；provider 含 relay——粘贴 ai-relay 邀请码即用转发服务器，详情折叠可看服务器地址）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
@@ -509,6 +509,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 主 SW | [sw.js](sw.js)（core dist.js + [sw/host-cache.js](sw/host-cache.js)） |
 | 根入口 / 主应用宿主（Core 安装界面 + 原地挂载 /main） | [index.html](index.html) |
 | 宿主离线缓存清单 / 版本 | [cache-manifest.json](cache-manifest.json)（version 内容派生，`npm run update` 生成，勿手改） |
+| 官方应用安装清单（`__app.json` files 数组） | [official-apps/](official-apps/)（`npm run update:apps` 按磁盘扫描同步并联动 bump `app.json` version，勿手改；漏登会导致市场装出的应用缺文件白屏） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |
 | 浮窗式网络面板（主应用挂载） | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html) |
