@@ -338,35 +338,37 @@
                           </div>
                           <div class="tc-foot">
                             <o-if :value="$host.turnActionsAvailable($data) && $data.snapshotId">
-                              <!-- 仅当前会话最后一个带改动的回合可操作（旧回合只读）；
-                                   三种回滚语义 + 智能备份，均两步确认 -->
-                              <button
-                                class="tc-rollback ghost"
-                                class:confirm="$host.isConfirm($data.id, 'fork')"
-                                attr:title="'创建一个截到该回合之前的分支会话并切换（原会话保留），同时把文件还原到该回合前'"
-                                on:click="$host.rollbackFrom($data, 'fork')"
-                              >
-                                <n-icon icon="mdi:source-branch"></n-icon>
-                                <span>{{$host.isConfirm($data.id, 'fork') ? '确认重来？' : '回滚对话重来'}}</span>
-                              </button>
-                              <button
-                                class="tc-rollback danger"
-                                class:confirm="$host.isConfirm($data.id, 'dissatisfied')"
-                                attr:title="'还原文件到该回合前，并告知 AI 你对这次改动不满意（下次对话生效）'"
-                                on:click="$host.rollbackFrom($data, 'dissatisfied')"
-                              >
-                                <n-icon icon="mdi:thumb-down-outline"></n-icon>
-                                <span>{{$host.isConfirm($data.id, 'dissatisfied') ? '确认不满意？' : '不满意并回滚'}}</span>
-                              </button>
+                              <!-- 回滚：单按钮，点击原地展开语义选项（不满意负反馈 / 仅还原），
+                                   选完即执行；回滚成功且当前内容等于该回合快照时进入「已回滚」禁用态 -->
+                              <o-if :value="$host.rollbackOptionsOpen === $data.id">
+                                <button
+                                  class="tc-rollback danger"
+                                  attr:title="'还原文件并告知 AI 你对该回合改动不满意（下次对话生效）'"
+                                  on:click="$host.runRollback($data, 'dissatisfied')"
+                                >
+                                  <n-icon icon="mdi:thumb-down-outline"></n-icon>
+                                  <span>不满意，撤销</span>
+                                </button>
+                                <button
+                                  class="tc-rollback"
+                                  attr:title="'仅把文件还原到本回合开始前（中性，AI 下次对话会感知回滚）'"
+                                  on:click="$host.runRollback($data, 'neutral')"
+                                >
+                                  <n-icon icon="mdi:restore"></n-icon>
+                                  <span>仅还原代码</span>
+                                </button>
+                              </o-if>
                               <button
                                 class="tc-rollback"
-                                class:confirm="$host.isConfirm($data.id, 'neutral')"
-                                attr:title="'把应用文件恢复到本回合开始前的快照（对话记录不受影响，AI 下次对话会感知回滚）'"
-                                on:click="$host.rollbackFrom($data, 'neutral')"
+                                attr:disabled="$host.turnReverted($data)"
+                                attr:title="$host.turnReverted($data) ? '该回合改动已还原（当前内容与回合前快照一致）' : '还原该回合的文件改动：可选择是否告知 AI 不满意（对话记录不受影响）'"
+                                on:click="$host.toggleRollbackOptions($data)"
                               >
                                 <n-icon icon="mdi:restore"></n-icon>
-                                <span>{{$host.isConfirm($data.id, 'neutral') ? '确认回滚？' : '回滚代码'}}</span>
+                                <span>{{$host.rollbackBtnText($data)}}</span>
                               </button>
+                            </o-if>
+                            <o-if :value="$host.turnActionsAvailable($data) && $data.snapshotId">
                               <!-- 备份代码：相当于一次智能备份（打包 + AI 标题备注）；
                                    当前内容已有备份（backups 含 current 项）时禁用并显示已备份 -->
                               <button
@@ -1756,15 +1758,14 @@
           openUsageMsgId: 0, // 展开「本轮用量」明细的消息 id（0 = 全关，同时至多一条）
           // 变更卡状态：changesMsgId 展开中的消息 id（0 = 全关）；fileDiffPath
           // 展开中的文件路径（相对当前展开卡，"" = 无）；diffHunks / diffLoading
-          // 该文件的行级 diff（快照 vs 当前盘）与加载态；confirmRollbackId
-          // 回滚两步确认的消息 id（0 = 未确认）
+          // 行级 diff 与加载态；rollbackOptionsOpen 展开回滚语义选项的消息 id
           changesMsgId: 0,
           fileDiffPath: "",
           diffHunks: [],
           diffLoading: "",
           diffError: "",
           diffFromDisk: false, // true = 旧卡片兼容模式（对比当前盘，非冻结内容）
-          confirmRollbackId: 0,
+          rollbackOptionsOpen: 0, // 展开回滚语义选项的消息 id（0 = 收起）
           autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；提示条数据源）
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
@@ -2456,7 +2457,7 @@
             this.fileDiffPath = "";
             this.diffHunks = [];
             this.diffError = "";
-            this.confirmRollbackId = 0;
+            this.rollbackOptionsOpen = 0;
           },
 
           async toggleFileDiff(path) {
@@ -2596,45 +2597,32 @@
             return "该文件在本回合没有行级变化";
           },
 
-          // 回滚动作两步确认：confirmRollbackId + confirmRollbackKind 组合，
-          // 4s 超时复位；kind：neutral 中性回滚 / dissatisfied 不满意 / fork 回滚对话
-          isConfirm(id, kind) {
-            return this.confirmRollbackId === id && this.confirmRollbackKind === kind;
+          // 回滚（单按钮 + 语义选项）：点击主按钮原地展开「不满意，撤销 /
+          // 仅还原代码」两个选项，选完即执行（选择本身就是确认）；回滚成功
+          // 后当前内容与该回合快照一致 → turnReverted 派生「已回滚」禁用态
+          toggleRollbackOptions(msg) {
+            this.rollbackOptionsOpen =
+              this.rollbackOptionsOpen === msg.id ? 0 : msg.id;
           },
 
-          async rollbackFrom(msg, kind = "neutral") {
+          turnReverted(msg) {
+            if (!msg?.snapshotId) return false;
+            return this.backups.some(
+              (b) => b.id === msg.snapshotId && b.current,
+            );
+          },
+
+          rollbackBtnText(msg) {
+            return this.turnReverted(msg) ? "已回滚" : "回滚";
+          },
+
+          async runRollback(msg, kind = "neutral") {
             if (!msg?.snapshotId) return;
-            if (!this.isConfirm(msg.id, kind)) {
-              this.confirmRollbackId = msg.id;
-              this.confirmRollbackKind = kind;
-              setTimeout(() => {
-                if (this.isConfirm(msg.id, kind)) {
-                  this.confirmRollbackId = 0;
-                  this.confirmRollbackKind = "";
-                }
-              }, 4000);
-              return;
-            }
-            this.confirmRollbackId = 0;
-            this.confirmRollbackKind = "";
+            this.rollbackOptionsOpen = 0;
             const { default: alertDlg } = await load(
               "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
             );
             try {
-              if (kind === "fork") {
-                const res = await store.forkRollback(
-                  this.currentAppName,
-                  msg.snapshotId,
-                  msg.id,
-                );
-                await alertDlg({
-                  title: "回滚对话重来",
-                  message: res?.restored
-                    ? `已创建分支会话并还原文件（写回 ${res.files} 个）；原会话原样保留，可随时切回查看`
-                    : "文件与该回合前状态一致，已创建分支会话",
-                });
-                return;
-              }
               // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
               const turnUser = [...this.messages]
                 .reverse()

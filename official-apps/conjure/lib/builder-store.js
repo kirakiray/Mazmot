@@ -253,9 +253,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let turnSnapshotId = "";
   // 自动错误回路进行中标记（防重入）；收集到的错误行同步 state.autoErrors
   let autoCheckBusy = false;
-  // 待消费的回滚通知：rollbackTurn / forkRollback 写入（appName 级），下一轮
-  // 对话注入提示词后清除（exceptSid 的会话豁免——fork 出的新分支记忆与文件
-  // 一致，无需感知）
+  // 待消费的回滚通知：rollbackTurn 写入（appName 级），下一轮对话注入
+  // 提示词后清除（一次性）
   let pendingRollback = null;
 
   /* ---------- 持久化辅助 ---------- */
@@ -464,11 +463,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         // 上回合宿主自动检测收集的预览错误（预览窗口开着时才收集）：
         // 注入本回合提示词让模型优先修复；driveTurn 开始时取走清空
         autoErrors: state.autoErrors.length ? [...state.autoErrors] : undefined,
-        // 待消费的回滚通知（中性 / 不满意；fork 新分支豁免）
+        // 待消费的回滚通知（中性 / 不满意）
         rollback:
           pendingRollback &&
-          pendingRollback.appName === state.currentAppName &&
-          pendingRollback.exceptSid !== state.currentSessionId
+          pendingRollback.appName === state.currentAppName
             ? { ...pendingRollback }
             : undefined,
       }),
@@ -1377,8 +1375,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // unchanged = 当前内容与快照一致未写入）。opts.sentiment："neutral"（默认）
   // / "dissatisfied"（用户对该回合改动不满意）；opts.requestText 为该回合的
   // 用户请求摘要（不满意通知里带给模型，让它知道否决的是哪次改动）。
-  // 回滚后失效 Agent 并登记待消费通知——下次对话（同应用、非豁免会话）注入
-  // 「回滚通知」，AI 感知回滚与反馈，不凭旧记忆把撤销的内容写回
+  // 回滚后失效 Agent 并登记待消费通知——下次对话（同应用）注入「回滚通知」，
+  // AI 感知回滚与反馈，不凭旧记忆把撤销的内容写回
   async function rollbackTurn(appName, snapshotId, opts = {}) {
     const hit = state.apps.find((a) => a.name === appName);
     const handle = hit?.mode === "local" ? localRootHandle : undefined;
@@ -1396,42 +1394,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
     await refreshBackups();
     return res;
-  }
-
-  // 回滚对话重来：fork 一个截到该回合之前的新会话并切换（原会话原样保留，
-  // 经验不丢）+ 文件还原到该回合前快照。新分支的记忆与还原后的文件一致
-  //（都停在回合前），无需回滚通知；原会话若继续对话则由 pendingRollback
-  // 兜底中性通知（exceptSid 豁免新分支）
-  async function forkRollback(appName, snapshotId, aiMsgId) {
-    if (!selfStore || state.sending) return null;
-    const srcSid = state.currentSessionId;
-    if (!appName || !srcSid || appName !== state.currentAppName) return null;
-    const bucket = bucketFor(`chat:${appName}:${srcSid}`);
-    // 该回合的起点：末条 AI 消息之前最近的一条用户消息（newGroup 标记回合开始）
-    const turnUser = [...bucket]
-      .reverse()
-      .find((m) => m.role === "user" && m.newGroup && m.id < aiMsgId);
-    if (!turnUser) return null;
-    const kept = bucket.filter((m) => m.id < turnUser.id).map((m) => ({ ...m }));
-    // 先还原文件，成功后再建分支（还原失败不产生半截分支）
-    const hit = state.apps.find((a) => a.name === appName);
-    const handle = hit?.mode === "local" ? localRootHandle : undefined;
-    const res = await restoreAppBackup(fs, appName, snapshotId, handle);
-    const newSid = await forkTo(appName, srcSid, kept, "回滚重来");
-    pendingRollback = {
-      appName,
-      exceptSid: newSid, // 新分支记忆与文件一致，豁免通知
-      sentiment: "neutral",
-      requestText: "",
-    };
-    invalidateAgent();
-    try {
-      await syncAppMetaFromDisk(appName);
-    } catch {
-      /* meta 同步失败不阻塞 */
-    }
-    await refreshBackups();
-    return { ...res, sid: newSid };
   }
 
   // preview_screenshot 工具：截图以图片卡片进入聊天流（用户可视核对）
@@ -2354,13 +2316,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 上回合自动检测到预览错误：失效缓存 Agent，本回合重建提示词时带上
     //（ensureAgent 读 state.autoErrors 注入；driveTurn 开始时取走清空）
     if (state.autoErrors.length) invalidateAgent();
-    // 存在待消费的回滚通知（且当前会话不在豁免名单）：失效 Agent 让本回合
-    // 提示词带上；driveTurn 开始时消费清除
-    if (
-      pendingRollback &&
-      pendingRollback.appName === state.currentAppName &&
-      pendingRollback.exceptSid !== state.currentSessionId
-    ) {
+    // 存在待消费的回滚通知：失效 Agent 让本回合提示词带上；
+    // driveTurn 开始时消费清除
+    if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       invalidateAgent();
     }
     try {
@@ -2415,11 +2373,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 提示词，此处取走清空，避免跨回合重复注入
     if (state.autoErrors.length) set("autoErrors", []);
     // 回滚通知同理：本回合 agent 的提示词已带上（send 侧失效重建），消费清除
-    if (
-      pendingRollback &&
-      pendingRollback.appName === state.currentAppName &&
-      pendingRollback.exceptSid !== state.currentSessionId
-    ) {
+    if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       pendingRollback = null;
     }
     // 回合开始快照：变更卡 diff 的旧侧 + 一键回滚目标。内容寻址幂等——
@@ -2880,7 +2834,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 变更卡 / 回滚（回合快照体系，见 driveTurn 收尾与 rollbackTurn）
     getTurnDiff,
     rollbackTurn,
-    forkRollback,
     dismissAutoErrors,
     refreshBackups,
     createBackup,
