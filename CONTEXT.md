@@ -23,7 +23,7 @@
 
 ```
 Mazmot/
-├── index.html                # 根入口兼主应用宿主，引导分叉两路径：① 快速通道——head 内联脚本同步判定 Core SW 已接管本页（controller 存在）即加 html.boot-fast 类，引导层首帧就不渲染（只留 surface 色底，不闪安装界面），fetch("/__config") 本地探测 version 完整（SW 本地响应不走网络）→ enterFast 立即原地挂载 /main 主应用；body 尾部兜底定时器（1.2s 未进应用则恢复引导层，防模块加载卡死成裸底）；在线升级检查延后 3s 由隐藏 <nos-version auto-install> 后台静默完成（进度/错误事件经 maskEl.isConnected 守卫不再驱动已卸载引导层；Core SW skipWaiting+claim，已加载模块不受影响，整体切换下次启动生效）。② 完整引导——无 controller（首访）或探测失败（装到一半/SW 异常，移除 boot-fast 恢复显示引导层）走原流程：<nos-version auto-install> 驱动（组件源跟随 sw/sw-config.js 开关），<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒后原地挂载；两种路径带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
+├── index.html                # 根入口兼主应用宿主，引导分叉两路径：① 快速通道——head 内联脚本同步判定 Core SW 已接管本页（controller 存在）即加 html.boot-fast 类，引导层首帧就不渲染（只留 #app-loading 首屏 loading 层：吉祥物 + 品牌字 + spinner + 状态文案），fetch("/__config") 本地探测 version 完整（SW 本地响应不走网络）→ enterFast 立即原地挂载 /main 主应用；body 尾部兜底定时器（1.2s 未进应用则恢复引导层，防模块加载卡死成裸底）；在线升级检查延后 3s 由隐藏 <nos-version auto-install> 后台静默完成（进度/错误事件经 maskEl.isConnected 守卫不再驱动已卸载引导层；Core SW skipWaiting+claim，已加载模块不受影响，整体切换下次启动生效）。② 完整引导——无 controller（首访）或探测失败（装到一半/SW 异常，移除 boot-fast 恢复显示引导层）走原流程：<nos-version auto-install> 驱动（组件源跟随 sw/sw-config.js 开关），<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒后原地挂载。**两路径统一首屏收口**：mountApp 后引导层/loading 层都不立即撤下，等主应用首页（welcome / apps）经页面工厂 load 加载齐全部依赖并渲染出首屏后派发 window 事件 mazmot:app-ready，finishEnter 才把引导层与 loading 层一起淡出（mountApp 内 15s 兜底定时器防首页加载异常永久挡屏）——首帧之后用户要么看到安装/ loading 界面、要么看到完整首屏，不再有裸色底空白期；两种路径带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
@@ -56,8 +56,8 @@ Mazmot/
 ├── main/                     # 主应用（由根 index.html 装好 Core 后原地挂载，URL = /，不在 apps/ 下、不参与应用市场；离线缓存清单随本目录收录）
 │   ├── app-config.js         # ofa.js 配置（home = ./pages/welcome.html；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
 │   ├── pages/
-│   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页
-│   │   ├── apps.html             # 应用列表主页：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮；「安装中」虚拟条目区（见 lib/install-queue.js）
+│   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页。依赖模块与组件（senti-ui button/icon-button/input/select、mascot、n-icon、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>），全部就绪才注册渲染；flowReady 置真时派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
+│   │   ├── apps.html             # 应用列表主页：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮；「安装中」虚拟条目区（见 lib/install-queue.js）。依赖模块与组件（senti-ui list/button/icon-button/dialog/switch、n-icon、ercode、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>、顶层不 import /nos/*），attached() 把应用列表灌入 appList 后派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
 │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
 │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
@@ -391,8 +391,8 @@ npm run static
 
 ### 首次访问
 
-1. 访问 30031 根路径 → 根 [index.html](index.html) 以 `<m-mascot>` 吉祥物为引导界面（soulless 形态 + 进度条），由 `<nos-version auto-install>` 事件驱动自动安装/升级 NoneOS Core；完成后吉祥物苏醒、**原地挂载 `/main` 主应用**（带合法 `?redirect=` 时跳转对应地址，兼容旧客户端回根升级链路）
-2. 主应用首启进入 [/main/pages/welcome.html](main/pages/welcome.html) 引导对话（AI Key 配置 / 用途选择 / 应用后台安装）；完成后进入 [/main/pages/apps.html](main/pages/apps.html) 应用列表；再次访问直接进列表页；`apps/network`、`apps/run-app` 流程不变
+1. 访问 30031 根路径 → 根 [index.html](index.html) 以 `<m-mascot>` 吉祥物为引导界面（soulless 形态 + 进度条），由 `<nos-version auto-install>` 事件驱动自动安装/升级 NoneOS Core；完成后吉祥物苏醒、**原地挂载 `/main` 主应用**（带合法 `?redirect=` 时跳转对应地址，兼容旧客户端回根升级链路）。挂载后引导层不立即撤下（其下还有 #app-loading loading 层），等首页首屏就绪一起淡出
+2. 主应用首启进入 [/main/pages/welcome.html](main/pages/welcome.html) 引导对话（AI Key 配置 / 用途选择 / 应用后台安装）；完成后进入 [/main/pages/apps.html](main/pages/apps.html) 应用列表；再次访问直接进列表页。首页把依赖加载齐、渲染出首屏时派发 `mazmot:app-ready`，根入口收到才撤引导层 / loading 层（15s 兜底强制放行）；`apps/network`、`apps/run-app` 流程不变
 
 > 直接打开分享链接（`/apps/run-app/?u=...&h=...`）时，`run-app/index.html` 只作为 ofa.js 外壳，不主动校验 Core 模块。`run-app.html` 页面模块内部内嵌 `<nos-version auto-install>` 自动装/升级 Core；Core 就绪后才通过 `load(...)` 并行加载 `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 等模块（任一加载失败即进入错误页）。
 

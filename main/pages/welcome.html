@@ -320,13 +320,8 @@
     }
   </style>
 
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
-  <l-m src="/mz/comps/mascot/mascot.html"></l-m>
-  <l-m src="/nos/n-icon/n-icon.html"></l-m>
-  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+  <!-- 组件依赖不写静态 <l-m>：全部在页面工厂里经 load 并行预载（见下方
+       script），保证首屏渲染时组件全部就绪，配合根入口 loading 层消除空白期 -->
 
   <div class="stage" on:click="handleScreenClick">
     <o-if :value="flowReady">
@@ -523,24 +518,36 @@
 
   <script>
     export default async ({ load }) => {
-      const { getStorage } = await load("/nos/storage/main.js");
+      // 依赖模块与组件全部经工厂 load 并行加载（替代静态 <l-m> / 串行
+      // await）：全部就绪后页面才注册渲染，首屏即对话完整态
+      const [
+        { getStorage },
+        { getLocaleText, ensureLocaleTextJson },
+        { default: toast },
+        ai,
+        { decodeInvite, fetchServerInfo },
+        { loadOfficialAppMeta },
+        plan,
+        { enqueueOfficialInstalls },
+      ] = await Promise.all([
+        load("/nos/storage/main.js"),
+        load("/nos/locale-text/get-locale-text.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"),
+        load("/mz/ai/main.js"),
+        load("/mz/ai/supplier/relay.js"),
+        load("../lib/official-app-writer.js"),
+        load("../lib/welcome-plan.js"),
+        load("../lib/install-queue.js"),
+        // 组件依赖（替代原静态 <l-m>，与模块并行预载）
+        load("/gh/ofajs/senti-ui@latest/packages/button/button.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/input/input.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/select/select.html"),
+        load("/mz/comps/mascot/mascot.html"),
+        load("/nos/n-icon/n-icon.html"),
+        load("/nos/locale-text/locale-text.html"),
+      ]);
       const storage = getStorage("mazmot");
-      const {
-        getLocaleText,
-        ensureLocaleTextJson,
-      } = await load("/nos/locale-text/get-locale-text.js");
-      const { default: toast } = await load(
-        "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
-      );
-      const ai = await load("/mz/ai/main.js");
-      const { decodeInvite, fetchServerInfo } = await load(
-        "/mz/ai/supplier/relay.js",
-      );
-      const { loadOfficialAppMeta } = await load(
-        "../lib/official-app-writer.js",
-      );
-      const plan = await load("../lib/welcome-plan.js");
-      const { enqueueOfficialInstalls } = await load("../lib/install-queue.js");
 
       // 先构建 locale-text.json 反向索引再求值 L10N（扩展语种回退）
       await ensureLocaleTextJson();
@@ -690,6 +697,8 @@
             return;
           }
           this.flowReady = true;
+          // 首屏对话已可渲染：通知根入口撤掉 loading 层
+          window.dispatchEvent(new CustomEvent("mazmot:app-ready"));
           this.enterUnit(0);
         },
 
