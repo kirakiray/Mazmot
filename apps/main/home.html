@@ -911,6 +911,12 @@
           // 原型的普通对象；注册后再赋值走 stanz set 陷阱，_ 前缀 key 原样
           // 存入，句柄不会被破坏。因此这里先加载列表。
           const apps = await loadApps();
+          // ofa 注册期会以初始值触发一次 watch（dialogOpen/marketDialogOpen
+          // 的初始值为 false），其中的 refreshApps 与本处的 loadApps 并发；
+          // refreshApps 是「清空再灌入」，这里若直接 push，refreshApps 先
+          // 完成时整表会被再追加一遍（列表随机重复渲染两遍）。灌入前先清空，
+          // 保证 attached 与并发刷新竞态时幂等。
+          this.appList.length = 0;
           apps.forEach((app) => this.appList.push(app));
 
           // 启动广播监听 + 定时探测
