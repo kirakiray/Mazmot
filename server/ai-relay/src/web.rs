@@ -132,6 +132,12 @@ pub(crate) async fn web_fetch(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     const PATH: &str = "/v1/web/fetch";
     let user = crate::proxy::auth_user(&state, &headers).await?;
+    if !user.web_fetch_enabled {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "该用户未开通 web fetch 能力（管理员可在用户管理中按用户开启）",
+        ));
+    }
     crate::proxy::check_bound_signature(&user, &headers, "POST", PATH, &body)?;
 
     let payload: Value = serde_json::from_slice(&body)

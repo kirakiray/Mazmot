@@ -131,6 +131,14 @@ pub(crate) struct UserRec {
     pub(crate) bound_pubkey: String,
     #[serde(default)]
     pub(crate) bound_at: i64,
+    /// 是否可用 web fetch 联网抓取（/v1/web/fetch）。
+    /// 缺省 true：能力先于本开关上线，老记录升级后行为不变（管理员可按用户关闭）
+    #[serde(default = "default_true")]
+    pub(crate) web_fetch_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl UserRec {
@@ -335,6 +343,7 @@ mod tests {
             bound_user_id: "uid-1".into(),
             bound_pubkey: "pubkey-b64".into(),
             bound_at: 7,
+            web_fetch_enabled: true,
         };
         assert!(model_allowed(&user.allowed_models, "glm-5.3"));
         assert!(!model_allowed(&user.allowed_models, "deepseek-chat"));

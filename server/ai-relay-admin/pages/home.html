@@ -191,6 +191,19 @@
       color: var(--md-sys-color-on-error-container);
     }
 
+    /* web fetch 关闭徽标（soft 状态，弱于"已禁用"的 error 色） */
+    .wfetch-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
     .item-actions {
       display: flex;
       align-items: center;
@@ -708,6 +721,12 @@
                         <locale-text><span lang="cn">已禁用</span><span lang="en">Disabled</span></locale-text>
                       </span>
                     </o-if>
+                    <o-if :value="$data.webFetchEnabled === false">
+                      <span class="wfetch-badge" attr:title="t('wfetchOffTip')">
+                        <n-icon icon="mdi:earth-off"></n-icon>
+                        <locale-text><span lang="cn">Web Fetch 关</span><span lang="en">Web Fetch off</span></locale-text>
+                      </span>
+                    </o-if>
                   </div>
                 </div>
                 <div slot="suffix" class="item-actions">
@@ -876,6 +895,14 @@
       </st-select>
     </div>
     <div class="field">
+      <st-checkbox
+        attr:checked="newUser.webFetch"
+        on:change="toggleNewUserWebFetch"
+      >
+        <locale-text><span lang="cn">允许 Web Fetch 联网抓取（/v1/web/fetch）</span><span lang="en">Allow Web Fetch (web page fetching)</span></locale-text>
+      </st-checkbox>
+    </div>
+    <div class="field">
       <label class="field-label"><locale-text><span lang="cn">可用上游 Key</span><span lang="en">Allowed upstream keys</span></locale-text></label>
       <o-if :value="apikeys.length === 0">
         <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); margin: 0;">
@@ -1014,6 +1041,19 @@
       </div>
     </div>
 
+    <div class="field" style="margin-bottom: 12px;">
+      <label class="field-label"><locale-text><span lang="cn">联网能力</span><span lang="en">Web access</span></locale-text></label>
+      <st-checkbox
+        attr:checked="detailWebFetch"
+        on:change="toggleDetailWebFetch"
+      >
+        <locale-text><span lang="cn">允许 Web Fetch 联网抓取（关闭后该用户调用 /v1/web/fetch 返回 403）</span><span lang="en">Allow Web Fetch (when off, the user's calls return 403)</span></locale-text>
+      </st-checkbox>
+      <p class="quota-converted">
+        <locale-text><span lang="cn">改动后需点上方「保存修改」生效。</span><span lang="en">Click "Save changes" above to apply.</span></locale-text>
+      </p>
+    </div>
+
     <label class="field-label"><locale-text><span lang="cn">邀请码（发给用户即可使用）</span><span lang="en">Invitation code (share with the user)</span></locale-text></label>
     <div class="invite-code-box">
       <div class="mono">{{detailInvite ? detailInvite.code : ''}}</div>
@@ -1088,6 +1128,7 @@
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
         userNamePlaceholder: { cn: "用户名", en: "User name" },
         userNotePlaceholder: { cn: "可选备注", en: "Optional note" },
+        wfetchOffTip: { cn: "该用户的 Web Fetch 联网抓取已关闭", en: "Web fetch is disabled for this user" },
         quotaPlaceholder: { cn: "如 1000000（一百万 token）", en: "e.g. 1000000" },
         unlimited: { cn: "无限", en: "Unlimited" },
         savedServers: { cn: "已保存的服务器", en: "Saved servers" },
@@ -1114,7 +1155,7 @@
           savingKey: false,
           keyDialogOpen: false,
           userDialogOpen: false,
-          newUser: { name: "", note: "", quota: "", keyIds: [], bindMode: "open" },
+          newUser: { name: "", note: "", quota: "", keyIds: [], bindMode: "open", webFetch: true },
           newUserQuotaUnit: "token",
           savingUser: false,
           detailOpen: false,
@@ -1131,6 +1172,7 @@
           detailModels: "",
           detailModelOptions: [],
           detailBindMode: "open",
+          detailWebFetch: true,
           loadingModels: false,
           savingDetail: false,
           accounts: [],
@@ -1580,7 +1622,7 @@
           // ———— 用户 ————
 
           openUserDialog() {
-            this.newUser = { name: "", note: "", quota: "", keyIds: [], bindMode: "open" };
+            this.newUser = { name: "", note: "", quota: "", keyIds: [], bindMode: "open", webFetch: true };
             this.newUserQuotaUnit = "token";
             this._prevNewUserUnit = "token";
             this.loadApikeys();
@@ -1650,6 +1692,14 @@
             }
           },
 
+          toggleNewUserWebFetch() {
+            this.newUser.webFetch = !this.newUser.webFetch;
+          },
+
+          toggleDetailWebFetch() {
+            this.detailWebFetch = !this.detailWebFetch;
+          },
+
           async createUser() {
             const name = this.newUser.name.trim();
             if (!name) return;
@@ -1666,6 +1716,7 @@
                   ),
                   apiKeyIds: [...this.newUser.keyIds],
                   bindMode: this.newUser.bindMode || "open",
+                  webFetchEnabled: this.newUser.webFetch !== false,
                 }),
               });
               this.userDialogOpen = false;
@@ -1800,6 +1851,7 @@
                   apiKeyIds: [...this.detailUser.apiKeyIds],
                   allowedModels: this.modelsTextToArray(this.detailModels),
                   bindMode: this.detailBindMode || "open",
+                  webFetchEnabled: this.detailWebFetch !== false,
                 }),
               });
               await this.loadUsers();
@@ -1843,6 +1895,7 @@
             this.detailInvite = null;
             this.detailUsage = [];
             this.detailBindMode = this.detailUser?.bindMode || "open";
+            this.detailWebFetch = this.detailUser?.webFetchEnabled !== false;
             if (this.detailUser && this.detailUser.quotaTokens != null) {
               const q = this.detailUser.quotaTokens;
               if (q >= 1e6 && q % 1e6 === 0) {

@@ -235,6 +235,7 @@ fn user_public(u: &UserRec, include_bearkey: bool) -> Value {
         "apiKeyIds": u.api_key_ids,
         "allowedModels": u.allowed_models,
         "bindMode": if u.bind_mode.is_empty() { "open" } else { &u.bind_mode },
+        "webFetchEnabled": u.web_fetch_enabled,
         "boundUserId": u.bound_user_id,
         "boundAt": u.bound_at,
     });
@@ -276,6 +277,9 @@ pub(crate) struct CreateUserReq {
     /// "open"（默认）| "bound"（仅限绑定的 NoneOS 用户）
     #[serde(default, rename = "bindMode")]
     bind_mode: Option<String>,
+    /// 是否可用 web fetch 联网抓取（缺省 true）
+    #[serde(default, rename = "webFetchEnabled")]
+    web_fetch_enabled: Option<bool>,
 }
 
 pub(crate) async fn create_user(
@@ -315,6 +319,7 @@ pub(crate) async fn create_user(
         api_key_ids,
         allowed_models: req.allowed_models,
         bind_mode: normalize_bind_mode(req.bind_mode),
+        web_fetch_enabled: req.web_fetch_enabled.unwrap_or(true),
         bound_user_id: String::new(),
         bound_pubkey: String::new(),
         bound_at: 0,
@@ -339,6 +344,8 @@ pub(crate) struct UpdateUserReq {
     /// "open" | "bound"
     #[serde(default, rename = "bindMode", skip_serializing_if = "Option::is_none")]
     bind_mode: Option<String>,
+    #[serde(default, rename = "webFetchEnabled", skip_serializing_if = "Option::is_none")]
+    web_fetch_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     disabled: Option<bool>,
 }
@@ -387,6 +394,9 @@ pub(crate) async fn update_user(
     }
     if let Some(mode) = req.bind_mode {
         user.bind_mode = normalize_bind_mode(Some(mode));
+    }
+    if let Some(v) = req.web_fetch_enabled {
+        user.web_fetch_enabled = v;
     }
     state.save_user(&user).await.map_err(api_error_db)?;
     Ok(ok_json(user_public(&user, false)))

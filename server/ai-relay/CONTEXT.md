@@ -30,7 +30,7 @@ server/ai-relay/
 
 ## 数据模型（redb 表，内存全量读缓存）
 
-- `users`：`UserRec { id, name, note, quota_tokens(可空=无限), used_tokens(累计，不自动重置), total_requests(累计对话轮数), bearkey("ar-"+32位随机), disabled, created_at, api_key_ids[], allowed_models[](模型白名单，空=不限；支持 `glm-5*` 前缀通配，见 `model_allowed`), bind_mode("open"默认|"bound"), bound_user_id, bound_pubkey(SPKI DER base64), bound_at }`
+- `users`：`UserRec { id, name, note, quota_tokens(可空=无限), used_tokens(累计，不自动重置), total_requests(累计对话轮数), bearkey("ar-"+32位随机), disabled, created_at, api_key_ids[], allowed_models[](模型白名单，空=不限；支持 `glm-5*` 前缀通配，见 `model_allowed`), bind_mode("open"默认|"bound"), web_fetch_enabled(serde 默认 true——能力先于开关上线，老记录升级后行为不变；false 时 /v1/web/fetch 返回 403), bound_user_id, bound_pubkey(SPKI DER base64), bound_at }`
   - `bind_mode=bound` 时一人一码：首次 `POST /v1/activate` 激活绑定（ECDSA P-256 签名，与 noneos-core 证书同体系，见 identity 模块），之后 `/v1/*` 请求必须带 `X-Relay-Auth` 签名头（覆盖 userId/ts/method/path/bodyHash，±10 分钟时间窗）；admin 可解绑重新开放激活
 - `apikeys`：`ApiKeyRec { id, provider("deepseek"|"glm"|"glm-coding"), label, api_key(明文仅本地), masked_key, disabled, created_at }`；创建前经 `proxy::probe_key` 真实上游探测（GET /models，404/405 降级 1 token 对话探测），失败 422 不落库
 - `usage`：流水 `UsageRec { user_id, ts, model, prompt_tokens, completion_tokens, cache_hit_tokens, cache_miss_tokens(兼容 DeepSeek 扁平字段与 GLM prompt_tokens_details.cached_tokens，仅命中时 miss=输入-命中，全无则 0), key_id }`，行 key = `{user_id}\0{ts}\0{nonce}`
@@ -39,7 +39,7 @@ server/ai-relay/
 
 - 管理 `/admin/*`：Bearer = AI_RELAY_ADMIN_TOKEN（恒定时间比较）。响应统一 `{ ok, data }` 或 `{ ok: false, error }`。
   - `GET /admin/overview`；`GET|POST /admin/apikeys`；`PATCH|DELETE /admin/apikeys/{id}`（仍被用户绑定时删除返回 409）
-  - `GET|POST /admin/users`；`PATCH|DELETE /admin/users/{id}`（含 `allowedModels` 白名单、`bindMode` 编辑）；`POST /admin/users/{id}/unbind`（清绑定记录，重新开放激活）；`POST /admin/users/{id}/reset-usage`；`GET /admin/users/{id}/models`（key 池聚合模型清单，不过滤白名单，供管理台点选）
+  - `GET|POST /admin/users`；`PATCH|DELETE /admin/users/{id}`（含 `allowedModels` 白名单、`bindMode` 编辑、`webFetchEnabled` 联网开关——创建/编辑均可带，缺省 true；用户列表与 `user_public` 输出回显 `webFetchEnabled`）；`POST /admin/users/{id}/unbind`（清绑定记录，重新开放激活）；`POST /admin/users/{id}/reset-usage`；`GET /admin/users/{id}/models`（key 池聚合模型清单，不过滤白名单，供管理台点选）
   - `GET /admin/users/{id}/invite`（返回 `{ code, serverUrl, bearkey }`）；`POST /admin/users/{id}/reset-bearkey`（作废旧码）
   - `GET /admin/usage?userId=&limit=`（每条含 `totalTokens` = 输入+输出）
   - `GET /admin/overview`：总览 `{ serverName, version(=CARGO_PKG_VERSION), users/apikeys 总数与禁用数, totalUsedTokens, usageRecords }`；管理台顶栏与账户列表据此展示服务器版本
@@ -51,7 +51,7 @@ server/ai-relay/
   - `GET /v1/models`：合并 key 池各上游模型（去重 + 按白名单过滤）；chat 对白名单外模型返回 403
   - `GET /v1/usage`：`{ serverName, quotaTokens, usedTokens, totalRequests, remainingTokens }`
   - `GET /v1/server`：`{ name, version }` 服务器命名与版本（公开、无需鉴权，客户端展示用；管理台与 mz/ai 的 fetchServerInfo 均消费）
-  - `POST /v1/web/fetch`：服务端代理抓取网页文本（浏览器 CORS 不可达的补充能力），body `{ url }`，成功 200 `{ url, status, contentType, text, truncated }`（status 为上游状态码，404 等不算网关错误），失败 `{ error: { message, type } }`。鉴权与 chat 一致；抓取不计入 token 配额。安全约束：仅 http/https、内部主机名与私网 IP 黑名单（域名解析后逐 IP 校验）、重定向手动跟随最多 3 跳每跳重新校验、响应体 2MB 截断、总超时 15s、Content-Type 仅放行文本类。协议契约与客户端见 `mz/net/README.md`（单一事实来源）。
+  - `POST /v1/web/fetch`：服务端代理抓取网页文本（浏览器 CORS 不可达的补充能力），body `{ url }`，成功 200 `{ url, status, contentType, text, truncated }`（status 为上游状态码，404 等不算网关错误），失败 `{ error: { message, type } }`。鉴权与 chat 一致；抓取不计入 token 配额；**按用户开关**——`web_fetch_enabled=false` 的用户 403「未开通 web fetch 能力」（管理台用户管理可开/关）。安全约束：仅 http/https、内部主机名与私网 IP 黑名单（域名解析后逐 IP 校验）、重定向手动跟随最多 3 跳每跳重新校验、响应体 2MB 截断、总超时 15s、Content-Type 仅放行文本类。协议契约与客户端见 `mz/net/README.md`（单一事实来源）。
 
 ## 部署 / 测试
 
