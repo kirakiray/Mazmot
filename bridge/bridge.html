@@ -164,6 +164,7 @@
           errorText: "",
           statusDetail: "",
           _conjureUserId: "", // URL ?u= 带来的 conjure 侧 userId
+          _appHint: "", // URL ?app= 带来的期望应用名（扫码/新开窗口时 conjure 据此推送）
           _user: null, // LocalUser（非响应式约定下划线开头）
           _remote: null, // 与 conjure 建立的 RemoteUser
           _link: null, // 可靠链路
@@ -172,6 +173,7 @@
         attached() {
           const sp = new URLSearchParams(window.location.search || "");
           this._conjureUserId = sp.get("u") || "";
+          this._appHint = sp.get("app") || "";
           this.startFlow();
         },
         proto: {
@@ -265,7 +267,13 @@
               this._link = link;
 
               this.setProgress(CORE_END + 30, "等待妙造发送应用文件...");
-              await link.send({ type: "hello", userId: this._user.userId });
+              // hello 带上期望应用名（?app=）：conjure 收到后自动推送对应应用；
+              // 窗口数达上限时 conjure 回 preview-full（见 handlePayload）
+              await link.send({
+                type: "hello",
+                userId: this._user.userId,
+                app: this._appHint || undefined,
+              });
             } catch (err) {
               this.fail("与妙造建立连接失败", err);
             }
@@ -319,6 +327,16 @@
           },
 
           async handlePayload(payload) {
+            // 窗口数达上限被拒（conjure 尽力投递的通知信封）：给出可读错误页
+            if (payload.type === "preview-full") {
+              this.fail(
+                "无法加入预览",
+                new Error(
+                  `预览窗口数量已达上限（${payload.max || 10} 个），请在妙造侧关闭部分预览窗口后重扫`,
+                ),
+              );
+              return;
+            }
             try {
               const result = await this._receiver.handle(payload);
               if (payload.type === "sync-check" && result && result.reply) {

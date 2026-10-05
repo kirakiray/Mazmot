@@ -277,6 +277,180 @@ st-icon-button.preview-live::after {
   }
 }
 
+/* ---------- 预览多窗口下拉气泡（预览按钮点开） ---------- */
+
+.preview-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 气泡面板：锚定按钮右下，超出屏幕右缘自动收拢；内部滚动防撑爆 */
+.preview-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 460px;
+  max-height: min(640px, calc(100vh - 120px));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background-color: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level2, 0 4px 14px rgba(0, 0, 0, 0.24));
+}
+
+.pp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pp-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.pp-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.pp-badge.live {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.pp-actions {
+  display: flex;
+  gap: 8px;
+}
+.pp-actions st-button {
+  flex: 1;
+  font-size: 12px;
+}
+
+/* 窗口方块网格：一格一窗，缩略图 + 状态点 + 应用/设备 */
+.pp-wins-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pp-win-tile {
+  min-width: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: var(--md-sys-color-surface);
+}
+.pp-win-tile.offline {
+  opacity: 0.55;
+}
+.pp-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background-color: var(--md-sys-color-surface-variant);
+}
+.pp-thumb-img {
+  /* 绝对定位铺满：不依赖 o-if 包裹层的尺寸解析，等比 cover 裁填 */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+.pp-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--md-sys-color-outline);
+}
+.pp-thumb-empty n-icon {
+  font-size: 24px;
+}
+.pp-tile-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+.pp-win-tile.offline .pp-tile-dot {
+  background: var(--md-sys-color-outline);
+}
+.pp-tile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.pp-tile-app {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-tile-device {
+  font-size: 10.5px;
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-empty {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 6px 2px;
+}
+
+/* 地址区块：label + 扫码区（二维码 + 头尾省略短链 + 复制按钮） */
+.pp-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--md-sys-color-surface-variant);
+}
+.pp-label {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.pp-url {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: var(--md-sys-font-mono, monospace);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.pp-qr-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pp-qr-row m-ercode {
+  flex: none;
+}
+.pp-qr-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ---------- 消息区 ---------- */
 
 .chat-wrap {

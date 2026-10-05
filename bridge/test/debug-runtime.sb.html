@@ -206,6 +206,70 @@
       </template>
     </sb-test>
 
+    <sb-test name="runDebugCommand - thumb 授权拒绝可读报错 / 流常驻复用 / stop 释放">
+      <template>
+        <script type="module">
+          import { runDebugCommand } from "../debug-runtime.js";
+          const media = navigator.mediaDevices;
+          const orig = media?.getDisplayMedia;
+          try {
+            // ① 桩成确定性拒绝：报可读的未授权错误（不回退黑图）
+            if (media) {
+              media.getDisplayMedia = () =>
+                Promise.reject(new DOMException("user canceled", "NotAllowedError"));
+            }
+            const denied = await runDebugCommand({ cmd: "thumb", args: {}, capture: { entries: [] } });
+
+            // ② 桩成 canvas 捕获流（真实 MediaStream）：两次抽帧只调一次授权 = 流常驻
+            let gdmCalls = 0;
+            if (media) {
+              media.getDisplayMedia = () => {
+                gdmCalls++;
+                const c = document.createElement("canvas");
+                c.width = 400;
+                c.height = 300;
+                const cx = c.getContext("2d");
+                cx.fillStyle = "#22c55e";
+                cx.fillRect(0, 0, 400, 300);
+                return Promise.resolve(c.captureStream(5));
+              };
+            }
+            const t1 = await runDebugCommand({ cmd: "thumb", args: { maxSide: 200 }, capture: { entries: [] } });
+            const t2 = await runDebugCommand({ cmd: "thumb", args: {}, capture: { entries: [] } });
+
+            // ③ stop 释放后，下一次 thumb 重新走授权
+            const stop = await runDebugCommand({ cmd: "thumb", args: { stop: 1 }, capture: { entries: [] } });
+            return {
+              assert:
+                denied.ok === false &&
+                denied.error.includes("屏幕捕获未授权") &&
+                t1.ok === true &&
+                t1.result.startsWith("data:image/jpeg") &&
+                t1.meta?.source === "screen" &&
+                t1.meta?.image?.w > 0 &&
+                t1.meta.image.w <= 200 &&
+                t2.ok === true &&
+                t2.result.startsWith("data:image/jpeg") &&
+                gdmCalls === 1 && // 计数桩装在拒绝桩之后：只数常驻流首次授权（t2 复用不再调）
+                stop.ok === true,
+              content: {
+                denied: denied.error?.split("\n")[0],
+                t1: { ok: t1.ok, prefix: t1.result?.slice(0, 22), size: t1.meta?.image },
+                t2ok: t2.ok,
+                gdmCalls,
+                stopOk: stop.ok,
+              },
+            };
+          } finally {
+            if (media) {
+              if (orig) media.getDisplayMedia = orig;
+              else delete media.getDisplayMedia;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="runDebugCommand - eval 预置 $ 助手与未知指令报错">
       <template>
         <script type="module">

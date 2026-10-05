@@ -96,6 +96,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     previewBusy: false,
     previewStatus: "",
     previewOnline: false,
+    // 多窗口预览（最多 10 个，含手机扫码设备）：窗口注册表快照 + 跨设备扫码
+    // 入口（bridge 引导页 ?u=&app=；本机多窗口走「新开窗口」按钮，无需单独地址）
+    // + 窗口缩略图缓存（winId → JPEG dataURL，气泡打开时经 thumb 指令抓取，空串 = 占位图）
+    previewWindows: [],
+    previewShareUrl: "",
+    previewThumbs: {},
     // 宿主自动检测收集的预览运行错误（回合结束推送预览后读 console 的
     // error 行；下回合自动注入提示词，用户提示条可见）
     autoErrors: [],
@@ -427,6 +433,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         return runRemotePreview(appName, hit?.mode || state.currentAppMode);
       },
       previewDebug,
+      // 多窗口清单（preview 工具 action=windows）：按需加载 remote-preview
+      listPreviewWindows: async () => {
+        const mod = await ensurePreviewMod();
+        return mod.listPreviewWindows();
+      },
       onPreviewShot: pushPreviewShot,
       // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),
@@ -1248,6 +1259,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   /* ---------- 隔离预览（bridge 跨域推送） ---------- */
 
+  // remote-preview 模块缓存（预览主流程 / 窗口清单 / 分享地址共用）
+  let previewMod = null;
+  async function ensurePreviewMod() {
+    if (!previewMod) {
+      previewMod = await load("/official-apps/conjure/lib/remote-preview.js");
+    }
+    return previewMod;
+  }
+
   // 收集指定应用的全部文件（VFS 渠道读 ai-apps/<name>/client/，
   // 本地渠道恢复句柄后复用 app-runner 的 readAppFiles，优先 client/ 子目录）
   async function collectAppFiles(name, mode) {
@@ -1276,8 +1296,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     return files;
   }
 
-  // 隔离预览推送主流程（预览按钮与 preview_app 工具共用）：
-  // 收集文件 → 推送到 bridge 隔离域运行（AI 代码不接触主域数据）。
+  // 隔离预览推送主流程（预览按钮与 preview 工具共用）：
+  // 收集文件 → 推送到 bridge 隔离域运行（AI 代码不接触主域数据）→
+  // 同步其余在线预览窗口（多窗口：手机扫码设备等一并增量更新）。
   // 失败写入 keyError 并抛出（调用方决定是否吞掉），成功返回 done（含运行 url）
   async function runRemotePreview(appName, mode) {
     const name = sanitizeAppName(appName);
@@ -1286,18 +1307,39 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     set("previewBusy", true);
     set("previewStatus", "准备推送...");
     try {
+      const mod = await ensurePreviewMod();
       const files = await collectAppFiles(name, mode);
       if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
-      const { openRemotePreview } = await load(
-        "/official-apps/conjure/lib/remote-preview.js",
-      );
-      return await openRemotePreview({
+      const done = await mod.openRemotePreview({
         load,
         appName: name,
         files,
         selfStore,
         onStatus: (text) => set("previewStatus", text),
       });
+      // 其余在线窗口一并同步（排除刚推完的主窗口对端）；失败逐个吞掉不阻断
+      try {
+        const primaryId = await mod.getPrimaryBridgeId(selfStore);
+        const others = mod
+          .listPreviewWindows()
+          .filter((w) => w.online && primaryId && !w.id.startsWith(`${primaryId}|`))
+          .map((w) => w.id);
+        if (others.length) {
+          const peerIds = [...new Set(others.map((id) => id.split("|")[0]))];
+          await mod.syncPreviewPeers({
+            load,
+            appName: name,
+            files,
+            peerIds,
+            onStatus: (text) => set("previewStatus", text),
+          });
+        }
+      } catch (err) {
+        console.warn("[preview] 多窗口同步失败（主窗口已更新）：", err);
+      }
+      refreshPreviewWindows(mod);
+      refreshPreviewInfo();
+      return done;
     } catch (err) {
       set("keyError", `隔离预览失败：${err.message}`);
       throw err;
@@ -1316,12 +1358,151 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 调试指令通道（preview_* 工具）：转发到 remote-preview 的 dbg 链路
-  async function previewDebug(cmd, args = {}, timeoutMs) {
-    const { debugPreviewCommand } = await load(
-      "/official-apps/conjure/lib/remote-preview.js",
-    );
-    return debugPreviewCommand({ load, selfStore, cmd, args, timeoutMs });
+  // 新开一个预览窗口（槽位 popup）：引导页打开后由 onBridgeHello 钩子自动推送
+  // 当前应用；窗口上限与弹窗拦截错误抛给调用方展示
+  async function openNewPreviewWindow() {
+    const name = sanitizeAppName(state.currentAppName);
+    if (!name) throw new Error("还没有正在开发的应用，先创建应用再预览");
+    if (state.previewBusy) throw new Error("预览推送进行中，请稍候再试");
+    set("previewBusy", true);
+    set("previewStatus", "新开预览窗口...");
+    try {
+      const mod = await ensurePreviewMod();
+      const r = await mod.openPreviewWindow({ load, app: name });
+      set("previewStatus", `预览窗口 #${r.slot} 已打开，等待应用推送...`);
+      return r;
+    } catch (err) {
+      set("keyError", `新开预览窗口失败：${err.message}`);
+      throw err;
+    } finally {
+      set("previewBusy", false);
+    }
+  }
+
+  // 扫码 / 新开窗口的 bridge 引导页 hello（onBridgeHello 钩子）：自动把应用
+  // 推给该对端。优先推 hello 指定的应用（?app=），不存在则回退当前应用；
+  // 推送在 remote-preview 内部串行排队，失败只打日志（对端引导页有进度/错误展示）
+  async function pushToWindow(peerId, appName) {
+    try {
+      const mod = await ensurePreviewMod();
+      const hint = sanitizeAppName(appName);
+      const hit = state.apps.find((a) => a.name === hint);
+      const name = hit ? hint : sanitizeAppName(state.currentAppName);
+      if (!name) return;
+      const mode = hit
+        ? hit.mode
+        : state.apps.find((a) => a.name === name)?.mode || state.currentAppMode;
+      const files = await collectAppFiles(name, mode);
+      if (!files.length) return;
+      await mod.syncPreviewPeers({ load, appName: name, files, peerIds: [peerId] });
+    } catch (err) {
+      console.warn("[preview] 新窗口自动推送失败：", err);
+    }
+  }
+
+  // 窗口注册表快照 → state（下拉气泡渲染源）；previewWindows 变更统一走这里
+  function refreshPreviewWindows(mod) {
+    try {
+      const list = (mod || previewMod)?.listPreviewWindows?.() || [];
+      set("previewWindows", list);
+    } catch (_) {}
+  }
+
+  // 跨设备扫码入口地址：bridge 引导页（?u=<conjure userId>&app=<应用>），
+  // 手机扫码即自动收到当前应用
+  async function refreshPreviewInfo() {
+    try {
+      const mod = await ensurePreviewMod();
+      const name = sanitizeAppName(state.currentAppName);
+      if (!name) {
+        set("previewShareUrl", "");
+        return;
+      }
+      const { userId } = await mod.getPreviewIdentity({ load });
+      set(
+        "previewShareUrl",
+        `${mod.BRIDGE_ORIGIN}/bridge/?u=${encodeURIComponent(userId)}` +
+          `&app=${encodeURIComponent(name)}`,
+      );
+    } catch (err) {
+      console.warn("[preview] 预览地址生成失败：", err);
+    }
+  }
+
+  // 窗口缩略图抓取（预览气泡打开时调用 + 打开期间定时刷新）：逐个在线窗口
+  // 定向发 thumb 指令（预览页屏幕捕获流常驻——首次在预览窗口弹一次授权框，
+  // 之后静默抽帧；失败置空串由占位图兜底）。授权被取消的窗口记入 thumbDenied
+  //（气泡打开时 resetDenied 才重试），避免每 8s 反复弹授权框；thumbSeq 过期
+  // 守卫防面板已关闭/新一轮已启动后旧结果继续写入
+  let thumbSeq = 0;
+  const thumbDenied = new Set();
+  async function refreshPreviewThumbs(opts = {}) {
+    if (opts.resetDenied) thumbDenied.clear();
+    const seq = ++thumbSeq;
+    try {
+      const mod = await ensurePreviewMod();
+      const validIds = new Set(state.previewWindows.map((w) => w.id));
+      const next = {};
+      for (const [k, v] of Object.entries(state.previewThumbs)) {
+        if (validIds.has(k)) next[k] = v; // 清掉已消失窗口的旧缩略图
+      }
+      for (const w of state.previewWindows.filter((x) => x.online)) {
+        if (thumbDenied.has(w.id)) continue;
+        try {
+          const outcome = await mod.debugPreviewCommand({
+            load,
+            selfStore,
+            cmd: "thumb",
+            args: {},
+            timeoutMs: 15_000,
+            winId: w.id,
+          });
+          next[w.id] = outcome?.result || "";
+        } catch (err) {
+          next[w.id] = "";
+          if (/未授权|NotAllowed/.test(err?.message || "")) {
+            thumbDenied.add(w.id);
+          }
+        }
+        if (seq !== thumbSeq) return; // 面板已关 / 新一轮抓取已启动
+        set("previewThumbs", { ...next });
+      }
+    } catch (err) {
+      console.warn("[preview] 窗口缩略图抓取失败：", err);
+    }
+  }
+
+  // 释放各在线窗口的缩略图捕获流（气泡关闭 / 页面卸载时调用，
+  // 不让屏幕共享在气泡看不见时继续挂着）
+  async function releasePreviewThumbs() {
+    const mod = previewMod;
+    if (!mod) return;
+    for (const w of state.previewWindows.filter((x) => x.online)) {
+      mod
+        .debugPreviewCommand({
+          load,
+          selfStore,
+          cmd: "thumb",
+          args: { stop: 1 },
+          timeoutMs: 8_000,
+          winId: w.id,
+        })
+        .catch(() => {});
+    }
+  }
+
+  // 调试指令通道（preview 工具）：转发到 remote-preview 的 dbg 链路；
+  // winId 缺省投递给最近心跳的在线窗口
+  async function previewDebug(cmd, args = {}, timeoutMs, winId) {
+    const mod = await ensurePreviewMod();
+    return mod.debugPreviewCommand({
+      load,
+      selfStore,
+      cmd,
+      args,
+      timeoutMs,
+      winId: winId || null,
+    });
   }
 
   // 自动快照清理：只保留最近 KEEP 个 auto 备份（手动备份不动），防每回合
@@ -2734,13 +2915,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         "NoneOS Core 未就绪：无法写入文件系统，请从 Mazmot 主系统打开本应用。",
       );
     }
-    // 预览窗口（应用页代理）在线状态监听：预览按钮亮标（失败静默，不影响主流程）
+    // 预览窗口（应用页代理）在线状态监听：预览按钮亮标（失败静默，不影响主流程）。
+    // 同时接线多窗口钩子：onWindowsChange 刷新注册表快照（下拉气泡），
+    // onBridgeHello 在扫码/新窗口引导页连入时自动推送对应应用
     (async () => {
       try {
-        const { watchPreviewAgent } = await load(
-          "/official-apps/conjure/lib/remote-preview.js",
-        );
-        watchPreviewAgent({
+        const mod = await ensurePreviewMod();
+        mod.setPreviewHooks({
+          onBridgeHello: (userId, app) => pushToWindow(userId, app),
+          onWindowsChange: () => refreshPreviewWindows(mod),
+        });
+        mod.watchPreviewAgent({
           load,
           selfStore,
           onChange: (online) => set("previewOnline", online),
@@ -2855,6 +3040,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     installSkillFromSource,
     openApp,
     openAppRemote,
+    openNewPreviewWindow,
+    refreshPreviewWindows,
+    refreshPreviewInfo,
+    refreshPreviewThumbs,
+    releasePreviewThumbs,
     submitForm,
     // 变更卡 / 回滚（回合快照体系，见 driveTurn 收尾与 rollbackTurn）
     getTurnDiff,

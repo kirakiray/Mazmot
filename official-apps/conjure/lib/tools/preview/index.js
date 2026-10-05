@@ -41,7 +41,7 @@ const ACTION_CMDS = {
   eval: "eval",
   screenshot: "shot",
 };
-const ACTIONS = ["app", ...Object.keys(ACTION_CMDS)];
+const ACTIONS = ["app", "windows", ...Object.keys(ACTION_CMDS)];
 
 // 各 action 的必填参数校验；返回错误文案或 null
 const checkArgs = (action, appName, args) => {
@@ -62,8 +62,9 @@ const timeoutFor = (action, args) => {
   return undefined; // 其余走 debugPreviewCommand 默认（25s）
 };
 
-const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔离域运行 AI 生成的应用，本工具是与它交互的唯一通道）。用 action 指定操作，操作专属参数放 args 对象：
-- app：推送应用实际运行（窗口未开则新开，已开则增量更新并自动刷新；返回时已在跑最新代码且调试代理在线）。顶层 appName 必填。新功能写完/代码修复完用它；排查用户反馈的问题先用 status 确认在线再直接取证，不要急着重推（刷新会清空控制台缓冲，丢失报错现场）。
+const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔离域运行 AI 生成的应用，本工具是与它交互的唯一通道；支持最多 10 个窗口，本机 popup 与手机扫码设备平等，每个窗口一行注册表条目）。用 action 指定操作，操作专属参数放 args 对象：
+- app：推送应用实际运行（无窗口则新开；已有窗口则增量更新并自动刷新，多个窗口时全部同步；返回时已在跑最新代码且调试代理在线）。顶层 appName 必填。新功能写完/代码修复完用它；排查用户反馈的问题先用 status 确认在线再直接取证，不要急着重推（刷新会清空控制台缓冲，丢失报错现场）。
+- windows：列出当前打开的预览窗口（id / 应用 / 设备 / 在线状态 / 最近心跳）。多窗口调试前先调用；顶层 winId 选定目标窗口，省略 winId 的调试指令投递给最近活跃的在线窗口。
 - status：查预览窗口状态：是否在线、页面 URL/标题、日志与错误条数。
 - console：读控制台日志（log/warn/error/未捕获异常）。args：limit（默认 50）、since（增量拉取时间戳）。不传 since 从头拉全部现场；返回末尾带 latestTs，修复后传 since 对比新日志。检查报错首选。
 - dom：DOM 样式快照——每个可见节点一行（几何 + 颜色/字号/边框等关键样式 + 文本），穿 shadow DOM，免授权。args：selector（默认 body）、depth（默认 4）、maxNodes（默认 60）。验证布局/渲染首选。
@@ -72,7 +73,7 @@ const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔�
 - type：向输入元素写入文本（聚焦 → 写值 → 派发 input/change）。args：selector、text。
 - wait：轮询等待条件成立（200ms 间隔），避免异步渲染未完成就断言。args：selector（元素出现；absent=true 改等消失）或 code（返回真值的 JS 表达式，支持 await）二选一、timeoutMs（默认 10000）。
 - eval：执行任意 JS 并返回序列化结果（支持 await；末句表达式自动成为返回值）。args：code。预置 $ / $$、$deep / $$deep（穿 shadow DOM 深度查询）、$wait、$rect。读应用内部状态、调其方法做深度诊断。
-- screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。`;
+- screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。手机等远程设备上需对方现场点授权。`;
 
 export default {
   key: "preview",
@@ -89,13 +90,19 @@ export default {
       optional: true,
       description: "action=app 时必填：create_app 时确定的应用名",
     },
+    winId: {
+      type: "string",
+      optional: true,
+      description:
+        "目标预览窗口 id（action=windows 列表里的 id）；缺省 = 最近活跃的在线窗口",
+    },
     args: {
       type: "object",
       optional: true,
       description: "操作专属参数对象（各 action 的参数见工具描述）",
     },
   },
-  async exec({ action, appName, args = {} }, ctx) {
+  async exec({ action, appName, winId = "", args = {} }, ctx) {
     if (!ACTIONS.includes(action)) {
       return `未知 action：${action}（可用：${ACTIONS.join(" / ")}）`;
     }
@@ -111,10 +118,29 @@ export default {
       });
     }
 
+    // 多窗口清单：先列窗口再定调试目标
+    if (action === "windows") {
+      if (typeof ctx.listPreviewWindows !== "function") return unavailable();
+      return wrap(async () => {
+        const list = await ctx.listPreviewWindows();
+        if (!list.length) {
+          return "当前没有已注册的预览窗口（窗口打开后会自动注册；可用 action=app 推送开窗）";
+        }
+        const lines = list.map((w, i) => {
+          const state = w.online ? "在线" : "离线";
+          const ago = Math.max(0, Math.round((Date.now() - w.lastSeen) / 1000));
+          return `${i + 1}. [${state}] id=${w.id} 应用=${w.app || "?"} 设备=${w.device || "?"} 最近心跳=${ago}s 前`;
+        });
+        return `共 ${list.length} 个预览窗口（在线 ${
+          list.filter((w) => w.online).length
+        } 个）：\n${lines.join("\n")}\n用顶层 winId 参数定向调试某个窗口；省略 winId = 最近活跃的在线窗口。`;
+      });
+    }
+
     if (typeof ctx.previewDebug !== "function") return unavailable();
     const cmd = ACTION_CMDS[action];
     return wrap(async () => {
-      const outcome = await ctx.previewDebug(cmd, args, timeoutFor(action, args));
+      const outcome = await ctx.previewDebug(cmd, args, timeoutFor(action, args), winId);
       // 截图：图片卡片展示给用户；模型无法看图，引导布局核验用 dom
       if (action === "screenshot") {
         const img = outcome?.meta?.image;

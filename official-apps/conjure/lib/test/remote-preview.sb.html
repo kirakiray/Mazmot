@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>remote-preview 纯函数测试（多窗口注册表辅助）</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="describeDevice：UA → 系统·浏览器短标签">
+      <template>
+        <script type="module">
+          import { describeDevice } from "../remote-preview.js";
+          {
+            const android = describeDevice(
+              "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+            );
+            const iphone = describeDevice(
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+            );
+            const macEdge = describeDevice(
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
+            );
+            const empty = describeDevice("");
+            const checks = {
+              android: android === "Android · Chrome",
+              iphone: iphone === "iPhone · Safari",
+              macEdge: macEdge === "macOS · Edge",
+              empty: empty === "未知设备",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, android, iphone, macEdge, empty },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="多窗口常量与清单 API（上限 10 / 空注册表快照）">
+      <template>
+        <script type="module">
+          import {
+            MAX_PREVIEW_WINDOWS,
+            listPreviewWindows,
+            setPreviewHooks,
+          } from "../remote-preview.js";
+          {
+            // setPreviewHooks 幂等可调用（builder-store 接线入口）
+            setPreviewHooks({});
+            const list = listPreviewWindows();
+            const checks = {
+              max: MAX_PREVIEW_WINDOWS === 10,
+              listIsArray: Array.isArray(list),
+              // 全新页面注册表为空（无 announce 心跳）
+              empty: list.length === 0,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, list },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

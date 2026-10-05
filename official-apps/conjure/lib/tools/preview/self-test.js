@@ -13,6 +13,9 @@ const N_FORMAT = "结果排版：meta.ms 前缀 + result 正文；无 meta 不�
 const N_TIMEOUT = "超时表：screenshot 90s / wait 放宽 / console·eval 30s / 其余默认";
 const N_SHOT = "screenshot：onPreviewShot 收 dataUrl 与 meta，文案引导用 dom";
 const N_SHOT_FALLBACK = "screenshot 无图时：不调 onPreviewShot，返回无尺寸文案";
+const N_WINDOWS = "action=windows：清单排版（在线/离线/id/设备），空清单可读提示";
+const N_WINDOWS_UNAVAILABLE = "未注入 listPreviewWindows 时 windows 返回不可用提示";
+const N_WINID = "顶层 winId 定向：作为第 4 参透传给 previewDebug";
 const N_ERROR = "通道抛错时包装为「操作失败」可读文案";
 
 const testPlan = [
@@ -21,6 +24,9 @@ const testPlan = [
   N_ARGS,
   N_APP,
   N_APP_UNAVAILABLE,
+  N_WINDOWS,
+  N_WINDOWS_UNAVAILABLE,
+  N_WINID,
   N_DISPATCH,
   N_FORMAT,
   N_TIMEOUT,
@@ -106,6 +112,76 @@ const previewTest = defineSelfTest({
       noOpen === "预览调试不可用：宿主未注入预览通道（请从妙造主界面使用）" &&
         noDebug === noOpen,
       `${noOpen} | ${noDebug}`,
+    );
+
+    // ---- action=windows（多窗口清单）----
+    const winList = await plugin.exec(
+      { action: "windows" },
+      {
+        listPreviewWindows: async () => [
+          {
+            id: "u1|s1",
+            app: "todo-app",
+            device: "Android · Chrome",
+            url: "/$conjure-apps/todo-app/client/index.html",
+            online: true,
+            lastSeen: Date.now() - 3000,
+          },
+          {
+            id: "u1|s2",
+            app: "todo-app",
+            device: "macOS · Safari",
+            url: "",
+            online: false,
+            lastSeen: Date.now() - 120_000,
+          },
+        ],
+      },
+    );
+    const winEmpty = await plugin.exec(
+      { action: "windows" },
+      { listPreviewWindows: async () => [] },
+    );
+    await check(
+      N_WINDOWS,
+      winList.includes("共 2 个预览窗口") &&
+        winList.includes("在线 1 个") &&
+        winList.includes("id=u1|s1") &&
+        winList.includes("Android · Chrome") &&
+        winList.includes("[离线]") &&
+        winList.includes("winId") &&
+        winEmpty.includes("没有已注册的预览窗口"),
+      `list=${winList} | empty=${winEmpty}`,
+    );
+
+    const winUnavailable = await plugin.exec({ action: "windows" }, {});
+    await check(N_WINDOWS_UNAVAILABLE, winUnavailable === noDebug, winUnavailable);
+
+    // ---- 顶层 winId 定向：第 4 参透传 ----
+    let winIdSeen = null;
+    await plugin.exec(
+      { action: "status", winId: "u1|s1" },
+      {
+        previewDebug: async (cmd, args, timeoutMs, winId) => {
+          winIdSeen = winId;
+          return { ok: true, result: "" };
+        },
+      },
+    );
+    let winIdDefault = "sentinel";
+    await plugin.exec(
+      { action: "status" },
+      {
+        previewDebug: async (cmd, args, timeoutMs, winId) => {
+          winIdDefault = winId;
+          return { ok: true, result: "" };
+        },
+      },
+    );
+    await check(
+      N_WINID,
+      winIdSeen === "u1|s1" && (winIdDefault === "" || winIdDefault == null),
+      `explicit=${winIdSeen} default=${winIdDefault}`,
     );
 
     // ---- 调试分发与排版 ----

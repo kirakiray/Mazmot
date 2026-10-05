@@ -863,6 +863,12 @@ async function main() {
           handleDbg(payload);
           return;
         }
+        // 被 conjure 拒绝注册：预览窗口数已达上限（尽力投递的通知信封）
+        if (payload.type === "preview-full") {
+          bubble.set(`预览窗口已达上限（${payload.max || 10}）`, "offline");
+          log("被 conjure 拒绝：预览窗口数量已达上限");
+          return;
+        }
         receiver
           .handle(payload)
           .then((result) => {
@@ -898,6 +904,20 @@ async function main() {
     remote = await user.connectUser(conjureId);
     // 上报就绪（尽力投递；conjure 不在线时静默失败，不影响应用本身运行）
     await link.send({ type: "agent-online", userId: user.userId });
+    // announce 心跳：向 conjure 的窗口注册表上报本窗口（多窗口清单 / 调试指令
+    // 定向投递的依据）。15s 一次，conjure 侧 45s 无心跳即判离线；经可靠链路
+    // 发送（有 ACK/重发），conjure 不在线时重试耗尽静默失败
+    const announce = () =>
+      link
+        .send({
+          type: "announce",
+          appName,
+          url: location.href,
+          ua: navigator.userAgent,
+        })
+        .catch(() => {});
+    announce();
+    setInterval(announce, 15_000);
     bubble.set("隔离预览 · 已连接妙造", "ok");
     log(`代理就绪（app=${appName}）`);
   } catch (err) {

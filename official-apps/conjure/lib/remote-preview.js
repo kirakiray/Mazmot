@@ -5,6 +5,13 @@
 // 线上 c1.dev.mazmot.noneos.com），由 bridge 写入其
 // 本域 VFS 后跳转运行。主域（本域）不执行 AI 生成的代码，达到数据隔离目的。
 //
+// 多窗口（最多 MAX_PREVIEW_WINDOWS 个）：预览窗口可以是本机新开的 popup，
+// 也可以是手机扫码打开 bridge 引导页（/bridge/?u=<conjure userId>&app=<名>）
+// 反连上来的远程设备。所有窗口经 inject.js 的 announce 心跳注册进窗口注册表
+//（key = 对端 userId + 会话 sessionId，同机多窗口共享 userId 只能靠 sessionId
+// 区分），注册表驱动：下拉气泡的窗口清单 / 扫码自动推送 / 调试指令定向投递
+//（sendToService 带 sessionId，不广播到对端其它窗口）。
+//
 // 两条推送路径（自动选择）：
 //  - 快路径：上一次预览的应用页还开着（页面内注入的 /bridge/inject.js 常驻代理
 //    在线）→ 直连代理做增量同步，更新完代理自行 location.reload()，无感刷新；
@@ -17,7 +24,8 @@
 //
 // 调试通道（debugPreviewCommand）：经独立 dbgLink 向应用页代理下发 dbg 指令
 //（console/eval/click/dom/shot 等，见 /bridge/debug-runtime.js），结果按
-// dbg-chunk/dbg-result 协议回传并在此结算。文件推送与调试指令互不干扰。
+// dbg-chunk/dbg-result 协议回传并在此结算；缺省投递给最近心跳的在线窗口，
+// 传 winId 可定向指定。文件推送与调试指令互不干扰。
 //
 // 通信协议与可靠投递实现见 /bridge/proto.js（双端共享）。
 
@@ -48,7 +56,7 @@ export const BRIDGE_ORIGIN = LOCAL_HOSTS.includes(location.hostname)
 const BRIDGE_USER_KEY = "bridge-user-id";
 
 // 预览窗口：独立新窗口（popup）而非新标签，便于与妙造并排对照；
-// 固定窗口名复用/聚焦同一窗口
+// 槽位窗口名复用/聚焦同一窗口（新开窗口用不同槽位名开新 popup）
 const PREVIEW_WINDOW_NAME = "mazmot-bridge-preview";
 const previewWindowFeatures = () => {
   const w = Math.min(1180, Math.floor(screen.availWidth * 0.8));
@@ -57,6 +65,146 @@ const previewWindowFeatures = () => {
   const top = Math.max(0, Math.floor((screen.availHeight - h) / 4));
   return `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
 };
+
+// ---------- 预览窗口注册表（多窗口） ----------
+
+// 同时在线的预览窗口上限；超出后新窗口加入会被拒绝（对端收到 preview-full）
+export const MAX_PREVIEW_WINDOWS = 10;
+// 超过该时长没有 announce 心跳即视为离线（心跳 15s 一次，容忍 2 次丢包）
+const WINDOW_OFFLINE_MS = 45_000;
+// 离线超过该时长的注册表条目直接清除
+const WINDOW_GC_MS = 30 * 60_000;
+
+// key（userId|sessionId）→ { key, userId, sessionId, app, url, ua, device, bootAt, lastSeen }
+const winRegistry = new Map();
+// 本会话开过的预览窗口槽位（slot → Window 句柄），新开窗口时找空闲槽位
+const previewSlots = new Map();
+// 预览事件钩子（builder-store 接线）：onBridgeHello = 扫码/新窗口 hello 时自动推当前应用；
+// onWindowsChange = 注册表变化（下拉气泡刷新）
+const previewHooks = {};
+export const setPreviewHooks = (hooks) => Object.assign(previewHooks, hooks || {});
+
+/** 从 UA 粗提「系统 · 浏览器」短标签（窗口列表展示用） */
+export function describeDevice(ua) {
+  const s = String(ua || "");
+  const os = /iPhone/i.test(s)
+    ? "iPhone"
+    : /iPad/i.test(s)
+      ? "iPad"
+      : /Android/i.test(s)
+        ? "Android"
+        : /Macintosh|Mac OS X/i.test(s)
+          ? "macOS"
+          : /Windows/i.test(s)
+            ? "Windows"
+            : /Linux/i.test(s)
+              ? "Linux"
+              : "未知设备";
+  const browser = /Edg\//i.test(s)
+    ? "Edge"
+    : /OPR\//i.test(s)
+      ? "Opera"
+      : /Firefox\//i.test(s)
+        ? "Firefox"
+        : /Chrome\//i.test(s)
+          ? "Chrome"
+          : /Safari/i.test(s)
+            ? "Safari"
+            : "";
+  return browser ? `${os} · ${browser}` : os;
+}
+
+const isWindowFresh = (entry, now = Date.now()) =>
+  now - entry.lastSeen < WINDOW_OFFLINE_MS;
+
+/** 清理过期条目（离线超 WINDOW_GC_MS 的移除），返回是否有过移除 */
+function pruneWindows() {
+  const now = Date.now();
+  let removed = false;
+  for (const [key, entry] of winRegistry) {
+    if (now - entry.lastSeen > WINDOW_GC_MS) {
+      winRegistry.delete(key);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+const freshWindowCount = () => {
+  pruneWindows();
+  const now = Date.now();
+  let n = 0;
+  for (const entry of winRegistry.values()) if (isWindowFresh(entry, now)) n++;
+  return n;
+};
+
+/**
+ * 预览窗口清单快照（按最近心跳倒序 = 最活跃的在前）。UI 下拉气泡与
+ * preview 工具 action=windows 共用；online 按心跳新鲜度判定。
+ */
+export function listPreviewWindows() {
+  pruneWindows();
+  return [...winRegistry.values()]
+    .sort((a, b) => b.lastSeen - a.lastSeen)
+    .map((e) => ({
+      id: e.key,
+      app: e.app,
+      device: e.device,
+      url: e.url,
+      online: isWindowFresh(e),
+      lastSeen: e.lastSeen,
+    }));
+}
+
+// 控制消息（announce/hello/agent-online）去重：这些消息不再经回合链路的
+// receive 去重，手动 ACK 后对端重发靠这里挡
+const seenControl = new Map();
+const isDupControl = (msgId) => {
+  if (!msgId) return false;
+  const now = Date.now();
+  for (const [id, ts] of seenControl) {
+    if (now - ts > 60_000) seenControl.delete(id);
+  }
+  if (seenControl.has(msgId)) return true;
+  seenControl.set(msgId, now);
+  return false;
+};
+
+// 注册一个预览窗口（announce 心跳 / agent 首次上报）。超过上限时向对端
+// 回 preview-full（尽力投递，双服务都发，与 ACK 定向回复同款 spray）并不注册
+function upsertWindowEntry(ctx, payload) {
+  const key = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  const prev = winRegistry.get(key);
+  if (!prev && freshWindowCount() >= MAX_PREVIEW_WINDOWS) {
+    const env = {
+      msgId: `refuse-${Date.now().toString(36)}-${++dbgSeq}`,
+      kind: "data",
+      payload: { type: "preview-full", max: MAX_PREVIEW_WINDOWS },
+    };
+    for (const appId of [SERVICE_ID_BRIDGE, SERVICE_ID_AGENT]) {
+      ctx.remoteUser
+        .sendToService(appId, env, { sessionId: ctx.fromSessionId })
+        .catch(() => {});
+    }
+    return false;
+  }
+  const now = Date.now();
+  winRegistry.set(key, {
+    key,
+    userId: ctx.fromUserId,
+    sessionId: ctx.fromSessionId,
+    app: payload.appName || prev?.app || "",
+    url: payload.url || prev?.url || "",
+    ua: payload.ua || prev?.ua || "",
+    device: describeDevice(payload.ua || prev?.ua),
+    bootAt: prev?.bootAt || now,
+    lastSeen: now,
+  });
+  try {
+    previewHooks.onWindowsChange?.();
+  } catch (_) {}
+  return true;
+}
 
 // 等待 bridge hello / done 的兜底超时（bridge 首次访问需安装 Core，给足时间）
 const HELLO_TIMEOUT = 120_000;
@@ -80,16 +228,20 @@ const DBG_TIMEOUT_MAX = 120_000;
 //（registerService 重复注册会抛 "already registered"，必须只注册一次）
 let svcUser = null; // 已注册 conjure-preview 服务的 LocalUser
 let activeLink = null; // 当前回合的可靠链路（服务 handler 里用于回 ACK）
-let waiters = null; // 当前回合的 { hello, diff, done } Promise
+let waiters = null; // 当前回合的 { hello, diff, done, expectedPeer } Promise
 let peerService = SERVICE_ID_BRIDGE; // 当前回合的对端服务（bridge 页 / 应用页代理）
 // 调试通道：与预览回合链路并存（dbgLink 常驻，activeLink 随回合创建/销毁）
 let dbgLink = null; // 常驻可靠链路（只承载 dbg 指令与其结果）
-let agentRemote = null; // 应用页代理的 remoteUser 句柄（dbg 指令的投递目标）
+const agentRemotes = new Map(); // userId → remoteUser（dbg 指令的投递目标，按对端缓存）
 let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
 const dbgWaiters = new Map(); // reqId -> { resolve, reject }
 let dbgSeq = 0;
+// 定向调试：dbgLink.sendTo 构建信封时按 msgId 记下当时的投递目标（重发同目标）；
+// dbgNextTarget 由 debugPreviewCommand 在每次 send 前设置
+let dbgNextTarget = null; // { userId, sessionId } | null（null = 广播到对端全部窗口）
+const dbgMsgTargets = new Map(); // msgId -> target
 
-const resetWaiters = () => {
+const resetWaiters = (expectedPeer = null) => {
   let helloResolve, diffResolve, doneResolve;
   const hello = new Promise((r) => {
     helloResolve = r;
@@ -100,7 +252,10 @@ const resetWaiters = () => {
   const done = new Promise((r) => {
     doneResolve = r;
   });
-  waiters = { hello, diff, done, helloResolve, diffResolve, doneResolve };
+  // expectedPeer：本轮等待的对端 userId。多窗口下 hello/agent-online 可能来自
+  // 任何窗口（扫码设备反连、其他窗口 reload 回线），只有匹配对端才结算，
+  // 防止别的窗口「冒领」本轮等待（sync-diff/done 由串行推送保证不串台）
+  waiters = { hello, diff, done, helloResolve, diffResolve, doneResolve, expectedPeer };
 };
 
 // 服务只注册一次；handler 经共享变量路由到「当前回合」的链路与等待器
@@ -108,15 +263,29 @@ let lastPeerSeenAt = 0; // 最近一次收到对端信封（含 ACK）的时间�
 
 function ensureService(user) {
   if (svcUser === user) return;
-  // 调试链路常驻：不随预览回合创建/销毁（preview_app 推送与 dbg 指令可交错）
+  // 调试链路常驻：不随预览回合创建/销毁（preview_app 推送与 dbg 指令可交错）。
+  // 投递目标按 msgId 记录（重发同目标）：debugPreviewCommand 每次发送前设置
+  // dbgNextTarget；sessionId 缺省 = 广播到该对端 userId 的全部窗口（兼容旧窗口）
   dbgCollector = createDbgCollector();
   dbgLink = createReliableLink({
-    sendTo: (env) =>
-      agentRemote
-        ? agentRemote.sendToService(SERVICE_ID_AGENT, env, {
-            waitForService: 3000,
-          })
-        : Promise.resolve([{ status: "error" }]),
+    sendTo: async (env) => {
+      if (!dbgMsgTargets.has(env.msgId)) {
+        dbgMsgTargets.set(env.msgId, dbgNextTarget);
+        if (dbgMsgTargets.size > 128) {
+          const cutoff = Date.now() - 10 * 60_000;
+          for (const [id, t] of dbgMsgTargets) {
+            if (!t || !t.recordedAt || t.recordedAt < cutoff) dbgMsgTargets.delete(id);
+          }
+        }
+      }
+      const target = dbgMsgTargets.get(env.msgId);
+      if (target) target.recordedAt = Date.now();
+      const remote = await ensureAgentRemote(user, target?.userId);
+      if (!remote) return [{ status: "error" }];
+      const opts = { waitForService: 3000 };
+      if (target?.sessionId) opts.sessionId = target.sessionId;
+      return remote.sendToService(SERVICE_ID_AGENT, env, opts);
+    },
     // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
     onOffline: (info) => ensureServerConnected(user, info),
   });
@@ -139,8 +308,39 @@ function ensureService(user) {
         if (activeLink) activeLink.receive(data, reply);
         return;
       }
-      // 数据信封按 payload.type 定向到一条链路（receive 内负责回 ACK + 去重）
       const type = data?.payload?.type;
+      // 窗口注册表类控制消息：不依赖回合链路（扫码 hello / announce 心跳可能在
+      // 任意时刻到达，activeLink 多为 null）。手动去重 + ACK；hello 触发
+      // onBridgeHello 钩子（builder-store 据此自动推送当前应用给扫码设备）；
+      // hello/agent-online 仅在等待同一对端时结算回合等待器（防别的窗口冒领）
+      if (type === "announce" || type === "hello" || type === "agent-online") {
+        if (!isDupControl(data?.msgId)) {
+          if (type === "announce") {
+            upsertWindowEntry(ctx, data.payload || {});
+          }
+          const fromPeer = data.payload?.userId;
+          if (type === "hello" && fromPeer) {
+            try {
+              previewHooks.onBridgeHello?.(fromPeer, data.payload.app || "");
+            } catch (err) {
+              console.warn("[remote-preview] onBridgeHello 钩子失败：", err);
+            }
+          }
+          if (
+            waiters &&
+            fromPeer &&
+            (type === "hello" || type === "agent-online") &&
+            (!waiters.expectedPeer || waiters.expectedPeer === fromPeer)
+          ) {
+            waiters.helloResolve({ userId: fromPeer, agent: type === "agent-online" });
+          }
+        }
+        try {
+          reply({ msgId: data?.msgId, kind: "ack" });
+        } catch (_) {}
+        return;
+      }
+      // 数据信封按 payload.type 定向到一条链路（receive 内负责回 ACK + 去重）
       const isDbg = type === "dbg-chunk" || type === "dbg-result";
       const link = isDbg ? dbgLink : activeLink;
       if (!link) {
@@ -169,11 +369,7 @@ function ensureService(user) {
         return;
       }
       if (!waiters) return;
-      if (payload.type === "hello" && payload.userId) {
-        waiters.helloResolve({ userId: payload.userId, agent: false });
-      } else if (payload.type === "agent-online" && payload.userId) {
-        waiters.helloResolve({ userId: payload.userId, agent: true });
-      } else if (payload.type === "sync-diff") {
+      if (payload.type === "sync-diff") {
         waiters.diffResolve(payload);
       } else if (payload.type === "done") {
         waiters.doneResolve(payload);
@@ -182,6 +378,20 @@ function ensureService(user) {
   });
   svcUser = user;
 }
+
+/** 取（必要时建立）到指定对端 userId 的连接；userId 为空回退最近一次连接 */
+async function ensureAgentRemote(user, userId) {
+  if (!userId) {
+    return agentRemotes.get(lastAgentRemoteId) || null;
+  }
+  let remote = agentRemotes.get(userId);
+  if (remote) return remote;
+  remote = await user.connectUser(userId);
+  agentRemotes.set(userId, remote);
+  lastAgentRemoteId = userId;
+  return remote;
+}
+let lastAgentRemoteId = null;
 
 // 等待本地用户连上信令服务器（connectUser 的前置条件）。
 // 共享实现会把双端收敛到同一台（排序首位的）中继，避免跨区域转发大帧丢失；
@@ -253,6 +463,10 @@ const storeBridgeId = async (selfStore, id) => {
   } catch (_) {}
 };
 
+// 主预览窗口对端 userId（openRemotePreview 推送后即写入）。多窗口同步时
+// 用它排除刚推完的主窗口（fast path = 该对端；slow path = 新开的引导窗口）
+export const getPrimaryBridgeId = readStoredBridgeId;
+
 /* ---------- 预览窗口在线状态监听（按钮亮标） ---------- */
 
 // watchPreviewAgent 启动后注册的即时刷新句柄（预览完成后立刻点亮/熄灭）
@@ -279,11 +493,38 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
       ensureService(user); // 与 openRemotePreview 共用同一次服务注册
 
       let lastOnline = null;
+      let lastWindowCount = -1;
       let targetId = null; // update() 时缓存的预览用户 id（事件回调里比对用）
       let lastProbeAt = 0; // 上次主动连接探测时间（≥30s 一次，防信令抖动）
       const update = async () => {
+        // 多窗口判定：注册表里有心跳新鲜的窗口（announce 15s/次）即在线；
+        // 窗口数变化时刷新 UI 清单（离线抖动由 pruneWindows + 轮询兜底）
+        const count = freshWindowCount();
+        if (count !== lastWindowCount) {
+          lastWindowCount = count;
+          try {
+            previewHooks.onWindowsChange?.();
+          } catch (_) {}
+        }
+        if (count > 0) {
+          if (lastOnline !== true) {
+            lastOnline = true;
+            try {
+              onChange(true);
+            } catch (_) {}
+          }
+          return true;
+        }
         targetId = (await readStoredBridgeId(selfStore)) || null;
-        if (!targetId) return false;
+        if (!targetId) {
+          if (lastOnline !== false) {
+            lastOnline = false;
+            try {
+              onChange(false);
+            } catch (_) {}
+          }
+          return false;
+        }
         let online = false;
         try {
           online = await user.isRemoteUserOnline(targetId);
@@ -383,7 +624,6 @@ export async function openRemotePreview({
   });
   activeLink = link;
   resetWaiters();
-
   // 推送差异文件到当前对端（bridge 页 / 应用页代理共用协议）；
   // 返回是否实际推送了文件（false = 零差异，对端页面不会刷新）
   const pushFiles = async (diff) => {
@@ -420,6 +660,7 @@ export async function openRemotePreview({
   const storedId = await readStoredBridgeId(selfStore);
   let probedOnline = false; // 本回合内经连接探测确认过代理可达（宽限重试的依据之一）
   if (storedId) {
+    resetWaiters(storedId); // 本轮只认该对端的 hello/agent-online，防其他窗口冒领
     let agentLikelyOnline = false;
     try {
       agentLikelyOnline = await user.isRemoteUserOnline(storedId);
@@ -440,9 +681,7 @@ export async function openRemotePreview({
       const attemptAgent = async (ms, label) => {
         status(label);
         peerService = SERVICE_ID_AGENT;
-        if (!remote) {
-          remote = await user.connectUser(storedId);
-        }
+        remote = await ensureAgentRemote(user, storedId);
         const manifest = await buildManifest(files);
         // 不 await 发送：代理离线时 link 重试耗尽前先由超时触发回退
         link.send({ type: "sync-check", appName, manifest }).catch(() => {});
@@ -459,7 +698,7 @@ export async function openRemotePreview({
           if (Date.now() - lastPeerSeenAt > RELOAD_GRACE && !probedOnline) {
             throw err;
           }
-          resetWaiters();
+          resetWaiters(storedId);
           diff = await attemptAgent(
             AGENT_PROBE_TIMEOUT,
             "预览页刷新中，等待代理回线...",
@@ -472,11 +711,12 @@ export async function openRemotePreview({
           "等待预览页应用更新超时",
         );
         await storeBridgeId(selfStore, storedId);
-        agentRemote = remote; // 调试通道复用该连接
+        agentRemotes.set(storedId, remote); // 调试通道复用该连接
+        lastAgentRemoteId = storedId;
         // 有文件写入 → 应用页即将 reload：等代理回线（agent-online）再返回，
         // 调用方（preview_app 工具）紧接着的调试指令不会扑空；零差异无刷新，跳过
         if (pushed) {
-          resetWaiters();
+          resetWaiters(storedId);
           await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览页刷新超时").catch(
             (err) => console.warn("[remote-preview]", err.message),
           );
@@ -514,6 +754,7 @@ export async function openRemotePreview({
       "预览窗口被浏览器拦截：请允许本站的弹出式窗口后重试",
     );
   }
+  previewSlots.set(1, win); // 槽位 1 = 主预览窗口（新开窗口从槽位 2 起找空闲）
 
   status("等待 bridge 就绪（首次访问需安装 NoneOS Core）...");
   const hello = await withTimeout(
@@ -546,7 +787,8 @@ export async function openRemotePreview({
     DONE_TIMEOUT,
     "等待 bridge 写入完成超时",
   );
-  agentRemote = remote; // 应用页代理与 bridge 页同一本地用户，连接可复用
+  agentRemotes.set(bridgeUserId, remote); // 应用页代理与 bridge 页同一本地用户，连接可复用
+  lastAgentRemoteId = bridgeUserId;
   // 引导页正跳转成应用页：等代理回线（agent-online）再返回，调用方紧接着的
   // 调试指令不会扑空；超时不视为失败（预览本身已成功），由轮询/事件点亮按钮
   resetWaiters();
@@ -559,6 +801,193 @@ export async function openRemotePreview({
   return done;
 }
 
+/* ---------- 多窗口：串行推送队列 + 按对端推送 ---------- */
+
+// 预览回合的 waiters/activeLink 是模块级单例，推送必须串行（按钮主流程由
+// builder-store 的 previewBusy 防重入；扫码 hello 触发的自动推送经此队列排队）
+let pushChain = Promise.resolve();
+const enqueuePush = (fn) => {
+  const run = pushChain.then(fn, fn);
+  pushChain = run.catch(() => {});
+  return run;
+};
+
+// 推送一轮文件到指定对端：先按常驻代理试探（已开窗口，增量 + 自动刷新），
+// 无响应再按 bridge 引导页流程（新窗口 / 扫码设备）。返回 done（含运行 url）
+async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) {
+  const status = (text) => {
+    try {
+      onStatus(text);
+    } catch (_) {}
+  };
+  let remote = null;
+  let link = null;
+  const mkLink = () => {
+    link = createReliableLink({
+      sendTo: (env) =>
+        remote
+          ? remote.sendToService(peerService, env, { waitForService: 3000 })
+          : Promise.resolve([{ status: "error" }]),
+      onOffline: (info) => ensureServerConnected(user, info),
+    });
+    activeLink = link;
+  };
+  const pushFiles = async (diff) => {
+    const missing = new Set(Array.isArray(diff.missing) ? diff.missing : []);
+    const toSend = files.filter((f) => missing.has(f.path));
+    const wipe = toSend.length === files.length;
+    if (!toSend.length) return false;
+    status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    await link.send({ type: "app-begin", appName, fileCount: toSend.length, wipe });
+    let sent = 0;
+    for (const file of toSend) {
+      for (const msg of buildFileMessages(appName, file.path, file.text)) {
+        await link.send(msg);
+      }
+      sent++;
+      status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+    }
+    await link.send({ type: "app-end", appName });
+    return true;
+  };
+
+  mkLink();
+  resetWaiters(peerId);
+  // 先按常驻代理试探：连不上 / 无响应 → 回退 bridge 引导页流程
+  try {
+    status("检测预览窗口...");
+    peerService = SERVICE_ID_AGENT;
+    remote = await withTimeout(user.connectUser(peerId), 8_000, "连接超时");
+    agentRemotes.set(peerId, remote);
+    lastAgentRemoteId = peerId;
+    const manifest = await buildManifest(files);
+    link.send({ type: "sync-check", appName, manifest }).catch(() => {});
+    const diff = await withTimeout(waiters.diff, AGENT_PROBE_TIMEOUT, "代理无响应");
+    const pushed = await pushFiles(diff);
+    const done = await withTimeout(
+      waiters.done,
+      DONE_TIMEOUT,
+      "等待预览页应用更新超时",
+    );
+    if (pushed) {
+      resetWaiters(peerId);
+      await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览页刷新超时").catch(
+        () => {},
+      );
+    }
+    link.dispose();
+    return done;
+  } catch (err) {
+    console.warn(`[remote-preview] 对端 ${peerId} 代理试探失败，回退 bridge 流程：`, err);
+  }
+  // bridge 引导页流程（全新窗口 / 扫码设备：hello 已带 appId 意图，文件全量或增量）
+  link?.dispose();
+  remote = null;
+  mkLink();
+  resetWaiters(peerId);
+  peerService = SERVICE_ID_BRIDGE;
+  status("连接预览窗口...");
+  remote = await withTimeout(user.connectUser(peerId), 8_000, "连接超时");
+  agentRemotes.set(peerId, remote);
+  lastAgentRemoteId = peerId;
+  let diff;
+  try {
+    status("对比文件差异...");
+    const manifest = await buildManifest(files);
+    await link.send({ type: "sync-check", appName, manifest });
+    diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
+  } catch (_) {
+    diff = { missing: files.map((f) => f.path) };
+  }
+  await pushFiles(diff);
+  const done = await withTimeout(waiters.done, DONE_TIMEOUT, "等待 bridge 写入完成超时");
+  link.dispose();
+  return done;
+}
+
+/**
+ * 把应用文件推送到多个已在线的预览窗口（串行逐个，结果逐对端汇报）。
+ * 供「更新全部窗口」与扫码 hello 自动推送使用；失败不中断其余窗口。
+ * @returns {Promise<Array<{peerId: string, ok: boolean, url?: string, error?: string}>>}
+ */
+export async function syncPreviewPeers({
+  load,
+  appName,
+  files,
+  peerIds,
+  onStatus = () => {},
+}) {
+  if (!Array.isArray(peerIds) || !peerIds.length) return [];
+  return enqueuePush(async () => {
+    const userMod = await load("/nos/user/main.js");
+    const user = await userMod.getUser(USER_NAMESPACE);
+    enableServerAutoReconnect(user);
+    ensureService(user);
+    await ensureServerConnected(user).catch(() => {});
+    const results = [];
+    for (const peerId of peerIds) {
+      try {
+        const done = await pushRound(user, peerId, { appName, files, onStatus });
+        results.push({ peerId, ok: true, url: done?.url || "" });
+      } catch (err) {
+        results.push({ peerId, ok: false, error: err.message });
+      }
+    }
+    return results;
+  });
+}
+
+/**
+ * 新开一个隔离预览窗口（popup）：打开 bridge 引导页（带当前应用名），
+ * 引导页 hello 后由 builder-store 的 onBridgeHello 钩子自动推送应用文件。
+ * 窗口上限 MAX_PREVIEW_WINDOWS；槽位窗口名避免 window.open 复用同名旧窗。
+ */
+export async function openPreviewWindow({
+  load,
+  app = "",
+  bridgeOrigin = BRIDGE_ORIGIN,
+}) {
+  if (freshWindowCount() >= MAX_PREVIEW_WINDOWS) {
+    throw new Error(
+      `预览窗口已达上限（${MAX_PREVIEW_WINDOWS} 个），请先关闭部分预览窗口`,
+    );
+  }
+  const userMod = await load("/nos/user/main.js");
+  const user = await userMod.getUser(USER_NAMESPACE);
+  enableServerAutoReconnect(user);
+  ensureService(user);
+  // 清理已关闭的槽位；主窗口槽位（1）可能由旧流程开过而不在表里，
+  // 此时复用其窗口名只会把旧窗导航到引导页再推当前应用，无实质危害
+  for (const [n, win] of previewSlots) {
+    if (win?.closed) previewSlots.delete(n);
+  }
+  let slot = 1;
+  while (previewSlots.has(slot)) slot++;
+  const url =
+    `${bridgeOrigin}/bridge/?u=${encodeURIComponent(user.userId)}` +
+    (app ? `&app=${encodeURIComponent(app)}` : "");
+  const win = window.open(url, slotWindowName(slot), previewWindowFeatures());
+  if (!win) {
+    throw new Error("预览窗口被浏览器拦截：请允许本站的弹出式窗口后重试");
+  }
+  previewSlots.set(slot, win);
+  return { slot, url };
+}
+
+const slotWindowName = (slot) =>
+  slot === 1 ? PREVIEW_WINDOW_NAME : `${PREVIEW_WINDOW_NAME}-${slot}`;
+
+/**
+ * conjure 侧预览身份（userId）：二维码内容 /bridge/?u=<此值> 的信任根。
+ * 预览窗口（任意设备）连上该用户即被视为可信调试对端（消息层另有发送方校验）。
+ */
+export async function getPreviewIdentity({ load }) {
+  const userMod = await load("/nos/user/main.js");
+  const user = await userMod.getUser(USER_NAMESPACE);
+  ensureService(user);
+  return { userId: user.userId };
+}
+
 /**
  * 向预览窗口（应用页代理）下发一条调试指令并等待结果。
  * 指令集见 /bridge/debug-runtime.js：status/console/text/click/type/wait/dom/eval/shot。
@@ -568,6 +997,8 @@ export async function openRemotePreview({
  * @param {string} opts.cmd 指令名
  * @param {Object} opts.args 指令参数
  * @param {number} [opts.timeoutMs] 等待结果的超时（默认 25s，上限 120s）
+ * @param {string} [opts.winId] 目标窗口（listPreviewWindows 的 id，即 userId|sessionId）；
+ *   缺省投递给最近心跳的在线窗口；窗口注册表为空时回退存储的 bridge userId（广播）
  * @returns {Promise<{ ok: true, result: string, meta: Object }>}
  * @throws 预览窗口未打开 / 指令投递失败 / 等待结果超时 / 对端执行失败
  */
@@ -577,27 +1008,45 @@ export async function debugPreviewCommand({
   cmd,
   args = {},
   timeoutMs,
+  winId = null,
 }) {
   const userMod = await load("/nos/user/main.js");
   const user = await userMod.getUser(USER_NAMESPACE);
   enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
   ensureService(user);
-
-  const storedId = await readStoredBridgeId(selfStore);
-  if (!storedId) {
-    throw new Error(
-      "预览窗口未打开：请先调用 preview_app 工具把应用推送到隔离预览窗口",
-    );
-  }
   await ensureServerConnected(user).catch(() => {});
-  // 三信号在线判定（含主动连接探测）：新标签页/刷新后本页没连过也能调通
-  if (!(await isAgentLikelyOnline(user, storedId))) {
-    throw new Error(
-      "预览窗口不在线（可能已关闭）；请重新调用 preview_app 恢复预览",
-    );
-  }
-  if (!agentRemote) {
-    agentRemote = await user.connectUser(storedId);
+
+  // 解析投递目标：显式 winId → 注册表精确匹配；缺省 → 最近心跳的在线窗口；
+  // 注册表为空（旧版窗口无 announce 心跳）→ 回退存储的 bridge userId 广播
+  let target = null;
+  pruneWindows();
+  if (winId) {
+    const hit = winRegistry.get(winId);
+    if (!hit || !isWindowFresh(hit)) {
+      throw new Error(
+        `预览窗口不在线或不存在：${winId}（可用 preview 工具 action=windows 查看在线窗口）`,
+      );
+    }
+    target = { userId: hit.userId, sessionId: hit.sessionId };
+  } else {
+    const fresh = listPreviewWindows().filter((w) => w.online);
+    if (fresh.length) {
+      const newest = winRegistry.get(fresh[0].id);
+      target = { userId: newest.userId, sessionId: newest.sessionId };
+    } else {
+      const storedId = await readStoredBridgeId(selfStore);
+      if (!storedId) {
+        throw new Error(
+          "预览窗口未打开：请先调用 preview 工具（action=app）推送应用",
+        );
+      }
+      if (!(await isAgentLikelyOnline(user, storedId))) {
+        throw new Error(
+          "预览窗口不在线（可能已关闭）；请重新推送预览恢复",
+        );
+      }
+      target = { userId: storedId, sessionId: null };
+    }
   }
 
   const reqId = `dbg-${Date.now().toString(36)}-${++dbgSeq}`;
@@ -608,11 +1057,16 @@ export async function debugPreviewCommand({
   dbgWaiters.set(reqId, { resolve: resolveFn });
 
   try {
-    // send 落定仅代表对端已收（ACK），业务结果经 dbg-chunk/dbg-result 回传结算
+    // send 落定仅代表对端已收（ACK），业务结果经 dbg-chunk/dbg-result 回传结算；
+    // dbgNextTarget 在 send 前设置，dbgLink.sendTo 构建信封时按 msgId 记档（重发同目标）
+    dbgNextTarget = target;
     await dbgLink.send({ type: "dbg", cmd, args, reqId });
   } catch (err) {
+    dbgNextTarget = null;
     dbgWaiters.delete(reqId);
     throw new Error(`调试指令投递失败（预览页无响应）：${err.message}`);
+  } finally {
+    dbgNextTarget = null;
   }
 
   const ms = Math.max(5_000, Math.min(timeoutMs || DBG_TIMEOUT, DBG_TIMEOUT_MAX));

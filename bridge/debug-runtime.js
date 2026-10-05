@@ -10,6 +10,8 @@
 //   dom      DOM 样式快照（每节点一行几何 + 关键样式 + 文本，穿 shadow DOM）
 //   eval     执行任意 JS（预置 $ / $$ / $deep / $$deep / $wait / $rect 等）
 //   shot     真实截图（getDisplayMedia，每次独立授权，截完即停止共享）
+//   thumb    缩略图（同源屏幕捕获，但捕获流常驻——首次授权后静默抽帧，
+//            args.stop 释放；供 conjure 预览气泡的窗口方块用）
 //
 // eval 运行时、序列化、DOM 快照的实现参考 web-bridge-mcp 的 client.js
 // （同作者既有项目，方法经过实践验证），按本场景精简适配。
@@ -428,6 +430,7 @@ export const DBG_TOOL_NAMES = {
   dom: "preview_dom",
   eval: "preview_eval",
   shot: "preview_screenshot",
+  thumb: "preview_thumb",
 };
 
 /**
@@ -584,15 +587,104 @@ const findEl = (selector) => {
   return el;
 };
 
+/* ---------- 缩略图常驻捕获流（thumb 指令） ----------
+ * 复用 shot 的屏幕捕获思路，但流**不随帧释放**：首次 thumb 在预览窗口弹一次
+ * 授权框（preferCurrentTab 预选当前标签页），之后静默从同一条流抽帧，供
+ * conjure 预览气泡定时刷新窗口缩略图。args.stop 或用户点浏览器「停止共享」
+ * （track ended）时清理。shadow DOM 内容只有真实屏幕像素才有（DOM 序列化
+ * 克隆不到），这是窗口缩略图唯一忠实的来源。
+ */
+let thumbStream = null;
+let thumbVideo = null;
+
+const stopThumbStream = () => {
+  try {
+    thumbStream?.getTracks().forEach((t) => t.stop());
+  } catch (_) {}
+  thumbStream = null;
+  thumbVideo = null;
+};
+
+async function ensureThumbStream() {
+  if (
+    thumbVideo &&
+    thumbStream?.getVideoTracks().some((t) => t.readyState === "live")
+  ) {
+    return thumbVideo;
+  }
+  stopThumbStream();
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("当前浏览器不支持屏幕捕获（getDisplayMedia）");
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 2 }, // 缩略图 10s 一帧足够，压低捕获流的产帧开销
+      audio: false,
+      preferCurrentTab: true, // Chromium：预选当前标签页，降低选错目标概率
+      selfBrowserSurface: "include",
+    });
+  } catch (e) {
+    throw Object.assign(
+      new Error(
+        `屏幕捕获未授权（预览窗口的授权框被取消）：${e?.message ?? e}`,
+      ),
+      { name: "NotAllowedError" },
+    );
+  }
+  // 用户点浏览器「停止共享」时清缓存，下次 thumb 重新走授权
+  stream.getVideoTracks()[0]?.addEventListener("ended", stopThumbStream);
+  const video = document.createElement("video");
+  video.srcObject = stream;
+  video.muted = true;
+  video.style.cssText =
+    "position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;";
+  document.documentElement.appendChild(video);
+  // 等首帧；play() 的 promise 在后台标签可能永不 settle，超时兜底（同 shot）
+  await new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+    };
+    video.addEventListener("loadeddata", finish);
+    const p = video.play();
+    if (p && p.catch) p.catch(() => {});
+    setTimeout(finish, 3000);
+  });
+  thumbStream = stream;
+  thumbVideo = video;
+  return video;
+}
+
+const grabThumb = async (maxSide, quality) => {
+  const video = await ensureThumbStream();
+  const w = video.videoWidth || 1280;
+  const h = video.videoHeight || 720;
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  if (!dataUrl.startsWith("data:image/jpeg")) {
+    throw new Error("缩略图生成失败（画布被污染）");
+  }
+  return { dataUrl, w: canvas.width, h: canvas.height };
+};
+
 /**
  * 执行一条调试指令。
  * @param {Object} opts
- * @param {string} opts.cmd 指令名（status/console/text/click/type/wait/dom/eval/shot）
+ * @param {string} opts.cmd 指令名（status/console/text/click/type/wait/dom/eval/shot/thumb）
  * @param {Object} opts.args 指令参数
  * @param {{ entries: Array }} opts.capture installConsoleCapture 的返回值（console 指令用）
  * @param {Object} [opts.info] 代理侧信息（status 指令附带：appName/agentBootAt 等）
  * @returns {Promise<{ ok: boolean, result?: string, error?: string, meta?: Object }>}
- *          result 一律为文本；shot 的 result 为 base64、meta.image 携带图片信息
+ *          result 一律为文本；shot 的 result 为 base64、thumb 的 result 为 JPEG
+ *          dataURL（两者 meta.image 均携带图片信息）
  */
 export async function runDebugCommand({ cmd, args = {}, capture, info = {} }) {
   try {
@@ -723,6 +815,24 @@ export async function runDebugCommand({ cmd, args = {}, capture, info = {} }) {
           ok: true,
           result: shot.base64,
           meta: { image: { mime: shot.mime, w: shot.w, h: shot.h } },
+        };
+      }
+      case "thumb": {
+        // 真实截图缩略图：屏幕捕获流常驻（见上方注释），首次弹授权框、之后
+        // 静默抽帧；args.stop 释放流（气泡关闭时 conjure 侧下发）。
+        // 授权被取消 → 抛未授权错误，调用方显示占位图，且本气泡周期不再重试
+        //（避免每 8s 反复弹授权框）
+        const maxSide = num(args.maxSide, 360);
+        const quality = num(args.quality, 0.6);
+        if (num(args.stop, 0)) {
+          stopThumbStream();
+          return { ok: true, result: "" };
+        }
+        const { dataUrl, w, h } = await grabThumb(maxSide, quality);
+        return {
+          ok: true,
+          result: dataUrl,
+          meta: { image: { mime: "image/jpeg", w, h }, source: "screen" },
         };
       }
       default:
