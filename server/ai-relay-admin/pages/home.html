@@ -482,7 +482,7 @@
       </div>
       <div class="brand-text">
         <h1><locale-text><span lang="cn">AI 转发管理台</span><span lang="en">AI Relay Admin</span></locale-text></h1>
-        <p>{{view === "panel" ? (serverName ? serverName + " · " + serverUrl : serverUrl) : (serverUrl || t("connectHint"))}}</p>
+        <p>{{view === "panel" ? (serverName ? serverName + " · " + serverUrl : serverUrl) + (serverVersion ? " · v" + serverVersion : "") : (serverUrl || t("connectHint"))}}</p>
       </div>
       <o-if :value="view === 'panel'">
         <div style="display: flex; gap: 4px;">
@@ -531,7 +531,7 @@
                       </span>
                     </o-if>
                   </div>
-                  <div class="item-sub mono">{{$data.url}}</div>
+                  <div class="item-sub mono">{{$data.url + ($data.version ? " · v" + $data.version : "")}}</div>
                 </div>
                 <div slot="suffix" class="item-actions">
                   <st-icon-button
@@ -792,7 +792,7 @@
                 </span>
               </o-if>
             </div>
-            <div class="item-sub mono">{{$data.url}}</div>
+            <div class="item-sub mono">{{$data.url + ($data.version ? " · v" + $data.version : "")}}</div>
           </div>
           <div slot="suffix" class="item-actions">
             <st-icon-button
@@ -1124,6 +1124,7 @@
           detailQuota: "",
           detailQuotaUnit: "token",
           serverName: "",
+          serverVersion: "",
           settingsOpen: false,
           settingsName: "",
           savingSettings: false,
@@ -1245,6 +1246,7 @@
             await store.removeItem("activeId");
             this.activeId = "";
             this.serverName = "";
+            this.serverVersion = "";
             this.view = "connect";
             this.serverUrl = "";
             this.adminToken = "";
@@ -1307,14 +1309,21 @@
           },
 
           /** 连接成功后写入账户（同 url 视为同一账户，覆盖 token 与命名）并刷新列表 */
-          async upsertAccount(url, token, name) {
+          async upsertAccount(url, token, name, version) {
             const accounts = (await store.getItem("accounts")) || [];
             const found = accounts.find((a) => a.url === url);
             if (found) {
               found.token = token;
               if (name) found.name = name;
+              if (version) found.version = version;
             } else {
-              accounts.push({ id: url, url, token, name: name || "" });
+              accounts.push({
+                id: url,
+                url,
+                token,
+                name: name || "",
+                version: version || "",
+              });
             }
             await store.setItem("accounts", accounts);
             this.accounts = accounts;
@@ -1363,6 +1372,7 @@
               url: this.serverUrl,
               token: this.adminToken,
               name: this.serverName,
+              version: this.serverVersion,
             };
             this.serverUrl = account.url;
             this.adminToken = account.token;
@@ -1370,10 +1380,12 @@
               const overview = await this.testConnection();
               this.serverName =
                 overview?.serverName || account.name || "";
+              this.serverVersion = overview?.version || account.version || "";
               await this.upsertAccount(
                 account.url,
                 account.token,
                 this.serverName,
+                this.serverVersion,
               );
               await store.setItem("activeId", account.id);
               this.activeId = account.id;
@@ -1390,6 +1402,7 @@
               this.serverUrl = prev.url;
               this.adminToken = prev.token;
               this.serverName = prev.name;
+              this.serverVersion = prev.version;
               toast({
                 message: getLocaleText(
                   { cn: "切换失败：{msg}", en: "Switch failed: {msg}" },
@@ -1441,6 +1454,7 @@
               await store.removeItem("activeId");
               this.activeId = "";
               this.serverName = "";
+              this.serverVersion = "";
               this.view = "connect";
               this.serverUrl = "";
               this.adminToken = "";
@@ -1460,10 +1474,12 @@
             try {
               const overview = await this.testConnection();
               this.serverName = overview?.serverName || "";
+              this.serverVersion = overview?.version || "";
               await this.upsertAccount(
                 this.serverUrl,
                 this.adminToken,
                 this.serverName,
+                this.serverVersion,
               );
               await store.setItem("activeId", this.serverUrl);
               this.activeId = this.serverUrl;
@@ -1938,7 +1954,13 @@
           try {
             const overview = await this.testConnection();
             this.serverName = overview?.serverName || account.name || "";
-            await this.upsertAccount(account.url, account.token, this.serverName);
+            this.serverVersion = overview?.version || account.version || "";
+            await this.upsertAccount(
+              account.url,
+              account.token,
+              this.serverName,
+              this.serverVersion,
+            );
             this.view = "panel";
             await this.refreshAll();
           } catch {

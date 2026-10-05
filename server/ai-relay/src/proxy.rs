@@ -452,10 +452,10 @@ pub(crate) async fn models(
     })))
 }
 
-/// GET /v1/server —— 服务器公开信息（命名；无需鉴权，客户端展示用）
+/// GET /v1/server —— 服务器公开信息（命名 + 版本；无需鉴权，客户端展示用）
 pub(crate) async fn server_info(State(state): State<AppState>) -> Json<Value> {
     let name = state.server_name.read().await.clone();
-    Json(serde_json::json!({ "name": name }))
+    Json(serde_json::json!({ "name": name, "version": env!("CARGO_PKG_VERSION") }))
 }
 
 /// GET /v1/usage —— 该用户自身的配额 / 已用 / 剩余

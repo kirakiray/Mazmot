@@ -627,6 +627,7 @@ pub(crate) async fn overview(
     let total_used: i64 = users.values().map(|u| u.used_tokens).sum();
     Ok(ok_json(serde_json::json!({
         "serverName": server_name,
+        "version": env!("CARGO_PKG_VERSION"),
         "users": { "total": users.len(), "disabled": users.values().filter(|u| u.disabled).count() },
         "apikeys": { "total": keys.len(), "disabled": keys.values().filter(|k| k.disabled).count() },
         "totalUsedTokens": total_used,
