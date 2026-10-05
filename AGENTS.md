@@ -27,7 +27,7 @@ ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片�
   - run-app / bridge 是自装 Core 的首访入口，其页面（进度 / 配置 UI）可能在 NoneOS Core SW 注册前渲染，`/gh/`、`/npm/` 本地前缀不可用，因此整个目录统一走 jsdelivr 完整 URL（根入口可锁定具体版本，如 `@4.7.1`）。
   - **根 index.html 例外**：加载前先探测 NoneOS Core SW 是否已接管本页（`navigator.serviceWorker.controller`），已接管则 ofa / router / senti-ui 走 `/gh/` 本地前缀（决策写入 `window.__GH_BASE`），未接管才回退 jsdelivr。
   - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug`
-- **其余所有文件**（`apps/main/index.html`、`apps/network/index.html`、`official-apps/*/index.html`、模板应用等其他入口 HTML，以及全部页面模块 / 组件模块 / 普通模块 / 测试页）：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
+- **其余所有文件**（`apps/network/index.html`、`official-apps/*/index.html`、模板应用等其他入口 HTML，以及全部页面模块 / 组件模块 / 普通模块 / 测试页）：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
   - 这些入口均先经根引导入口装好 Core 再进入，SW 必定就绪，`/gh/` 可用；入口 HTML 自身的 Core 就绪校验（`await import("/nos/xxx/main.js")`）同样依赖 SW，二者一致。
   - 例：`/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`、`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`
 
@@ -37,10 +37,10 @@ ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片�
 
 `/nos/*` 模块（`/nos/fs/main.js`、`/nos/user/main.js`、`/nos/storage/main.js`、`/nos/publish/data-publisher.js` 等）由 NoneOS Core Service Worker 提供，**加载时机受 Core 是否就绪约束**。不同位置允许的写法不同：
 
-- **顶层入口 HTML**（如 [index.html](index.html)、[apps/main/index.html](apps/main/index.html)、[apps/network/index.html](apps/network/index.html)）
+- **顶层入口 HTML**（如 [index.html](index.html)、[apps/network/index.html](apps/network/index.html)）
   - 可以用顶层 `await import("/nos/xxx/main.js")` 做 Core 检测；失败时 `location.href = "/?redirect=..."` 回根入口升级。
 - **`app-config.js`**
-  - 如果该入口对应的页面**确信 Core 已就绪**（比如紧跟入口 HTML 的校验），允许顶层 `await init("mazmot")`，参考 [apps/main/app-config.js](apps/main/app-config.js)。
+  - 如果该入口对应的页面**确信 Core 已就绪**（比如紧跟入口 HTML 的校验），允许顶层 `await init("mazmot")`，参考 [main/app-config.js](main/app-config.js)。
   - 如果该入口的页面模块会自己装 Core（如 [apps/run-app/app-config.js](apps/run-app/app-config.js)），**禁止**在 `app-config.js` 顶层调用 `init()` 或 import `/nos/*`。
 - **页面模块 / 普通模块 / 组件**
   - 顶层**禁止** `import "/nos/*"`，必须运行时按需加载。
@@ -65,7 +65,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **加载时机**：`/nos/storage/main.js` 属于 `/nos/*`，受上一节「NoneOS Core 依赖加载」约束——页面模块 / 组件顶层**禁止** import，必须 `load(...)` 按需加载。
 - **API 优先级**：用 `setItem` / `getItem` / `has` / `removeItem` 方法调用；代理语法（`storage.key = v`）会静默吞错且写入时序不确定，仅用于无关紧要的场景。
 - **文件句柄**：可直接存 `nos/fs` 句柄（读回仍是可用句柄），但 `open()` 得到的本地目录必须先 `mount()`，且句柄不能放在 `Map` / `Set` / 类实例里。
-- **例外**：`sessionStorage`（标签页级、关页即失效，如云盘客户端会话）与 [apps/main/home/app-status.js](apps/main/home/app-status.js) 中需要同步读写的 `mazmot-opened-apps` 保留原生 API，不要迁移。
+- **例外**：`sessionStorage`（标签页级、关页即失效，如云盘客户端会话）与 [main/lib/app-status.js](main/lib/app-status.js) 中需要同步读写的 `mazmot-opened-apps` 保留原生 API，不要迁移。
 - 详细 API 见 `noneos-core-docs` 知识库的 storage 章节。
 
 ## UI 与视觉规范
@@ -92,7 +92,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
    - 修改关键流程（应用生命周期、分享接收流程、Core 加载顺序等）（→ 同步对应流程图/步骤描述）
    - 新增 / 删除一个应用（apps/<name>/）或组件（mz/comps/<name>/）
 6. **禁止历史冗余**：[CONTEXT.md](CONTEXT.md) 只记录当前架构与活跃流程，禁止写入改造前/已废弃/一次性迁移/未来幻想等历史冗余信息。如需保留历史决策，写入 git 提交信息或独立历史文档，不要污染上下文。
-7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`apps/main/home.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
+7. **禁止使用 file 协议路径**：文档、注释、配置中的文件引用统一使用相对路径或仓库内可解析的路径（如 `AGENTS.md`、`main/pages/apps.html`），禁止使用 `file://` 等本地绝对路径，避免在不同机器上失效。
 8. **补充上下文**：若发现 [CONTEXT.md](CONTEXT.md) 中存在信息缺失，应及时补充完善。
 9. **沉淀经验**：开发过程中若遇到频繁复现的错误（踩坑点）或总结出使用技巧，应主动询问用户，由用户决定后再落档，不要擅自处置：
    - **可复用的通用知识**（框架用法、组件模式、API 坑点等）→ 沉淀到 `.agents/skills/` 中（项目级 Skill，参考 [.agents/skills/mazmot-api/](.agents/skills/mazmot-api/SKILL.md) 的结构），供后续任务复用。
@@ -111,7 +111,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **新官方应用（应用市场）**：在 [official-apps/](official-apps/) 下建 `<id>/` 子目录，含 `__app.json`（元数据 name/icon/desc + 文件清单）+ 完整应用源文件；**必须在 [official-apps/manifest.json](official-apps/manifest.json) 里登记** id。`__app.json` 的 `files` 数组**禁止手工编辑**：新增 / 删除应用文件后运行 `npm run update:apps` 按磁盘扫描自动同步，并在发生文件增删时自动把该应用 `app.json` 的 `version` 末段 +1（已安装应用靠版本号比对收更新；`--check` 模式可作 CI 校验）；漏登文件会导致市场装出的应用运行时 404 白屏。
 - **测试**：`<被测模块所在目录>/test/<被测模块同名>.sb.html`，详见上方"测试规范"。
 - **Mazmot 平台 API（`mz/`）**：与 NoneOS Core 的 `/nos/*` 对称的宿主命名空间（参考 [mz/app-runner.js](mz/app-runner.js)、[mz/share-mgr.js](mz/share-mgr.js)、[mz/ai/](mz/ai/)），被多个应用（含模板）共享；引用一律用绝对路径 `/mz/xxx.js`。
-- **业务工具库**：`apps/<app>/lib/`（参考 [apps/main/lib/official-app-state.js](apps/main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
+- **业务工具库**：`apps/<app>/lib/`（主应用为 [main/lib/](main/lib/)，参考 [main/lib/official-app-state.js](main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
 ## server/（独立 Rust 后端服务）
@@ -139,7 +139,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 应用分享基于 NoneOS Core `DataPublisher`（点对点，无后端）。修改分享相关代码必须遵守：
 
 - **只支持 UTF-8 文本文件**：[share-mgr.js](mz/share-mgr.js) 的 `readAppFiles` 把每个文件按文本读取后塞进 JSON。二进制资源（图片、字体、音视频等）目前**不可分享**，扩展方向是给 `app.json` 文件清单加 `encoding: "base64"` 字段，不要绕过这个约定私自塞 base64 进 payload。
-- **发布者必须在线**：接收端通过 `?u=<userId>&h=<payloadHash>` 短链接从发布者 IndexedDB 拉取 chunk。发布者标签页（`apps/main/`）一旦关闭，未拉完的 chunk 无法继续。设计分享相关 UI（如关闭提醒、断网重试）时以此为前提。
+- **发布者必须在线**：接收端通过 `?u=<userId>&h=<payloadHash>` 短链接从发布者 IndexedDB 拉取 chunk。发布者标签页（主应用 `main/`）一旦关闭，未拉完的 chunk 无法继续。设计分享相关 UI（如关闭提醒、断网重试）时以此为前提。
 - **URL 字段固定**：分享链接有两种格式，互斥使用：
   - P2P 分享：`?u=<userId>&h=<payloadHash>`（用户自建应用，发布者必须在线）
   - 官方应用：`?app=<officialId>`（同源 HTTP 拉取 `/official-apps/<id>/`，不依赖发布者在线）

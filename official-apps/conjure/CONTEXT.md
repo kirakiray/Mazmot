@@ -205,7 +205,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 - 虚拟渠道（`buildAppRecord`）：`{ name, desc, icon, source: "virtual", namespace: "ai-apps", dirName: "ai-apps/<name>", virtualDirName, handle: null, createdAt, mazmot: { source: "ai-builder" } }`
 - 本地渠道（`buildLocalAppRecord`）：`{ name, desc, icon, source: "local", namespace: "", dirName: name, handle: <DirHandle>, createdAt, mazmot: { source: "ai-builder" } }`
 - 登记按 `name + namespace` 去重更新（`registerAppRecord`）；删除用 `unregisterAppRecord`（按 `mazmot.source === "ai-builder"` + name 匹配）；列表查询 `listRegisteredApps` 过滤 `namespace === "ai-apps" || mazmot?.source === "ai-builder"`
-- 主系统（apps/main）应用列表：**生成应用一律不进主列表**——虚拟应用落在独立命名空间 `ai-apps/`（不与主系统共享的 `mazmot-apps/` 混用），本地渠道记录仅供妙造（conjure）持久化恢复句柄；主系统 `loadApps` 按 `mazmot?.source === "ai-builder"` 过滤隐藏全部生成应用
+- 主系统（main/）应用列表：**生成应用一律不进主列表**——虚拟应用落在独立命名空间 `ai-apps/`（不与主系统共享的 `mazmot-apps/` 混用），本地渠道记录仅供妙造（conjure）持久化恢复句柄；主系统 `loadApps` 按 `mazmot?.source === "ai-builder"` 过滤隐藏全部生成应用
 
 ### 磁盘 / VFS 落点
 

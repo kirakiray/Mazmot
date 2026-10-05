@@ -261,7 +261,7 @@
       event.respondWith(mzServe(path, event.request));
     });
 
-    // 页面 ping（apps/main visibilitychange）触发更新检查，3s 防抖合并
+    // 页面 ping（主应用 visibilitychange）触发更新检查，3s 防抖合并
     let mzPingTimer = null;
     self.addEventListener("message", (event) => {
       if (event.data?.type !== "mz-cache-check") return;

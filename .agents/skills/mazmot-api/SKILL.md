@@ -186,7 +186,7 @@ splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远
 ```js
 import {
   loadOfficialApps, loadOfficialAppMeta, compareVersions, installOfficialApp,
-} from "/apps/main/home/official-app-writer.js";
+} from "/main/lib/official-app-writer.js";
 
 const list = await loadOfficialApps(); // [{ id, name, icon, desc, version }]（version 读自应用自身的 app.json）
 
@@ -204,7 +204,7 @@ const result = await installOfficialApp({
 
 官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
 
-## 6. 应用打开状态追踪 —— `/apps/main/home/app-status.js`
+## 6. 应用打开状态追踪 —— `/main/lib/app-status.js`
 
 跨标签页追踪"哪些应用窗口还活着"，基于 `BroadcastChannel("mazmot-app-status")`。
 
@@ -212,7 +212,7 @@ const result = await installOfficialApp({
 import {
   startAppStatusWatcher,
   markOpened, clearOpened, focusIfOpened, isWindowAlive,
-} from "/apps/main/home/app-status.js";
+} from "/main/lib/app-status.js";
 
 const stop = startAppStatusWatcher({
   onAlive: name => {},        // 收到 alive/pong
