@@ -42,6 +42,7 @@ Mazmot/
 │   │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
 │   │   │   ├── settings-user.html   # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
 │   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
+│   │   │   ├── settings-webfetch.html # 设置弹窗「联网能力」子页面（通道清单点选固定——默认 auto 按优先级、点行即 setWebFetchChannel 固定、固定后失败不降级；relay 多台时下拉选择 web fetch 用哪台；**自定义 Web Hub 配置入口**——URL + 可选共享令牌输入框，保存/清除即 setCustomEndpoint/clearCustomEndpoint 立即生效，问号链接跳 GitHub 的 server/web-hub-cf/README.md 部署指南；「测试抓取」按钮实测 fetchText 并刷新通道状态）
 │   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
 │   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
@@ -69,7 +70,7 @@ Mazmot/
 │       ├── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │       └── traffic.html      # 流量监控：汇总卡片 + 服务器/用户的实时带宽与连接统计
 │
-├── main/                     # 主应用（原 official-apps/welcome 改造，由根 index.html 装好 Core 后原地挂载，URL = /）：pages/welcome.html 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 pages/apps.html；再次打开直接进列表页；pages/apps.html 应用列表主页（镜像 apps/main/home.html 全功能：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮），并新增「安装中」虚拟条目区：lib/install-queue.js 串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）；lib/welcome-plan.js 为用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）；lib/ 为 apps/main 辅助文件的自包含副本（app-status / official-app-writer / official-app-state），不引用 /apps/main/*
+├── main/                     # 主应用（原 official-apps/welcome 改造，由根 index.html 装好 Core 后原地挂载，URL = /）：pages/welcome.html 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 pages/apps.html；再次打开直接进列表页；pages/apps.html 应用列表主页（镜像 apps/main/home.html 全功能：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮），并新增「安装中」虚拟条目区：lib/install-queue.js 串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）；lib/welcome-plan.js 为用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）；lib/ 为 apps/main 辅助文件的自包含副本（app-status / official-app-writer / official-app-state），不引用 /apps/main/*；设置弹窗子页面 pages/settings-general/user/certs/webfetch.html 亦为 apps/main/home/ 同名子页面的自包含副本（webfetch = 联网能力查看：web fetch 通道清单 / 当前生效通道 / 测试抓取），改动任一侧须双向同步
 │
 ├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
@@ -84,7 +85,7 @@ Mazmot/
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
 │   ├── net/                  # 平台联网能力（web fetch，URL = /mz/net/*）：浏览器 CORS 限制下的服务端中转抓取统一客户端
-│   │   ├── main.js           # net.fetch（与原生 fetch 同形的低层 util：Response 同形对象 ok/status/url/headers/text()/json() + provider/truncated 元信息，仅 GET 语义）/ fetchText 便捷层（HTML 自动正文提取 + 截断 + 会话缓存）/ extractText 纯函数 / provider 自动解析（自定义端点 > relay 邀请码 > 官方 web-hub > Jina 兜底；custom/relay 失败即抛不静默换道）/ setCustomEndpoint 等（配置存 getStorage("mz-net") webFetchEndpoint 键；/nos/* 按需动态加载，storage 不可用降级仅内存模式）
+│   │   ├── main.js           # net.fetch（与原生 fetch 同形的低层 util：Response 同形对象 ok/status/url/headers/text()/json() + provider/truncated 元信息，仅 GET 语义）/ fetchText 便捷层（HTML 自动正文提取 + 截断 + 会话缓存）/ extractText 纯函数 / 通道调度：默认 auto 按优先级（自定义端点 > relay > Jina 兜底），setWebFetchChannel 可固定任意通道（固定后失败不降级；web-hub 不设通道，自部署经 custom 接入）/ relay 多台选择（listRelayServers + setRelayKeyId，默认第一台、key 删除自动回退）/ setCustomEndpoint 等（偏好全存 getStorage("mz-net")；/nos/* 按需动态 import，不依赖 ofa lm 全局，storage 不可用降级仅内存模式）
 │   │   ├── test/             # sibyl-test 测试（extractText / sha256Hex / URL 预检 / relay webFetch 请求映射 / net.fetch 同形与 method 拒绝，mock fetch 不出网）
 │   │   └── README.md         # /fetch 协议契约（单一事实来源）：请求/响应形状、SSRF 约束表、三类 provider 鉴权、解析顺序、两层 API 说明
 │   ├── cert/                 # 系统级证书能力（封装 noneos-core user.cred，URL = /mz/cert/*）
@@ -191,7 +192,7 @@ Mazmot/
 │   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN，凭据按账户存 getStorage("ai-relay-admin") 的 accounts 列表（[{id,url,token,name,version}]，id=url，同 url 重连覆盖 token；version 取自 /admin/overview，顶栏副标题与账户列表展示所连服务器版本号）+ activeId 活跃账户；支持多服务器账户：连接页已保存列表一键重连、面板「切换服务器」弹窗一键切换（失败回滚）、删除账户（删活跃账户即断开回连接页；断开连接二次确认且保留账户）、旧版单账户键 serverUrl/adminToken/serverName 自动迁移；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑、Web Fetch 联网开关——新建用户勾选 + 详情对话框开关 + 列表关闭态徽标，服务端按用户 403 拦截）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
-│   ├── web-hub-cf/           # 官方 web-hub（Cloudflare Workers，无 bindings 零依赖部署）：实现 /mz/net 的 /fetch 协议契约，为无 relay 邀请码用户提供零配置联网兜底；公开模式 NoneOS 签名鉴权（X-Web-Hub-Auth，同 relay 方案 k="web-hub-auth"）/ 私有模式 X-Web-Fetch-Token 共享令牌；SSRF 校验（IP 字面量 + 内部主机名黑名单）+ 手动重定向逐跳校验 + 2MB 截断 + 15s 超时；同一份代码供自部署（npx wrangler deploy），详见其 CONTEXT.md / README.md
+│   ├── web-hub-cf/           # 自部署 web-hub（Cloudflare Workers，无 bindings 零依赖部署）：实现 /mz/net 的 /fetch 协议契约的现成自部署实现（官方不设公共实例，部署后经 mz/net 的 custom 通道接入）；公开模式 NoneOS 签名鉴权（X-Web-Hub-Auth，同 relay 方案 k="web-hub-auth"）/ 私有模式 X-Web-Fetch-Token 共享令牌；SSRF 校验（IP 字面量 + 内部主机名黑名单）+ 手动重定向逐跳校验 + 2MB 截断 + 15s 超时；同一份代码供自部署（npx wrangler deploy），详见其 CONTEXT.md / README.md
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
 │
 ├── test-bin/                 # 测试专用二进制（不参与部署）：noneos-handshake 信令服务器（noneos-core server/handshake 的
@@ -497,6 +498,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
 | 修改添加应用引导 / 市场入口 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
 | 设置弹窗用户信息（default 用户查看 / 改用户名） | [apps/main/home/settings-user.html](apps/main/home/settings-user.html) |
+| 设置弹窗联网能力（web fetch 通道清单 / 生效通道 / 测试抓取） | [apps/main/home/settings-webfetch.html](apps/main/home/settings-webfetch.html) + 主应用镜像 [main/pages/settings-webfetch.html](main/pages/settings-webfetch.html)（能力入口 [mz/net/main.js](mz/net/main.js)，两副本改动须双向同步） |
 | 设置弹窗凭证管理引导（跳转/打开凭证管理器） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
 | 设置弹窗常规（语言 / 主题） | [apps/main/home/settings-general.html](apps/main/home/settings-general.html) |
 | 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |

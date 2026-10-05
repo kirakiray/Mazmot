@@ -239,5 +239,135 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="通道固定：默认 auto，固定 jina 后即使 custom 已配置也走 jina">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          const { saveKey } = await import("/mz/ai/main.js");
+          let originalFetch = null;
+          try {
+            // 铺两个 custom 通道 + 两台 relay，验证固定优先于一切自动逻辑
+            await net.setCustomEndpoint({ url: "https://custom-hub.example" });
+            const inv = (u) => btoa(JSON.stringify({ u, k: "bk" }));
+            saveKey(inv("https://relay-a.example"), "relay", { serverName: "A" });
+            saveKey(inv("https://relay-b.example"), "relay", { serverName: "B" });
+
+            const checks = { defaultAuto: (await net.getWebFetchChannel()) === "auto" };
+
+            await net.setWebFetchChannel("jina");
+            originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response("md", { status: 200 });
+            };
+            const r = await net.fetchText("https://example.com/pin", { noCache: true });
+            checks.jinaPinned = r.provider === "jina" && hit.startsWith("https://r.jina.ai/");
+            checks.servers = (await net.listRelayServers()).length === 2;
+            return { assert: Object.values(checks).every(Boolean), content: { checks, hit } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.clearCustomEndpoint();
+            await net.setWebFetchChannel("auto");
+          }
+        </script>
+      </template>
+    </sb-test>
+
+
+    <sb-test name="relay 选择：auto 取第一台，setRelayKeyId 指定生效、失效回退">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          try {
+            const checks = {};
+            // 防御：清掉前序用例可能残留的 custom 端点，auto 链才轮到 relay
+            await net.clearCustomEndpoint();
+            // 上一用例已 saveKey 两台（同页共享 mz/ai 内存）
+            const servers = await net.listRelayServers();
+            checks.two = servers.length === 2;
+            checks.autoFirst = (await net.resolveProvider()).endpoint.startsWith("https://relay-a.example");
+
+            await net.setRelayKeyId(servers[1].keyId);
+            checks.pinnedB = (await net.resolveProvider()).endpoint.startsWith("https://relay-b.example");
+
+            await net.setRelayKeyId("nonexistent-id");
+            checks.fallback = (await net.resolveProvider()).endpoint.startsWith("https://relay-a.example");
+
+            // 固定 relay 通道 + 指定 B：mock 出网验证请求打到 B
+            await net.setRelayKeyId(servers[1].keyId);
+            await net.setWebFetchChannel("relay");
+            const originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response(JSON.stringify({ url, status: 200, contentType: "text/plain", text: "ok", truncated: false }), { status: 200 });
+            };
+            try {
+              const r = await net.fetchText("https://example.com/relay-pin", { noCache: true });
+              checks.relayPinnedB = r.provider === "relay" && hit === "https://relay-b.example/v1/web/fetch";
+            } finally {
+              globalThis.fetch = originalFetch;
+            }
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            // 清场：恢复 auto、清 custom 端点与 relay 指定（relay keys 留在内存，不影响其它用例的断言）
+            await net.setWebFetchChannel("auto");
+            await net.clearCustomEndpoint();
+            await net.setRelayKeyId("");
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="hub 通道已移除：固定报未知通道；auto 链越过 hub 直达 relay/jina">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            await net.clearCustomEndpoint();
+            const checks = {};
+
+            // "hub" 不再是合法通道
+            let threw = "";
+            try {
+              await net.setWebFetchChannel("hub");
+            } catch (e) {
+              threw = e.message;
+            }
+            checks.hubRejected = threw.includes("未知通道");
+
+            // auto 链不再包含 hub：本页已有两台 relay key，应直达 relay（而非先试 hub）
+            originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response(
+                JSON.stringify({ url, status: 200, contentType: "text/plain", text: "ok", truncated: false }),
+                { status: 200 },
+              );
+            };
+            const r = await net.fetchText("https://example.com/no-hub", { noCache: true });
+            checks.autoRelay =
+              r.provider === "relay" &&
+              /^https:\/\/relay-[ab]\.example\/v1\/web\/fetch/.test(hit);
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, hit },
+            };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.setWebFetchChannel("auto");
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

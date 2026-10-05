@@ -1,6 +1,6 @@
-# web-hub-cf —— Mazmot 官方 web-hub（Cloudflare Workers）
+# web-hub-cf —— 自部署 web-hub（Cloudflare Workers）
 
-Mazmot 平台联网能力（web fetch）的**官方兜底端点**：为没有 AI relay 邀请码、也不自部署端点的普通用户提供零配置的网页抓取。同一份代码也供开发者自部署（无任何 bindings，`wrangler deploy` 即上线）。
+Mazmot 平台联网能力（web fetch）的**现成自部署实现**：平台客户端不内置任何公共 hub 实例，自部署本服务后把 Worker 地址填进设置 → 联网能力的「自定义 Web Hub」（或 `mz/net` 的 `setCustomEndpoint`）即接入 custom 通道。无任何 bindings，`wrangler deploy` 即上线。
 
 - 协议契约（`POST /fetch` 请求/响应/约束）：[mz/net/README.md](../../mz/net/README.md)（单一事实来源）
 - 客户端如何发现并使用本服务：`mz/net/main.js` 的 provider 解析（自定义端点 > relay > 本服务 > Jina 兜底）

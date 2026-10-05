@@ -1,6 +1,6 @@
 # web-hub-cf 上下文说明
 
-Mazmot 官方 web-hub：Cloudflare Workers 版联网抓取兜底服务，实现 [mz/net/README.md](../../mz/net/README.md) 的 `/fetch` 协议契约。面向没有 relay 邀请码、也不自部署端点的用户（零配置兜底），同一份代码供开发者自部署。本文件是本服务的**活文档**，与代码保持一致。
+自部署 web-hub：Cloudflare Workers 版联网抓取服务，实现 [mz/net/README.md](../../mz/net/README.md) 的 `/fetch` 协议契约。平台客户端不内置公共实例（mz/net 的自动链为 自定义端点 > relay > Jina），本服务供需要自建通道的用户部署后经 custom 通道接入。本文件是本服务的**活文档**，与代码保持一致。
 
 ## 目录结构
 

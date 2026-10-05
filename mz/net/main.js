@@ -6,23 +6,18 @@
 //   net.fetch(url)      —— 与原生 fetch 同形（Response 同形对象），换掉 fetch 即可读跨域页面
 //   net.fetchText(url)  —— fetch 之上的便捷层：HTML 正文提取 + 截断 + 会话缓存
 //
-// provider 优先级：
-//   1. custom  自定义端点（用户配置的任意 /fetch 实现：自部署 Worker、本地代理等）
+// provider 优先级（「auto」默认）：
+//   1. custom  自定义端点（用户配置的任意 /fetch 实现：自部署 web-hub Worker、本地代理等）
 //   2. relay   AI 转发服务器 server/ai-relay 的 /v1/web/fetch——已配置 relay
-//              邀请码即自动可用，零配置
-//   3. hub     官方 web-hub（DEFAULT_HUB_URL，Cloudflare Worker 兜底，NoneOS 签名鉴权）
-//   4. jina    r.jina.ai 公共 Reader 兜底（无需部署；仅 hub 也失败时才用，URL 会经过第三方）
+//              邀请码即自动可用，多台时可 setRelayKeyId 指定（默认第一台）
+//   3. jina    r.jina.ai 公共 Reader 兜底（无需部署；URL 会经过第三方）
 //
-// custom / relay 失败直接抛错（用户明确选择的基础设施，静默换道会把他人的
-// 服务变成兜底、把目标 URL 泄露给第三方）；只有「自动兜底链」hub → jina 内部降级。
+// 用户可用 setWebFetchChannel 固定任意通道（含 "auto"）：固定后只用该通道、
+// 失败直接抛错不再降级——显式选择不静默换道（也避免把目标 URL 泄露给第三方）。
 //
 // 协议契约（POST {base}/fetch，目标 URL 在 JSON body 里）与各提供方实现要点见同目录 README.md。
 
 import RelayAssistant from "../ai/supplier/relay.js";
-
-// 官方 web-hub 默认地址（server/web-hub-cf 的官方实例）。
-// 未部署 / 地址不同时可改这里，或用 setCustomEndpoint 配置任意端点。
-export const DEFAULT_HUB_URL = "https://web-hub.noneos.com";
 
 // fetchText 默认返回文本上限（字符）：抓回来的网页全文直接进模型上下文
 // 会快速吃掉窗口，默认截断 + 截断标注
@@ -34,6 +29,12 @@ const CACHE_MAX = 20;
 const _cache = new Map(); // key -> { ts, result }
 
 // ———— 工具函数 ————
+
+/**
+ * 按需加载 /nos/*、/mz/* 模块。本模块始终以真实 URL 加载、路径全部绝对，
+ * 直接 import 即可（不依赖 ofa 的 lm 全局，sb-test 等无 SW 环境同样可用）。
+ */
+const loadModule = (path) => import(path);
 
 /** SHA-256 hex（与 noneos get-hash.js / relay 客户端一致） */
 export async function sha256Hex(text) {
@@ -100,8 +101,7 @@ let _memoryCustom = null; // 内存降级模式的自定义端点
 const store = async () => {
   if (_store !== undefined) return _store;
   try {
-    const load = lm(import.meta);
-    const { getStorage } = await load("/nos/storage/main.js");
+    const { getStorage } = await loadModule("/nos/storage/main.js");
     _store = getStorage("mz-net");
   } catch (err) {
     console.warn("[mz/net] nos storage 不可用，自定义端点仅内存模式:", err?.message ?? err);
@@ -111,6 +111,45 @@ const store = async () => {
 };
 
 const CUSTOM_KEY = "webFetchEndpoint";
+
+// ———— 通道固定与 relay 服务器选择（用户显式偏好） ————
+
+const CHANNEL_KEY = "webFetchChannel";
+const RELAY_KEY_ID = "webFetchRelayKeyId";
+let _memoryChannel = null;
+let _memoryRelayKeyId = null;
+
+/** 可固定通道：「auto」按优先级自动；其余只用该通道、失败不降级。
+ *  自部署 web-hub 走 custom 通道接入（server/web-hub-cf 为现成实现），不单设 hub 通道。 */
+export const WEB_FETCH_CHANNELS = ["auto", "custom", "relay", "jina"];
+
+/** 固定 web fetch 通道（"auto" = 恢复自动优先级） */
+export const setWebFetchChannel = async (name) => {
+  if (!WEB_FETCH_CHANNELS.includes(name)) {
+    throw new Error(`未知通道：${name}`);
+  }
+  const s = await store();
+  if (s) await s.setItem(CHANNEL_KEY, name);
+  else _memoryChannel = name;
+};
+
+export const getWebFetchChannel = async () => {
+  const s = await store();
+  const v = s ? await s.getItem(CHANNEL_KEY) : _memoryChannel;
+  return WEB_FETCH_CHANNELS.includes(v) ? v : "auto";
+};
+
+/** 指定 relay 通道用哪台服务器（key id）；删除该 key 后自动回退第一台 */
+export const setRelayKeyId = async (id) => {
+  const s = await store();
+  if (s) await s.setItem(RELAY_KEY_ID, id);
+  else _memoryRelayKeyId = id;
+};
+
+export const getRelayKeyId = async () => {
+  const s = await store();
+  return (s ? await s.getItem(RELAY_KEY_ID) : _memoryRelayKeyId) ?? null;
+};
 
 /**
  * 配置自定义 web fetch 端点（优先级最高的 provider）。
@@ -141,32 +180,66 @@ export const clearCustomEndpoint = async () => {
   if (s) await s.removeItem(CUSTOM_KEY);
 };
 
-/**
- * 第一个启用的 relay key（邀请码含 serverUrl + bearkey，web fetch 跟随它零配置可用）。
- * 构造 RelayAssistant 失败（邀请码损坏等）视为无 relay。
- */
-const pickRelayAssistant = async () => {
-  const load = lm(import.meta);
-  const { getApiKeys } = await load("/mz/ai/main.js");
-  const hit = getApiKeys().find((k) => k.provider === "relay" && !k.disabled);
-  if (!hit) return null;
-  try {
-    return new RelayAssistant(hit.id, hit.apiKey);
-  } catch {
-    return null;
+/** 启用的 relay key → 助手实例清单（邀请码损坏的跳过） */
+const enabledRelayServers = async () => {
+  const { getApiKeys } = await loadModule("/mz/ai/main.js");
+  const servers = [];
+  for (const k of getApiKeys().filter((k) => k.provider === "relay" && !k.disabled)) {
+    try {
+      const assistant = new RelayAssistant(k.id, k.apiKey);
+      servers.push({
+        keyId: k.id,
+        baseUrl: assistant.baseUrl,
+        label: k.serverName || assistant.baseUrl,
+        assistant,
+      });
+    } catch {
+      /* 邀请码损坏，跳过 */
+    }
   }
+  return servers;
 };
 
 /**
- * 解析当前生效的 web fetch provider（不实际出网）。
- * 返回 { name, endpoint }，name ∈ custom / relay / hub。
+ * 可用的 relay 服务器清单（UI 选择用）：[{ keyId, label, baseUrl }]，
+ * 顺序与自动回退顺序一致（AI 密钥管理器中的先后）。
+ */
+export const listRelayServers = async () =>
+  (await enabledRelayServers()).map(({ keyId, label, baseUrl }) => ({
+    keyId,
+    label,
+    baseUrl,
+  }));
+
+/** 当前生效的 relay 助手：尊重用户指定（setRelayKeyId），未指定 / 已失效取第一台 */
+const pickRelayAssistant = async () => {
+  const servers = await enabledRelayServers();
+  if (!servers.length) return null;
+  const preferId = await getRelayKeyId();
+  return servers.find((s) => s.keyId === preferId)?.assistant ?? servers[0].assistant;
+};
+
+/**
+ * 解析当前 web fetch 通道偏好（不实际出网）。
+ * 返回 { name, endpoint, pinned }：pinned=true 表示用户固定了该通道；
+ * 固定通道未配置时 endpoint 为 null。
  */
 export const resolveProvider = async () => {
+  const channel = await getWebFetchChannel();
+  if (channel !== "auto") {
+    let endpoint = null;
+    if (channel === "custom") endpoint = (await getCustomEndpoint())?.url ?? null;
+    else if (channel === "relay") {
+      const preferred = await pickRelayAssistant();
+      endpoint = preferred ? `${preferred.baseUrl}/v1/web/fetch` : null;
+    } else endpoint = "https://r.jina.ai";
+    return { name: channel, endpoint, pinned: true };
+  }
   const custom = await getCustomEndpoint();
-  if (custom) return { name: "custom", endpoint: custom.url };
+  if (custom) return { name: "custom", endpoint: custom.url, pinned: false };
   const relay = await pickRelayAssistant();
-  if (relay) return { name: "relay", endpoint: `${relay.baseUrl}/v1/web/fetch` };
-  return { name: "hub", endpoint: `${DEFAULT_HUB_URL}/fetch` };
+  if (relay) return { name: "relay", endpoint: `${relay.baseUrl}/v1/web/fetch`, pinned: false };
+  return { name: "jina", endpoint: "https://r.jina.ai", pinned: false };
 };
 
 // ———— 各 provider 的请求实现 ————
@@ -185,25 +258,6 @@ const postProtocol = async (base, { headers, url, signal }) => {
     throw new Error(data?.error?.message || `web fetch 端点返回 ${resp.status}`);
   }
   return data; // { url, status, contentType, text, truncated }
-};
-
-/** 官方 web-hub 鉴权头：NoneOS 用户签名（k="web-hub-auth"，与 relay 同方案、不同用途标记） */
-const hubAuthHeaders = async (path, bodyText) => {
-  const load = lm(import.meta);
-  const { getUser } = await load("/nos/user/main.js");
-  const user = await getUser();
-  if (!user || typeof user.sign !== "function") {
-    throw new Error("当前环境无 NoneOS 用户身份（无私钥），无法调用 web-hub");
-  }
-  const signed = await user.sign({
-    k: "web-hub-auth",
-    userId: user.userId,
-    ts: Date.now(),
-    method: "POST",
-    path,
-    bodyHash: await sha256Hex(bodyText),
-  });
-  return { "X-Web-Hub-Auth": btoa(JSON.stringify(signed)) };
 };
 
 /** Jina Reader 公共兜底：GET https://r.jina.ai/<url>，返回 Markdown（免 key，有限流） */
@@ -305,13 +359,43 @@ export const fetchText = async (url, opts = {}) => {
   return { ...out };
 };
 
-/** provider 链调度：custom / relay 失败即抛；hub 失败降级 jina */
+/** 通道调度：「auto」按优先级取第一个可用（custom > relay > hub → jina 降级）；
+ *  固定通道只用用户选的，不可用直接抛错——显式选择不静默换道 */
 const dispatchFetch = async (target, signal) => {
+  const channel = await getWebFetchChannel();
+
+  if (channel === "custom") {
+    const custom = await getCustomEndpoint();
+    if (!custom) {
+      throw new Error("自定义端点未配置（设置 → 联网能力中配置，或恢复「自动」）");
+    }
+    const headers = {};
+    if (custom.token) headers["X-Web-Fetch-Token"] = custom.token;
+    return {
+      ...(await postProtocol(custom.url, { headers, url: target, signal })),
+      provider: "custom",
+    };
+  }
+  if (channel === "relay") {
+    const relay = await pickRelayAssistant();
+    if (!relay) {
+      throw new Error("无可用 relay 服务器（AI 密钥管理器添加邀请码，或恢复「自动」）");
+    }
+    return { ...(await relay.webFetch(target, { signal })), provider: "relay" };
+  }
+  if (channel === "jina") {
+    return { ...(await fetchViaJina(target, signal)), provider: "jina" };
+  }
+
+  // ———— auto：优先级链 ————
   const custom = await getCustomEndpoint();
   if (custom) {
     const headers = {};
     if (custom.token) headers["X-Web-Fetch-Token"] = custom.token;
-    return { ...(await postProtocol(custom.url, { headers, url: target, signal })), provider: "custom" };
+    return {
+      ...(await postProtocol(custom.url, { headers, url: target, signal })),
+      provider: "custom",
+    };
   }
 
   const relay = await pickRelayAssistant();
@@ -319,23 +403,5 @@ const dispatchFetch = async (target, signal) => {
     return { ...(await relay.webFetch(target, { signal })), provider: "relay" };
   }
 
-  try {
-    const bodyText = JSON.stringify({ url: target });
-    const headers = await hubAuthHeaders("/fetch", bodyText);
-    return {
-      ...(await postProtocol(DEFAULT_HUB_URL, { headers, url: target, signal })),
-      provider: "hub",
-    };
-  } catch (hubErr) {
-    console.warn("[mz/net] 官方 web-hub 不可用，降级 Jina Reader:", hubErr?.message || hubErr);
-    try {
-      return { ...(await fetchViaJina(target, signal)), provider: "jina" };
-    } catch (jinaErr) {
-      throw new Error(
-        `web-hub 与 Jina 兜底均失败（hub: ${hubErr?.message || hubErr}；jina: ${
-          jinaErr?.message || jinaErr
-        }）`,
-      );
-    }
-  }
+  return { ...(await fetchViaJina(target, signal)), provider: "jina" };
 };

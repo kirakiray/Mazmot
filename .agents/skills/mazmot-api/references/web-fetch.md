@@ -27,7 +27,16 @@ const r = await net.fetchText("https://example.com/docs");
 //   - 默认 maxChars = 20000 截断；会话内 5 分钟缓存（opts.noCache 跳过）
 
 net.extractText("<html>…</html>");     // 纯函数：HTML → 正文文本
-await net.resolveProvider();           // 调试：当前生效 provider { name, endpoint }（不出网）
+await net.resolveProvider();           // 调试：{ name, endpoint, pinned }（不出网）
+
+// 通道固定：默认 "auto" 按优先级（custom > relay > jina）取第一个可用；
+// 固定后只用该通道、失败不降级。偏好存 getStorage("mz-net")，storage 不可用降级内存
+await net.setWebFetchChannel("relay"); // "auto" | "custom" | "relay" | "jina"
+await net.getWebFetchChannel();
+
+// relay 多台选择（多邀请码场景）
+const servers = await net.listRelayServers(); // [{ keyId, label, baseUrl }]
+await net.setRelayKeyId(servers[1].keyId);    // 指定后走该台；key 被删自动回退第一台
 
 // 自定义端点（自部署 Worker / 本地代理；存 getStorage("mz-net") 的 webFetchEndpoint 键，
 // /nos/storage 不可用时自动降级仅内存模式）
