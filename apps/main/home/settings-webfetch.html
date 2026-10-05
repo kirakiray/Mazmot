@@ -229,6 +229,20 @@
   <div class="wf-section-head">
     <span class="wf-field-label">
       <locale-text>
+        <span lang="cn">搜索引擎（web search 默认引擎，AI 应用的 web_search 工具同样生效）</span>
+        <span lang="en">Search engine (default for web search, incl. the AI web_search tool)</span>
+      </locale-text>
+    </span>
+  </div>
+  <st-select
+    id="engine-select"
+    class="wf-relay-select"
+    on:change="onEngineSelect"
+  ></st-select>
+
+  <div class="wf-section-head">
+    <span class="wf-field-label">
+      <locale-text>
         <span lang="cn">自定义 Web Hub（自部署，配置后优先于 relay 生效）</span>
         <span lang="en">Custom Web Hub (self-deployed, takes precedence over relay)</span>
       </locale-text>
@@ -432,6 +446,19 @@
                 select.value = chosen ? chosen.keyId : "";
               }
             }
+
+            // 搜索引擎下拉：选项来自 SEARCH_ENGINES（key + label），选中值读用户偏好
+            const engineSelect = this.shadow.$("#engine-select")?.ele;
+            if (engineSelect) {
+              engineSelect.innerHTML = "";
+              for (const [key, engine] of Object.entries(net.SEARCH_ENGINES)) {
+                const opt = document.createElement("option");
+                opt.value = key;
+                opt.textContent = engine.label;
+                engineSelect.appendChild(opt);
+              }
+              engineSelect.value = await net.getSearchEngine();
+            }
           },
 
           /** 点通道行：固定该通道（再点已固定的无动作）；auto = 恢复自动优先级 */
@@ -462,6 +489,25 @@
               message: getLocaleText(
                 { cn: "web fetch 将使用：{name}", en: "web fetch will use: {name}" },
                 { name: hit?.label || id },
+              ),
+              color: "success",
+            });
+          },
+
+          /** 切换默认搜索引擎（web search 与 AI 应用的 web_search 工具共用） */
+          async onEngineSelect(event) {
+            const key = event.target.value;
+            if (!key || key === (await net.getSearchEngine())) return;
+            try {
+              await net.setSearchEngine(key);
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+              return;
+            }
+            toast({
+              message: getLocaleText(
+                { cn: "默认搜索引擎：{name}", en: "Default search engine: {name}" },
+                { name: net.SEARCH_ENGINES[key]?.label || key },
               ),
               color: "success",
             });

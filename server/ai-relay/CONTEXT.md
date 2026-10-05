@@ -53,6 +53,7 @@ server/ai-relay/
   - `GET /v1/server`：`{ name, version }` 服务器命名与版本（公开、无需鉴权，客户端展示用；管理台与 mz/ai 的 fetchServerInfo 均消费）
   - `POST /v1/web/fetch`：服务端代理抓取网页文本（浏览器 CORS 不可达的补充能力），body `{ url }`，成功 200 `{ url, status, contentType, text, truncated }`（status 为上游状态码，404 等不算网关错误），失败 `{ error: { message, type } }`。鉴权与 chat 一致；抓取不计入 token 配额；**按用户开关**——`web_fetch_enabled=false` 的用户 403「未开通 web fetch 能力」（管理台用户管理可开/关）。安全约束：仅 http/https、内部主机名与私网 IP 黑名单（域名解析后逐 IP 校验）、重定向手动跟随最多 3 跳每跳重新校验、响应体 2MB 截断、总超时 15s、Content-Type 仅放行文本类。协议契约与客户端见 `mz/net/README.md`（单一事实来源）。
 
+
 ## 部署 / 测试
 
 - 本地跑：仓库根 `npm run ai-relay`（= `cd server/ai-relay && cargo run --release`），或直接 `AI_RELAY_ADMIN_TOKEN=xxx cargo run`；配置示例见 `ai-relay.toml.example`。

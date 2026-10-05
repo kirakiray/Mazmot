@@ -138,13 +138,20 @@ const servers = await net.listRelayServers(); // → [{ keyId, label, baseUrl }]
 await net.setRelayKeyId(servers[1].keyId);    // 指定 relay 通道用哪台；key 被删自动回退第一台
 await net.getRelayKeyId();
 
+// 联网搜索（mz 内实现：fetch 抓搜索引擎结果页 + mz 内解析，服务端零搜索功能）
+const sr = await net.searchWeb("ofa.js 教程", { maxResults: 5, engine: "duckduckgo" });
+// sr = { query, engine, provider, results: [{ title, url, content }] }
+// opts.engine 缺省时落到默认引擎偏好（设置页「搜索引擎」下拉）：
+await net.setSearchEngine("bing");    // 设置默认引擎（未知 key 抛错），对所有 searchWeb 生效
+await net.getSearchEngine();          // → 当前默认引擎，未设置过为 "duckduckgo"
+
 // 自定义端点（即 custom 通道；存 webFetchEndpoint 键）
 await net.setCustomEndpoint({ url: "https://my-worker.example.workers.dev", token: "…" });
 await net.getCustomEndpoint();        // → { url, token } | null
 await net.clearCustomEndpoint();
 ```
 
-自定义端点、通道偏好、relay 指定都存 `getStorage("mz-net")` 独立空间（遵守存储隔离规范）；`/nos/storage` 不可用的环境（无 SW 测试页等）自动降级为仅内存模式，模块照常可用。**本模块内部不依赖 ofa 的 `lm` 全局**——全部按需 `import("/绝对路径")`，sb-test 等无 SW 页面同样可加载。
+自定义端点、通道偏好、relay 指定、搜索引擎偏好都存 `getStorage("mz-net")` 独立空间（遵守存储隔离规范）；`/nos/storage` 不可用的环境（无 SW 测试页等）自动降级为仅内存模式，模块照常可用。**本模块内部不依赖 ofa 的 `lm` 全局**——全部按需 `import("/绝对路径")`，sb-test 等无 SW 页面同样可加载。
 
 ## 5. 安全模型与边界
 
@@ -164,3 +171,12 @@ await net.clearCustomEndpoint();
 | 配额 | 暂不计入 token 配额（TODO） | 自行实现 |
 
 新增 provider 形态（如本地二进制代理）只需实现第 1 节契约 + 第 2 节任一鉴权头，客户端零改动。
+
+## 7. 搜索（mz 内实现：搜索 = fetch + 引擎适配器）
+
+搜索**不在服务端实现**——relay / 自定义端点只做纯转发抓取，搜索逻辑全部在 mz 内：`searchWeb` 用 `fetchText` 抓取搜索引擎结果页（raw HTML），在客户端解析出结果列表。任何能 fetch 的通道自动获得搜索能力，服务端零搜索代码。
+
+- **引擎可插拔**（`SEARCH_ENGINES` 导出）：默认 `duckduckgo`（`html.duckduckgo.com/html/?q=` 无 JS 版，对服务器 IP 最容忍），另有 `bing`；引擎改版只需更新对应适配器的 `parse`。
+- **默认引擎用户可切**：设置页「搜索引擎」下拉（`setSearchEngine` / `getSearchEngine`，偏好存 mz-net 空间）对所有 `searchWeb` 调用生效，应用侧 `opts.engine` 仍可单次覆盖。
+- **best-effort**：引擎对数据中心 IP 弹验证码 / 改版时解析失败，`searchWeb` 抛可读错误（可换 engine 或稍后再试）。需要更稳的搜索质量时，可自行为某通道加带 key 的商业搜索。
+- 解析用浏览器 `DOMParser`（mz 运行在浏览器内）；返回 `{ query, engine, provider, results: [{ title, url, content }] }`，`provider` 为实际执行抓取的通道。

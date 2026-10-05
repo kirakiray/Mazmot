@@ -26,6 +26,15 @@ const r = await net.fetchText("https://example.com/docs");
 //   - text/html 自动正文提取（去 script/style/标签）；opts.raw = true 拿原始响应体
 //   - 默认 maxChars = 20000 截断；会话内 5 分钟缓存（opts.noCache 跳过）
 
+// 联网搜索（mz 内实现：fetch 抓搜索引擎结果页 + DOMParser 解析，服务端零搜索功能；
+// 引擎可插拔 SEARCH_ENGINES：默认 duckduckgo（html.duckduckgo.com 无 JS 版）、bing；
+// best-effort——引擎改版/反爬时解析失败抛可读错误，可换 engine）
+const sr = await net.searchWeb("ofa.js 教程", { maxResults: 5, engine: "duckduckgo" });
+// sr = { query, engine, provider, results: [{ title, url, content }] }
+// opts.engine 缺省时落到默认引擎偏好（设置页「搜索引擎」下拉），再默认 duckduckgo：
+await net.setSearchEngine("bing");     // 设置默认引擎（未知 key 抛错），对所有 searchWeb 生效
+await net.getSearchEngine();           // → 当前默认引擎，未设置过为 "duckduckgo"
+
 net.extractText("<html>…</html>");     // 纯函数：HTML → 正文文本
 await net.resolveProvider();           // 调试：{ name, endpoint, pinned }（不出网）
 

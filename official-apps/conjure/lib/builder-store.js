@@ -428,8 +428,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       },
       previewDebug,
       onPreviewShot: pushPreviewShot,
-      // web_fetch 工具：平台联网能力（mz/net 负责 provider 解析与正文提取）
+      // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),
+      netSearch: (query, opts) => netModules.searchWeb(query, opts),
     });
     // 全新项目首回合：项目已由宿主建好，移除 create_app 并换「空项目生成」提示词
     const isFresh =

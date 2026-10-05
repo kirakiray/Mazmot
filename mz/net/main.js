@@ -275,6 +275,133 @@ const fetchViaJina = async (url, signal) => {
   };
 };
 
+// ———— 联网搜索（mz 内实现：用 fetch 抓搜索引擎结果页并解析，服务端零搜索功能） ————
+
+/**
+ * 搜索引擎适配器。解析依赖结果页结构，属 best-effort：引擎改版时改这里即可，
+ * 搜索整体逻辑不受影响。新增引擎（如换 Bing 优先 / 接入带 key 的商业搜索）
+ * 加一个条目即可。
+ */
+export const SEARCH_ENGINES = {
+  duckduckgo: {
+    label: "DuckDuckGo",
+    url: (q) => `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
+    parse(dom) {
+      const out = [];
+      for (const a of dom.querySelectorAll(".result__a")) {
+        const title = a.textContent.trim();
+        let url = a.getAttribute("href") || "";
+        // DDG 结果链接是 /l/?uddg=<encoded> 跳转包装，解出真实地址
+        if (url.includes("/l/?uddg=")) {
+          try {
+            const u = new URL(url.startsWith("//") ? "https:" + url : url, "https://duckduckgo.com");
+            url = u.searchParams.get("uddg") || url;
+          } catch {
+            /* 保留原始 href */
+          }
+        }
+        if (!/^https?:\/\//i.test(url)) continue;
+        const snippet = a.closest(".result")?.querySelector(".result__snippet");
+        out.push({ title, url, content: snippet?.textContent.trim() || "" });
+      }
+      return out;
+    },
+  },
+  bing: {
+    label: "Bing",
+    url: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+    parse(dom) {
+      const out = [];
+      for (const li of dom.querySelectorAll("li.b_algo")) {
+        const a = li.querySelector("h2 a");
+        if (!a) continue;
+        const url = a.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(url)) continue;
+        const snippet = li.querySelector(".b_caption p") || li.querySelector("p");
+        out.push({
+          title: a.textContent.trim(),
+          url,
+          content: snippet?.textContent.trim() || "",
+        });
+      }
+      return out;
+    },
+  },
+};
+
+// 搜索引擎偏好：设置页选择后全局生效（应用侧 opts.engine 仍可单次覆盖）
+const ENGINE_KEY = "searchEngine";
+let _memoryEngine = null;
+
+/** 当前默认搜索引擎（SEARCH_ENGINES 的 key；未设置过时为 "duckduckgo"） */
+export const getSearchEngine = async () => {
+  const s = await store();
+  const v = s ? await s.getItem(ENGINE_KEY) : _memoryEngine;
+  return SEARCH_ENGINES[v] ? v : "duckduckgo";
+};
+
+/** 设置默认搜索引擎（web search 与应用的 web_search 工具共用）；未知 key 抛错 */
+export const setSearchEngine = async (engine) => {
+  if (!SEARCH_ENGINES[engine]) {
+    throw new Error(`未知搜索引擎：${engine}`);
+  }
+  const s = await store();
+  if (s) await s.setItem(ENGINE_KEY, engine);
+  else _memoryEngine = engine;
+};
+
+/**
+ * 联网搜索：**基于 fetch 实现**——经通道抓取搜索引擎结果页（raw HTML），
+ * 在 mz 内解析出结果列表。服务端（relay / 自定义端点）不需要任何搜索功能，
+ * 任何能 fetch 的通道自动获得搜索能力。
+ *
+ * best-effort：解析依赖引擎页面结构（改版时更新 SEARCH_ENGINES 适配器），
+ * 引擎对数据中心 IP 出验证码时会解析失败（报可读错误，换个引擎或稍后再试）。
+ *
+ * @param {string} query 搜索词
+ * @param {Object} [opts]
+ * @param {number} [opts.maxResults=5] 结果条数（1–10）
+ * @param {string} [opts.engine] 搜索引擎（SEARCH_ENGINES 的 key；缺省用
+ *   setSearchEngine 设置的偏好，未设置过再缺省 duckduckgo）
+ * @param {AbortSignal} [opts.signal] 取消信号
+ * @returns {Promise<{query: string, engine: string, provider: string,
+ *   results: Array<{title, url, content}>}>} provider 为实际执行抓取的通道
+ */
+export const searchWeb = async (query, opts = {}) => {
+  const q = String(query ?? "").trim();
+  if (!q) throw new Error("搜索词不能为空");
+  const engineKey =
+    opts.engine && SEARCH_ENGINES[opts.engine] ? opts.engine : await getSearchEngine();
+  const engine = SEARCH_ENGINES[engineKey];
+  const maxResults = Math.min(Math.max(Number(opts.maxResults) || 5, 1), 10);
+
+  // 抓结果页：raw 保留原始 HTML（走 fetchText 的通道调度，自动/固定通道均适用）
+  const page = await fetchText(engine.url(q), {
+    raw: true,
+    noCache: true,
+    signal: opts.signal,
+  });
+
+  let results = [];
+  try {
+    const dom = new DOMParser().parseFromString(page.text, "text/html");
+    results = engine.parse(dom);
+  } catch {
+    results = [];
+  }
+  if (!results.length) {
+    throw new Error(
+      `搜索结果解析失败（${engine.label} 页面结构可能已变化、触发了反爬验证，或当前通道返回的不是原始网页；可换 engine 或稍后再试）`,
+    );
+  }
+  return {
+    query: q,
+    engine: engineKey,
+    provider: page.provider,
+    results: results.slice(0, maxResults),
+  };
+};
+
 // ———— fetch 同形低层 API ————
 
 /** net.fetch 的返回对象：与原生 Response 同形（ok / status / url / headers / text() / json()），

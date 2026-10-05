@@ -369,5 +369,204 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="searchWeb：抓 DDG 结果页解析（uddg 解码 / 参数透传 / 截条）">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            originalFetch = globalThis.fetch;
+            let capturedBody = null;
+            globalThis.fetch = async (url, options) => {
+              // relay 通道的出网请求是 {baseUrl}/v1/web/fetch，目标地址在 body.url；
+              // 响应按 /fetch 协议信封返回
+              capturedBody = JSON.parse(options?.body || "{}");
+              const html = `
+                <div class="result">
+                  <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fofajs.com">ofa.js 官网</a>
+                  <span class="result__snippet">ofa 是一个 web 编排框架</span>
+                </div>
+                <div class="result">
+                  <a class="result__a" href="https://example.com/direct">直接链接结果</a>
+                  <span class="result__snippet">直接给出完整地址</span>
+                </div>
+                <div class="result">
+                  <a class="result__a" href="https://third.example.com">第三条</a>
+                  <span class="result__snippet">应被 maxResults 截掉</span>
+                </div>`;
+              return new Response(
+                JSON.stringify({
+                  url: capturedBody.url,
+                  status: 200,
+                  contentType: "text/html",
+                  text: html,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("ofa.js", { maxResults: 2 });
+            const checks = {
+              engineUrl: (capturedBody?.url || "").startsWith(
+                "https://html.duckduckgo.com/html/?q=",
+              ),
+              encoded: (capturedBody?.url || "").includes("ofa.js"),
+              count: r.results.length === 2,
+              uddgDecoded: r.results[0].url === "https://ofajs.com",
+              direct: r.results[1].url === "https://example.com/direct",
+              snippet: r.results[0].content.includes("web 编排框架"),
+              provider: r.provider.length > 0,
+              engine: r.engine === "duckduckgo",
+            };
+            return { assert: Object.values(checks).every(Boolean), content: { checks, capturedBody } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="searchWeb：空词拒绝 / 解析失败可读错误 / bing 引擎适配">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            const checks = {};
+            let emptyMsg = "";
+            try {
+              await net.searchWeb("   ");
+            } catch (e) {
+              emptyMsg = e.message;
+            }
+            checks.emptyRejected = emptyMsg.includes("搜索词");
+
+            // 引擎返回非结果页（反爬/改版）→ 0 结果 → 可读错误
+            originalFetch = globalThis.fetch;
+            globalThis.fetch = async () =>
+              new Response(
+                JSON.stringify({
+                  url: "https://html.duckduckgo.com/html/?q=test",
+                  status: 200,
+                  contentType: "text/html",
+                  text: "<html><body>异常验证页面</body></html>",
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            let parseMsg = "";
+            try {
+              await net.searchWeb("test");
+            } catch (e) {
+              parseMsg = e.message;
+            }
+            checks.parseError = parseMsg.includes("解析失败");
+
+            // bing 引擎适配：请求打到 bing，li.b_algo 解析
+            let bingUrl = "";
+            globalThis.fetch = async (url, options) => {
+              bingUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<li class="b_algo"><h2><a href="https://bing-result.example">Bing 结果</a></h2><div class="b_caption"><p>bing 摘要</p></div></li>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("test", { engine: "bing" });
+            checks.bingUrl = bingUrl.startsWith("https://www.bing.com/search?q=");
+            checks.bingParsed =
+              r.results.length === 1 &&
+              r.results[0].title === "Bing 结果" &&
+              r.engine === "bing";
+
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="搜索引擎偏好：setSearchEngine 全局生效，opts.engine 可单次覆盖">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            const checks = {};
+            // 未设置过时默认 duckduckgo
+            checks.defaultEngine = (await net.getSearchEngine()) === "duckduckgo";
+
+            // 未知引擎拒绝
+            let badMsg = "";
+            try {
+              await net.setSearchEngine("google");
+            } catch (e) {
+              badMsg = e.message;
+            }
+            checks.unknownRejected = badMsg.includes("未知搜索引擎");
+
+            await net.setSearchEngine("bing");
+            checks.getAfterSet = (await net.getSearchEngine()) === "bing";
+
+            // 缺省 opts.engine → 落到偏好 bing
+            originalFetch = globalThis.fetch;
+            let capturedUrl = "";
+            globalThis.fetch = async (url, options) => {
+              capturedUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url: capturedUrl,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<li class="b_algo"><h2><a href="https://pref.example">偏好引擎结果</a></h2></li>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("pref test");
+            checks.prefUsed =
+              r.engine === "bing" && capturedUrl.startsWith("https://www.bing.com/search?q=");
+
+            // opts.engine 单次覆盖偏好
+            globalThis.fetch = async (url, options) => {
+              capturedUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url: capturedUrl,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<div class="result"><a class="result__a" href="https://override.example">覆盖</a></div>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r2 = await net.searchWeb("pref test", { engine: "duckduckgo" });
+            checks.override =
+              r2.engine === "duckduckgo" &&
+              capturedUrl.startsWith("https://html.duckduckgo.com/html/?q=");
+
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.setSearchEngine("duckduckgo").catch(() => {});
+          }
+        </script>
+      </template>
+    </sb-test>
+
   </body>
 </html>
