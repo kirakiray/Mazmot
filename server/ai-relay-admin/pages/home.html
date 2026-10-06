@@ -841,6 +841,10 @@
         <option value="deepseek">DeepSeek</option>
         <option value="glm">GLM</option>
         <option value="glm-coding">GLM Coding Plan</option>
+        <option value="openai">OpenAI</option>
+        <option value="gemini">Gemini</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="qwen">Qwen</option>
       </st-select>
     </div>
     <div class="field">
@@ -1123,7 +1127,7 @@
         resetUsage: { cn: "清零用量", en: "Reset usage" },
         serverSettings: { cn: "服务器设置", en: "Server settings" },
         serverNamePlaceholder: { cn: "如：团队共享中转", en: "e.g. Team relay" },
-        modelsPlaceholder: { cn: "如 glm-5*, deepseek-chat；留空 = 不限制", en: "e.g. glm-5*, deepseek-chat; empty = unlimited" },
+        modelsPlaceholder: { cn: "如 glm-5*, deepseek-flash；留空 = 不限制", en: "e.g. glm-5*, deepseek-flash; empty = unlimited" },
         keyLabelPlaceholder: { cn: "可选，便于识别", en: "Optional, for identification" },
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
         userNamePlaceholder: { cn: "用户名", en: "User name" },
@@ -1187,17 +1191,27 @@
           },
 
           providerLabel(provider) {
-            return provider === "glm"
-              ? "GLM"
-              : provider === "glm-coding"
-                ? "GLM Coding"
-                : "DeepSeek";
+            const labels = {
+              glm: "GLM",
+              "glm-coding": "GLM Coding",
+              openai: "OpenAI",
+              gemini: "Gemini",
+              anthropic: "Anthropic",
+              qwen: "Qwen",
+            };
+            return labels[provider] || "DeepSeek";
           },
 
           providerIcon(provider) {
+            const icons = {
+              openai: "simple-icons:openai",
+              gemini: "simple-icons:googlegemini",
+              anthropic: "simple-icons:anthropic",
+              qwen: "simple-icons:qwen",
+            };
             return provider === "deepseek"
               ? "simple-icons:deepseek"
-              : "simple-icons:zdotai";
+              : (icons[provider] || "simple-icons:zdotai");
           },
 
           /** 统一管理 API 请求；非 2xx 抛错（带服务器错误信息） */

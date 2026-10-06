@@ -54,6 +54,39 @@
       </template>
     </sb-test>
 
+    <sb-test name="pickAutoKey 自动选择 key（deepseek 优先 / 单台锁定）">
+      <template>
+        <script type="module">
+          import { pickAutoKey } from "../lib/builder.js";
+          {
+            const relayA = { id: "r1", provider: "relay" };
+            const relayB = { id: "r2", provider: "relay" };
+            const glmKey = { id: "g1", provider: "glm" };
+            const dsKey = { id: "d1", provider: "deepseek" };
+
+            // 多轮统计随机分支的命中范围（不断言具体某一台）
+            const randomHits = new Set();
+            for (let i = 0; i < 200; i++) {
+              randomHits.add(pickAutoKey([relayA, relayB, glmKey])?.id);
+            }
+
+            const checks = {
+              empty: pickAutoKey([]) === null,
+              deepseekFirst: pickAutoKey([relayA, dsKey, glmKey]) === dsKey,
+              singleLocked: pickAutoKey([relayA]) === relayA,
+              randomAmongAll:
+                randomHits.size === 3 &&
+                [...randomHits].every((id) => ["r1", "r2", "g1"].includes(id)),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, randomHits: [...randomHits] },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="truncateThread 按回合截断 wire 记忆">
       <template>
         <script type="module">

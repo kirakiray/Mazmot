@@ -41,6 +41,7 @@ import {
   tailThread,
   contextInfo,
   MODEL_OPTIONS,
+  pickAutoKey,
   COMPACTION_PROMPT,
 } from "./builder.js";
 import { diffLines, diffStat, compactHunks } from "./diff.js";
@@ -70,7 +71,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
     coreError: "",
-    reasoning: "low", // 推理等级偏好："off" / "low" / "medium" / "high"（无=不思考）
+    reasoning: "low", // 推理等级偏好："off" / "low" / "medium" / "high" / "max"（无=不思考）
+    // 推理等级菜单的可选项（跟随当前生效 key 的供应商 + 选中模型动态生成，
+    // 各家档位不同；空数组 = 模型思考不可调）与夹取后的生效档位（"" = 不可调）
+    effortOptions: [],
+    effectiveReasoning: "",
     activeModel: "", // 当前 Agent 使用的模型标识（AI 消息徽标用）
     // 应用与会话
     apps: [],
@@ -249,6 +254,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   let checkpointer = null;
   // /mz/net 联网能力模块（web_fetch 工具底层）
   let netModules = null;
+  // /mz/ai/efforts.js（思考档位表；纯函数模块，惰性加载一次）
+  let effortsModules = null;
+  const ensureEfforts = async () => {
+    if (!effortsModules) {
+      effortsModules = await load("/mz/ai/efforts.js");
+    }
+    return effortsModules;
+  };
   // 当前 Agent 实际使用的模型标识（deepseek 固定模型名，其余用 provider 名兜底）
   let activeModel = "";
   // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
@@ -316,22 +329,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const { getAssistant, getApiKeys } = aiModules;
     const keys = getApiKeys().filter((k) => !k.disabled);
 
-    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效）；
-    // 否则自动——deepseek 优先，其余随机负载均衡
+    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效），否则
+    // 自动（pickAutoKey：deepseek 优先 / 单台锁定 / 多台随机负载均衡）
     let key = null;
     if (state.activeKeyId) {
       key = keys.find((k) => k.id === state.activeKeyId) || null;
     }
-    if (!key && keys.length) {
-      key = keys.find((k) => k.provider === "deepseek") || null;
-      if (!key && keys.length > 1) {
-        key = keys[Math.floor(Math.random() * keys.length)];
-      }
+    if (!key) {
+      key = pickAutoKey(keys);
     }
 
     // 模型选择：手动选中的模型优先，但须在已知可用清单里——清单来自
     // getModels 动态拉取（缓存数组）；拉取失败用内置表校验（缓存 null）；
-    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则放行，交由 API 报错兜底
+    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则不指定模型，relay 供应商
+    // 会自行静默取上游首个可用模型，其余供应商走各自默认
     const cached = key ? modelOptionsCache.get(key.id) : undefined;
     const knownModels = Array.isArray(cached)
       ? cached.map((o) => o.id)
@@ -464,11 +475,21 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         projectRules = "";
       }
     }
+    // 思考档位按当前模型支持情况夹取（各家档位不同，见 /mz/ai/efforts.js）；
+    // 夹取结果为 null（模型思考不可调）时不注入思考参数；efforts 加载失败
+    // 按旧逻辑直接使用偏好档位，不阻断回合
+    let effort = state.reasoning;
+    try {
+      const { clampEffort } = await ensureEfforts();
+      effort = clampEffort(assistant.providerName, model || "", state.reasoning);
+    } catch {
+      /* efforts 不可用：不夹取 */
+    }
     agent = chainModules.createAgent({
       assistant,
       ...(model ? { model } : {}),
-      thinking: state.reasoning !== "off",
-      ...(state.reasoning !== "off" ? { reasoningEffort: state.reasoning } : {}),
+      thinking: !!effort && effort !== "off",
+      ...(effort && effort !== "off" ? { reasoningEffort: effort } : {}),
       tools: isFresh
         ? toolList.filter((t) => t.name !== "create_app")
         : toolList,
@@ -744,12 +765,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   /* ---------- 推理等级 ---------- */
 
-  // 切换推理等级（off / low / medium / high）并持久化偏好；Agent 随之重建
-  // （thinking = 等级非 off，reasoningEffort = 等级本身，创建时注入）
+  // 切换推理等级并持久化偏好；Agent 随之重建（注入前按当前模型夹取档位，
+  // 见 ensureAgent 的 clampEffort；偏好存用户视角档位，菜单项为当前模型可用档）
   async function setReasoning(level) {
-    if (!["off", "low", "medium", "high"].includes(level)) return;
+    if (!["off", "minimal", "low", "medium", "high", "max"].includes(level)) return;
     set("reasoning", level);
     invalidateAgent();
+    refreshEffortOptions();
     if (selfStore) {
       try {
         await selfStore.setItem("pref:reasoning", level);
@@ -1152,16 +1174,40 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       { value: "", label: "自动（供应商默认）" },
       ...list,
     ]);
+    refreshEffortOptions();
   };
 
-  // 拉取当前选中 key 的可用模型（getModels，relay 供应商即 /v1/models），
-  // 写入 state.modelOptions 供输入区气泡展示；自动 Key（activeKeyId 为 ""）
-  // 不拉取，模型 select 维持禁用（跟随供应商默认）
+  // 推理等级菜单可选项：跟随当前生效 key 的供应商 + 选中模型（未选模型取
+  // 清单首项，即供应商默认）动态生成（各家档位不同，见 /mz/ai/efforts.js），
+  // 同时把用户偏好夹取为生效档位 effectiveReasoning（"" = 模型思考不可调）
+  function refreshEffortOptions() {
+    if (!effortsModules) return; // efforts 尚未加载（init 会补一次）
+    const { effortLevelsFor, clampEffort, EFFORT_LABELS } = effortsModules;
+    const key = state.activeKeyId
+      ? state.apiKeys.find((k) => k.id === state.activeKeyId)
+      : pickAutoKey(state.apiKeys);
+    const provider = key?.provider || "";
+    const model = state.activeModelId || state.modelOptions[0]?.id || "";
+    const levels = effortLevelsFor(provider, model);
+    set(
+      "effortOptions",
+      levels.map((id) => ({ id, label: EFFORT_LABELS[id] || id })),
+    );
+    set("effectiveReasoning", clampEffort(provider, model, state.reasoning) || "");
+  }
+
+  // 拉取当前生效 key 的可用模型（getModels，relay 供应商即 /v1/models），
+  // 写入 state.modelOptions 供输入区气泡展示。静默自动拉取：进应用 / key 列表
+  // 变化（syncApiKeyList）/ 手动切换 key 时都会执行，「自动」模式下解析的是
+  // 自动选择将命中的 key（deepseek 优先，否则第一台），无需用户手动点开菜单
   async function refreshModelOptions() {
     const seq = ++modelOptionsSeq;
-    const key = state.apiKeys.find((k) => k.id === state.activeKeyId);
+    const key = state.activeKeyId
+      ? state.apiKeys.find((k) => k.id === state.activeKeyId)
+      : pickAutoKey(state.apiKeys);
     if (!key || !aiModules?.getAssistant) {
       set("modelOptions", []);
+      refreshEffortOptions();
       return;
     }
     const cached = modelOptionsCache.get(key.id);
@@ -1216,11 +1262,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     refreshModelOptions();
   }
 
-  // 切换对话模型（"" = 供应商默认）；切换即 invalidateAgent 下一回合生效
+  // 切换对话模型（"" = 供应商默认）；切换即 invalidateAgent 下一回合生效，
+  // 思考档位表跟随新模型重算
   async function selectModel(id) {
     if (state.activeModelId === id) return;
     set("activeModelId", id);
     invalidateAgent();
+    refreshEffortOptions();
     if (selfStore) {
       try {
         await selfStore.setItem("pref:active-model", id);
@@ -2911,11 +2959,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         });
       } catch (_) {}
     })();
-    // 恢复推理等级偏好（无记录时从旧版思考模式开关迁移：开=low，关=off）
+    // 恢复推理等级偏好（无记录时从旧版思考模式开关迁移：开=low，关=off；
+    // 校验放宽到 efforts 全档位集，minimal / max 为后来新增）
     if (selfStore) {
       try {
         let level = await selfStore.getItem("pref:reasoning");
-        if (!["off", "low", "medium", "high"].includes(level)) {
+        if (!["off", "minimal", "low", "medium", "high", "max"].includes(level)) {
           const legacy = await selfStore.getItem("pref:thinking");
           level = legacy === false ? "off" : "low";
         }
@@ -2941,6 +2990,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       m.onApiKeysChange(syncApiKeyList);
     } catch (err) {
       console.warn("API Key 列表加载失败：", err);
+    }
+    // 思考档位表加载 + 首算（此前 refreshEffortOptions 因模块未就绪被跳过）
+    try {
+      await ensureEfforts();
+      refreshEffortOptions();
+    } catch {
+      /* efforts 加载失败保持空表（菜单显示默认态，注入按通用表 clamp 兜底） */
     }
     await reloadApps();
 

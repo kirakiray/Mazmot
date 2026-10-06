@@ -21,13 +21,34 @@ export const LEGACY_NAMESPACE = "mazmot-apps";
 export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 
 // 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
-// 模型可选项依赖当前选中的 API Key 所属供应商
+// 模型可选项依赖当前选中的 API Key 所属供应商。
+// 国外供应商与 Qwen 动态拉取（getModels）为准，这里仅作拉取失败时的兜底校验表。
 export const MODEL_OPTIONS = {
   deepseek: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"],
   glm: ["glm-5.3-flash", "glm-5.3"],
   "glm-coding": ["glm-5.3-flash", "glm-5.3"],
   kimi: ["kimi-k3", "kimi-k2.7-code"],
+  qwen: ["qwen3-max", "qwen3-plus", "qwen3-flash"],
+  openai: ["gpt-5.6", "gpt-5.5", "gpt-5.1", "gpt-5"],
+  gemini: ["gemini-3-flash", "gemini-3-pro", "gemini-2.5-pro", "gemini-2.5-flash"],
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
 };
+
+/**
+ * 「自动」模式下的 key 选择：deepseek 优先；只有一台时直接锁定（模型清单
+ * 展示与实际请求保持一致），多台非 deepseek 时随机负载均衡。
+ * builder-store 的 pickAssistant（发请求）与 refreshModelOptions（拉模型清单）
+ * 共用此逻辑，保证「自动」下拉取到的清单就是即将使用的那把 key 的。
+ * @param {Array} keys 已过滤 disabled 的 key 列表
+ * @returns {object|null} 命中的 key；空列表返回 null
+ */
+export function pickAutoKey(keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return null;
+  const deepseekKey = keys.find((k) => k.provider === "deepseek");
+  if (deepseekKey) return deepseekKey;
+  if (keys.length === 1) return keys[0];
+  return keys[Math.floor(Math.random() * keys.length)];
+}
 
 /**
  * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留

@@ -39,6 +39,10 @@ export const fetchServerInfo = async (baseUrl) => {
   return resp.json(); // { name }
 };
 
+// 各邀请码的默认模型解析缓存（模块级：实例随 getAssistant 每次新建，不能挂实例上）。
+// 值为 Promise<modelId>；失败时移除条目，下次请求重新解析
+const defaultModelCaches = new Map();
+
 export class RelayAssistant extends Assistant {
   providerName = "relay";
   /** 邀请码解析结果（构造时填充） */
@@ -130,8 +134,34 @@ export class RelayAssistant extends Assistant {
     return { "X-Relay-Auth": btoa(JSON.stringify(signed)) };
   }
 
+  /**
+   * 未指定模型时的默认模型：取上游 /v1/models 首个可用项（服务器已按该用户
+   * 的模型白名单过滤）。不写死特定厂商模型名——上游没配该模型时请求必然 403。
+   */
+  async #defaultModel() {
+    const cacheKey = `${this.#invite.baseUrl}|${this.#invite.bearkey}`;
+    let cached = defaultModelCaches.get(cacheKey);
+    if (!cached) {
+      cached = (async () => {
+        const models = await this.getModels();
+        const ids = (Array.isArray(models) ? models : [])
+          .map((m) => (typeof m === "string" ? m : m?.id || m?.name))
+          .filter((id) => typeof id === "string" && id);
+        if (!ids.length) {
+          throw new Error("relay 上游没有可用模型");
+        }
+        return ids[0];
+      })();
+      defaultModelCaches.set(cacheKey, cached);
+      cached.catch(() => defaultModelCaches.delete(cacheKey));
+    }
+    return cached;
+  }
+
   async chat({
-    model = "deepseek-chat",
+    model,
+    thinking = false,
+    reasoningEffort = "low",
     stream = false,
     messages,
     onStream = null,
@@ -139,7 +169,26 @@ export class RelayAssistant extends Assistant {
     tools = null,
     toolChoice = null,
   }) {
+    // 调用方未指定模型：静默解析上游首个可用模型；清单拉取失败时以
+    // DeepSeek 当前标准模型名兜底发起请求，让真实错误自然透出
+    if (!model) {
+      try {
+        model = await this.#defaultModel();
+      } catch {
+        model = "deepseek-flash";
+      }
+    }
     const requestBody = { model, stream, messages };
+    if (thinking) {
+      // 思考参数按模型前缀适配：Qwen 系开关是 enable_thinking 布尔，
+      // 其余上游（deepseek/glm/gpt 系）认 reasoning_effort 字符串，
+      // 服务端原样转发 body，不认的字段由上游自行忽略
+      if (model.startsWith("qwen")) {
+        requestBody.enable_thinking = true;
+      } else {
+        requestBody.reasoning_effort = reasoningEffort;
+      }
+    }
     if (tools?.length) {
       requestBody.tools = tools;
       requestBody.tool_choice = toolChoice ?? "auto";

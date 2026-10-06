@@ -32,7 +32,7 @@ server/ai-relay/
 
 - `users`：`UserRec { id, name, note, quota_tokens(可空=无限), used_tokens(累计，不自动重置), total_requests(累计对话轮数), bearkey("ar-"+32位随机), disabled, created_at, api_key_ids[], allowed_models[](模型白名单，空=不限；支持 `glm-5*` 前缀通配，见 `model_allowed`), bind_mode("open"默认|"bound"), web_fetch_enabled(serde 默认 true——能力先于开关上线，老记录升级后行为不变；false 时 /v1/web/fetch 返回 403), bound_user_id, bound_pubkey(SPKI DER base64), bound_at }`
   - `bind_mode=bound` 时一人一码：首次 `POST /v1/activate` 激活绑定（ECDSA P-256 签名，与 noneos-core 证书同体系，见 identity 模块），之后 `/v1/*` 请求必须带 `X-Relay-Auth` 签名头（覆盖 userId/ts/method/path/bodyHash，±10 分钟时间窗）；admin 可解绑重新开放激活
-- `apikeys`：`ApiKeyRec { id, provider("deepseek"|"glm"|"glm-coding"), label, api_key(明文仅本地), masked_key, disabled, created_at }`；创建前经 `proxy::probe_key` 真实上游探测（GET /models，404/405 降级 1 token 对话探测），失败 422 不落库
+- `apikeys`：`ApiKeyRec { id, provider("deepseek"|"glm"|"glm-coding"|"openai"|"gemini"|"anthropic"|"qwen"), label, api_key(明文仅本地), masked_key, disabled, created_at }`；创建前经 `proxy::probe_key` 真实上游探测（GET /models，404/405 降级 1 token 对话探测，降级对话按各家挑稳定便宜款：deepseek-flash / gpt-5.1 / gemini-2.5-flash / claude-haiku-4-5 / qwen3-flash / glm-4.7），失败 422 不落库
 - `usage`：流水 `UsageRec { user_id, ts, model, prompt_tokens, completion_tokens, cache_hit_tokens, cache_miss_tokens(兼容 DeepSeek 扁平字段与 GLM prompt_tokens_details.cached_tokens，仅命中时 miss=输入-命中，全无则 0), key_id }`，行 key = `{user_id}\0{ts}\0{nonce}`
 
 ## 接口约定
@@ -47,7 +47,7 @@ server/ai-relay/
   - 创建后 apikey 明文不再可读，只回 `maskedKey`
 - 用户 `/v1/*`（OpenAI 兼容，Bearer = 用户 bearkey）：
   - `POST /v1/activate`：NoneOS 用户激活绑定（请求体即签名对象；`bind_mode=bound` 时首次激活落 `bound_user_id`/`bound_pubkey`，已被他人绑定时 409；open 模式空操作）；客户端由 `mz/ai/supplier/relay.js` 在首次使用时自动调用
-  - `POST /v1/chat/completions`：按模型名前缀从 key 池内选可用上游（`deepseek-*` → api.deepseek.com，`glm-*` → glm 按量 key 或 glm-coding 订阅 key（open.bigmodel.cn/api/[coding/]paas/v4，见 `Provider::serves_model` / `upstream_base`））随机选取；流式请求注入 `stream_options.include_usage` 并边透传边扫末 chunk usage 落账（含 prompt/completion/cache_hit/cache_miss 明细），每条流水同时给用户累计 used_tokens 与 total_requests；非流式直接读 usage。超额 402，禁用 403，无匹配 key 400，上游错误原样透传状态码与响应体。
+  - `POST /v1/chat/completions`：按模型名前缀从 key 池内选可用上游（`deepseek-*` → api.deepseek.com，`glm-*` → glm 按量 key 或 glm-coding 订阅 key（open.bigmodel.cn/api/[coding/]paas/v4），`gpt-*`/`chatgpt-*`/`o1·o3·o4-*` → api.openai.com/v1，`gemini-*` → 官方 OpenAI 兼容端点 generativelanguage.googleapis.com/v1beta/openai，`claude-*` → 官方 OpenAI 兼容层 api.anthropic.com/v1（同带 `x-api-key` + `anthropic-version` 头），`qwen-*` → DashScope 兼容模式 dashscope.aliyuncs.com/compatible-mode/v1（见 `Provider::serves_model` / `upstream_base` / `extra_upstream_headers`））随机选取；流式请求注入 `stream_options.include_usage` 并边透传边扫末 chunk usage 落账（含 prompt/completion/cache_hit/cache_miss 明细；Gemini / Anthropic 兼容层不认识 stream_options，跳过注入，用量退化为扫上游自然返回的 usage，无则记 0，见 `Provider::supports_stream_options`），每条流水同时给用户累计 used_tokens 与 total_requests；非流式直接读 usage。超额 402，禁用 403，无匹配 key 400，上游错误原样透传状态码与响应体。
   - `GET /v1/models`：合并 key 池各上游模型（去重 + 按白名单过滤）；chat 对白名单外模型返回 403
   - `GET /v1/usage`：`{ serverName, quotaTokens, usedTokens, totalRequests, remainingTokens }`
   - `GET /v1/server`：`{ name, version }` 服务器命名与版本（公开、无需鉴权，客户端展示用；管理台与 mz/ai 的 fetchServerInfo 均消费）

@@ -157,15 +157,21 @@ pub(crate) async fn probe_key(
     key: &crate::store::ApiKeyRec,
 ) -> Result<(), String> {
     let base = key.provider.upstream_base();
-    let fallback_model = if key.provider == Provider::Deepseek {
-        "deepseek-chat"
-    } else {
-        "glm-4.7"
+    // 降级对话探测用的模型：各家挑稳定存在的便宜款
+    let fallback_model = match key.provider {
+        Provider::Deepseek => "deepseek-flash",
+        Provider::Openai => "gpt-5.1",
+        Provider::Gemini => "gemini-2.5-flash",
+        Provider::Anthropic => "claude-haiku-4-5",
+        Provider::Qwen => "qwen3-flash",
+        Provider::Glm | Provider::GlmCoding => "glm-4.7",
     };
 
-    let resp = http
-        .get(format!("{base}/models"))
-        .bearer_auth(&key.api_key)
+    let mut probe_req = http.get(format!("{base}/models")).bearer_auth(&key.api_key);
+    for (name, value) in key.provider.extra_upstream_headers(&key.api_key) {
+        probe_req = probe_req.header(name, value);
+    }
+    let resp = probe_req
         .send()
         .await
         .map_err(|e| format!("无法连接上游: {e}"))?;
@@ -180,9 +186,13 @@ pub(crate) async fn probe_key(
             body.chars().take(200).collect::<String>()
         ));
     }
-    let resp = http
+    let mut chat_probe = http
         .post(format!("{base}/chat/completions"))
-        .bearer_auth(&key.api_key)
+        .bearer_auth(&key.api_key);
+    for (name, value) in key.provider.extra_upstream_headers(&key.api_key) {
+        chat_probe = chat_probe.header(name, value);
+    }
+    let resp = chat_probe
         .json(&serde_json::json!({
             "model": fallback_model,
             "messages": [{ "role": "user", "content": "hi" }],
@@ -273,12 +283,12 @@ pub(crate) async fn chat_completions(
         return Err(api_error(StatusCode::BAD_REQUEST, "缺少 model 字段"));
     }
     let is_stream = payload.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
-    if Provider::Deepseek.serves_model(&model) || Provider::Glm.serves_model(&model) {
-        // 支持的前缀，继续挑 key
-    } else {
+    if !Provider::any_serves(&model) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
-            format!("无法从模型名 {model} 识别上游（支持 glm-* / deepseek-*）"),
+            format!(
+                "无法从模型名 {model} 识别上游（支持 deepseek-* / glm-* / gemini-* / claude-* / gpt-* 等）"
+            ),
         ));
     }
     // 用户级模型白名单（空 = 不限制）
@@ -290,19 +300,21 @@ pub(crate) async fn chat_completions(
     }
     let upstream_key = pick_upstream_key(&state, &user, &model).await?;
 
-    // 流式请求注入 include_usage，上游末 chunk 才会带 usage 供统计
+    // 流式请求注入 include_usage，上游末 chunk 才会带 usage 供统计；
+    // Gemini / Anthropic 兼容层不认识 stream_options，跳过注入（用量退化为自然返回）
     let mut upstream_body = payload.clone();
-    if is_stream {
+    if is_stream && upstream_key.provider.supports_stream_options() {
         let obj = upstream_body.as_object_mut().unwrap();
         obj.entry("stream_options")
             .or_insert_with(|| serde_json::json!({ "include_usage": true }));
     }
 
     let url = format!("{}/chat/completions", upstream_key.provider.upstream_base());
-    let response = state
-        .http
-        .post(&url)
-        .bearer_auth(&upstream_key.api_key)
+    let mut upstream_req = state.http.post(&url).bearer_auth(&upstream_key.api_key);
+    for (name, value) in upstream_key.provider.extra_upstream_headers(&upstream_key.api_key) {
+        upstream_req = upstream_req.header(name, value);
+    }
+    let response = upstream_req
         .json(&upstream_body)
         .send()
         .await
@@ -399,7 +411,11 @@ pub(crate) async fn pool_models(
     let mut any_ok = false;
     for key in pool {
         let url = format!("{}/models", key.provider.upstream_base());
-        let Ok(resp) = http.get(&url).bearer_auth(&key.api_key).send().await else {
+        let mut req = http.get(&url).bearer_auth(&key.api_key);
+        for (name, value) in key.provider.extra_upstream_headers(&key.api_key) {
+            req = req.header(name, value);
+        }
+        let Ok(resp) = req.send().await else {
             continue;
         };
         if let Ok(data) = resp.json::<Value>().await {

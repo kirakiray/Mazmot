@@ -839,6 +839,9 @@
                     {{$data.label}}
                   </st-menu-item>
                 </o-fill>
+                <o-if :value="effortOptions.length === 0">
+                  <span class="menu-empty">当前模型思考不可调（模型内置）</span>
+                </o-if>
               </st-menu>
             </st-menu-item>
             <st-menu-item>
@@ -1851,15 +1854,13 @@
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
           modelValueText: "自动（供应商默认）",
-          effortOptions: [
-            { id: "off", label: "无" },
-            { id: "low", label: "低" },
-            { id: "medium", label: "中" },
-            { id: "high", label: "高" },
-          ],
-          // 会话最大上下文窗口（token 数，select 切换，偏好持久化）
-          ctxWindow: "131072",
-          ctxWindowText: "128k",
+          // 推理等级可选项（仓库按当前生效 key 供应商 + 选中模型动态生成——
+          // 各家档位不同；空 = 模型思考不可调）与生效档位（夹取后；"" = 不可调）
+          effectiveReasoning: "",
+          effortOptions: [],
+          // 会话最大上下文窗口（token 数，select 切换，偏好持久化；默认 768k）
+          ctxWindow: "786432",
+          ctxWindowText: "768k",
           // 上下文压缩进行中（压缩按钮转圈提示）
           compacting: false,
           // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
@@ -1941,7 +1942,7 @@
                   "524288": "512k",
                   "786432": "768k",
                   "1048576": "1mb",
-                }[this.ctxWindow] || "128k";
+                }[this.ctxWindow] || "768k";
             }
           } catch {
             /* 忽略 */
@@ -2134,7 +2135,7 @@
               return;
             }
             this.ctxUnknown = false;
-            const total = Number(this.ctxWindow) || 131072;
+            const total = Number(this.ctxWindow) || 786432;
             this.ctxPct = Math.round(Math.min(100, (this.ctxUsed / total) * 100) * 10) / 10;
             const k = (v) => {
               if (v >= 1024) return (v / 1024).toFixed(1).replace(/\.0$/, "") + "k";
@@ -2309,8 +2310,12 @@
           },
 
           reasoningLabel() {
-            const hit = this.effortOptions.find((o) => o.id === this.reasoning);
-            return hit ? hit.label : "低";
+            // 生效档位（按当前模型夹取后）；不可调的模型显示「默认」
+            if (!this.effectiveReasoning) return "默认";
+            const hit = this.effortOptions.find(
+              (o) => o.id === this.effectiveReasoning,
+            );
+            return hit ? hit.label : this.effectiveReasoning;
           },
 
           // 菜单项勾选标记（选中项 prefix 显示 ✓；抽方法避免模板插值带比较符）
@@ -2319,7 +2324,7 @@
           },
 
           reasoningCheck(id) {
-            return this.reasoning === id ? "✓" : "";
+            return this.effectiveReasoning === id ? "✓" : "";
           },
 
           keyCheck(id) {
@@ -2471,7 +2476,7 @@
           applyCtxWindow(value) {
             this.ctxWindow = value;
             const opt = this.ctxOptions.find((o) => o.value === value);
-            this.ctxWindowText = opt ? opt.label : "128k";
+            this.ctxWindowText = opt ? opt.label : "768k";
             this.syncCtx();
             store.setContextWindow(Number(value));
             this.syncActiveKeyText();

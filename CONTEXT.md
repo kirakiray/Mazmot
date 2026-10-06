@@ -80,9 +80,10 @@ Mazmot/
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
 │   ├── share-mgr.js          # 分享工具：DataPublisher 单例 / 签名 payload / Base64URL / verifyData
 │   ├── test/                 # sibyl-test 单元测试（app-runner.sb.html / share-mgr.sb.html）
-│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
+│   ├── ai/                   # AI Provider 抽象层（DeepSeek/Kimi/GLM（含 Coding Plan Key）/OpenAI/Gemini/Anthropic/Qwen（后四家共用 openai-compat 基类，走各家官方 OpenAI 兼容端点 / DashScope 兼容模式）/Relay 转发服务器（邀请码），被官方应用当宿主 API 引用，URL = /mz/ai/*）
 │   │   ├── main.js           # 入口：saveKey / getAssistant / apiKeys（基于 /nos/storage）
-│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js / relay.js——apiKey 字段存 ai-relay 签发的邀请码，decodeInvite 解出服务器地址 + bearkey；自动激活 NoneOS 用户绑定并给 /v1/* 请求加 X-Relay-Auth 签名头）
+│   │   ├── efforts.js         # 思考档位表：effortLevelsFor / clampEffort / EFFORT_LABELS（按供应商+模型给可用推理档位，宿主菜单动态生成用）
+│   │   ├── supplier/         # provider 实现（assistant.js 基类 / deepseek.js / kimi.js / glm.js / openai-compat.js（OpenAI wire 公共基类，openai.js / gemini.js / anthropic.js 继承）/ relay.js——apiKey 字段存 ai-relay 签发的邀请码，decodeInvite 解出服务器地址 + bearkey；自动激活 NoneOS 用户绑定并给 /v1/* 请求加 X-Relay-Auth 签名头）
 │   │   ├── chain/            # Agent 循环层（模型 ↔ 工具自动循环，纯函数库；isToolLoop 真循环检测——
 │   │   │                    #   连续 4 次相同调用 / 最近 8 次 ≤2 种签名的窄循环 → 注入提醒并收起工具优雅收束，
 │   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）

@@ -54,15 +54,36 @@ pub(crate) enum Provider {
     Glm,
     #[serde(rename = "glm-coding")]
     GlmCoding,
+    Openai,
+    Gemini,
+    Anthropic,
+    Qwen,
 }
 
 impl Provider {
-    /// OpenAI 兼容上游基址（与 mz/ai/supplier 保持一致；Coding Plan 走订阅端点）
+    /// 全部上游类型（chat 入口的模型名 → 上游识别用）
+    pub(crate) const ALL: [Provider; 7] = [
+        Provider::Deepseek,
+        Provider::Glm,
+        Provider::GlmCoding,
+        Provider::Openai,
+        Provider::Gemini,
+        Provider::Anthropic,
+        Provider::Qwen,
+    ];
+
+    /// OpenAI 兼容上游基址（与 mz/ai/supplier 保持一致；Coding Plan 走订阅端点；
+    /// Gemini / Anthropic 走各自的官方 OpenAI 兼容端点 / 兼容层；
+    /// Qwen 走 DashScope 兼容模式）
     pub(crate) fn upstream_base(&self) -> &'static str {
         match self {
             Provider::Deepseek => "https://api.deepseek.com",
             Provider::Glm => "https://open.bigmodel.cn/api/paas/v4",
             Provider::GlmCoding => "https://open.bigmodel.cn/api/coding/paas/v4",
+            Provider::Openai => "https://api.openai.com/v1",
+            Provider::Gemini => "https://generativelanguage.googleapis.com/v1beta/openai",
+            Provider::Anthropic => "https://api.anthropic.com/v1",
+            Provider::Qwen => "https://dashscope.aliyuncs.com/compatible-mode/v1",
         }
     }
 
@@ -71,19 +92,63 @@ impl Provider {
             "deepseek" => Some(Provider::Deepseek),
             "glm" => Some(Provider::Glm),
             "glm-coding" => Some(Provider::GlmCoding),
+            "openai" => Some(Provider::Openai),
+            "gemini" => Some(Provider::Gemini),
+            "anthropic" => Some(Provider::Anthropic),
+            "qwen" => Some(Provider::Qwen),
             _ => None,
         }
     }
 
     /// 按模型名前缀判定某个 provider 能否服务该模型：
-    /// deepseek-* → Deepseek；glm-* → Glm / GlmCoding 都可（Coding Plan 同为 glm 系）
+    /// deepseek-* → Deepseek；glm-* → Glm / GlmCoding 都可（Coding Plan 同为 glm 系）；
+    /// gemini-* → Gemini；claude-* → Anthropic；qwen-* → Qwen；
+    /// gpt-* / chatgpt-* / o1·o3·o4-* → OpenAI
     pub(crate) fn serves_model(&self, model: &str) -> bool {
         if model.starts_with("deepseek") {
             *self == Provider::Deepseek
         } else if model.starts_with("glm") {
             matches!(*self, Provider::Glm | Provider::GlmCoding)
+        } else if model.starts_with("gemini") {
+            *self == Provider::Gemini
+        } else if model.starts_with("claude") {
+            *self == Provider::Anthropic
+        } else if model.starts_with("qwen") {
+            *self == Provider::Qwen
+        } else if model.starts_with("gpt")
+            || model.starts_with("chatgpt")
+            || model.starts_with("o1")
+            || model.starts_with("o3")
+            || model.starts_with("o4")
+        {
+            *self == Provider::Openai
         } else {
             false
+        }
+    }
+
+    /// 任一上游能服务该模型（chat 入口的前缀合法性检查）
+    pub(crate) fn any_serves(model: &str) -> bool {
+        Provider::ALL.iter().any(|p| p.serves_model(model))
+    }
+
+    /// 流式请求注入 stream_options.include_usage 是否安全：
+    /// Gemini / Anthropic 的兼容层不认识该字段（可能 400），不注入，
+    /// 用量统计退化为扫上游自然返回的 usage（无则记 0）
+    pub(crate) fn supports_stream_options(&self) -> bool {
+        !matches!(*self, Provider::Gemini | Provider::Anthropic)
+    }
+
+    /// 该上游是否需要附加 Anthropic 风格鉴权 / 版本头（兼容层 Bearer 可用，
+    /// 同时带 x-api-key + anthropic-version 覆盖两种鉴权理解）
+    pub(crate) fn extra_upstream_headers(&self, api_key: &str) -> Vec<(&'static str, String)> {
+        if *self == Provider::Anthropic {
+            vec![
+                ("x-api-key", api_key.to_string()),
+                ("anthropic-version", "2023-06-01".to_string()),
+            ]
+        } else {
+            Vec::new()
         }
     }
 }
@@ -313,8 +378,33 @@ mod tests {
         assert!(Provider::GlmCoding.serves_model("glm-5.3"));
         assert!(Provider::GlmCoding.serves_model("glm-x"));
         assert!(Provider::Deepseek.serves_model("deepseek-v4-flash"));
-        assert!(!Provider::Glm.serves_model("deepseek-chat"));
+        assert!(!Provider::Glm.serves_model("deepseek-flash"));
         assert!(!Provider::Deepseek.serves_model("gpt-4o"));
+        // 国外三家：gpt/chatgpt/o 系 → OpenAI，gemini-* → Gemini，claude-* → Anthropic；
+        // Qwen：qwen-* → DashScope
+        assert!(Provider::Openai.serves_model("gpt-5.6"));
+        assert!(Provider::Openai.serves_model("chatgpt-4o-latest"));
+        assert!(Provider::Openai.serves_model("o4-mini"));
+        assert!(Provider::Gemini.serves_model("gemini-3-flash"));
+        assert!(Provider::Anthropic.serves_model("claude-sonnet-5-5"));
+        assert!(Provider::Qwen.serves_model("qwen3-max"));
+        assert!(!Provider::Gemini.serves_model("gpt-5.6"));
+        assert!(!Provider::Openai.serves_model("gemini-3-flash"));
+        assert!(!Provider::Anthropic.serves_model("glm-5.3"));
+        assert!(!Provider::Qwen.serves_model("gpt-5.6"));
+        // chat 入口的任意上游识别
+        assert!(Provider::any_serves("gpt-5.6"));
+        assert!(Provider::any_serves("claude-haiku-4-5"));
+        assert!(Provider::any_serves("qwen3-max"));
+        assert!(!Provider::any_serves("llama-3"));
+        // provider 字符串解析 / stream_options 兼容标记
+        assert_eq!(Provider::parse("openai"), Some(Provider::Openai));
+        assert_eq!(Provider::parse("gemini"), Some(Provider::Gemini));
+        assert_eq!(Provider::parse("anthropic"), Some(Provider::Anthropic));
+        assert_eq!(Provider::parse("qwen"), Some(Provider::Qwen));
+        assert!(Provider::Openai.supports_stream_options());
+        assert!(!Provider::Gemini.supports_stream_options());
+        assert!(!Provider::Anthropic.supports_stream_options());
     }
 
     #[test]
@@ -346,7 +436,7 @@ mod tests {
             web_fetch_enabled: true,
         };
         assert!(model_allowed(&user.allowed_models, "glm-5.3"));
-        assert!(!model_allowed(&user.allowed_models, "deepseek-chat"));
+        assert!(!model_allowed(&user.allowed_models, "deepseek-flash"));
         assert!(model_allowed(&[], "anything"));
         put_row(&db, USERS_TABLE, "u1", serde_json::to_vec(&user).unwrap().as_slice()).unwrap();
         let usage = UsageRec {
