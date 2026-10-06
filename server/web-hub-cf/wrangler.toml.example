@@ -1,0 +1,22 @@
+name = "web-hub-cf"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+# 无需任何 bindings（不用 D1 / KV），wrangler deploy 即可上线
+
+[vars]
+# 跨域放行（WEB_HUB_CORS）三种取值，与 cred-hub-cf 的 CRED_HUB_CORS 同规则：
+#   "1"                          = 放行任意 Origin（access-control-allow-origin: *）
+#   逗号分隔 Origin 白名单        = 只允许列出的域名跨域，命中才回显该 Origin（支持 https://*.example.com 子域通配）
+#   留空/删除                    = 不处理 CORS（反代部署时交给网关统一配置）
+# WEB_HUB_CORS = "https://mazmot.noneos.com"
+
+# 共享令牌（可选，私有模式）：配置后 /fetch 只认 X-Web-Fetch-Token 头，
+# 关闭 NoneOS 签名鉴权——自部署推荐。线上用 `wrangler secret put WEB_HUB_TOKEN`，
+# 不配置 = 公开签名鉴权模式（任何 NoneOS 用户可签名调用）。
+# 本地测试取消注释填写：
+# WEB_HUB_TOKEN = "local-test-token"
+
+# 可选调参（默认 2MB / 15s）：
+# WEB_HUB_MAX_BYTES = "2097152"
+# WEB_HUB_TIMEOUT_MS = "15000"

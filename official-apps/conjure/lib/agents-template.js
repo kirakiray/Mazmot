@@ -74,7 +74,7 @@ CONTEXT.md 是项目知识的**活文档（living document）**，必须与代�
 
 ## 完成标准（必须实测，不能只看代码）
 
-**实测手段**：本项目运行在 Mazmot 妙造（conjure）的隔离预览窗口中，用 **preview 工具**做实测——它是推送运行 + 读控制台 + 查 DOM + 模拟交互的调试通道，下面的判据都通过它执行。
+**实测手段**：本项目运行在 Mazmot 妙造（conjure）的隔离预览窗口中，用 **preview 工具**做实测——它是推送运行 + 读控制台 + 查 DOM + 模拟交互的调试通道，下面的判据都通过它执行。支持多个预览窗口（本机窗口 + 用户手机扫码设备，上限 10 个）：多窗口排查先用 \`action=windows\` 列窗口，再用顶层 \`winId\` 定向到某个窗口；省略 \`winId\` 的指令投递给最近活跃的在线窗口。用户报告「手机上不对」时，先 \`windows\` 找到移动设备窗口再定向取证。
 
 1. \`preview action=app\` 后应用能打开；
 2. \`preview action=console\` 无应用报错（控制台会被 \`[bridge-link]\` debug 噪声刷屏，判断应用错误请装 \`window.addEventListener('error')\` 记录器再看，或读增量日志）；

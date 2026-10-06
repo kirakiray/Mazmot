@@ -176,6 +176,31 @@ export class RelayAssistant extends Assistant {
     };
   }
 
+  /**
+   * 抓取网页文本（POST /v1/web/fetch，鉴权与 chat 相同）。
+   * 返回 { url, status, contentType, text, truncated }；
+   * status 为上游 HTTP 状态码（404 等不算网关错误，文本照常返回）。
+   * 协议契约见 mz/net/README.md。
+   */
+  async webFetch(url, { signal } = {}) {
+    const bodyText = JSON.stringify({ url });
+    const response = await fetch(`${this.baseUrl}/v1/web/fetch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.#invite.bearkey}`,
+        ...(await this.#authHeaders("POST", "/v1/web/fetch", bodyText)),
+      },
+      body: bodyText,
+      signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `web fetch 失败: ${response.status}`);
+    }
+    return data;
+  }
+
   async getModels() {
     const response = await fetch(`${this.baseUrl}/v1/models`, {
       method: "GET",

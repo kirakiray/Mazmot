@@ -206,6 +206,79 @@
       </template>
     </sb-test>
 
+    <sb-test name="wireSnapshot - 线框数据（穿 shadow DOM / 剔胶囊 / 跳过隐藏 / 文档坐标）">
+      <template>
+        <script type="module">
+          import { wireSnapshot, runDebugCommand } from "../debug-runtime.js";
+          const wrap = document.createElement("div");
+          wrap.innerHTML = `
+            <div style="position:relative;width:400px;height:300px;background:rgb(17, 34, 51)">
+              <button style="position:absolute;left:10px;top:10px;width:120px;height:40px;background:rgb(59, 130, 246);color:rgb(255, 255, 255);border:2px solid rgb(0, 0, 0);border-radius:8px">Wire Button</button>
+              <div style="display:none"><span>wire-invisible</span></div>
+              <div id="conjure-preview-bubble" style="position:absolute;width:50px;height:20px;background:rgb(171, 205, 239)"></div>
+            </div>
+          `;
+          const inner = wrap.firstElementChild;
+          document.body.appendChild(wrap);
+          // shadow DOM 子节点与 light 子节点（slot 插槽内容）都应被收集——
+          // 真实 ofa 应用的内容在组件 light DOM 里经 <slot> 插进影子，
+          // 只走任一边都会断链（实测 hello-wrold 因此只剩空壳画成白图）
+          const host = document.createElement("div");
+          host.style.cssText = "width:60px;height:30px";
+          const sr = host.attachShadow({ mode: "open" });
+          sr.innerHTML = `<div style="width:60px;height:30px;background:rgb(34, 197, 94)">shadow</div><slot></slot>`;
+          const slotted = document.createElement("div");
+          slotted.style.cssText = "background:rgb(249, 115, 22)";
+          slotted.textContent = "slotted";
+          host.appendChild(slotted);
+          inner.appendChild(host);
+          try {
+            // root 指向夹具：只收集局部，与页面其余内容/尺寸无关（可确定性断言）
+            const payload = wireSnapshot({ root: inner });
+            const texts = payload.nodes.map((n) => n.t || "").join("|");
+            const bgs = payload.nodes.map((n) => n.bg || "").join("|");
+            const btn = payload.nodes.find((n) => n.t === "Wire Button");
+            const checks = {
+              count: payload.nodes.length >= 4,
+              size: payload.w >= 400 && payload.h >= 300,
+              btnFound: !!btn,
+              btnBg: btn?.bg === "rgb(59, 130, 246)",
+              btnRadius: btn?.r === 8,
+              btnBorder: btn?.bw === 2 && btn?.bc === "rgb(0, 0, 0)",
+              btnText: btn?.tc === "rgb(255, 255, 255)" && btn?.fs > 0,
+              btnDocCoords: btn && btn.x >= 10 && btn.y >= 10, // 文档坐标（含滚动偏移）
+              rootBg: bgs.includes("rgb(17, 34, 51)"),
+              shadowPierced: texts.includes("shadow") || bgs.includes("rgb(34, 197, 94)"),
+              slottedCollected: texts.includes("slotted") || bgs.includes("rgb(249, 115, 22)"),
+              hiddenSkipped: !texts.includes("wire-invisible"),
+              capsuleExcluded: !bgs.includes("rgb(171, 205, 239)"),
+            };
+            // runDebugCommand 走全文档：首选 snapdom 真实截图（jpeg dataURL），
+            // 失败回退线框清单 JSON——两种形态都算通过（走哪条取决于页面环境）
+            const wire = await runDebugCommand({ cmd: "wire", args: {}, capture: { entries: [] } });
+            const raw = wire.ok ? wire.result : "";
+            let parsed = null;
+            let parsedOk = false;
+            try {
+              parsed = JSON.parse(raw);
+              parsedOk = Array.isArray(parsed.nodes);
+            } catch (_) {}
+            checks.dispatchOk =
+              wire.ok &&
+              (raw.startsWith("data:image") ||
+                (parsedOk && parsed.w > 0 && parsed.h > 0));
+            checks.source = wire.meta?.source;
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, count: payload.nodes.length, btn },
+            };
+          } finally {
+            wrap.remove();
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="runDebugCommand - eval 预置 $ 助手与未知指令报错">
       <template>
         <script type="module">

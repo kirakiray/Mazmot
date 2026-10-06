@@ -70,7 +70,7 @@ Apps run directly on the main domain through the Service Worker's virtual URL pr
 
 ## Features
 
-### App Management (`apps/main/`)
+### App Management (`main/`)
 - **Three app sources**: local directory (Chrome File System Access mount), virtual directory (OPFS-persisted), and official app market
 - **App templates**: built-in templates (base / share-link / ping-pong / tic-tac-toe) so new apps work out of the box
 - **App market**: browse and install official apps, with version detection and one-click updates
@@ -133,7 +133,7 @@ Mazmot/
 
 ### 1. Online access (fastest)
 
-Visit **[mazmot.noneos.com](https://mazmot.noneos.com)** directly — no installation or setup required. The first visit auto-installs NoneOS Core, then enters the main app at `/apps/main/`.
+Visit **[mazmot.noneos.com](https://mazmot.noneos.com)** directly — no installation or setup required. The first visit auto-installs NoneOS Core, then enters the main app at `/`.
 
 ### 2. Local development
 

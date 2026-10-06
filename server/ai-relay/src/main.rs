@@ -7,13 +7,15 @@
 //! - 用户 API `/v1/*`（OpenAI 兼容，Bearer = 用户 bearkey）：
 //!   `POST /v1/chat/completions` 转发上游（按模型名前缀从用户 key 池选 key），
 //!   流式 SSE 透传并从末 chunk 统计 usage；`GET /v1/models` 合并 key 池上游模型；
-//!   `GET /v1/usage` 返回该用户配额 / 已用。
+//!   `GET /v1/usage` 返回该用户配额 / 已用；`POST /v1/web/fetch` 服务端代理抓取
+//!   网页文本（SSRF 防护，见 web 模块）。
 //! - 配额为累计总额（不自动重置），超额返回 402。
 
 mod admin;
 mod identity;
 mod proxy;
 mod store;
+mod web;
 
 use axum::{
     http::{HeaderMap, StatusCode},
@@ -239,6 +241,7 @@ async fn main() {
         // 用户 API（OpenAI 兼容）
         .route("/v1/activate", post(proxy::activate))
         .route("/v1/chat/completions", post(proxy::chat_completions))
+        .route("/v1/web/fetch", post(web::web_fetch))
         .route("/v1/models", get(proxy::models))
         .route("/v1/usage", get(proxy::usage))
         .route("/v1/server", get(proxy::server_info))

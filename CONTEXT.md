@@ -12,10 +12,10 @@
 | ---- | ---- | ---- |
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
 | 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
-| UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量（`apps/main` 已从 Punch-UI 迁移） |
+| UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量 |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
-| 多语言 | `locale-text` (`/nos/locale-text/`) | `apps/main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager`、`main` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`apps/main/home.html` 头部齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [apps/main/home/settings-general.html](apps/main/home/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
+| 多语言 | `locale-text` (`/nos/locale-text/`) | `main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager`、`official-apps/cred-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`main/pages/apps.html` 头部齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [main/pages/settings-general.html](main/pages/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。官方应用的市场名称/描述（`__app.json` 与 `app.json`）一律基准英文 + `i18n.cn` 覆盖，全部官方应用已适配。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
@@ -23,7 +23,7 @@
 
 ```
 Mazmot/
-├── index.html                # 根入口兼主应用宿主，引导分叉两路径：① 快速通道——head 内联脚本同步判定 Core SW 已接管本页（controller 存在）即加 html.boot-fast 类，引导层首帧就不渲染（只留 surface 色底，不闪安装界面），fetch("/__config") 本地探测 version 完整（SW 本地响应不走网络）→ enterFast 立即原地挂载 /main 主应用；body 尾部兜底定时器（1.2s 未进应用则恢复引导层，防模块加载卡死成裸底）；在线升级检查延后 3s 由隐藏 <nos-version auto-install> 后台静默完成（进度/错误事件经 maskEl.isConnected 守卫不再驱动已卸载引导层；Core SW skipWaiting+claim，已加载模块不受影响，整体切换下次启动生效）。② 完整引导——无 controller（首访）或探测失败（装到一半/SW 异常，移除 boot-fast 恢复显示引导层）走原流程：<nos-version auto-install> 驱动（组件源跟随 sw/sw-config.js 开关），<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒后原地挂载；两种路径带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
+├── index.html                # 根入口兼主应用宿主，引导分叉两路径：① 快速通道——head 内联脚本同步判定 Core SW 已接管本页（controller 存在）即加 html.boot-fast 类，引导层首帧就不渲染（只留 #app-loading 首屏 loading 层：吉祥物 + 品牌字 + spinner + 状态文案），fetch("/__config") 本地探测 version 完整（SW 本地响应不走网络）→ enterFast 立即原地挂载 /main 主应用；body 尾部兜底定时器（1.2s 未进应用则恢复引导层，防模块加载卡死成裸底）；在线升级检查延后 3s 由隐藏 <nos-version auto-install> 后台静默完成（进度/错误事件经 maskEl.isConnected 守卫不再驱动已卸载引导层；Core SW skipWaiting+claim，已加载模块不受影响，整体切换下次启动生效）。② 完整引导——无 controller（首访）或探测失败（装到一半/SW 异常，移除 boot-fast 恢复显示引导层）走原流程：<nos-version auto-install> 驱动（组件源跟随 sw/sw-config.js 开关），<m-mascot> 吉祥物作安装进度主视觉，soulless → 就绪苏醒后原地挂载。**两路径统一首屏收口**：mountApp 后引导层/loading 层都不立即撤下，等主应用首页（welcome / apps）经页面工厂 load 加载齐全部依赖并渲染出首屏后派发 window 事件 mazmot:app-ready，finishEnter 才把引导层与 loading 层一起淡出（mountApp 内 15s 兜底定时器防首页加载异常永久挡屏）——首帧之后用户要么看到安装/ loading 界面、要么看到完整首屏，不再有裸色底空白期；两种路径带合法 ?redirect= 时仍跳转，兼容旧客户端回根升级链路；ofa / router / senti-ui 源按 SW 是否已接管动态选择 /gh/ 或 jsdelivr（window.__GH_BASE）
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
@@ -31,24 +31,12 @@ Mazmot/
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
+├── _setup/                   # 测试套件前置引导（目录名 _ 排序在 apps/、bridge/、main/ 等所有测试目录之前，
+│                             #   保证 sb-test 生成的清单里它最先执行）：install-nos.sb.html 经
+│                             #   <nos-version auto-install> 为测试环境安装 NoneOS Core，后续依赖 /nos/*、/mz/*
+│                             #   的测试文件全部依赖它先跑（清单 test-all.html 为生成物已 gitignore，勿提交）
 │
 ├── apps/                     # 应用（monorepo 风格）
-│   ├── main/                 # 主应用：应用列表 / 市场安装 / 分享入口，URL = /apps/main/
-│   │   ├── index.html        # 入口 HTML：校验 Core 模块 → 装载 ./app-config.js；同时挂载 <rdn-network> 浮窗
-│   │   ├── app-config.js     # ofa.js 主应用配置（init "mazmot" 命名空间；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
-│   │   ├── home.html         # 应用列表主页（页面模块）
-│   │   ├── home/
-│   │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
-│   │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
-│   │   │   ├── settings-user.html   # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
-│   │   │   ├── settings-certs.html  # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
-│   │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
-│   │   │   ├── official-app-writer.js # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
-│   │   │   └── app-status.js         # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
-│   │   └── lib/              # 主应用专属工具库
-│   │       ├── official-app-state.js  # 官方应用 stanz 状态（仅主应用使用）
-│   │       └── test/                 # sibyl-test 单元测试（_install-nos.sb.html）
-│   │
 │   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?u=...&h=...
 │   │   ├── index.html        # ofa.js 外壳：<o-router> + <o-app src="./app-config.js">（不校验模块，Core 由页面模块自己装）
 │   │   ├── app-config.js     # 声明 home = ./run-app.html（不 init 文件系统，Core 未装时不可用）
@@ -69,7 +57,24 @@ Mazmot/
 │       ├── user-detail.html  # 用户详情：在线状态 / SessionIds / RTT / Ping / 断开
 │       └── traffic.html      # 流量监控：汇总卡片 + 服务器/用户的实时带宽与连接统计
 │
-├── main/                     # 主应用（原 official-apps/welcome 改造，由根 index.html 装好 Core 后原地挂载，URL = /）：pages/welcome.html 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 pages/apps.html；再次打开直接进列表页；pages/apps.html 应用列表主页（镜像 apps/main/home.html 全功能：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮），并新增「安装中」虚拟条目区：lib/install-queue.js 串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）；lib/welcome-plan.js 为用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）；lib/ 为 apps/main 辅助文件的自包含副本（app-status / official-app-writer / official-app-state），不引用 /apps/main/*
+├── main/                     # 主应用（由根 index.html 装好 Core 后原地挂载，URL = /，不在 apps/ 下、不参与应用市场；离线缓存清单随本目录收录）
+│   ├── app-config.js         # ofa.js 配置（home = ./pages/welcome.html；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
+│   ├── pages/
+│   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页。依赖模块与组件（senti-ui button/icon-button/input/select、mascot、n-icon、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>），全部就绪才注册渲染；flowReady 置真时派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
+│   │   ├── apps.html             # 应用列表主页：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮；「安装中」虚拟条目区（见 lib/install-queue.js）。依赖模块与组件（senti-ui list/button/icon-button/dialog/switch、n-icon、ercode、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>、顶层不 import /nos/*），attached() 把应用列表灌入 appList 后派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
+│   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
+│   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
+│   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
+│   │   ├── settings-user.html    # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
+│   │   ├── settings-certs.html   # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
+│   │   └── settings-webfetch.html # 设置弹窗「联网能力」子页面（通道清单点选固定——默认 auto 按优先级、点行即 setWebFetchChannel 固定、固定后失败不降级；relay 多台时下拉选择 web fetch 用哪台；**自定义 Web Hub 配置入口**——URL + 可选共享令牌输入框，保存/清除即 setCustomEndpoint/clearCustomEndpoint 立即生效，问号链接跳 GitHub 的 server/web-hub-cf/README.md 部署指南；「测试抓取」按钮实测 fetchText 并刷新通道状态）
+│   └── lib/
+│       ├── install-queue.js        # 引导安装队列：串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）
+│       ├── welcome-plan.js         # 用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）
+│       ├── official-app-writer.js  # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
+│       ├── app-status.js           # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
+│       ├── official-app-state.js   # 官方应用 stanz 状态（仅主应用使用）
+│       └── test/                   # sibyl-test 单元测试（welcome-plan.sb.html）
 │
 ├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
@@ -83,6 +88,10 @@ Mazmot/
 │   │   │                    #   maxSteps=80 仅为防失控硬上限，不限制合法长流程）
 │   │   ├── test/             # supplier / chain 层 sibyl-test 测试
 │   │   └── README.md         # 完整 API 文档
+│   ├── net/                  # 平台联网能力（web fetch，URL = /mz/net/*）：浏览器 CORS 限制下的服务端中转抓取统一客户端
+│   │   ├── main.js           # net.fetch（与原生 fetch 同形的低层 util：Response 同形对象 ok/status/url/headers/text()/json() + provider/truncated 元信息，仅 GET 语义）/ fetchText 便捷层（HTML 自动正文提取 + 截断 + 会话缓存）/ searchWeb 联网搜索（mz 内实现：fetch 抓搜索引擎结果页 + DOMParser 解析，SEARCH_ENGINES 引擎可插拔（默认 DuckDuckGo 无 JS 版、bing）+ getSearchEngine/setSearchEngine 默认引擎偏好（设置页可切，opts.engine 可单次覆盖），best-effort，服务端零搜索功能）/ extractText 纯函数 / 通道调度：默认 auto 按优先级（自定义端点 > relay > Jina 兜底），setWebFetchChannel 可固定任意通道（固定后失败不降级；web-hub 不设通道，自部署经 custom 接入）/ relay 多台选择（listRelayServers + setRelayKeyId，默认第一台、key 删除自动回退）/ setCustomEndpoint 等（偏好全存 getStorage("mz-net")；/nos/* 按需动态 import，不依赖 ofa lm 全局，storage 不可用降级仅内存模式）
+│   │   ├── test/             # sibyl-test 测试（extractText / sha256Hex / URL 预检 / relay webFetch 请求映射 / net.fetch 同形与 method 拒绝，mock fetch 不出网）
+│   │   └── README.md         # /fetch 协议契约（单一事实来源）：请求/响应形状、SSRF 约束表、三类 provider 鉴权、解析顺序、两层 API 说明
 │   ├── cert/                 # 系统级证书能力（封装 noneos-core user.cred，URL = /mz/cert/*）
 │   │   ├── main.js           # 入口：issueCert / claimCert / revokeCert / lookupProfile / verifyProfileCard + 签发历史（appendIssueHistory / listIssued / listIssuedBy / mergeIssuedView 纯函数，存 getStorage("mz-cert") issue-history 键，含旧 cred-manager 空间一次性迁移；core 无软删除，历史有而凭证库无 = 已吊销）+ re-export 纯函数（ensureUser / verifyData / storage 按需动态加载，顶层不 import /nos/*）
 │   │   ├── ref.js            # 凭证引用语法 [<type>:<payload>]（注册制类型表，本期 chain_key = role-issuer-subject 槽位引用，抗更新）
@@ -97,10 +106,10 @@ Mazmot/
 │       ├── ercode/           # <m-ercode> 二维码组件（被主应用分享弹窗使用）
 │       ├── mascot/           # <m-mascot> 相机机器人吉祥物组件（state 属性：默认/happy/angry/soulless；--mascot-size 控尺寸、--mascot-eye-color 控眼色；被根 index.html 安装界面与 main/ 主应用使用）
 │       ├── o-md/             # <o-md> Markdown 渲染组件
-│       ├── rdn-network/      # <rdn-network> 浮窗式网络面板（被 apps/main/index.html 挂载）
+│       ├── rdn-network/      # <rdn-network> 浮窗式网络面板（当前无页面挂载，按需 <l-m> 引入）
 │       └── rnd-box/          # <m-rnd-box> 可拖拽缩放浮动盒子容器
 │
-├── official-apps/            # 官方应用资源目录（应用市场），apps/main 通过 fetch("/official-apps/...") 加载；各应用 __app.json 的 files 安装清单由 [scripts/update-app-manifests.js](scripts/update-app-manifests.js) 扫描磁盘自动同步（`npm run update:apps`，--check 供 CI 校验；文件增删时自动 bump 该应用 app.json 的 version 末段），**禁止手工增删 files 数组**
+├── official-apps/            # 官方应用资源目录（应用市场），主应用通过 fetch("/official-apps/...") 加载；各应用 __app.json 的 files 安装清单由 [scripts/update-app-manifests.js](scripts/update-app-manifests.js) 扫描磁盘自动同步（`npm run update:apps`，--check 供 CI 校验；文件增删时自动 bump 该应用 app.json 的 version 末段），**禁止手工增删 files 数组**
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js；provider 含 relay——粘贴 ai-relay 邀请码即用转发服务器，详情折叠可看服务器地址）
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
@@ -108,7 +117,7 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/status/console/dom/text/click/type/wait/eval/screenshot）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、其余查证与交互，形成「写→跑→查→修」闭环）；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一个独立包目录：index.js 插件 + self-test.js 内置测试 + README + test/<tool>.sb.html，默认导出 { key, name, description, schema, exec(args, ctx) } 并具名导出 selfTest 地址，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot } 并用 chain 的 tool 工厂包装，新增工具只需建包目录 + 登记 TOOL_DEFS；preview/ 包为单一 preview 工具，action 参数分发各操作；测试基建统一在 lib/test-space/——virtual-space.js 内存版 fs/storage 与 self-test-kit / visual-test-kit 两套基座，工具详情对话框对所有带 selfTest 的工具开放「内置测试」Tab）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html 与各工具包内置测试 lib/tools/<tool>/test/
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview / web_fetch / web_search 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/windows/status/console/dom/text/click/type/wait/eval/screenshot + 顶层 winId 定向）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、action=windows 列窗口注册表、其余查证与交互，形成「写→跑→查→修」闭环）；预览支持**多窗口（上限 10，本机 popup + 手机扫码设备平等）**：窗口经 announce 心跳注册进注册表（remote-preview.js），顶栏预览按钮下拉气泡展示窗口清单 / 跨设备二维码（/bridge/?u=<conjure userId>&app=<应用>，链接头尾省略 + 复制），扫码 hello 自动推送当前应用，更新全量同步所有在线窗口，dbg 指令按 winId（userId|sessionId）定向投递；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一个独立包目录：index.js 插件 + self-test.js 内置测试 + README + test/<tool>.sb.html，默认导出 { key, name, description, schema, exec(args, ctx) } 并具名导出 selfTest 地址，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot, netFetch（/mz/net 的 fetchText，web_fetch 工具底层） } 并用 chain 的 tool 工厂包装，新增工具只需建包目录 + 登记 TOOL_DEFS；preview/ 包为单一 preview 工具，action 参数分发各操作；测试基建统一在 lib/test-space/——virtual-space.js 内存版 fs/storage 与 self-test-kit / visual-test-kit 两套基座，工具详情对话框对所有带 selfTest 的工具开放「内置测试」Tab）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html 与各工具包内置测试 lib/tools/<tool>/test/
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
@@ -151,12 +160,17 @@ Mazmot/
 │   │                         #   另承载 conjure 调试指令（dbg）：只信任注入时绑定的 conjure 用户（ctx.fromUserId 校验），
 │   │                         #   经 debug-runtime 执行后按 dbg-chunk/dbg-result 协议回传结果
 │   ├── debug-runtime.js       # 调试指令运行时（纯页面逻辑，无 /nos 依赖，可单测；实现参考同作者 web-bridge-mcp 的
-│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot；eval 预置 $ / $$ /
+│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot/wire；eval 预置 $ / $$ /
 │   │                         #   $deep / $$deep（穿 shadow DOM）/ $wait / $rect / $css / $import，表达式自动 return；
 │   │                         #   serializeValue 安全序列化（Error 栈/循环引用/深度长度封顶）、domSnapshot 免授权
 │   │                         #   DOM 样式快照（几何+关键样式+文本，穿 shadow）、captureScreenshot（getDisplayMedia 真实
-│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、formatConsoleEntries
-│   │                         #   （since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、wire 缩略图（两级：
+│   │                         #   首选 vendor snapdom 真实渲染截图免授权+手机可用，失败回退 wireSnapshot 线框清单交
+│   │                         #   conjure thumb-paint 重绘；抓图期间 capture.setMuted 静默控制台捕获防噪音报错污染 AI）、
+│   │                         #   formatConsoleEntries（since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/
+│   │                         #   DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   ├── vendor/                # 第三方库 vendor（本地文件，免 CDN 依赖）：snapdom.mjs（@zumer/snapdom v3.3.0，MIT，
+│   │                         #   DOM→图捕获引擎，open shadow DOM/字体/渐变保真——预览气泡窗口方块缩略图用）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
 │   │                         #   validateRelPath 守卫 / chunkText 字节分片（预算 32KB，切点按 code point 对齐不劈代理对）/
@@ -183,10 +197,11 @@ Mazmot/
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
-│   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
-│   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN，凭据按账户存 getStorage("ai-relay-admin") 的 accounts 列表（[{id,url,token,name}]，id=url，同 url 重连覆盖 token）+ activeId 活跃账户；支持多服务器账户：连接页已保存列表一键重连、面板「切换服务器」弹窗一键切换（失败回滚）、删除账户（删活跃账户即断开回连接页；断开连接二次确认且保留账户）、旧版单账户键 serverUrl/adminToken/serverName 自动迁移；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
+│   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/v1/web/fetch 服务端网页抓取 + /v1/web/search 联网搜索（AI_RELAY_TAVILY_KEY 转发 Tavily，与抓取共用按用户联网开关）（relay 用户零配置联网，见 mz/net/）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
+│   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN，凭据按账户存 getStorage("ai-relay-admin") 的 accounts 列表（[{id,url,token,name,version}]，id=url，同 url 重连覆盖 token；version 取自 /admin/overview，顶栏副标题与账户列表展示所连服务器版本号）+ activeId 活跃账户；支持多服务器账户：连接页已保存列表一键重连、面板「切换服务器」弹窗一键切换（失败回滚）、删除账户（删活跃账户即断开回连接页；断开连接二次确认且保留账户）、旧版单账户键 serverUrl/adminToken/serverName 自动迁移；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑、Web Fetch 联网开关——新建用户勾选 + 详情对话框开关 + 列表关闭态徽标，服务端按用户 403 拦截）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
 │   ├── cred-hub/             # cred 凭证数据存储服务器（Rust + axum，详见其 README.md）：POST /creds（校验结构/有效期/ECDSA P-256 签名后存储）+ GET /creds/{key} + GET /health；暂无认证；redb 单文件 KV 持久化；npm run cred-hub 启动；e2e 测试在 e2e/（Playwright + Chrome，Node WebCrypto 本地自造签名数据），CI 见 .github/workflows/cred-hub-e2e.yml
 │   ├── cred-hub-cf/          # 同功能的 Cloudflare Workers + D1 版本（接口/校验/配对码语义与 Rust 版完全一致、同密钥下配对码互通；单文件 src/worker.js，冒烟测试 smoke.mjs 复用 Rust 版 e2e 签名工具，详见其 CONTEXT.md / README.md）
+│   ├── web-hub-cf/           # 自部署 web-hub（Cloudflare Workers，无 bindings 零依赖部署）：实现 /mz/net 的 /fetch 协议契约的现成自部署实现（官方不设公共实例，部署后经 mz/net 的 custom 通道接入）；公开模式 NoneOS 签名鉴权（X-Web-Hub-Auth，同 relay 方案 k="web-hub-auth"）/ 私有模式 X-Web-Fetch-Token 共享令牌；SSRF 校验（IP 字面量 + 内部主机名黑名单）+ 手动重定向逐跳校验 + 2MB 截断 + 15s 超时；同一份代码供自部署（npx wrangler deploy），详见其 CONTEXT.md / README.md
 │   └── cred-client/          # cred-hub 浏览器端管理器（纯静态零依赖单页：连接 cred-hub 后查看管理 API 的 stats / hot / expiring 只读数据，Rust 版与 CF 版通用；连接信息存 localStorage，详见其 CONTEXT.md / README.md）
 │
 ├── test-bin/                 # 测试专用二进制（不参与部署）：noneos-handshake 信令服务器（noneos-core server/handshake 的
@@ -221,17 +236,17 @@ Mazmot/
 
 ## 应用生命周期
 
-> 以下流程以 [apps/main/](apps/main/) 的实现描述；主应用 [/main/pages/apps.html](main/pages/apps.html) 为同构副本（行为一致，文件路径不同）。
+> 以下流程以主应用 [/main/pages/apps.html](main/pages/apps.html) 的实现描述。
 
-### 1. 添加 / 安装应用（[apps/main/home/add-app.html](apps/main/home/add-app.html)）
+### 1. 添加 / 安装应用（[main/pages/add-app.html](main/pages/add-app.html)）
 
 「添加应用」弹窗不再内置创建向导，只做引导：
 
-- **应用市场**：[apps/main/home/market.html](apps/main/home/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
+- **应用市场**：[main/pages/market.html](main/pages/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
 - **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，不进主系统应用列表（`home.html` 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）。
 - **外源下载**：URL / ZIP 安装的禁用占位 UI（功能未实现）。
 
-### 2. 启动应用（[apps/main/home.html](apps/main/home.html)）
+### 2. 启动应用（[main/pages/apps.html](main/pages/apps.html)）
 
 ```
 handleOpen / handleOpenWindow / handleOpenTab
@@ -245,7 +260,7 @@ app-runner.js getRunUrl(app)
 window.open(runUrl)
 ```
 
-### 3. 更新官方应用（[apps/main/home.html](apps/main/home.html)）
+### 3. 更新官方应用（[main/pages/apps.html](main/pages/apps.html)）
 
 ```
 attached / refreshApps → _checkOfficialUpdates
@@ -296,7 +311,7 @@ clearOpened → 关闭窗口
 }
 ```
 
-#### 运行时字段（[home.html](apps/main/home.html) 的 `loadApps()` 在内存里拼装出来，不持久化）
+#### 运行时字段（[apps.html](main/pages/apps.html) 的 `loadApps()` 在内存里拼装出来，不持久化）
 
 ```javascript
 {
@@ -336,7 +351,7 @@ clearOpened → 关闭窗口
 
 ### 应用数据模型约束（强约定）
 
-以下约束散落在 [home.html](apps/main/home.html) / [market.html](apps/main/home/market.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+以下约束散落在 [apps.html](main/pages/apps.html) / [market.html](main/pages/market.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `${namespace}/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；官方应用安装时以市场 id 即目录名落地（天然合规）。
@@ -353,9 +368,9 @@ clearOpened → 关闭窗口
 
 - **收录范围**：`index.html` + `mz/` + `main/`（跳过 `test` 目录），由 [scripts/update-cache-manifest.js](scripts/update-cache-manifest.js) 生成（`npm run update`；`--check` 供 CI 校验，过期 exit 1）。`sw/` 引擎自身随 SW script 由浏览器缓存，不入清单。
 - **version 内容派生**：`sha256(JSON.stringify(hashes))` 前 8 位，与 [host-cache.js](sw/host-cache.js) 的 `deriveVersion` 算法一致；内容不变则不写盘，**禁止手工修改 version**。
-- **缓存机制**（[sw/host-cache.js](sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / apps/main 回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
+- **缓存机制**（[sw/host-cache.js](sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / 主应用回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
 
-## UI 关键组件（[apps/main/home.html](apps/main/home.html)）
+## UI 关键组件（[main/pages/apps.html](main/pages/apps.html)）
 
 ### 主界面
 
@@ -366,7 +381,7 @@ clearOpened → 关闭窗口
   - **主行点击**：`on:click-main="handleOpen"` 触发打开（区分展开箭头点击）
   - **折叠子列表**：显示应用来源徽章、目录名称、应用 ID、删除按钮
 
-### 状态追踪（[app-status.js](apps/main/home/app-status.js)）
+### 状态追踪（[app-status.js](main/lib/app-status.js)）
 
 用 `BroadcastChannel("mazmot-app-status")` + localStorage `mazmot-opened-apps` 双重追踪应用窗口。使用 `appName` 作为唯一标识符。
 
@@ -385,9 +400,8 @@ npm run static
 
 ### 首次访问
 
-1. 访问 30031 根路径 → 根 [index.html](index.html) 以 `<m-mascot>` 吉祥物为引导界面（soulless 形态 + 进度条），由 `<nos-version auto-install>` 事件驱动自动安装/升级 NoneOS Core；完成后吉祥物苏醒、**原地挂载 `/main` 主应用**（带合法 `?redirect=` 时跳转对应地址，兼容旧客户端回根升级链路）
-2. 主应用首启进入 [/main/pages/welcome.html](main/pages/welcome.html) 引导对话（AI Key 配置 / 用途选择 / 应用后台安装）；完成后进入 [/main/pages/apps.html](main/pages/apps.html) 应用列表；再次访问直接进列表页
-3. `apps/main/` 仍保留为旧版独立启动器（其 `index.html` 检测到 Core 过旧会回根入口 `?redirect=/apps/main/` 升级）；`apps/network`、`apps/run-app` 流程不变
+1. 访问 30031 根路径 → 根 [index.html](index.html) 以 `<m-mascot>` 吉祥物为引导界面（soulless 形态 + 进度条），由 `<nos-version auto-install>` 事件驱动自动安装/升级 NoneOS Core；完成后吉祥物苏醒、**原地挂载 `/main` 主应用**（带合法 `?redirect=` 时跳转对应地址，兼容旧客户端回根升级链路）。挂载后引导层不立即撤下（其下还有 #app-loading loading 层），等首页首屏就绪一起淡出
+2. 主应用首启进入 [/main/pages/welcome.html](main/pages/welcome.html) 引导对话（AI Key 配置 / 用途选择 / 应用后台安装）；完成后进入 [/main/pages/apps.html](main/pages/apps.html) 应用列表；再次访问直接进列表页。首页把依赖加载齐、渲染出首屏时派发 `mazmot:app-ready`，根入口收到才撤引导层 / loading 层（15s 兜底强制放行）；`apps/network`、`apps/run-app` 流程不变
 
 > 直接打开分享链接（`/apps/run-app/?u=...&h=...`）时，`run-app/index.html` 只作为 ofa.js 外壳，不主动校验 Core 模块。`run-app.html` 页面模块内部内嵌 `<nos-version auto-install>` 自动装/升级 Core；Core 就绪后才通过 `load(...)` 并行加载 `/nos/fs`、`/nos/user`、`/nos/publish`、`/nos/crypto` 等模块（任一加载失败即进入错误页）。
 
@@ -395,11 +409,14 @@ npm run static
 
 使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
 
-**主应用工具库测试**（[apps/main/lib/test/](apps/main/lib/test/)）
+**主应用工具库测试**（[main/lib/test/](main/lib/test/)）
 
-- `http://localhost:30031/apps/main/lib/test/_install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（其他测试依赖 Core 已就绪）
+- `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
+- `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
+- `http://localhost:30031/_setup/install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（**整个测试套件的 Core 前置引导**：`_setup/` 目录名排序在 `apps/`、`bridge/` 等之前，保证 sb-test 生成的清单里它最先执行装好 Core——主应用迁入 `main/` 后原 `apps/main/lib/test/` 路径的字母序红利失效，曾导致 CI 的 run-app-utils/preview-flow 在 Core 就绪前运行而挂掉；清单 test-all.html 为生成物已 gitignore）
 - `http://localhost:30031/mz/test/app-runner.sb.html` — 测试 [app-runner.js](mz/app-runner.js) 的 URL 生成与文件读取
 - `http://localhost:30031/mz/test/share-mgr.sb.html` — 测试 [share-mgr.js](mz/share-mgr.js) 的 Base64URL、分享链接与打包结构
+- `http://localhost:30031/mz/net/test/net.sb.html` — 测试 [mz/net/main.js](mz/net/main.js) 的正文提取、URL 预检与 relay webFetch 请求映射（mock fetch 不出网）
 
 **run-app 工具库测试**（[apps/run-app/lib/test/](apps/run-app/lib/test/)）
 
@@ -488,13 +505,14 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 
 | 需求 | 打开文件 |
 | ---- | -------- |
-| 修改应用列表 UI | [apps/main/home.html](apps/main/home.html) |
-| 修改添加应用引导 / 市场入口 | [apps/main/home/add-app.html](apps/main/home/add-app.html) |
-| 设置弹窗用户信息（default 用户查看 / 改用户名） | [apps/main/home/settings-user.html](apps/main/home/settings-user.html) |
-| 设置弹窗凭证管理引导（跳转/打开凭证管理器） | [apps/main/home/settings-certs.html](apps/main/home/settings-certs.html) |
-| 设置弹窗常规（语言 / 主题） | [apps/main/home/settings-general.html](apps/main/home/settings-general.html) |
+| 修改应用列表 UI | [main/pages/apps.html](main/pages/apps.html) |
+| 修改添加应用引导 / 市场入口 | [main/pages/add-app.html](main/pages/add-app.html) |
+| 设置弹窗用户信息（default 用户查看 / 改用户名） | [main/pages/settings-user.html](main/pages/settings-user.html) |
+| 设置弹窗联网能力（web fetch 通道清单 / 生效通道 / 测试抓取） | [main/pages/settings-webfetch.html](main/pages/settings-webfetch.html)（能力入口 [mz/net/main.js](mz/net/main.js)） |
+| 设置弹窗凭证管理引导（跳转/打开凭证管理器） | [main/pages/settings-certs.html](main/pages/settings-certs.html) |
+| 设置弹窗常规（语言 / 主题） | [main/pages/settings-general.html](main/pages/settings-general.html) |
 | 应用运行 URL 生成 / 文件读取 | [mz/app-runner.js](mz/app-runner.js) |
-| 应用打开状态 | [apps/main/home/app-status.js](apps/main/home/app-status.js) |
+| 应用打开状态 | [main/lib/app-status.js](main/lib/app-status.js) |
 | 分享工具（发布/验签） | [mz/share-mgr.js](mz/share-mgr.js) |
 | 系统级证书能力（签发/领取/吊销/卡片验签 + 链式引用与链遍历） | [mz/cert/main.js](mz/cert/main.js)（[ref.js](mz/cert/ref.js) 引用语法 / [chain.js](mz/cert/chain.js) 链遍历 / [fingerprint.js](mz/cert/fingerprint.js) 版本指纹 / [pairing.js](mz/cert/pairing.js) 配对码） |
 | 系统级组织账户机制（创建组织 / owner 证书 / 员工证书签发与管理） | [mz/org/main.js](mz/org/main.js) |
@@ -504,7 +522,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
-| 主应用 ofa.js 配置 | [apps/main/app-config.js](apps/main/app-config.js) |
+| 主应用 ofa.js 配置 | [main/app-config.js](main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js)（core dist.js + [sw/host-cache.js](sw/host-cache.js)） |
 | 根入口 / 主应用宿主（Core 安装界面 + 原地挂载 /main） | [index.html](index.html) |
@@ -512,9 +530,10 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 官方应用安装清单（`__app.json` files 数组） | [official-apps/](official-apps/)（`npm run update:apps` 按磁盘扫描同步并联动 bump `app.json` version，勿手改；漏登会导致市场装出的应用缺文件白屏） |
 | 连接状态应用（服务器/用户网格 + 详情页 + 流量监控） | [apps/network/](apps/network/)（含 [traffic.html](apps/network/traffic.html)） |
 | 二维码组件（分享弹窗用） | [mz/comps/ercode/ercode.html](mz/comps/ercode/ercode.html) |
-| 浮窗式网络面板（主应用挂载） | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html) |
+| 浮窗式网络面板 | [mz/comps/rdn-network/rdn-network.html](mz/comps/rdn-network/rdn-network.html)（当前无页面挂载） |
 | 系统级公共组件说明 | [mz/comps/CONTEXT.md](mz/comps/CONTEXT.md) |
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
+| 平台联网能力（web fetch，协议契约 + provider 解析） | [mz/net/main.js](mz/net/main.js)（协议文档 [mz/net/README.md](mz/net/README.md)；官方兜底端点 [server/web-hub-cf/](server/web-hub-cf/)） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
 | AI 转发服务器管理台前端（server 侧静态应用，Core 内打开） | [server/ai-relay-admin/pages/home.html](server/ai-relay-admin/pages/home.html) |
 | AI 转发服务器（Rust，apikey 隔离 / 配额 / 邀请码） | [server/ai-relay/](server/ai-relay/)（详见其 [CONTEXT.md](server/ai-relay/CONTEXT.md)；客户端 supplier [mz/ai/supplier/relay.js](mz/ai/supplier/relay.js)） |

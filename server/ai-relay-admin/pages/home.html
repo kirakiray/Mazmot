@@ -191,6 +191,19 @@
       color: var(--md-sys-color-on-error-container);
     }
 
+    /* web fetch 关闭徽标（soft 状态，弱于"已禁用"的 error 色） */
+    .wfetch-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
     .item-actions {
       display: flex;
       align-items: center;
@@ -482,7 +495,7 @@
       </div>
       <div class="brand-text">
         <h1><locale-text><span lang="cn">AI 转发管理台</span><span lang="en">AI Relay Admin</span></locale-text></h1>
-        <p>{{view === "panel" ? (serverName ? serverName + " · " + serverUrl : serverUrl) : (serverUrl || t("connectHint"))}}</p>
+        <p>{{view === "panel" ? (serverName ? serverName + " · " + serverUrl : serverUrl) + (serverVersion ? " · v" + serverVersion : "") : (serverUrl || t("connectHint"))}}</p>
       </div>
       <o-if :value="view === 'panel'">
         <div style="display: flex; gap: 4px;">
@@ -531,7 +544,7 @@
                       </span>
                     </o-if>
                   </div>
-                  <div class="item-sub mono">{{$data.url}}</div>
+                  <div class="item-sub mono">{{$data.url + ($data.version ? " · v" + $data.version : "")}}</div>
                 </div>
                 <div slot="suffix" class="item-actions">
                   <st-icon-button
@@ -708,6 +721,12 @@
                         <locale-text><span lang="cn">已禁用</span><span lang="en">Disabled</span></locale-text>
                       </span>
                     </o-if>
+                    <o-if :value="$data.webFetchEnabled === false">
+                      <span class="wfetch-badge" attr:title="t('wfetchOffTip')">
+                        <n-icon icon="mdi:earth-off"></n-icon>
+                        <locale-text><span lang="cn">Web Fetch 关</span><span lang="en">Web Fetch off</span></locale-text>
+                      </span>
+                    </o-if>
                   </div>
                 </div>
                 <div slot="suffix" class="item-actions">
@@ -792,7 +811,7 @@
                 </span>
               </o-if>
             </div>
-            <div class="item-sub mono">{{$data.url}}</div>
+            <div class="item-sub mono">{{$data.url + ($data.version ? " · v" + $data.version : "")}}</div>
           </div>
           <div slot="suffix" class="item-actions">
             <st-icon-button
@@ -874,6 +893,14 @@
         <option value="open"><locale-text><span lang="cn">不绑定（任何持码者可用）</span><span lang="en">Open (anyone with the code)</span></locale-text></option>
         <option value="bound"><locale-text><span lang="cn">绑定 NoneOS 用户（一人一码）</span><span lang="en">Bind NoneOS user (one user per code)</span></locale-text></option>
       </st-select>
+    </div>
+    <div class="field">
+      <st-checkbox
+        attr:checked="newUser.webFetch"
+        on:change="toggleNewUserWebFetch"
+      >
+        <locale-text><span lang="cn">允许 Web Fetch 联网抓取（/v1/web/fetch）</span><span lang="en">Allow Web Fetch (web page fetching)</span></locale-text>
+      </st-checkbox>
     </div>
     <div class="field">
       <label class="field-label"><locale-text><span lang="cn">可用上游 Key</span><span lang="en">Allowed upstream keys</span></locale-text></label>
@@ -1014,6 +1041,19 @@
       </div>
     </div>
 
+    <div class="field" style="margin-bottom: 12px;">
+      <label class="field-label"><locale-text><span lang="cn">联网能力</span><span lang="en">Web access</span></locale-text></label>
+      <st-checkbox
+        attr:checked="detailWebFetch"
+        on:change="toggleDetailWebFetch"
+      >
+        <locale-text><span lang="cn">允许 Web Fetch 联网抓取（关闭后该用户调用 /v1/web/fetch 返回 403）</span><span lang="en">Allow Web Fetch (when off, the user's calls return 403)</span></locale-text>
+      </st-checkbox>
+      <p class="quota-converted">
+        <locale-text><span lang="cn">改动后需点上方「保存修改」生效。</span><span lang="en">Click "Save changes" above to apply.</span></locale-text>
+      </p>
+    </div>
+
     <label class="field-label"><locale-text><span lang="cn">邀请码（发给用户即可使用）</span><span lang="en">Invitation code (share with the user)</span></locale-text></label>
     <div class="invite-code-box">
       <div class="mono">{{detailInvite ? detailInvite.code : ''}}</div>
@@ -1088,6 +1128,7 @@
         inputKeyPlaceholder: { cn: "上游官方 API Key", en: "Upstream official API key" },
         userNamePlaceholder: { cn: "用户名", en: "User name" },
         userNotePlaceholder: { cn: "可选备注", en: "Optional note" },
+        wfetchOffTip: { cn: "该用户的 Web Fetch 联网抓取已关闭", en: "Web fetch is disabled for this user" },
         quotaPlaceholder: { cn: "如 1000000（一百万 token）", en: "e.g. 1000000" },
         unlimited: { cn: "无限", en: "Unlimited" },
         savedServers: { cn: "已保存的服务器", en: "Saved servers" },
@@ -1114,7 +1155,7 @@
           savingKey: false,
           keyDialogOpen: false,
           userDialogOpen: false,
-          newUser: { name: "", note: "", quota: "", keyIds: [], bindMode: "open" },
+          newUser: { name: "", note: "", quota: "", keyIds: [], bindMode: "open", webFetch: true },
           newUserQuotaUnit: "token",
           savingUser: false,
           detailOpen: false,
@@ -1124,12 +1165,14 @@
           detailQuota: "",
           detailQuotaUnit: "token",
           serverName: "",
+          serverVersion: "",
           settingsOpen: false,
           settingsName: "",
           savingSettings: false,
           detailModels: "",
           detailModelOptions: [],
           detailBindMode: "open",
+          detailWebFetch: true,
           loadingModels: false,
           savingDetail: false,
           accounts: [],
@@ -1245,6 +1288,7 @@
             await store.removeItem("activeId");
             this.activeId = "";
             this.serverName = "";
+            this.serverVersion = "";
             this.view = "connect";
             this.serverUrl = "";
             this.adminToken = "";
@@ -1307,14 +1351,21 @@
           },
 
           /** 连接成功后写入账户（同 url 视为同一账户，覆盖 token 与命名）并刷新列表 */
-          async upsertAccount(url, token, name) {
+          async upsertAccount(url, token, name, version) {
             const accounts = (await store.getItem("accounts")) || [];
             const found = accounts.find((a) => a.url === url);
             if (found) {
               found.token = token;
               if (name) found.name = name;
+              if (version) found.version = version;
             } else {
-              accounts.push({ id: url, url, token, name: name || "" });
+              accounts.push({
+                id: url,
+                url,
+                token,
+                name: name || "",
+                version: version || "",
+              });
             }
             await store.setItem("accounts", accounts);
             this.accounts = accounts;
@@ -1363,6 +1414,7 @@
               url: this.serverUrl,
               token: this.adminToken,
               name: this.serverName,
+              version: this.serverVersion,
             };
             this.serverUrl = account.url;
             this.adminToken = account.token;
@@ -1370,10 +1422,12 @@
               const overview = await this.testConnection();
               this.serverName =
                 overview?.serverName || account.name || "";
+              this.serverVersion = overview?.version || account.version || "";
               await this.upsertAccount(
                 account.url,
                 account.token,
                 this.serverName,
+                this.serverVersion,
               );
               await store.setItem("activeId", account.id);
               this.activeId = account.id;
@@ -1390,6 +1444,7 @@
               this.serverUrl = prev.url;
               this.adminToken = prev.token;
               this.serverName = prev.name;
+              this.serverVersion = prev.version;
               toast({
                 message: getLocaleText(
                   { cn: "切换失败：{msg}", en: "Switch failed: {msg}" },
@@ -1441,6 +1496,7 @@
               await store.removeItem("activeId");
               this.activeId = "";
               this.serverName = "";
+              this.serverVersion = "";
               this.view = "connect";
               this.serverUrl = "";
               this.adminToken = "";
@@ -1460,10 +1516,12 @@
             try {
               const overview = await this.testConnection();
               this.serverName = overview?.serverName || "";
+              this.serverVersion = overview?.version || "";
               await this.upsertAccount(
                 this.serverUrl,
                 this.adminToken,
                 this.serverName,
+                this.serverVersion,
               );
               await store.setItem("activeId", this.serverUrl);
               this.activeId = this.serverUrl;
@@ -1564,7 +1622,7 @@
           // ———— 用户 ————
 
           openUserDialog() {
-            this.newUser = { name: "", note: "", quota: "", keyIds: [], bindMode: "open" };
+            this.newUser = { name: "", note: "", quota: "", keyIds: [], bindMode: "open", webFetch: true };
             this.newUserQuotaUnit = "token";
             this._prevNewUserUnit = "token";
             this.loadApikeys();
@@ -1634,6 +1692,14 @@
             }
           },
 
+          toggleNewUserWebFetch() {
+            this.newUser.webFetch = !this.newUser.webFetch;
+          },
+
+          toggleDetailWebFetch() {
+            this.detailWebFetch = !this.detailWebFetch;
+          },
+
           async createUser() {
             const name = this.newUser.name.trim();
             if (!name) return;
@@ -1650,6 +1716,7 @@
                   ),
                   apiKeyIds: [...this.newUser.keyIds],
                   bindMode: this.newUser.bindMode || "open",
+                  webFetchEnabled: this.newUser.webFetch !== false,
                 }),
               });
               this.userDialogOpen = false;
@@ -1784,6 +1851,7 @@
                   apiKeyIds: [...this.detailUser.apiKeyIds],
                   allowedModels: this.modelsTextToArray(this.detailModels),
                   bindMode: this.detailBindMode || "open",
+                  webFetchEnabled: this.detailWebFetch !== false,
                 }),
               });
               await this.loadUsers();
@@ -1827,6 +1895,7 @@
             this.detailInvite = null;
             this.detailUsage = [];
             this.detailBindMode = this.detailUser?.bindMode || "open";
+            this.detailWebFetch = this.detailUser?.webFetchEnabled !== false;
             if (this.detailUser && this.detailUser.quotaTokens != null) {
               const q = this.detailUser.quotaTokens;
               if (q >= 1e6 && q % 1e6 === 0) {
@@ -1938,7 +2007,13 @@
           try {
             const overview = await this.testConnection();
             this.serverName = overview?.serverName || account.name || "";
-            await this.upsertAccount(account.url, account.token, this.serverName);
+            this.serverVersion = overview?.version || account.version || "";
+            await this.upsertAccount(
+              account.url,
+              account.token,
+              this.serverName,
+              this.serverVersion,
+            );
             this.view = "panel";
             await this.refreshAll();
           } catch {

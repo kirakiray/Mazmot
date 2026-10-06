@@ -9,8 +9,12 @@
 //
 // 消息流（payload.type）：
 //   bridge 页 / 应用页代理 → conjure（服务 conjure-preview）：
-//     { type: "hello", userId }                 —— bridge 页就绪，告知自己的 userId
+//     { type: "hello", userId, app? }           —— bridge 页就绪，告知自己的 userId；
+//                                                  app = URL ?app= 带的期望应用名（扫码/新开窗口自动推送用）
 //     { type: "agent-online", userId }          —— 应用页内 inject.js 就绪（常驻代理）
+//     { type: "announce", appName, url, ua }    —— 应用页代理心跳（15s 一次）：多窗口注册表的
+//                                                  上报载体（conjure 按 userId+sessionId 去重登记，
+//                                                  45s 无心跳判离线；超窗口上限回 preview-full）
 //     { type: "sync-diff", appName, missing }   —— 增量比对结果：需要（重）传的 path 列表
 //     { type: "done", appName, url }            —— 文件落盘完成（或已最新），回传运行 URL
 //   conjure → bridge 页（服务 conjure-bridge）/ 应用页代理（服务 conjure-agent）：
@@ -19,8 +23,10 @@
 //                                                  增量推送时 false（只覆盖写入差异文件）
 //     { type: "file", appName, path, seq, total, text }  —— 大文件按 seq/total 分片
 //     { type: "app-end", appName }
+//     { type: "preview-full", max }             —— 拒绝加入：预览窗口数已达上限（尽力投递通知）
 //   conjure → 应用页代理（调试指令，见 debug-runtime.js 的指令集）：
-//     { type: "dbg", cmd, args, reqId }        —— 在预览页执行调试指令（eval/console/click/...）
+//     { type: "dbg", cmd, args, reqId }         —— 在预览页执行调试指令（eval/console/click/...）；
+//                                                  多窗口下经 sessionId 定向到指定窗口（缺省最近心跳窗口）
 //   应用页代理 → conjure（调试结果；大结果按分片回传）：
 //     { type: "dbg-chunk", reqId, seq, total, text } —— 调试结果分片（与文件分片同字节预算）
 //     { type: "dbg-result", reqId, ok, result?|error?, chunks?, meta? }

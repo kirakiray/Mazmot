@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mz/net 联网能力测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 mz/net/main.js：
+      - extractText：HTML → 正文（去脚本样式注释、实体解码、块级结构）
+      - sha256Hex：已知向量
+      - fetchText：非法 URL 客户端预检拒绝（不出网）
+      - RelayAssistant.webFetch：请求路径 / 鉴权头 / 返回映射（mock fetch）
+      说明：依赖 /nos/storage 的 custom 端点读写不在浏览器测试范围（sb-test 环境
+      无 NoneOS SW），provider 链的存储部分由部署环境人工验证。
+    -->
+
+    <sb-test name="extractText：去脚本样式注释与标签，保块级结构">
+      <template>
+        <script type="module">
+          const { extractText } = await import("/mz/net/main.js");
+          const html = `<!doctype html><html><head><style>body{color:red}</style></head>
+<body><!-- c --><h1>Hi&nbsp;&amp; bye</h1><script>alert(1)</` + `script>
+<p>One.</p><ul><li>a</li><li>b</li></ul><div>&#x4F60;好</div></body></html>`;
+          const text = extractText(html);
+          const checks = {
+            noStyle: !text.includes("color:red"),
+            noScript: !text.includes("alert"),
+            noComment: !text.includes("c--"),
+            noTag: !text.includes("<p>"),
+            entity: text.includes("Hi & bye"),
+            block: text.includes("One."),
+            list: text.includes("a") && text.includes("b"),
+            unicode: text.includes("你好"),
+          };
+          return { assert: Object.values(checks).every(Boolean), content: { text, checks } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="extractText：非字符串输入返回空串" parallel>
+      <template>
+        <script type="module">
+          const { extractText } = await import("/mz/net/main.js");
+          return {
+            assert: extractText(null) === "" && extractText(undefined) === "" && extractText(123) === "",
+            content: { a: extractText(null), b: extractText(undefined), c: extractText(123) },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="sha256Hex 已知向量" parallel>
+      <template>
+        <script type="module">
+          const { sha256Hex } = await import("/mz/net/main.js");
+          const got = await sha256Hex("abc");
+          return {
+            assert:
+              got === "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            content: { got },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="fetchText 拒绝非 http/https URL（不出网）">
+      <template>
+        <script type="module">
+          const { fetchText } = await import("/mz/net/main.js");
+          const results = {};
+          for (const bad of ["ftp://x.com", "javascript:alert(1)", "not-a-url", "", null]) {
+            try {
+              await fetchText(bad);
+              results[bad] = "no-throw";
+            } catch (e) {
+              results[bad] = e.message.slice(0, 40);
+            }
+          }
+          const allRejected = Object.values(results).every((m) => m !== "no-throw");
+          return { assert: allRejected, content: results };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="fetchText 自定义端点配置校验：非法 URL 抛错（不触存储）">
+      <template>
+        <script type="module">
+          const { setCustomEndpoint } = await import("/mz/net/main.js");
+          let threw = "";
+          try {
+            await setCustomEndpoint({ url: "not-http" });
+          } catch (e) {
+            threw = e.message;
+          }
+          return { assert: threw.includes("http/https"), content: { threw } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="RelayAssistant.webFetch：请求路径 / 鉴权头 / 返回映射（mock fetch）">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-net" }));
+          const assistant = new RelayAssistant("key-net-1", code);
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                url: "https://example.com/final",
+                status: 200,
+                contentType: "text/html",
+                text: "<p>hello</p>",
+                truncated: false,
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const result = await assistant.webFetch("https://example.com");
+            window.fetch = originalFetch;
+            const headers = capturedOptions.headers;
+            return {
+              assert:
+                capturedUrl === "https://relay.example.com/v1/web/fetch" &&
+                capturedOptions.method === "POST" &&
+                capturedOptions.body === JSON.stringify({ url: "https://example.com" }) &&
+                headers.Authorization === "Bearer bk-net" &&
+                result.text === "<p>hello</p>" &&
+                result.url === "https://example.com/final" &&
+                result.status === 200 &&
+                result.truncated === false,
+              content: { capturedUrl, body: capturedOptions.body, result, headers: { auth: headers.Authorization } },
+            };
+          } catch (e) {
+            window.fetch = originalFetch;
+            return { assert: false, content: { error: e.message, capturedUrl } };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="RelayAssistant.webFetch：端点错误透出 message">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(JSON.stringify({ u: "https://relay.example.com", k: "bk-net" }));
+          const assistant = new RelayAssistant("key-net-2", code);
+          const originalFetch = window.fetch;
+          window.fetch = async () =>
+            new Response(
+              JSON.stringify({ error: { message: "拒绝访问私有地址", type: "web_fetch_error" } }),
+              { status: 422 },
+            );
+          let msg = "";
+          try {
+            await assistant.webFetch("http://192.168.1.1");
+          } catch (e) {
+            msg = e.message;
+          }
+          window.fetch = originalFetch;
+          return { assert: msg.includes("拒绝访问私有地址"), content: { msg } };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="net.fetch 同形：custom provider + 请求映射 + Response 形状">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          // sb-test 环境无 NoneOS SW → storage 降级内存模式，自定义端点走内存
+          await net.setCustomEndpoint({ url: "https://mock-hub.example/", token: "tk-sb" });
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = globalThis.fetch;
+          globalThis.fetch = async (url, options) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                url: "https://example.com/final",
+                status: 200,
+                contentType: "application/json",
+                text: '{"hi":[1,2]}',
+                truncated: false,
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const res = await net.fetch("https://example.com/api");
+            const body = JSON.parse(capturedOptions.body);
+            const data = await res.json();
+            const checks = {
+              endpoint: capturedUrl === "https://mock-hub.example/fetch",
+              bodyUrl: body.url === "https://example.com/api",
+              token: capturedOptions.headers["X-Web-Fetch-Token"] === "tk-sb",
+              ok: res.ok === true,
+              status: res.status === 200,
+              finalUrl: res.url === "https://example.com/final",
+              provider: res.provider === "custom",
+              contentType: res.headers.get("content-type") === "application/json",
+              json: data.hi.length === 2,
+              text: (await res.text()).includes("hi"),
+            };
+            return { assert: Object.values(checks).every(Boolean), content: { capturedUrl, checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message, capturedUrl } };
+          } finally {
+            globalThis.fetch = originalFetch;
+            await net.clearCustomEndpoint();
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="net.fetch 拒绝非 GET 语义">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let threw = "";
+          try {
+            await net.fetch("https://example.com", { method: "POST" });
+          } catch (e) {
+            threw = e.message;
+          }
+          return { assert: threw.includes("GET"), content: { threw } };
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="通道固定：默认 auto，固定 jina 后即使 custom 已配置也走 jina">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          const { saveKey } = await import("/mz/ai/main.js");
+          let originalFetch = null;
+          try {
+            // 铺两个 custom 通道 + 两台 relay，验证固定优先于一切自动逻辑
+            await net.setCustomEndpoint({ url: "https://custom-hub.example" });
+            const inv = (u) => btoa(JSON.stringify({ u, k: "bk" }));
+            saveKey(inv("https://relay-a.example"), "relay", { serverName: "A" });
+            saveKey(inv("https://relay-b.example"), "relay", { serverName: "B" });
+
+            const checks = { defaultAuto: (await net.getWebFetchChannel()) === "auto" };
+
+            await net.setWebFetchChannel("jina");
+            originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response("md", { status: 200 });
+            };
+            const r = await net.fetchText("https://example.com/pin", { noCache: true });
+            checks.jinaPinned = r.provider === "jina" && hit.startsWith("https://r.jina.ai/");
+            checks.servers = (await net.listRelayServers()).length === 2;
+            return { assert: Object.values(checks).every(Boolean), content: { checks, hit } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.clearCustomEndpoint();
+            await net.setWebFetchChannel("auto");
+          }
+        </script>
+      </template>
+    </sb-test>
+
+
+    <sb-test name="relay 选择：auto 取第一台，setRelayKeyId 指定生效、失效回退">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          try {
+            const checks = {};
+            // 防御：清掉前序用例可能残留的 custom 端点，auto 链才轮到 relay
+            await net.clearCustomEndpoint();
+            // 上一用例已 saveKey 两台（同页共享 mz/ai 内存）
+            const servers = await net.listRelayServers();
+            checks.two = servers.length === 2;
+            checks.autoFirst = (await net.resolveProvider()).endpoint.startsWith("https://relay-a.example");
+
+            await net.setRelayKeyId(servers[1].keyId);
+            checks.pinnedB = (await net.resolveProvider()).endpoint.startsWith("https://relay-b.example");
+
+            await net.setRelayKeyId("nonexistent-id");
+            checks.fallback = (await net.resolveProvider()).endpoint.startsWith("https://relay-a.example");
+
+            // 固定 relay 通道 + 指定 B：mock 出网验证请求打到 B
+            await net.setRelayKeyId(servers[1].keyId);
+            await net.setWebFetchChannel("relay");
+            const originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response(JSON.stringify({ url, status: 200, contentType: "text/plain", text: "ok", truncated: false }), { status: 200 });
+            };
+            try {
+              const r = await net.fetchText("https://example.com/relay-pin", { noCache: true });
+              checks.relayPinnedB = r.provider === "relay" && hit === "https://relay-b.example/v1/web/fetch";
+            } finally {
+              globalThis.fetch = originalFetch;
+            }
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            // 清场：恢复 auto、清 custom 端点与 relay 指定（relay keys 留在内存，不影响其它用例的断言）
+            await net.setWebFetchChannel("auto");
+            await net.clearCustomEndpoint();
+            await net.setRelayKeyId("");
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="hub 通道已移除：固定报未知通道；auto 链越过 hub 直达 relay/jina">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            await net.clearCustomEndpoint();
+            const checks = {};
+
+            // "hub" 不再是合法通道
+            let threw = "";
+            try {
+              await net.setWebFetchChannel("hub");
+            } catch (e) {
+              threw = e.message;
+            }
+            checks.hubRejected = threw.includes("未知通道");
+
+            // auto 链不再包含 hub：本页已有两台 relay key，应直达 relay（而非先试 hub）
+            originalFetch = globalThis.fetch;
+            let hit = "";
+            globalThis.fetch = async (url) => {
+              hit = url;
+              return new Response(
+                JSON.stringify({ url, status: 200, contentType: "text/plain", text: "ok", truncated: false }),
+                { status: 200 },
+              );
+            };
+            const r = await net.fetchText("https://example.com/no-hub", { noCache: true });
+            checks.autoRelay =
+              r.provider === "relay" &&
+              /^https:\/\/relay-[ab]\.example\/v1\/web\/fetch/.test(hit);
+
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, hit },
+            };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.setWebFetchChannel("auto");
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="searchWeb：抓 DDG 结果页解析（uddg 解码 / 参数透传 / 截条）">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            originalFetch = globalThis.fetch;
+            let capturedBody = null;
+            globalThis.fetch = async (url, options) => {
+              // relay 通道的出网请求是 {baseUrl}/v1/web/fetch，目标地址在 body.url；
+              // 响应按 /fetch 协议信封返回
+              capturedBody = JSON.parse(options?.body || "{}");
+              const html = `
+                <div class="result">
+                  <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fofajs.com">ofa.js 官网</a>
+                  <span class="result__snippet">ofa 是一个 web 编排框架</span>
+                </div>
+                <div class="result">
+                  <a class="result__a" href="https://example.com/direct">直接链接结果</a>
+                  <span class="result__snippet">直接给出完整地址</span>
+                </div>
+                <div class="result">
+                  <a class="result__a" href="https://third.example.com">第三条</a>
+                  <span class="result__snippet">应被 maxResults 截掉</span>
+                </div>`;
+              return new Response(
+                JSON.stringify({
+                  url: capturedBody.url,
+                  status: 200,
+                  contentType: "text/html",
+                  text: html,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("ofa.js", { maxResults: 2 });
+            const checks = {
+              engineUrl: (capturedBody?.url || "").startsWith(
+                "https://html.duckduckgo.com/html/?q=",
+              ),
+              encoded: (capturedBody?.url || "").includes("ofa.js"),
+              count: r.results.length === 2,
+              uddgDecoded: r.results[0].url === "https://ofajs.com",
+              direct: r.results[1].url === "https://example.com/direct",
+              snippet: r.results[0].content.includes("web 编排框架"),
+              provider: r.provider.length > 0,
+              engine: r.engine === "duckduckgo",
+            };
+            return { assert: Object.values(checks).every(Boolean), content: { checks, capturedBody } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="searchWeb：空词拒绝 / 解析失败可读错误 / bing 引擎适配">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            const checks = {};
+            let emptyMsg = "";
+            try {
+              await net.searchWeb("   ");
+            } catch (e) {
+              emptyMsg = e.message;
+            }
+            checks.emptyRejected = emptyMsg.includes("搜索词");
+
+            // 引擎返回非结果页（反爬/改版）→ 0 结果 → 可读错误
+            originalFetch = globalThis.fetch;
+            globalThis.fetch = async () =>
+              new Response(
+                JSON.stringify({
+                  url: "https://html.duckduckgo.com/html/?q=test",
+                  status: 200,
+                  contentType: "text/html",
+                  text: "<html><body>异常验证页面</body></html>",
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            let parseMsg = "";
+            try {
+              await net.searchWeb("test");
+            } catch (e) {
+              parseMsg = e.message;
+            }
+            checks.parseError = parseMsg.includes("解析失败");
+
+            // bing 引擎适配：请求打到 bing，li.b_algo 解析
+            let bingUrl = "";
+            globalThis.fetch = async (url, options) => {
+              bingUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<li class="b_algo"><h2><a href="https://bing-result.example">Bing 结果</a></h2><div class="b_caption"><p>bing 摘要</p></div></li>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("test", { engine: "bing" });
+            checks.bingUrl = bingUrl.startsWith("https://www.bing.com/search?q=");
+            checks.bingParsed =
+              r.results.length === 1 &&
+              r.results[0].title === "Bing 结果" &&
+              r.engine === "bing";
+
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="搜索引擎偏好：setSearchEngine 全局生效，opts.engine 可单次覆盖">
+      <template>
+        <script type="module">
+          const net = await import("/mz/net/main.js");
+          let originalFetch = null;
+          try {
+            const checks = {};
+            // 未设置过时默认 duckduckgo
+            checks.defaultEngine = (await net.getSearchEngine()) === "duckduckgo";
+
+            // 未知引擎拒绝
+            let badMsg = "";
+            try {
+              await net.setSearchEngine("google");
+            } catch (e) {
+              badMsg = e.message;
+            }
+            checks.unknownRejected = badMsg.includes("未知搜索引擎");
+
+            await net.setSearchEngine("bing");
+            checks.getAfterSet = (await net.getSearchEngine()) === "bing";
+
+            // 缺省 opts.engine → 落到偏好 bing
+            originalFetch = globalThis.fetch;
+            let capturedUrl = "";
+            globalThis.fetch = async (url, options) => {
+              capturedUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url: capturedUrl,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<li class="b_algo"><h2><a href="https://pref.example">偏好引擎结果</a></h2></li>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r = await net.searchWeb("pref test");
+            checks.prefUsed =
+              r.engine === "bing" && capturedUrl.startsWith("https://www.bing.com/search?q=");
+
+            // opts.engine 单次覆盖偏好
+            globalThis.fetch = async (url, options) => {
+              capturedUrl = JSON.parse(options?.body || "{}").url || "";
+              return new Response(
+                JSON.stringify({
+                  url: capturedUrl,
+                  status: 200,
+                  contentType: "text/html",
+                  text: `<div class="result"><a class="result__a" href="https://override.example">覆盖</a></div>`,
+                  truncated: false,
+                }),
+                { status: 200 },
+              );
+            };
+            const r2 = await net.searchWeb("pref test", { engine: "duckduckgo" });
+            checks.override =
+              r2.engine === "duckduckgo" &&
+              capturedUrl.startsWith("https://html.duckduckgo.com/html/?q=");
+
+            return { assert: Object.values(checks).every(Boolean), content: { checks } };
+          } catch (e) {
+            return { assert: false, content: { error: e.message } };
+          } finally {
+            if (originalFetch) globalThis.fetch = originalFetch;
+            await net.setSearchEngine("duckduckgo").catch(() => {});
+          }
+        </script>
+      </template>
+    </sb-test>
+
+  </body>
+</html>

@@ -67,7 +67,7 @@ test.describe.serial("ai-relay 管理台 × 真实服务器", () => {
 
   test("根入口安装 NoneOS Core 并打开管理台连接页", async () => {
     test.setTimeout(180_000);
-    // 走真实用户路径：根入口 nos-version 自动安装 Core，完成后跳 /apps/main/
+    // 走真实用户路径：根入口 nos-version 自动安装 Core，完成后进入主应用 /
     await page.goto(`${STATIC}/`);
     await page.waitForURL(/apps\/main/, { timeout: 150_000 });
 

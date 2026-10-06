@@ -1,7 +1,7 @@
 ---
 name: "mazmot-api"
-description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
-version: "1.5.3"
+description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪、联网抓取等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
+version: "1.5.4"
 ---
 
 # Mazmot 能力 API 速查
@@ -17,6 +17,7 @@ version: "1.5.3"
 - **应用间 P2P 通信**（联机对战 / 双人协同 / 分享链接后双端实时互通；含可抄的最小完整骨架，覆盖生成带身份的分享链接、双端握手、消息收发、连接状态/RTC 升级）→ 查 [references/app-p2p-messaging.md](./references/app-p2p-messaging.md)。
 - **系统级证书能力**（`/mz/cert/main.js`：签发/领取/吊销、用户卡片查询验签、签发历史与吊销留痕、`[chain_key:...]` 链式引用语法与链遍历；配对码短码换用户卡片 `/mz/cert/pairing.js`）→ 查 [references/cert.md](./references/cert.md)。
 - **系统级组织账户机制**（`/mz/org/main.js`：创建组织（独立 `org:<name>` 用户）、owner/staff 角色证书、员工授权与吊销、业务应用的员工权限判断）→ 查 [references/org.md](./references/org.md)。
+- **平台联网能力（web fetch / web search）**（`/mz/net/main.js`：`fetchText` 抓网页文本（正文提取+截断+缓存）、`searchWeb` 联网搜索（mz 内实现：fetch 抓搜索引擎结果页解析，引擎可插拔，服务端零搜索功能）、通道固定（setWebFetchChannel，默认 auto 按优先级：自定义端点 > relay > Jina）、relay 多台选择（setRelayKeyId）、`/fetch` 与 `/search` 协议契约；conjure 的 `web_fetch` / `web_search` 工具底层）→ 查 [references/web-fetch.md](./references/web-fetch.md)。
 
 ## 1. 应用结构 —— `app.json`
 
@@ -185,7 +186,7 @@ splitShareQuery(location.search); // { userId, payloadHash, appParams }（永远
 ```js
 import {
   loadOfficialApps, loadOfficialAppMeta, compareVersions, installOfficialApp,
-} from "/apps/main/home/official-app-writer.js";
+} from "/main/lib/official-app-writer.js";
 
 const list = await loadOfficialApps(); // [{ id, name, icon, desc, version }]（version 读自应用自身的 app.json）
 
@@ -203,7 +204,7 @@ const result = await installOfficialApp({
 
 官方应用记录的 `source` 为 `"official"`，`mazmot.source` 标记为 `"official-market"`。**新增官方应用必须在 `official-apps/manifest.json` 登记 id。**
 
-## 6. 应用打开状态追踪 —— `/apps/main/home/app-status.js`
+## 6. 应用打开状态追踪 —— `/main/lib/app-status.js`
 
 跨标签页追踪"哪些应用窗口还活着"，基于 `BroadcastChannel("mazmot-app-status")`。
 
@@ -211,7 +212,7 @@ const result = await installOfficialApp({
 import {
   startAppStatusWatcher,
   markOpened, clearOpened, focusIfOpened, isWindowAlive,
-} from "/apps/main/home/app-status.js";
+} from "/main/lib/app-status.js";
 
 const stop = startAppStatusWatcher({
   onAlive: name => {},        // 收到 alive/pong

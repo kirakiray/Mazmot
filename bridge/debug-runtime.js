@@ -10,6 +10,8 @@
 //   dom      DOM 样式快照（每节点一行几何 + 关键样式 + 文本，穿 shadow DOM）
 //   eval     执行任意 JS（预置 $ / $$ / $deep / $$deep / $wait / $rect 等）
 //   shot     真实截图（getDisplayMedia，每次独立授权，截完即停止共享）
+//   wire     线框缩略图数据（可见元素盒模型/颜色/文本清单，免授权、手机可用；
+//            conjure 侧 canvas 画成近似缩略图，供预览气泡的窗口方块用）
 //
 // eval 运行时、序列化、DOM 快照的实现参考 web-bridge-mcp 的 client.js
 // （同作者既有项目，方法经过实践验证），按本场景精简适配。
@@ -428,6 +430,7 @@ export const DBG_TOOL_NAMES = {
   dom: "preview_dom",
   eval: "preview_eval",
   shot: "preview_screenshot",
+  wire: "preview_wire",
 };
 
 /**
@@ -584,15 +587,98 @@ const findEl = (selector) => {
   return el;
 };
 
+/* ---------- 缩略图线框数据（wire 指令） ----------
+ * 预览气泡的窗口方块缩略图不走屏幕捕获（getDisplayMedia 需要用户授权，
+ * 移动端 Safari 根本不支持），改为把可见元素的「盒模型 + 底色/边框/文字色/
+ * 字号 + 文本」收集成紧凑的节点清单回传，conjure 侧用 canvas 画成近似
+ * 线框缩略图（thumb-paint.js）。文档顺序即绘制顺序（父块先于子块），
+ * 数据而非代码——主域只画数据，不执行任何 AI 生成的逻辑。
+ */
+const WIRE_NODE_LIMIT = 150;
+
+/** 单节点 → 紧凑线框条目（无用字段省略，坐标取整为文档坐标） */
+const wireNode = (node) => {
+  const r = node.getBoundingClientRect();
+  const cs = getComputedStyle(node);
+  const item = {
+    x: Math.round(r.x + window.scrollX),
+    y: Math.round(r.y + window.scrollY),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+  };
+  const radius = parseFloat(cs.borderTopLeftRadius);
+  if (radius > 0) item.r = Math.round(radius);
+  if (cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)") {
+    item.bg = cs.backgroundColor;
+  }
+  const bw = parseFloat(cs.borderTopWidth) || 0;
+  if (bw > 0 && cs.borderTopStyle !== "none") {
+    item.bw = Math.round(bw);
+    item.bc = cs.borderTopColor;
+  }
+  if (!node.children.length) {
+    const t = (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    if (t) {
+      item.t = t;
+      item.tc = cs.color;
+      item.fs = Math.round(parseFloat(cs.fontSize) || 14);
+    }
+  }
+  return item;
+};
+
+/**
+ * 收集可见元素的线框数据（穿 shadow DOM，剔除代理胶囊），返回
+ * { w, h, nodes }。坐标为**文档坐标**（含滚动偏移），w/h 为文档尺寸——
+ * 页面滚动后线框仍然对应「页面顶部打开的样子」，与滚动位置无关。
+ * @param {{ maxNodes?: number, root?: Element }} [opts] root 缺省从
+ *   documentElement 走全文档；测试可传夹具根节点只收集局部
+ */
+export function wireSnapshot(opts = {}) {
+  const maxNodes = Math.min(Math.max(1, opts.maxNodes || WIRE_NODE_LIMIT), 300);
+  const root = opts.root || document.documentElement;
+  const nodes = [];
+  const snap = (node) => {
+    if (nodes.length >= maxNodes) return;
+    // 代理胶囊 / 日志面板（inject 挂载的 conjure-* 元素）不进线框
+    if (node.id && node.id.startsWith("conjure-")) return;
+    const cs = getComputedStyle(node);
+    if (
+      cs.display === "none" ||
+      cs.visibility === "hidden" ||
+      cs.opacity === "0"
+    ) {
+      return;
+    }
+    const r = node.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return; // 过滤零碎不可见节点
+    nodes.push(wireNode(node));
+    // shadowRoot 与 light children **都要走**：真实应用的内容通常在组件的
+    // light DOM 里经 <slot> 插进影子（如 o-router 包 o-app），只走任一边都会断链
+    const kids = [];
+    if (node.shadowRoot) kids.push(...node.shadowRoot.children);
+    kids.push(...node.children);
+    kids.forEach((c) => snap(c));
+  };
+  snap(root);
+  const doc = document.documentElement;
+  return {
+    w: Math.max(Math.round(doc.scrollWidth), Math.round(window.innerWidth)),
+    h: Math.max(Math.round(doc.scrollHeight), Math.round(window.innerHeight)),
+    nodes,
+  };
+}
+
 /**
  * 执行一条调试指令。
  * @param {Object} opts
- * @param {string} opts.cmd 指令名（status/console/text/click/type/wait/dom/eval/shot）
+ * @param {string} opts.cmd 指令名（status/console/text/click/type/wait/dom/eval/shot/wire）
  * @param {Object} opts.args 指令参数
  * @param {{ entries: Array }} opts.capture installConsoleCapture 的返回值（console 指令用）
  * @param {Object} [opts.info] 代理侧信息（status 指令附带：appName/agentBootAt 等）
  * @returns {Promise<{ ok: boolean, result?: string, error?: string, meta?: Object }>}
- *          result 一律为文本；shot 的 result 为 base64、meta.image 携带图片信息
+ *          result 一律为文本；shot 的 result 为 base64、wire 的 result 为
+ *          JSON 字符串（线框节点清单），两者 meta 携带图片/尺寸信息
  */
 export async function runDebugCommand({ cmd, args = {}, capture, info = {} }) {
   try {
@@ -724,6 +810,49 @@ export async function runDebugCommand({ cmd, args = {}, capture, info = {} }) {
           result: shot.base64,
           meta: { image: { mime: shot.mime, w: shot.w, h: shot.h } },
         };
+      }
+      case "wire": {
+        // 预览气泡窗口方块的缩略图数据，两级策略：
+        // ① 首选 snapdom（vendor 本地，MIT，见 bridge/vendor/）真实渲染截图——
+        //    open shadow DOM / 字体 / 渐变全保真，免屏幕授权，移动端可用；
+        // ② snapdom 失败（动态加载失败 / 极端页面渲染异常）回退 wireSnapshot
+        //    线框节点清单，conjure 侧 thumb-paint 重绘近似图。
+        // 两者 result 形态不同：dataURL（meta.source="snapdom"）或 JSON 串
+        //（meta.source="wire"），调用方按前缀分流。
+        // snapdom 克隆会实例化宿主框架的自定义元素触发噪音报错——抓图期间
+        // 置 capture 静默，不让「截图自身」的报错进缓冲污染 AI 错误感知
+        if (capture?.setMuted) capture.setMuted(true);
+        try {
+          const { snapdom } = await import("/bridge/vendor/snapdom.mjs");
+          const img = await snapdom.toJpg(document.body, {
+            width: 440,
+            quality: 0.7,
+            dpr: 1,
+            exclude: ["#conjure-preview-bubble"], // 代理胶囊不进缩略图
+            // 背景取页面自身底色：方块里 contain 完整显示时，宽高比差的
+            // 留白与页面底色同色，视觉无缝
+            backgroundColor:
+              getComputedStyle(document.body).backgroundColor || "#fff",
+          });
+          if (!img?.src || !img.src.startsWith("data:image")) {
+            throw new Error("snapdom 输出异常");
+          }
+          return {
+            ok: true,
+            result: img.src,
+            meta: { source: "snapdom" },
+          };
+        } catch (err) {
+          console.warn("[debug-runtime] snapdom 缩略图失败，回退线框清单：", err);
+          const payload = wireSnapshot({ maxNodes: num(args.maxNodes, WIRE_NODE_LIMIT) });
+          return {
+            ok: true,
+            result: JSON.stringify(payload),
+            meta: { w: payload.w, h: payload.h, count: payload.nodes.length, source: "wire" },
+          };
+        } finally {
+          capture?.setMuted?.(false);
+        }
       }
       default:
         throw new Error(`未知调试指令: ${cmd}`);

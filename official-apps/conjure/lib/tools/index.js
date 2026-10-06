@@ -6,7 +6,7 @@
 //   self-test.js 内置测试模组（导出 testPlan + runSelfTest，基座见 lib/test-space/）
 //   test/        包的 sibyl-test 测试（test/<tool-name>.sb.html，不分发）
 // ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite, readSkill,
-//   requestForm, openPreview, previewDebug, onPreviewShot }
+//   requestForm, openPreview, previewDebug, onPreviewShot, netFetch, netSearch }
 //
 // 新增工具：在 lib/tools/ 下建 <tool-name>/ 目录包（结构照现有包），
 // 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）；
@@ -20,6 +20,8 @@ import listFiles from "./list-files/index.js";
 import readSkill from "./read-skill/index.js";
 import showForm from "./show-form/index.js";
 import preview from "./preview/index.js";
+import webFetch from "./web-fetch/index.js";
+import webSearch from "./web-search/index.js";
 
 export const TOOL_DEFS = [
   createApp,
@@ -30,6 +32,8 @@ export const TOOL_DEFS = [
   readSkill,
   showForm,
   preview,
+  webFetch,
+  webSearch,
 ];
 
 // 配套视觉组件模块地址：宿主页面预载（聚合为 visualModules）后，
@@ -49,6 +53,8 @@ export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
  * @param {Function} [opts.openPreview] preview 工具（action=app）：推送应用到隔离预览窗口
  * @param {Function} [opts.previewDebug] preview 工具的调试指令通道 (cmd, args, timeoutMs) => outcome
  * @param {Function} [opts.onPreviewShot] preview 工具（action=screenshot）：把截图 dataUrl 展示为聊天图片卡片
+ * @param {Function} [opts.netFetch] web_fetch 工具：/mz/net 的 fetchText（联网抓取网页文本）
+ * @param {Function} [opts.netSearch] web_search 工具：/mz/net 的 searchWeb（联网搜索）
  * @returns {Object<string, Object>} 按 key 索引的工具映射
  */
 export function createTools({
@@ -62,6 +68,8 @@ export function createTools({
   openPreview,
   previewDebug,
   onPreviewShot,
+  netFetch,
+  netSearch,
 }) {
   const ctx = {
     fs,
@@ -73,6 +81,8 @@ export function createTools({
     openPreview,
     previewDebug,
     onPreviewShot,
+    netFetch,
+    netSearch,
   };
   const tools = {};
   for (const def of TOOL_DEFS) {

@@ -127,6 +127,42 @@
         cursor: pointer;
       }
 
+      /* ===== 主应用首屏 loading 层 ===== */
+      /* 快速通道（boot-fast）首帧即见，替代进入对话前的裸色底空白期；
+         完整引导路径压在引导层（z-index 9999）之下不露出。首页模块把
+         依赖全部加载完并渲染出首屏后派发 mazmot:app-ready 统一撤下 */
+      #app-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 9990;
+        background-color: var(--md-sys-color-surface);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        padding: 24px;
+        box-sizing: border-box;
+        transition: opacity 0.4s ease;
+      }
+      #app-loading.leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .loading-ring {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 3px solid var(--md-sys-color-surface-variant);
+        border-top-color: var(--md-sys-color-primary);
+        animation: loading-spin 0.9s linear infinite;
+      }
+      @keyframes loading-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       /* nos-version 只做逻辑驱动，不显示 UI（进度由本页统一表现） */
       nos-version {
         display: none !important;
@@ -163,6 +199,17 @@
 
       <!-- 隐藏的 Core 版本管理组件：负责检测/自动安装 NoneOS Core -->
       <nos-version auto-install id="boot-nsv"></nos-version>
+    </div>
+
+    <!-- 主应用首屏 loading 层：快速通道（boot-fast 只隐藏引导层）首帧即见，
+         替代挂载 <o-app> 到首页可交互之间的空白期；完整引导路径压在引导层
+         之下不露出。首页模块（welcome / apps）加载齐全部依赖并渲染出首屏
+         后派发 mazmot:app-ready，由根入口统一撤下 -->
+    <div id="app-loading">
+      <m-mascot style="--mascot-size: 104px"></m-mascot>
+      <div class="brand">Mazmot</div>
+      <div class="loading-ring"></div>
+      <div class="boot-status" id="loading-status"></div>
     </div>
 
     <!-- 主应用宿主 -->
@@ -224,6 +271,12 @@
       const errorEl = document.getElementById("boot-error");
       const errorTextEl = document.getElementById("boot-error-text");
       const retryBtn = document.getElementById("boot-retry");
+      const loadingEl = document.getElementById("app-loading");
+      // loading 层文案跟随语言偏好（本层生命周期短，语言校准后不重刷）
+      document.getElementById("loading-status").textContent = langPick({
+        cn: "加载中…",
+        en: "Loading…",
+      });
 
       // 状态文案保留词条引用，语言校准后整体重渲染
       let statusItem = null;
@@ -333,32 +386,52 @@
         // 原地挂载 /main 主应用（此时 Core SW 已就绪，/gh/、/nos/ 均可用）
         document.getElementById("app-host").innerHTML =
           '<o-router fix-body><o-app src="/main/app-config.js"></o-app></o-router>';
+        // 兜底：首页模块加载异常（404 / 抛错）时 app-ready 不来，
+        // 15s 后强制撤掉引导层 / loading 层，不永久挡屏
+        setTimeout(finishEnter, 15000);
       };
 
-      const leaveBootMask = () => {
-        setTimeout(() => {
+      // ---- 首屏收口：首页内容就绪才撤 loading ----
+      // 主应用首页（welcome 引导对话 / apps 列表）经页面工厂 load 并行加载
+      // 全部依赖模块与组件、渲染出首屏后派发 mazmot:app-ready，此处统一
+      // 撤下引导层与 loading 层——用户看到的第一帧内容即是完整首屏
+      let appFinished = false;
+      const finishEnter = () => {
+        if (appFinished) return;
+        appFinished = true;
+        if (maskEl.isConnected) {
           maskEl.classList.add("leaving");
           setTimeout(() => maskEl.remove(), 450);
-        }, 300);
+        }
+        loadingEl.classList.add("leaving");
+        setTimeout(() => loadingEl.remove(), 450);
       };
+      window.addEventListener("mazmot:app-ready", finishEnter, { once: true });
 
-      // 完整引导路径（首访 / 恢复装）：保留苏醒仪式
+      // 完整引导路径（首访 / 恢复装）：保留苏醒仪式；引导层带着「苏醒中」
+      // 状态留在屏上，首页就绪后由 finishEnter 一并撤下
       const enterApp = () => {
         entered = true;
         mountApp();
-        leaveBootMask();
       };
 
-      // 快速通道（Core 已就绪的回头客）：跳过苏醒仪式，立即挂载并快速淡出
+      // 快速通道（Core 已就绪的回头客）：跳过苏醒仪式立即挂载并撤下引导层
+      //（boot-fast 首帧已隐藏），loading 层继续盖到首页就绪
       const enterFast = () => {
         entered = true;
         mountApp();
-        maskEl.classList.add("leaving");
-        setTimeout(() => maskEl.remove(), 450);
+        if (maskEl.isConnected) {
+          maskEl.classList.add("leaving");
+          setTimeout(() => maskEl.remove(), 450);
+        }
       };
 
       // ---- 组件加载（ofa 就绪后 lm 可用）----
       const load = lm(import.meta);
+
+      // loading 层吉祥物组件预载：与后续 Core 探测 / 引导并行，不占关键
+      // 路径；组件注册后 loading 屏的吉祥物即刻浮现
+      load("/mz/comps/mascot/mascot.html").catch(() => {});
 
       // nos-version 组件源：仅当 sw/sw-config.js 的 coreDev:true 且运行在
       // localhost 时走本地 dev Core（3002），否则一律线上；本地加载失败回退线上

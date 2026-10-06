@@ -82,7 +82,12 @@ const fmtArg = (v, depth = 0) => {
 export function installConsoleCapture() {
   const entries = [];
   const subs = new Set();
+  // 静默开关：置 true 时暂停记录。snapdom 克隆页面会实例化宿主框架的自定义
+  // 元素并触发噪音报错（ofa 组件 created 回调等），这类「截图自身」的报错
+  // 不能进缓冲污染 AI 的错误感知（preview console / 自动错误回路）
+  let muted = false;
   const push = (level, parts) => {
+    if (muted) return;
     let text = parts.join(" ");
     if (text.length > ARG_TEXT_MAX) text = text.slice(0, ARG_TEXT_MAX) + "…";
     entries.push({ t: Date.now(), level, text });
@@ -132,6 +137,7 @@ export function installConsoleCapture() {
   window.addEventListener(
     "error",
     (e) => {
+      if (muted) return;
       push("error", [
         `${e.message} @ ${e.filename || "?"}:${e.lineno || 0}:${e.colno || 0}`,
       ]);
@@ -139,11 +145,15 @@ export function installConsoleCapture() {
     true,
   );
   window.addEventListener("unhandledrejection", (e) => {
+    if (muted) return;
     push("error", ["UnhandledRejection: " + fmtArg(e.reason)]);
   });
 
   return {
     entries,
+    setMuted(v) {
+      muted = !!v;
+    },
     subscribe(cb) {
       subs.add(cb);
       return () => subs.delete(cb);
@@ -863,6 +873,12 @@ async function main() {
           handleDbg(payload);
           return;
         }
+        // 被 conjure 拒绝注册：预览窗口数已达上限（尽力投递的通知信封）
+        if (payload.type === "preview-full") {
+          bubble.set(`预览窗口已达上限（${payload.max || 10}）`, "offline");
+          log("被 conjure 拒绝：预览窗口数量已达上限");
+          return;
+        }
         receiver
           .handle(payload)
           .then((result) => {
@@ -898,6 +914,20 @@ async function main() {
     remote = await user.connectUser(conjureId);
     // 上报就绪（尽力投递；conjure 不在线时静默失败，不影响应用本身运行）
     await link.send({ type: "agent-online", userId: user.userId });
+    // announce 心跳：向 conjure 的窗口注册表上报本窗口（多窗口清单 / 调试指令
+    // 定向投递的依据）。15s 一次，conjure 侧 45s 无心跳即判离线；经可靠链路
+    // 发送（有 ACK/重发），conjure 不在线时重试耗尽静默失败
+    const announce = () =>
+      link
+        .send({
+          type: "announce",
+          appName,
+          url: location.href,
+          ua: navigator.userAgent,
+        })
+        .catch(() => {});
+    announce();
+    setInterval(announce, 15_000);
     bubble.set("隔离预览 · 已连接妙造", "ok");
     log(`代理就绪（app=${appName}）`);
   } catch (err) {

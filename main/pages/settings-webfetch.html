@@ -1,0 +1,610 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      text-align: start;
+    }
+    .wf-desc {
+      max-width: 560px;
+      margin: 0 0 14px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.5;
+    }
+    .wf-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 560px;
+    }
+    .wf-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border: 1px solid var(--md-sys-color-surface-variant);
+      border-radius: 12px;
+      background-color: var(--md-sys-color-surface);
+      cursor: pointer;
+    }
+    .wf-row:hover {
+      border-color: var(--md-sys-color-outline);
+    }
+    .wf-row.active {
+      border-color: var(--md-sys-color-primary);
+    }
+    .wf-icon {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      border-radius: 10px;
+      background-color: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .wf-row.active .wf-icon {
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .wf-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .wf-line1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .wf-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .wf-chip {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .wf-detail {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* 行尾固定选择指示（点行即固定该通道） */
+    .wf-pick {
+      flex-shrink: 0;
+      display: inline-flex;
+      font-size: 20px;
+      color: var(--md-sys-color-surface-container-high);
+    }
+    .wf-row.selected .wf-pick {
+      color: var(--md-sys-color-primary);
+    }
+    .wf-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 560px;
+      margin: 18px 0 8px;
+    }
+    .wf-field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .wf-help {
+      display: inline-flex;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .wf-help:hover {
+      color: var(--md-sys-color-primary);
+    }
+    .wf-hub-row {
+      display: flex;
+      gap: 8px;
+      max-width: 560px;
+    }
+    .wf-hub-row st-input {
+      flex: 1;
+      min-width: 0;
+    }
+    .wf-hub-token {
+      max-width: 560px;
+      margin-top: 8px;
+    }
+    .wf-hub-status {
+      max-width: 560px;
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .wf-hub-status.err {
+      color: var(--md-sys-color-error);
+    }
+    .wf-relay-select {
+      max-width: 560px;
+    }
+    .wf-test {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: 560px;
+      margin-top: 14px;
+    }
+    .wf-test-result {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--md-sys-color-on-surface-variant);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .wf-test-result.ok {
+      color: var(--md-sys-color-on-surface);
+    }
+    .wf-test-result.err {
+      color: var(--md-sys-color-error);
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+
+  <p class="wf-desc">
+    <locale-text>
+      <span lang="cn">网页抓取（web fetch）经服务端中转完成。默认「自动」按优先级取第一个可用通道（自定义端点 → relay → Jina）；点击下方任意通道可固定使用——固定后只用它，失败不再自动降级。</span>
+      <span lang="en">Web pages are fetched via a server-side relay. "Automatic" picks the first available channel by priority (custom → relay → Jina); click any channel to pin it — a pinned channel is used exclusively, without fallback.</span>
+    </locale-text>
+  </p>
+
+  <div class="wf-list">
+    <o-fill :value="providers" fill-key="key">
+      <div
+        class="wf-row"
+        class:active="$data.active"
+        class:selected="$data.selected"
+        on:click="$host.pickChannel($data.key)"
+      >
+        <div class="wf-icon">
+          <n-icon attr:icon="$data.icon"></n-icon>
+        </div>
+        <div class="wf-info">
+          <div class="wf-line1">
+            <span class="wf-name">{{$data.name}}</span>
+            <o-if :value="$data.active">
+              <span class="wf-chip">
+                <n-icon icon="mdi:check"></n-icon>
+                <locale-text><span lang="cn">当前生效</span><span lang="en">Active</span></locale-text>
+              </span>
+            </o-if>
+          </div>
+          <div class="wf-detail">{{$data.detail}}</div>
+        </div>
+        <div class="wf-pick">
+          <n-icon
+            attr:icon="$data.selected ? 'mdi:check-circle' : 'mdi:circle-outline'"
+          ></n-icon>
+        </div>
+      </div>
+    </o-fill>
+  </div>
+
+  <div class="wf-section-head">
+    <span class="wf-field-label">
+      <locale-text>
+        <span lang="cn">AI 转发服务器（relay 通道使用哪台，多台时可切换）</span>
+        <span lang="en">Relay server (which one the relay channel uses)</span>
+      </locale-text>
+    </span>
+  </div>
+  <st-select
+    id="relay-select"
+    class="wf-relay-select"
+    on:change="onRelaySelect"
+  ></st-select>
+
+  <div class="wf-section-head">
+    <span class="wf-field-label">
+      <locale-text>
+        <span lang="cn">搜索引擎（web search 默认引擎，AI 应用的 web_search 工具同样生效）</span>
+        <span lang="en">Search engine (default for web search, incl. the AI web_search tool)</span>
+      </locale-text>
+    </span>
+  </div>
+  <st-select
+    id="engine-select"
+    class="wf-relay-select"
+    on:change="onEngineSelect"
+  ></st-select>
+
+  <div class="wf-section-head">
+    <span class="wf-field-label">
+      <locale-text>
+        <span lang="cn">自定义 Web Hub（自部署，配置后优先于 relay 生效）</span>
+        <span lang="en">Custom Web Hub (self-deployed, takes precedence over relay)</span>
+      </locale-text>
+    </span>
+    <a
+      class="wf-help"
+      attr:href="hubDocUrl"
+      target="_blank"
+      rel="noreferrer"
+      attr:title="hubDocTitle"
+    >
+      <n-icon icon="mdi:help-circle-outline"></n-icon>
+    </a>
+  </div>
+  <div class="wf-hub-row">
+    <st-input sync:value="hubUrl" attr:placeholder="hubUrlPlaceholder"></st-input>
+    <st-button attr:disabled="savingHub" on:click="saveHub">
+      <locale-text><span lang="cn">保存</span><span lang="en">Save</span></locale-text>
+    </st-button>
+    <st-button variant="outlined" attr:disabled="savingHub" on:click="clearHub">
+      <locale-text><span lang="cn">清除</span><span lang="en">Clear</span></locale-text>
+    </st-button>
+  </div>
+  <div class="wf-hub-token">
+    <st-input sync:value="hubToken" attr:placeholder="hubTokenPlaceholder"></st-input>
+  </div>
+  <p class="wf-hub-status" class:err="hubStatusErr">{{hubStatus}}</p>
+
+  <div class="wf-test">
+    <st-button
+      variant="outlined"
+      style="font-size: 12px"
+      attr:disabled="testing"
+      on:click="runTest"
+    >
+      <span slot="prefix"><n-icon icon="mdi:flash-outline"></n-icon></span>
+      <locale-text><span lang="cn">测试抓取</span><span lang="en">Test fetch</span></locale-text>
+    </st-button>
+    <span class="wf-test-result" class:ok="testOk" class:err="testErr">{{testResult}}</span>
+  </div>
+
+  <script>
+    import {
+      getLocaleText,
+    } from "/nos/locale-text/get-locale-text.js";
+    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
+
+    export default async ({ load }) => {
+      // 联网能力（/mz/net）与 AI key 体系（/mz/ai）都由 NoneOS Core SW 提供，
+      // 页面模块按规范经工厂参数 load 按需加载（禁止顶层 import /nos/*、mz/*；
+      // locale-text 为纯静态工具，与 settings-general 同款静态引入）
+      const net = await load("/mz/net/main.js");
+      await load("/mz/ai/main.js");
+
+      const providerName = (key) =>
+        ({
+          custom: getLocaleText({ cn: "自定义端点", en: "Custom endpoint" }),
+          relay: getLocaleText({ cn: "AI 转发服务器（relay）", en: "AI relay server" }),
+          jina: getLocaleText({ cn: "Jina 公共兜底", en: "Jina fallback" }),
+        })[key] || key;
+
+      return {
+        data: {
+          providers: [],
+          // relay 多台选择（st-select 动态选项，注入方式同 settings-general 主题下拉）
+          relayChoices: [],
+          testing: false,
+          testOk: false,
+          testErr: false,
+          testResult: "",
+          // 自定义 Web Hub 配置（mz/net 的 custom 通道，存 getStorage("mz-net")）
+          hubUrl: "",
+          hubToken: "",
+          hubStatus: "",
+          hubStatusErr: false,
+          savingHub: false,
+          hubDocUrl: "https://github.com/kirakiray/Mazmot/blob/main/server/web-hub-cf/README.md",
+          hubDocTitle: getLocaleText({
+            cn: "web-hub 部署指南（Cloudflare Workers，一键 wrangler deploy）",
+            en: "web-hub deployment guide (Cloudflare Workers)",
+          }),
+          hubUrlPlaceholder: getLocaleText({
+            cn: "https://web-hub-cf.<你的子域>.workers.dev",
+            en: "https://web-hub-cf.<your-subdomain>.workers.dev",
+          }),
+          hubTokenPlaceholder: getLocaleText({
+            cn: "共享令牌（可选，自部署 Worker 配置了 WEB_HUB_TOKEN 时填写）",
+            en: "Shared token (optional, if your Worker sets WEB_HUB_TOKEN)",
+          }),
+        },
+
+        async ready() {
+          await this.refreshState();
+          const custom = await net.getCustomEndpoint();
+          if (custom) {
+            this.hubUrl = custom.url;
+            this.hubToken = custom.token || "";
+            this.hubStatus = getLocaleText({
+              cn: "当前已配置自定义端点（保存 / 清除后立即生效）",
+              en: "Custom endpoint configured (save / clear applies immediately)",
+            });
+          }
+        },
+
+        proto: {
+          /**
+           * 刷新通道清单 / relay 下拉 / 生效标记。
+           * st-select 动态选项注入同 settings-general 主题下拉模式：
+           * 数据更新后等渲染再重灌 option（子页面每次挂载重建，无残留问题）
+           */
+          async refreshState() {
+            const channel = await net.getWebFetchChannel();
+            const resolved = await net.resolveProvider();
+            const custom = await net.getCustomEndpoint();
+            const servers = await net.listRelayServers();
+            const preferId = await net.getRelayKeyId();
+            const chosen = servers.find((s) => s.keyId === preferId) || servers[0] || null;
+
+            const mk = (key, icon, name, detail) => ({
+              key,
+              icon,
+              name,
+              detail,
+              selected: channel === key,
+              active: resolved.name === key,
+            });
+
+            this.providers = [
+              mk(
+                "auto",
+                "mdi:shuffle-variant",
+                getLocaleText({ cn: "自动选择（推荐）", en: "Automatic (recommended)" }),
+                getLocaleText({
+                  cn: "按优先级取第一个可用：自定义端点 → relay → Jina",
+                  en: "First available by priority: custom → relay → Jina",
+                }),
+              ),
+              mk(
+                "custom",
+                "mdi:lan-connect",
+                providerName("custom"),
+                custom
+                  ? (custom.token
+                      ? getLocaleText({ cn: "已配置：", en: "Configured: " })
+                      : getLocaleText({ cn: "已配置（无令牌）：", en: "Configured (no token): " })) +
+                    custom.url
+                  : getLocaleText({
+                      cn: "未配置（自部署 web-hub 或本地代理后可在下方接入）",
+                      en: "Not configured (deploy your own web-hub below)",
+                    }),
+              ),
+              mk(
+                "relay",
+                "mdi:server-network",
+                providerName("relay"),
+                chosen
+                  ? getLocaleText({ cn: "可用：", en: "Available: " }) +
+                    chosen.baseUrl +
+                    " /v1/web/fetch" +
+                    (servers.length > 1
+                      ? getLocaleText({ cn: "（多台，下方选择）", en: " (multiple, pick below)" })
+                      : "")
+                  : getLocaleText({
+                      cn: "未配置 relay 邀请码（AI 密钥管理器添加后自动可用）",
+                      en: "No relay invite code (add one in AI Key Manager)",
+                    }),
+              ),
+              mk(
+                "jina",
+                "mdi:lifebuoy",
+                providerName("jina"),
+                getLocaleText({
+                  cn: "公共兜底（免部署；目标网址会经过第三方）",
+                  en: "Public fallback (no deploy needed; URLs go through a third party)",
+                }),
+              ),
+            ];
+
+            // relay 下拉：清空重灌
+            this.relayChoices = servers.map(({ keyId, label }) => ({ keyId, label }));
+            await new Promise((r) => setTimeout(r, 30));
+            const select = this.shadow.$("#relay-select")?.ele;
+            if (select) {
+              select.innerHTML = "";
+              if (!servers.length) {
+                const opt = document.createElement("option");
+                opt.value = "";
+                opt.disabled = true;
+                opt.textContent = getLocaleText({
+                  cn: "未配置 relay 邀请码",
+                  en: "No relay invite code",
+                });
+                select.appendChild(opt);
+              } else {
+                for (const s of servers) {
+                  const opt = document.createElement("option");
+                  opt.value = s.keyId;
+                  opt.textContent = s.label;
+                  select.appendChild(opt);
+                }
+                select.value = chosen ? chosen.keyId : "";
+              }
+            }
+
+            // 搜索引擎下拉：选项来自 SEARCH_ENGINES（key + label），选中值读用户偏好
+            const engineSelect = this.shadow.$("#engine-select")?.ele;
+            if (engineSelect) {
+              engineSelect.innerHTML = "";
+              for (const [key, engine] of Object.entries(net.SEARCH_ENGINES)) {
+                const opt = document.createElement("option");
+                opt.value = key;
+                opt.textContent = engine.label;
+                engineSelect.appendChild(opt);
+              }
+              engineSelect.value = await net.getSearchEngine();
+            }
+          },
+
+          /** 点通道行：固定该通道（再点已固定的无动作）；auto = 恢复自动优先级 */
+          async pickChannel(key) {
+            if ((await net.getWebFetchChannel()) === key) return;
+            await net.setWebFetchChannel(key);
+            await this.refreshState();
+            toast({
+              message:
+                key === "auto"
+                  ? getLocaleText({ cn: "已恢复自动选择", en: "Back to automatic" })
+                  : getLocaleText(
+                      { cn: "已固定使用：{name}", en: "Pinned: {name}" },
+                      { name: providerName(key) },
+                    ),
+              color: "success",
+            });
+          },
+
+          /** 切换 relay 通道使用的服务器 */
+          async onRelaySelect(event) {
+            const id = event.target.value;
+            if (!id || id === (await net.getRelayKeyId())) return;
+            await net.setRelayKeyId(id);
+            await this.refreshState();
+            const hit = this.relayChoices.find((s) => s.keyId === id);
+            toast({
+              message: getLocaleText(
+                { cn: "web fetch 将使用：{name}", en: "web fetch will use: {name}" },
+                { name: hit?.label || id },
+              ),
+              color: "success",
+            });
+          },
+
+          /** 切换默认搜索引擎（web search 与 AI 应用的 web_search 工具共用） */
+          async onEngineSelect(event) {
+            const key = event.target.value;
+            if (!key || key === (await net.getSearchEngine())) return;
+            try {
+              await net.setSearchEngine(key);
+            } catch (error) {
+              toast({ message: error.message, color: "error" });
+              return;
+            }
+            toast({
+              message: getLocaleText(
+                { cn: "默认搜索引擎：{name}", en: "Default search engine: {name}" },
+                { name: net.SEARCH_ENGINES[key]?.label || key },
+              ),
+              color: "success",
+            });
+          },
+
+          /** 保存自定义 Web Hub（即 mz/net 的 custom 通道，优先于 relay） */
+          async saveHub() {
+            if (this.savingHub) return;
+            const url = this.hubUrl.trim().replace(/\/+$/, "");
+            if (!url) {
+              this.hubStatusErr = true;
+              this.hubStatus = getLocaleText({ cn: "请填写 Worker 地址", en: "Enter your Worker URL" });
+              return;
+            }
+            this.savingHub = true;
+            try {
+              await net.setCustomEndpoint({ url, token: this.hubToken.trim() });
+              this.hubStatusErr = false;
+              this.hubStatus = getLocaleText(
+                { cn: "已保存：{url}（可点下方「测试抓取」验证）", en: "Saved: {url} (use \"Test fetch\" below to verify)" },
+                { url },
+              );
+              toast({
+                message: getLocaleText({ cn: "自定义 Web Hub 已保存", en: "Custom Web Hub saved" }),
+                color: "success",
+              });
+              await this.refreshState();
+            } catch (error) {
+              this.hubStatusErr = true;
+              this.hubStatus = error.message;
+            } finally {
+              this.savingHub = false;
+            }
+          },
+
+          /** 清除自定义端点，回到自动链（relay > hub > jina） */
+          async clearHub() {
+            if (this.savingHub) return;
+            this.savingHub = true;
+            try {
+              await net.clearCustomEndpoint();
+              this.hubUrl = "";
+              this.hubToken = "";
+              this.hubStatusErr = false;
+              this.hubStatus = getLocaleText({
+                cn: "已清除，恢复自动通道选择",
+                en: "Cleared — back to automatic channel selection",
+              });
+              toast({
+                message: getLocaleText({ cn: "已清除自定义端点", en: "Custom endpoint cleared" }),
+                color: "success",
+              });
+              await this.refreshState();
+            } finally {
+              this.savingHub = false;
+            }
+          },
+
+          /** 实测一次抓取（example.com 稳定轻量），显示实际生效通道与耗时 */
+          async runTest() {
+            if (this.testing) return;
+            this.testing = true;
+            this.testOk = false;
+            this.testErr = false;
+            this.testResult = getLocaleText({ cn: "抓取中…", en: "Fetching…" });
+            const started = Date.now();
+            try {
+              const r = await net.fetchText("https://example.com/", {
+                noCache: true,
+              });
+              const ms = Date.now() - started;
+              this.testOk = true;
+              this.testResult = getLocaleText(
+                {
+                  cn: "成功 · 经 {provider} · {ms}ms · {preview}",
+                  en: "OK · via {provider} · {ms}ms · {preview}",
+                },
+                {
+                  provider: r.provider,
+                  ms,
+                  preview: (r.text.split("\n")[0] || "").slice(0, 40),
+                },
+              );
+              // 通道状态可能已变化（如 hub 失败降级 jina），刷新清单
+              await this.refreshState();
+            } catch (error) {
+              this.testErr = true;
+              this.testResult = getLocaleText(
+                { cn: "失败：{msg}", en: "Failed: {msg}" },
+                { msg: error.message },
+              );
+            } finally {
+              this.testing = false;
+            }
+          },
+        },
+      };
+    };
+  </script>
+</template>

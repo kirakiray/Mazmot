@@ -66,7 +66,7 @@
 
 ## 特性
 
-### 应用管理（`apps/main/`）
+### 应用管理（`main/`）
 - **三种应用来源**：本地目录（Chrome File System Access 挂载）、虚拟目录（OPFS 持久化）、官方应用市场
 - **应用模板**：内置 base / share-link / ping-pong / tic-tac-toe 等模板，新建应用即开即用
 - **应用市场**：浏览官方应用并安装，支持版本检测与一键更新
@@ -129,7 +129,7 @@ Mazmot/
 
 ### 1. 在线访问（最快）
 
-直接访问 **[mazmot.noneos.com](https://mazmot.noneos.com)** —— 无需安装、无需配置。首次访问会自动安装 NoneOS Core，完成后进入主应用 `/apps/main/`。
+直接访问 **[mazmot.noneos.com](https://mazmot.noneos.com)** —— 无需安装、无需配置。首次访问会自动安装 NoneOS Core，完成后进入主应用 `/`。
 
 ### 2. 本地开发
 

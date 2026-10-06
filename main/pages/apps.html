@@ -432,14 +432,8 @@
     }
   </style>
 
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/list/list.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/switch/switch.html"></l-m>
-  <l-m src="/nos/n-icon/n-icon.html"></l-m>
-  <l-m src="/mz/comps/ercode/ercode.html"></l-m>
-  <l-m src="/nos/locale-text/locale-text.html"></l-m>
+  <!-- 组件依赖不写静态 <l-m>：全部在页面工厂里经 load 并行预载（见下方
+       script），保证首屏渲染时组件全部就绪，配合根入口 loading 层消除空白期 -->
 
   <st-dialog
     class="dlg-wide"
@@ -537,6 +531,9 @@
             style="width: 100%"
             on:open-market="handleCertsOpenMarket"
           ></o-page>
+        </o-if>
+        <o-if :value="settingsTab === 'webfetch'">
+          <o-page src="./settings-webfetch.html" style="width: 100%"></o-page>
         </o-if>
       </div>
     </div>
@@ -904,208 +901,227 @@
   </div>
 
   <script>
-    import { getStorage } from "/nos/storage/main.js";
-    import { init } from "/nos/fs/main.js";
-    import { DirHandle } from "/nos/fs/handle/dir.js";
-    import toast from "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js";
-    import confirm from "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js";
-    import {
-      openedWindows,
-      readOpenedFromLS,
-      isWindowAlive,
-      startAppStatusWatcher,
-      markOpened,
-      clearOpened,
-      focusIfOpened,
-    } from "../lib/app-status.js";
-    import { getRunUrl } from "/mz/app-runner.js";
-    import {
-      ensureUser,
-      generateAppId,
-      publishApp,
-      unpublishApp,
-      buildOfficialRunUrl,
-    } from "/mz/share-mgr.js";
-    import { syncOfficialAppState } from "../lib/official-app-state.js";
-    import {
-      loadOfficialAppMeta,
-      compareVersions,
-      installOfficialApp,
-    } from "../lib/official-app-writer.js";
-    import {
-      installQueue,
-      onInstallSettled,
-      retryInstall,
-      enqueueOfficialInstalls,
-    } from "../lib/install-queue.js";
-    import {
-      getLocaleText,
-      getLang,
-      ensureLocaleTextJson,
-    } from "/nos/locale-text/get-locale-text.js";
+    export default async ({ load }) => {
+      // 依赖模块与组件全部经工厂 load 并行加载（页面模块顶层禁止直接
+      // import /nos/*，组件替代静态 <l-m>）：全部就绪后页面才注册渲染，
+      // 配合根入口 loading 层消除进入列表前的空白期
+      const [
+        { getStorage },
+        { init },
+        { DirHandle },
+        { default: toast },
+        { default: confirm },
+        {
+          readOpenedFromLS,
+          isWindowAlive,
+          startAppStatusWatcher,
+          markOpened,
+          clearOpened,
+          focusIfOpened,
+        },
+        { getRunUrl },
+        {
+          ensureUser,
+          generateAppId,
+          publishApp,
+          unpublishApp,
+          buildOfficialRunUrl,
+        },
+        { syncOfficialAppState },
+        { loadOfficialAppMeta, compareVersions, installOfficialApp },
+        {
+          installQueue,
+          onInstallSettled,
+          retryInstall,
+          enqueueOfficialInstalls,
+        },
+        { getLocaleText, getLang, ensureLocaleTextJson },
+      ] = await Promise.all([
+        load("/nos/storage/main.js"),
+        load("/nos/fs/main.js"),
+        load("/nos/fs/handle/dir.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js"),
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js"),
+        load("../lib/app-status.js"),
+        load("/mz/app-runner.js"),
+        load("/mz/share-mgr.js"),
+        load("../lib/official-app-state.js"),
+        load("../lib/official-app-writer.js"),
+        load("../lib/install-queue.js"),
+        load("/nos/locale-text/get-locale-text.js"),
+        // 组件依赖（替代原静态 <l-m>，与模块并行预载）
+        load("/gh/ofajs/senti-ui@latest/packages/list/list.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/button/button.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"),
+        load("/gh/ofajs/senti-ui@latest/packages/switch/switch.html"),
+        load("/nos/n-icon/n-icon.html"),
+        load("/mz/comps/ercode/ercode.html"),
+        load("/nos/locale-text/locale-text.html"),
+      ]);
 
-    // 先构建 locale-text.json 反向索引再求值 L10N：
-    // getLocaleText 只有在索引就绪后才查中央翻译表（ja 等扩展语种）
-    await ensureLocaleTextJson();
+      // 先构建 locale-text.json 反向索引再求值 L10N：
+      // getLocaleText 只有在索引就绪后才查中央翻译表（ja 等扩展语种）
+      await ensureLocaleTextJson();
 
-    // 属性类文案（title 等）翻译表；模板正文文案用 <locale-text> 组件。
-    // 每个值必须是字面量 getLocaleText 调用，nos-tool/locale-text-tool
-    // 才能扫描收录进 locale-text.json，获得中央翻译表的扩展语种回退
-    const L10N = {
-      mineTitle: getLocaleText({ cn: "由当前账号开发发布", en: "Developed by the current account" }),
-      officialTitle: getLocaleText({ cn: "来自应用市场", en: "From the App Market" }),
-      offlineTitle: getLocaleText({ cn: "该官方应用已从市场下线，无法更新", en: "This official app has been removed from the market and cannot be updated" }),
-      updateBadgeTitle: getLocaleText({ cn: "应用市场有新版本可更新", en: "A newer version is available in the market" }),
-      openedTitle: getLocaleText({ cn: "点击可切换到已打开的窗口", en: "Click to switch to the opened window" }),
-      openTabTitle: getLocaleText({ cn: "在新标签页中打开", en: "Open in a new tab" }),
-      openWindowTitle: getLocaleText({ cn: "在小窗口中打开（类原生应用）", en: "Open in a small window (native-like)" }),
-      sourceTitle: getLocaleText({ cn: "应用来源", en: "App source" }),
-      copyAppIdTitle: getLocaleText({ cn: "复制应用 ID", en: "Copy app ID" }),
-      copyShareUrlTitle: getLocaleText({ cn: "复制分享链接", en: "Copy share link" }),
-      viewQrTitle: getLocaleText({ cn: "查看二维码", en: "View QR code" }),
-      waitingPublish: getLocaleText({ cn: "等待发布...", en: "Waiting to publish..." }),
-      settingsTitle: getLocaleText({ cn: "设置", en: "Settings" }),
-      installingBadgeTitle: getLocaleText({ cn: "正在从应用市场安装", en: "Installing from the App Market" }),
-      retryInstallTitle: getLocaleText({ cn: "重试安装", en: "Retry install" }),
-      gridViewTitle: getLocaleText({ cn: "切换为方块视图", en: "Switch to grid view" }),
-      listViewTitle: getLocaleText({ cn: "切换为列表视图", en: "Switch to list view" }),
-      navGeneral: getLocaleText({ cn: "常规", en: "General" }),
-      navUser: getLocaleText({ cn: "用户信息", en: "User Info" }),
-      navCerts: getLocaleText({ cn: "凭证管理", en: "Credentials" }),
-    };
+      // 属性类文案（title 等）翻译表；模板正文文案用 <locale-text> 组件。
+      // 每个值必须是字面量 getLocaleText 调用，nos-tool/locale-text-tool
+      // 才能扫描收录进 locale-text.json，获得中央翻译表的扩展语种回退
+      const L10N = {
+        mineTitle: getLocaleText({ cn: "由当前账号开发发布", en: "Developed by the current account" }),
+        officialTitle: getLocaleText({ cn: "来自应用市场", en: "From the App Market" }),
+        offlineTitle: getLocaleText({ cn: "该官方应用已从市场下线，无法更新", en: "This official app has been removed from the market and cannot be updated" }),
+        updateBadgeTitle: getLocaleText({ cn: "应用市场有新版本可更新", en: "A newer version is available in the market" }),
+        openedTitle: getLocaleText({ cn: "点击可切换到已打开的窗口", en: "Click to switch to the opened window" }),
+        openTabTitle: getLocaleText({ cn: "在新标签页中打开", en: "Open in a new tab" }),
+        openWindowTitle: getLocaleText({ cn: "在小窗口中打开（类原生应用）", en: "Open in a small window (native-like)" }),
+        sourceTitle: getLocaleText({ cn: "应用来源", en: "App source" }),
+        copyAppIdTitle: getLocaleText({ cn: "复制应用 ID", en: "Copy app ID" }),
+        copyShareUrlTitle: getLocaleText({ cn: "复制分享链接", en: "Copy share link" }),
+        viewQrTitle: getLocaleText({ cn: "查看二维码", en: "View QR code" }),
+        waitingPublish: getLocaleText({ cn: "等待发布...", en: "Waiting to publish..." }),
+        settingsTitle: getLocaleText({ cn: "设置", en: "Settings" }),
+        installingBadgeTitle: getLocaleText({ cn: "正在从应用市场安装", en: "Installing from the App Market" }),
+        retryInstallTitle: getLocaleText({ cn: "重试安装", en: "Retry install" }),
+        gridViewTitle: getLocaleText({ cn: "切换为方块视图", en: "Switch to grid view" }),
+        listViewTitle: getLocaleText({ cn: "切换为列表视图", en: "Switch to list view" }),
+        navGeneral: getLocaleText({ cn: "常规", en: "General" }),
+        navUser: getLocaleText({ cn: "用户信息", en: "User Info" }),
+        navCerts: getLocaleText({ cn: "凭证管理", en: "Credentials" }),
+        navWebFetch: getLocaleText({ cn: "联网能力", en: "Web Fetch" }),
+      };
 
-    const t = (key) => {
-      const item = L10N[key];
-      return item === undefined ? key : item;
-    };
+      const t = (key) => {
+        const item = L10N[key];
+        return item === undefined ? key : item;
+      };
 
-    const storage = getStorage("mazmot");
+      const storage = getStorage("mazmot");
 
-    async function loadApps() {
-      // 妙造生成的应用不进主列表：虚拟应用在独立命名空间 ai-apps/
-      // 下自管理，本地渠道记录仅供妙造（conjure）持久化句柄
-      const apps = ((await storage.getItem("apps")) || []).filter(
-        (a) => a.mazmot?.source !== "ai-builder",
-      );
-      // 从 localStorage 恢复已打开路径快照
-      const lsOpened = new Set(readOpenedFromLS());
-      // 当前用户的 userId，用于判定「自己开发的应用」
-      let currentUserId = "";
-      try {
-        const currentUser = await ensureUser();
-        currentUserId = (currentUser && currentUser.userId) || "";
-      } catch (err) {
-        console.warn("获取当前用户失败：", err);
-      }
-      const results = await Promise.all(
-        apps.map(async (app) => {
-          let manifest = null;
-          // 根据 source 类型构造 handle：
-          // - virtual / official：通过 init(namespace) 重新拿到虚拟根目录
-          // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
-          let handle = null;
-          // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
-          const isVirtualLike =
-            app.source === "virtual" || app.source === "official";
-          const namespaceForApp = app.namespace || "mazmot-apps";
-          const namespacePrefix = namespaceForApp + "/";
-          let virtualDirName = "";
-          if (isVirtualLike) {
-            if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
-              virtualDirName = app.dirName.slice(namespacePrefix.length);
-            } else if (app.dirName) {
-              virtualDirName = app.dirName;
-            } else {
-              virtualDirName = app.name;
-            }
-          }
-          try {
+      async function loadApps() {
+        // 妙造生成的应用不进主列表：虚拟应用在独立命名空间 ai-apps/
+        // 下自管理，本地渠道记录仅供妙造（conjure）持久化句柄
+        const apps = ((await storage.getItem("apps")) || []).filter(
+          (a) => a.mazmot?.source !== "ai-builder",
+        );
+        // 从 localStorage 恢复已打开路径快照
+        const lsOpened = new Set(readOpenedFromLS());
+        // 当前用户的 userId，用于判定「自己开发的应用」
+        let currentUserId = "";
+        try {
+          const currentUser = await ensureUser();
+          currentUserId = (currentUser && currentUser.userId) || "";
+        } catch (err) {
+          console.warn("获取当前用户失败：", err);
+        }
+        const results = await Promise.all(
+          apps.map(async (app) => {
+            let manifest = null;
+            // 根据 source 类型构造 handle：
+            // - virtual / official：通过 init(namespace) 重新拿到虚拟根目录
+            // - local（或旧数据）：通过 new DirHandle 包裹原生句柄
+            let handle = null;
+            // 虚拟目录：目录名 = dirName 去掉 namespace 前缀；缺省时回退到 app.name
+            const isVirtualLike =
+              app.source === "virtual" || app.source === "official";
+            const namespaceForApp = app.namespace || "mazmot-apps";
+            const namespacePrefix = namespaceForApp + "/";
+            let virtualDirName = "";
             if (isVirtualLike) {
-              const rootDir = await init(namespaceForApp);
-              handle = await rootDir.get(virtualDirName, { create: "dir" });
-            } else if (app.handle) {
-              handle = new DirHandle(app.handle);
-            }
-          } catch (err) {
-            console.warn(`初始化 ${app.name} 的句柄失败：`, err);
-          }
-
-          try {
-            // 优先尝试从 client/app.json 获取，如果不存在则尝试根目录（兼容旧应用）
-            if (handle) {
-              let jsonFile = null;
-              try {
-                const clientDir = await handle.get("client");
-                jsonFile = await clientDir.get("app.json");
-              } catch (e) {
-                jsonFile = await handle.get("app.json");
-              }
-
-              if (jsonFile) {
-                manifest = await jsonFile.json();
+              if (app.dirName && app.dirName.startsWith(namespacePrefix)) {
+                virtualDirName = app.dirName.slice(namespacePrefix.length);
+              } else if (app.dirName) {
+                virtualDirName = app.dirName;
+              } else {
+                virtualDirName = app.name;
               }
             }
-          } catch (err) {
-            console.warn(`读取 ${app.name} 的配置失败：`, err);
-          }
+            try {
+              if (isVirtualLike) {
+                const rootDir = await init(namespaceForApp);
+                handle = await rootDir.get(virtualDirName, { create: "dir" });
+              } else if (app.handle) {
+                handle = new DirHandle(app.handle);
+              }
+            } catch (err) {
+              console.warn(`初始化 ${app.name} 的句柄失败：`, err);
+            }
 
-          // app.json 的 displayName/description 支持多语言：
-          // 基准值为默认展示名，i18n[当前语言] 可覆盖（回退链：i18n → 基准）
-          const i18nEntry =
-            (manifest && manifest.i18n && manifest.i18n[getLang()]) || {};
-          return {
-            icon: (manifest && manifest.icon) || "📦",
-            name:
-              i18nEntry.displayName ||
-              (manifest && (manifest.displayName || manifest.name)) ||
-              app.name,
-            desc:
-              i18nEntry.description ||
-              (manifest && manifest.description) ||
-              app.desc ||
-              "",
-            dirName:
-              app.dirName ||
-              (app.source === "virtual"
-                ? `${app.namespace || "mazmot-apps"}/${app.name}`
-                : app.name) ||
-              "",
-            version: (manifest && manifest.version) || "0.1.0",
-            _handle: handle,
-            source: app.source || "local",
-            namespace: app.namespace || "",
-            virtualDirName,
-            _recordName: app.name,
-            appId: app.appId || "",
-            officialId: app.officialId || "",
-            latestVersion: "",
-            hasUpdate: false,
-            offline: false,
-            updating: false,
-            updateStatus: "",
-            // 自己开发的应用：appId 后缀为当前用户的 userId；
-            // 官方应用（含存量数据里误带 appId 的）一律不算自建
-            isMine:
-              app.source !== "official" &&
-              !app.officialId &&
-              !!currentUserId &&
-              !!app.appId &&
-              app.appId.endsWith("-" + currentUserId),
-            opened: isWindowAlive(app.name) || lsOpened.has(app.name),
-            autoShare: !!app.autoShare,
-            autoShareUrl: "",
-            autoShareState: app.autoShare ? "pending" : "idle",
-            autoShareStatus: app.autoShare
-              ? t("waitingPublish")
-              : getLocaleText({ cn: "已关闭", en: "Off" }),
-            autoSharePermissionError: false,
-          };
-        }),
-      );
-      return results;
-    }
+            try {
+              // 优先尝试从 client/app.json 获取，如果不存在则尝试根目录（兼容旧应用）
+              if (handle) {
+                let jsonFile = null;
+                try {
+                  const clientDir = await handle.get("client");
+                  jsonFile = await clientDir.get("app.json");
+                } catch (e) {
+                  jsonFile = await handle.get("app.json");
+                }
 
-    export default async () => {
+                if (jsonFile) {
+                  manifest = await jsonFile.json();
+                }
+              }
+            } catch (err) {
+              console.warn(`读取 ${app.name} 的配置失败：`, err);
+            }
+
+            // app.json 的 displayName/description 支持多语言：
+            // 基准值为默认展示名，i18n[当前语言] 可覆盖（回退链：i18n → 基准）
+            const i18nEntry =
+              (manifest && manifest.i18n && manifest.i18n[getLang()]) || {};
+            return {
+              icon: (manifest && manifest.icon) || "📦",
+              name:
+                i18nEntry.displayName ||
+                (manifest && (manifest.displayName || manifest.name)) ||
+                app.name,
+              desc:
+                i18nEntry.description ||
+                (manifest && manifest.description) ||
+                app.desc ||
+                "",
+              dirName:
+                app.dirName ||
+                (app.source === "virtual"
+                  ? `${app.namespace || "mazmot-apps"}/${app.name}`
+                  : app.name) ||
+                "",
+              version: (manifest && manifest.version) || "0.1.0",
+              _handle: handle,
+              source: app.source || "local",
+              namespace: app.namespace || "",
+              virtualDirName,
+              _recordName: app.name,
+              appId: app.appId || "",
+              officialId: app.officialId || "",
+              latestVersion: "",
+              hasUpdate: false,
+              offline: false,
+              updating: false,
+              updateStatus: "",
+              // 自己开发的应用：appId 后缀为当前用户的 userId；
+              // 官方应用（含存量数据里误带 appId 的）一律不算自建
+              isMine:
+                app.source !== "official" &&
+                !app.officialId &&
+                !!currentUserId &&
+                !!app.appId &&
+                app.appId.endsWith("-" + currentUserId),
+              opened: isWindowAlive(app.name) || lsOpened.has(app.name),
+              autoShare: !!app.autoShare,
+              autoShareUrl: "",
+              autoShareState: app.autoShare ? "pending" : "idle",
+              autoShareStatus: app.autoShare
+                ? t("waitingPublish")
+                : getLocaleText({ cn: "已关闭", en: "Off" }),
+              autoSharePermissionError: false,
+            };
+          }),
+        );
+        return results;
+      }
+
       return {
         data: {
           dialogOpen: false,
@@ -1123,6 +1139,7 @@
             { id: "general", icon: "mdi:tune", titleKey: "navGeneral" },
             { id: "user", icon: "mdi:account-circle-outline", titleKey: "navUser" },
             { id: "certs", icon: "mdi:shield-key-outline", titleKey: "navCerts" },
+            { id: "webfetch", icon: "mdi:earth", titleKey: "navWebFetch" },
           ],
         },
         async attached() {
@@ -1131,7 +1148,17 @@
           // 原型的普通对象；注册后再赋值走 stanz set 陷阱，_ 前缀 key 原样
           // 存入，句柄不会被破坏。因此这里先加载列表。
           const apps = await loadApps();
+          // ofa 注册期会以初始值触发一次 watch（dialogOpen/marketDialogOpen
+          // 的初始值为 false），其中的 refreshApps 与本处的 loadApps 并发；
+          // refreshApps 是「清空再灌入」，这里若直接 push，refreshApps 先
+          // 完成时整表会被再追加一遍（列表随机重复渲染两遍）。灌入前先清空，
+          // 保证 attached 与并发刷新竞态时幂等。
+          this.appList.length = 0;
           apps.forEach((app) => this.appList.push(app));
+
+          // 首屏列表已灌入：通知根入口撤掉 loading 层（后续初始化不阻塞
+          // 首屏呈现）
+          window.dispatchEvent(new CustomEvent("mazmot:app-ready"));
 
           // 引导安装队列：绑定 stanz 引用 + 注册结算回调（单项成功/失败后
           // 刷新列表）+ 恢复上次未完成的引导安装（含本次刚从引导页过来的）

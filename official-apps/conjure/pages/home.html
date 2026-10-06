@@ -12,6 +12,7 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/radio/radio.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
+  <l-m src="/mz/comps/ercode/ercode.html"></l-m>
   <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
   <l-m src="../lib/tools/show-form/form-card.html"></l-m>
 
@@ -79,16 +80,85 @@
           <o-if :value="previewStatus">
             <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
           </o-if>
-          <st-icon-button
-            class:preview-live="previewOnline"
-            attr:title="previewOnline ? '预览窗口已打开 · 点击增量更新' : '预览应用（隔离域运行）'"
-            attr:disabled="previewBusy"
-            on:click="openAppRemote(currentAppName, currentAppMode)"
-          >
-            <n-icon
-              attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
-            ></n-icon>
-          </st-icon-button>
+          <div class="preview-wrap">
+            <st-icon-button
+              class:preview-live="previewOnline"
+              attr:title="previewOnline ? '预览窗口已打开 · 点击多窗口面板' : '预览应用（隔离域运行）'"
+              attr:disabled="previewBusy"
+              on:click="togglePreviewPop"
+            >
+              <n-icon
+                attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
+              ></n-icon>
+            </st-icon-button>
+            <o-if :value="previewPopOpen">
+              <div class="preview-pop">
+                <div class="pp-head">
+                  <span class="pp-title">预览窗口</span>
+                  <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
+                </div>
+                <div class="pp-actions">
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
+                    <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
+                    更新全部
+                  </st-button>
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popNewWindow">
+                    <span slot="prefix"><n-icon icon="mdi:open-in-new"></n-icon></span>
+                    新开窗口
+                  </st-button>
+                </div>
+                <div class="pp-wins-grid">
+                  <o-fill :value="previewWindows" fill-key="id">
+                    <div class="pp-win-tile" class:offline="!$data.online">
+                      <div class="pp-thumb">
+                        <o-if :value="$host.thumbFor($data)">
+                          <img
+                            class="pp-thumb-img"
+                            attr:src="$host.thumbFor($data)"
+                            alt="预览缩略图"
+                          />
+                        </o-if>
+                        <o-if :value="!$host.thumbFor($data)">
+                          <div class="pp-thumb-empty">
+                            <n-icon icon="mdi:monitor-screenshot"></n-icon>
+                          </div>
+                        </o-if>
+                        <span class="pp-tile-dot"></span>
+                      </div>
+                      <div class="pp-tile-meta">
+                        <span class="pp-tile-app">{{$data.app || "?"}}</span>
+                        <span class="pp-tile-device">{{$host.winLabel($data)}}</span>
+                      </div>
+                    </div>
+                  </o-fill>
+                </div>
+                <o-if :value="previewWindows.length === 0">
+                  <div class="pp-empty">
+                    还没有打开的预览窗口：点「新开窗口」或用下方二维码让手机加入
+                  </div>
+                </o-if>
+                <div class="pp-sec">
+                  <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
+                  <div class="pp-qr-row">
+                    <o-if :value="previewShareUrl">
+                      <m-ercode attr:content="previewShareUrl"></m-ercode>
+                    </o-if>
+                    <div class="pp-qr-side">
+                      <span class="pp-url">{{shortUrl(previewShareUrl)}}</span>
+                      <st-icon-button
+                        class="pp-copy"
+                        title="复制链接"
+                        attr:disabled="!previewShareUrl"
+                        on:click="copyText(previewShareUrl)"
+                      >
+                        <n-icon icon="mdi:content-copy"></n-icon>
+                      </st-icon-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </o-if>
+          </div>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
             <n-icon icon="mdi:backup-restore"></n-icon>
           </st-icon-button>
@@ -1704,6 +1774,10 @@
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
+          previewWindows: [], // 预览窗口注册表快照（多窗口下拉气泡）
+          previewThumbs: {}, // 窗口缩略图缓存（winId → dataURL，空串 = 占位图）
+          previewPopOpen: false, // 预览下拉气泡开关
+          previewShareUrl: "", // 跨设备入口（bridge 引导页 ?u=&app=，手机扫码用）
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
@@ -1954,11 +2028,20 @@
             }
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
+            // 预览下拉气泡：点击发生在气泡/按钮内不关（composedPath 穿 shadow 判定）
+            if (
+              !e
+                .composedPath()
+                .some((el) => el.classList?.contains?.("preview-wrap"))
+            ) {
+              this.previewPopOpen = false;
+            }
           };
           this._docKey = (e) => {
             if (e.key !== "Escape") return;
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
+            if (this.previewPopOpen) this.previewPopOpen = false;
           };
           document.addEventListener("mousedown", this._docClose);
           document.addEventListener("keydown", this._docKey);
@@ -1984,6 +2067,7 @@
         },
         detached() {
           clearInterval(this._durTimer);
+          clearInterval(this._thumbTimer);
           document.removeEventListener("mousedown", this._docClose);
           document.removeEventListener("keydown", this._docKey);
         },
@@ -2989,6 +3073,80 @@
 
           openAppRemote(appName, mode) {
             store.openAppRemote(appName, mode);
+          },
+
+          // ---- 预览多窗口下拉气泡 ----
+
+          // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图 = wire 线框数据
+          // 本地重绘，免屏幕授权，打开期间每 5s 刷新一次——单张 ~8KB，仅面板
+          // 打开期间产生流量）
+          togglePreviewPop() {
+            const next = !this.previewPopOpen;
+            this.previewPopOpen = next;
+            clearInterval(this._thumbTimer);
+            if (next) {
+              store.refreshPreviewWindows();
+              store.refreshPreviewInfo();
+              store.refreshPreviewThumbs();
+              this._thumbTimer = setInterval(() => {
+                if (!document.hidden) store.refreshPreviewThumbs();
+              }, 5000);
+            }
+          },
+
+          // 更新全部窗口（主推送 + 其余在线窗口同步；气泡保持打开看进度）
+          popUpdateAll() {
+            if (!this.currentAppName) return;
+            store.openAppRemote(this.currentAppName, this.currentAppMode);
+          },
+
+          // 新开一个预览窗口（popup 槽位）；失败经 keyError 横幅提示，这里兜住拒绝
+          async popNewWindow() {
+            try {
+              await store.openNewPreviewWindow();
+            } catch (_) {
+              /* 错误已写入 keyError */
+            }
+          },
+
+          copyText(text) {
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(
+              async () => {
+                const { default: toast } = await load(
+                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                );
+                toast({ message: "已复制", color: "success" });
+              },
+              () => {},
+            );
+          },
+
+          // 窗口行标签：设备 + 在线状态（离线标注失联时长）
+          winLabel(w) {
+            const base = w.device || "未知设备";
+            if (w.online) return base;
+            const s = Math.max(0, Math.round((Date.now() - w.lastSeen) / 1000));
+            return `${base} · 失联 ${s > 90 ? Math.round(s / 60) + " 分" : s + " 秒"}`;
+          },
+
+          // 链接缩略展示：保头尾、中间省略（气泡里放完整长 URL 太密）
+          shortUrl(url) {
+            const s = String(url || "");
+            if (!s || s.length <= 46) return s || "—";
+            return `${s.slice(0, 30)}…${s.slice(-14)}`;
+          },
+
+          // 窗口方块缩略图（previewThumbs 缓存，无图返回空串走占位）
+          thumbFor(w) {
+            return this.previewThumbs?.[w.id] || "";
+          },
+
+          previewOnlineText() {
+            const total = this.previewWindows.length;
+            const online = this.previewWindows.filter((w) => w.online).length;
+            if (!total) return "未打开";
+            return `${online}/${total} 在线`;
           },
 
           async deleteSession(event, sid) {

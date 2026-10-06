@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>web_search 工具测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 conjure web_search 工具插件（不出网：mock ctx.netSearch）：
+      包结构 / 参数透传 / 编号列表格式 / 摘要截断 / 无结果占位 / 未注入与上游错误
+    -->
+
+    <sb-test name="web_search 包结构完整">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          const checks = {
+            key: def.key === "webSearch",
+            name: def.name === "web_search",
+            desc: !!def.description,
+            schema: !!def.schema?.query,
+            exec: typeof def.exec === "function",
+            selfTest: /self-test\.js$/.test(def.selfTest || ""),
+          };
+          return { assert: Object.values(checks).every(Boolean), content: { checks } };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="exec 透传参数并返回编号列表">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          let captured = null;
+          const ctx = {
+            netSearch: async (query, opts) => {
+              captured = { query, opts };
+              return {
+                query: "ofa.js",
+                results: [
+                  { title: "T1", url: "https://a", content: "摘要一" },
+                  { title: "T2", url: "https://b", content: "摘要二" },
+                ],
+                provider: "relay",
+                engine: "duckduckgo",
+              };
+            },
+          };
+          const out = await def.exec({ query: "ofa.js", maxResults: 2 }, ctx);
+          return {
+            assert:
+              captured.query === "ofa.js" &&
+              captured.opts.maxResults === 2 &&
+              out.startsWith("[web_search · relay · duckduckgo]「ofa.js」共 2 条") &&
+              out.includes("1. T1") &&
+              out.includes("https://b"),
+            content: { captured, head: out.split("\n")[0] },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="无结果占位 / 未注入 / 上游错误">
+      <template>
+        <script type="module">
+          const { default: def } = await import("../index.js");
+          const empty = await def.exec(
+            { query: "冷门词" },
+            { netSearch: async () => ({ query: "冷门词", results: [], provider: "relay" }) },
+          );
+          let noCtx = "";
+          try {
+            await def.exec({ query: "x" }, {});
+          } catch (e) {
+            noCtx = e.message;
+          }
+          let upstream = "";
+          try {
+            await def.exec(
+              { query: "x" },
+              { netSearch: async () => { throw new Error("无可用 relay 服务器"); } },
+            );
+          } catch (e) {
+            upstream = e.message;
+          }
+          return {
+            assert:
+              empty.includes("无结果") &&
+              noCtx.includes("netSearch") &&
+              upstream.includes("无可用 relay 服务器"),
+            content: { empty, noCtx, upstream },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
