@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>thumb-paint 线框缩略图绘制测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="paintWireframe - 非法 payload 返回空串 / 合法 payload 出 JPEG">
+      <template>
+        <script type="module">
+          import { paintWireframe } from "../thumb-paint.js";
+          {
+            const checks = {
+              nullPayload: paintWireframe(null) === "",
+              emptyNodes: paintWireframe({ w: 400, h: 300, nodes: [] }) !== "",
+              badW: paintWireframe({ w: 0, h: 300, nodes: [] }) === "",
+            };
+            const dataUrl = paintWireframe({
+              w: 400,
+              h: 300,
+              nodes: [
+                { x: 0, y: 0, w: 400, h: 300, bg: "rgb(17, 34, 51)" },
+                {
+                  x: 10,
+                  y: 10,
+                  w: 120,
+                  h: 40,
+                  r: 8,
+                  bg: "rgb(59, 130, 246)",
+                  bw: 2,
+                  bc: "rgb(0, 0, 0)",
+                  t: "Wire Button",
+                  tc: "rgb(255, 255, 255)",
+                  fs: 14,
+                },
+              ],
+            });
+            checks.jpeg = dataUrl.startsWith("data:image/jpeg");
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, prefix: dataUrl.slice(0, 22) },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="paintWireframe - 像素级：色块/圆角块按坐标着色，cover 16:10">
+      <template>
+        <script type="module">
+          import { paintWireframe } from "../thumb-paint.js";
+          {
+            const dataUrl = paintWireframe(
+              {
+                w: 400,
+                h: 300,
+                nodes: [
+                  { x: 0, y: 0, w: 400, h: 300, bg: "rgb(17, 34, 51)" },
+                  { x: 10, y: 10, w: 100, h: 50, bg: "rgb(220, 38, 38)" },
+                ],
+              },
+              { maxSide: 440 },
+            );
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const c = document.createElement("canvas");
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const sample = (x, y) => ctx.getImageData(x, y, 1, 1).data;
+            // cover 16:10：scale = max(440/400, 275/300) = 1.1 → 画布 440×330，
+            // 高向裁掉 300×1.1=330 正好贴满（无裁切余量）
+            const rootPx = sample(400, 200); // 深底区域
+            const redPx = sample(30, 30); // 红块（10,10 起 100×50，×1.1 → 11..121 / 11..66）
+            const near = (px, want, tol = 30) =>
+              Math.abs(px[0] - want[0]) < tol &&
+              Math.abs(px[1] - want[1]) < tol &&
+              Math.abs(px[2] - want[2]) < tol;
+            const checks = {
+              size1610:
+                img.naturalWidth === 440 && Math.abs(img.naturalHeight - 330) <= 2,
+              rootColor: near(rootPx, [17, 34, 51]),
+              redBlock: near(redPx, [220, 38, 38]),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: {
+                checks,
+                size: { w: img.naturalWidth, h: img.naturalHeight },
+                rootPx: [...rootPx],
+                redPx: [...redPx],
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

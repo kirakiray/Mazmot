@@ -82,7 +82,12 @@ const fmtArg = (v, depth = 0) => {
 export function installConsoleCapture() {
   const entries = [];
   const subs = new Set();
+  // 静默开关：置 true 时暂停记录。snapdom 克隆页面会实例化宿主框架的自定义
+  // 元素并触发噪音报错（ofa 组件 created 回调等），这类「截图自身」的报错
+  // 不能进缓冲污染 AI 的错误感知（preview console / 自动错误回路）
+  let muted = false;
   const push = (level, parts) => {
+    if (muted) return;
     let text = parts.join(" ");
     if (text.length > ARG_TEXT_MAX) text = text.slice(0, ARG_TEXT_MAX) + "…";
     entries.push({ t: Date.now(), level, text });
@@ -132,6 +137,7 @@ export function installConsoleCapture() {
   window.addEventListener(
     "error",
     (e) => {
+      if (muted) return;
       push("error", [
         `${e.message} @ ${e.filename || "?"}:${e.lineno || 0}:${e.colno || 0}`,
       ]);
@@ -139,11 +145,15 @@ export function installConsoleCapture() {
     true,
   );
   window.addEventListener("unhandledrejection", (e) => {
+    if (muted) return;
     push("error", ["UnhandledRejection: " + fmtArg(e.reason)]);
   });
 
   return {
     entries,
+    setMuted(v) {
+      muted = !!v;
+    },
     subscribe(cb) {
       subs.add(cb);
       return () => subs.delete(cb);

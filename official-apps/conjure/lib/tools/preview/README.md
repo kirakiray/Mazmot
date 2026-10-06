@@ -1,6 +1,6 @@
 # preview（工具包 · 隔离预览统一工具）
 
-一个工具 + `action` 参数分发全部预览操作：把生成的应用推送到隔离预览窗口实际运行（`app`），列出当前打开的预览窗口（`windows`），并对运行中的页面做黑盒调试（`status / console / dom / text / click / type / wait / eval / screenshot`）。调试指令在预览页的常驻代理内执行（`/bridge/debug-runtime.js`），主域不执行任何 AI 代码。
+一个工具 + `action` 参数分发全部预览操作：把生成的应用推送到隔离预览窗口实际运行（`app`），列出当前打开的预览窗口（`windows`），并对运行中的页面做黑盒调试（`status / console / dom / text / click / type / wait / eval / screenshot`）。调试指令在预览页的常驻代理内执行（`/bridge/debug-runtime.js`），主域不执行任何 AI 代码。（预览气泡的窗口方块缩略图走 `wire` 线框指令本地重绘，不在本工具的 action 集内。）
 
 支持**多窗口**（上限 10，本机 popup 与手机扫码设备平等，见 `/bridge` 多窗口协议与 `lib/remote-preview.js`）：顶层可选 `winId`（`action=windows` 清单里的 id，即 `userId|sessionId`）定向调试某个窗口；**省略 `winId` 时指令投递给最近心跳的在线窗口**；窗口注册表为空时回退存储的 bridge userId 广播（兼容旧窗口）。
 

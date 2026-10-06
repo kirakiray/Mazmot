@@ -1430,64 +1430,43 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 窗口缩略图抓取（预览气泡打开时调用 + 打开期间定时刷新）：逐个在线窗口
-  // 定向发 thumb 指令（预览页屏幕捕获流常驻——首次在预览窗口弹一次授权框，
-  // 之后静默抽帧；失败置空串由占位图兜底）。授权被取消的窗口记入 thumbDenied
-  //（气泡打开时 resetDenied 才重试），避免每 8s 反复弹授权框；thumbSeq 过期
-  // 守卫防面板已关闭/新一轮已启动后旧结果继续写入
+  // 定向发 wire 指令。wire 两级返回：① snapdom 真实渲染截图（vendor 本地库，
+  // shadow DOM/字体/渐变保真，免屏幕授权、手机可用）的 JPEG dataURL 直接用；
+  // ② 线框节点清单 JSON → thumb-paint 本地重绘近似图兜底。失败置空串由占位
+  // 图兜底。thumbSeq 过期守卫防面板已关闭/新一轮已启动后旧结果继续写入
   let thumbSeq = 0;
-  const thumbDenied = new Set();
-  async function refreshPreviewThumbs(opts = {}) {
-    if (opts.resetDenied) thumbDenied.clear();
+  async function refreshPreviewThumbs() {
     const seq = ++thumbSeq;
     try {
       const mod = await ensurePreviewMod();
+      const paint = await load("/official-apps/conjure/lib/thumb-paint.js");
       const validIds = new Set(state.previewWindows.map((w) => w.id));
       const next = {};
       for (const [k, v] of Object.entries(state.previewThumbs)) {
         if (validIds.has(k)) next[k] = v; // 清掉已消失窗口的旧缩略图
       }
       for (const w of state.previewWindows.filter((x) => x.online)) {
-        if (thumbDenied.has(w.id)) continue;
         try {
           const outcome = await mod.debugPreviewCommand({
             load,
             selfStore,
-            cmd: "thumb",
+            cmd: "wire",
             args: {},
-            timeoutMs: 15_000,
+            timeoutMs: 20_000,
             winId: w.id,
           });
-          next[w.id] = outcome?.result || "";
-        } catch (err) {
+          const raw = outcome?.result || "";
+          next[w.id] = raw.startsWith("data:image")
+            ? raw
+            : paint.paintWireframe(JSON.parse(raw || "{}"));
+        } catch {
           next[w.id] = "";
-          if (/未授权|NotAllowed/.test(err?.message || "")) {
-            thumbDenied.add(w.id);
-          }
         }
         if (seq !== thumbSeq) return; // 面板已关 / 新一轮抓取已启动
         set("previewThumbs", { ...next });
       }
     } catch (err) {
       console.warn("[preview] 窗口缩略图抓取失败：", err);
-    }
-  }
-
-  // 释放各在线窗口的缩略图捕获流（气泡关闭 / 页面卸载时调用，
-  // 不让屏幕共享在气泡看不见时继续挂着）
-  async function releasePreviewThumbs() {
-    const mod = previewMod;
-    if (!mod) return;
-    for (const w of state.previewWindows.filter((x) => x.online)) {
-      mod
-        .debugPreviewCommand({
-          load,
-          selfStore,
-          cmd: "thumb",
-          args: { stop: 1 },
-          timeoutMs: 8_000,
-          winId: w.id,
-        })
-        .catch(() => {});
     }
   }
 
@@ -3044,7 +3023,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     refreshPreviewWindows,
     refreshPreviewInfo,
     refreshPreviewThumbs,
-    releasePreviewThumbs,
     submitForm,
     // 变更卡 / 回滚（回合快照体系，见 driveTurn 收尾与 rollbackTurn）
     getTurnDiff,

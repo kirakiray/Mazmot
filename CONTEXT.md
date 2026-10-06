@@ -156,12 +156,17 @@ Mazmot/
 │   │                         #   另承载 conjure 调试指令（dbg）：只信任注入时绑定的 conjure 用户（ctx.fromUserId 校验），
 │   │                         #   经 debug-runtime 执行后按 dbg-chunk/dbg-result 协议回传结果
 │   ├── debug-runtime.js       # 调试指令运行时（纯页面逻辑，无 /nos 依赖，可单测；实现参考同作者 web-bridge-mcp 的
-│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot；eval 预置 $ / $$ /
+│   │                         #   client.js）：指令集 status/console/text/click/type/wait/dom/eval/shot/wire；eval 预置 $ / $$ /
 │   │                         #   $deep / $$deep（穿 shadow DOM）/ $wait / $rect / $css / $import，表达式自动 return；
 │   │                         #   serializeValue 安全序列化（Error 栈/循环引用/深度长度封顶）、domSnapshot 免授权
 │   │                         #   DOM 样式快照（几何+关键样式+文本，穿 shadow）、captureScreenshot（getDisplayMedia 真实
-│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、formatConsoleEntries
-│   │                         #   （since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   │                         #   截图，每次独立授权、截完即停共享不留常驻流，JPEG 压缩后 base64）、wire 缩略图（两级：
+│   │                         #   首选 vendor snapdom 真实渲染截图免授权+手机可用，失败回退 wireSnapshot 线框清单交
+│   │                         #   conjure thumb-paint 重绘；抓图期间 capture.setMuted 静默控制台捕获防噪音报错污染 AI）、
+│   │                         #   formatConsoleEntries（since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/
+│   │                         #   DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   ├── vendor/                # 第三方库 vendor（本地文件，免 CDN 依赖）：snapdom.mjs（@zumer/snapdom v3.3.0，MIT，
+│   │                         #   DOM→图捕获引擎，open shadow DOM/字体/渐变保真——预览气泡窗口方块缩略图用）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
 │   │                         #   sync-check/sync-diff、agent-online 与调试指令 dbg/dbg-chunk/dbg-result）/ sanitizeAppName+
 │   │                         #   validateRelPath 守卫 / chunkText 字节分片（预算 32KB，切点按 code point 对齐不劈代理对）/

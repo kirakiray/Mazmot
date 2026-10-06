@@ -2068,7 +2068,6 @@
         detached() {
           clearInterval(this._durTimer);
           clearInterval(this._thumbTimer);
-          store.releasePreviewThumbs?.();
           document.removeEventListener("mousedown", this._docClose);
           document.removeEventListener("keydown", this._docKey);
         },
@@ -3078,9 +3077,8 @@
 
           // ---- 预览多窗口下拉气泡 ----
 
-          // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图首次会在预览
-          // 窗口弹一次屏幕授权框，之后静默抽帧；打开期间每 10s 刷新一次）；
-          // 关面板时释放预览窗口的捕获流，不让屏幕共享悄悄挂着
+          // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图 = wire 线框数据
+          // 本地重绘，免屏幕授权，打开期间每 10s 刷新一次）
           togglePreviewPop() {
             const next = !this.previewPopOpen;
             this.previewPopOpen = next;
@@ -3088,12 +3086,10 @@
             if (next) {
               store.refreshPreviewWindows();
               store.refreshPreviewInfo();
-              store.refreshPreviewThumbs({ resetDenied: true });
+              store.refreshPreviewThumbs();
               this._thumbTimer = setInterval(() => {
                 if (!document.hidden) store.refreshPreviewThumbs();
               }, 10000);
-            } else {
-              store.releasePreviewThumbs();
             }
           },
 
