@@ -15,6 +15,7 @@
       - decodeInvite 编解码（URL-safe Base64 的 JSON {"u","k"}）
       - RelayAssistant 邀请码解析 / 非法邀请码拒绝
       - chat / getModels / getRemaining 的请求路径、鉴权头与返回值映射（mock fetch）
+      - 未指定模型时静默取上游 /v1/models 首个可用模型（按邀请码缓存，不写死厂商模型名）
     -->
 
     <sb-test name="decodeInvite 往返编解码">
@@ -227,6 +228,158 @@
             return {
               assert: threw && msg.includes("402"),
               content: { threw, msg },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chat 未指定模型：静默取上游清单首个可用模型">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          // 独立 bearkey：默认模型按邀请码缓存在模块级，避免污染其他用例
+          const code = btoa(
+            JSON.stringify({ u: "https://relay.example.com", k: "bk-default-model" }),
+          );
+
+          const requestedUrls = [];
+          const chatBodies = [];
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            requestedUrls.push(url);
+            if (url.endsWith("/v1/models")) {
+              // 上游只有 GLM（没有 deepseek）时的白名单场景
+              return new Response(
+                JSON.stringify({ data: [{ id: "glm-5.3" }, { id: "glm-5.3-flash" }] }),
+                { status: 200 },
+              );
+            }
+            if (url.endsWith("/v1/chat/completions")) {
+              chatBodies.push(JSON.parse(options.body));
+              return new Response(
+                JSON.stringify({
+                  model: "glm-5.3",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: {},
+                }),
+                { status: 200 },
+              );
+            }
+            throw new Error("unexpected url: " + url);
+          };
+          try {
+            const assistant = new RelayAssistant("key-1", code);
+            const result = await assistant.chat({
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const usedFirstModel = chatBodies[0]?.model === "glm-5.3";
+
+            // 同邀请码的新实例（模拟 getAssistant 每次新建）复用缓存，不再拉清单
+            const second = new RelayAssistant("key-2", code);
+            await second.chat({ messages: [{ role: "user", content: "hi" }] });
+            const modelsCalls = requestedUrls.filter((u) => u.endsWith("/v1/models")).length;
+            const cacheReused = modelsCalls === 1;
+
+            return {
+              assert: usedFirstModel && cacheReused && result.content === "ok",
+              content: {
+                usedFirstModel,
+                cacheReused,
+                modelsCalls,
+                chatModels: chatBodies.map((b) => b.model),
+              },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chat 显式指定模型：不被默认解析覆盖">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(
+            JSON.stringify({ u: "https://relay.example.com", k: "bk-explicit-model" }),
+          );
+          const requestedUrls = [];
+          const chatBodies = [];
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            requestedUrls.push(url);
+            if (url.endsWith("/v1/models")) {
+              return new Response(JSON.stringify({ data: [{ id: "glm-5.3" }] }), {
+                status: 200,
+              });
+            }
+            chatBodies.push(JSON.parse(options.body));
+            return new Response(
+              JSON.stringify({
+                model: "kimi-k3",
+                choices: [{ message: { content: "ok" } }],
+                usage: {},
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const assistant = new RelayAssistant(null, code);
+            await assistant.chat({
+              messages: [{ role: "user", content: "hi" }],
+              model: "kimi-k3",
+            });
+            const noModelsCall = !requestedUrls.some((u) => u.endsWith("/v1/models"));
+            const explicitKept = chatBodies[0]?.model === "kimi-k3";
+            return {
+              assert: noModelsCall && explicitKept,
+              content: { noModelsCall, explicitKept, requestedUrls },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="chat 清单拉取失败：回退默认名并透传上游错误">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(
+            JSON.stringify({ u: "https://relay.example.com", k: "bk-model-fallback" }),
+          );
+          const chatBodies = [];
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            if (url.endsWith("/v1/models")) {
+              return new Response(JSON.stringify({ error: { message: "boom" } }), {
+                status: 500,
+              });
+            }
+            chatBodies.push(JSON.parse(options.body));
+            return new Response(
+              JSON.stringify({
+                model: "deepseek-chat",
+                choices: [{ message: { content: "ok" } }],
+                usage: {},
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const assistant = new RelayAssistant(null, code);
+            const result = await assistant.chat({
+              messages: [{ role: "user", content: "hi" }],
+            });
+            // 清单挂了 → 保留旧默认名发起请求（错误由上游自然透出），仍能正常响应
+            const fallbackUsed = chatBodies[0]?.model === "deepseek-chat";
+            return {
+              assert: fallbackUsed && result.content === "ok",
+              content: { fallbackUsed, chatModels: chatBodies.map((b) => b.model) },
             };
           } finally {
             window.fetch = originalFetch;

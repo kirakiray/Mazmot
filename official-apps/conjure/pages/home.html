@@ -1857,9 +1857,9 @@
             { id: "medium", label: "中" },
             { id: "high", label: "高" },
           ],
-          // 会话最大上下文窗口（token 数，select 切换，偏好持久化）
-          ctxWindow: "131072",
-          ctxWindowText: "128k",
+          // 会话最大上下文窗口（token 数，select 切换，偏好持久化；默认 768k）
+          ctxWindow: "786432",
+          ctxWindowText: "768k",
           // 上下文压缩进行中（压缩按钮转圈提示）
           compacting: false,
           // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
@@ -1941,7 +1941,7 @@
                   "524288": "512k",
                   "786432": "768k",
                   "1048576": "1mb",
-                }[this.ctxWindow] || "128k";
+                }[this.ctxWindow] || "768k";
             }
           } catch {
             /* 忽略 */
@@ -2134,7 +2134,7 @@
               return;
             }
             this.ctxUnknown = false;
-            const total = Number(this.ctxWindow) || 131072;
+            const total = Number(this.ctxWindow) || 786432;
             this.ctxPct = Math.round(Math.min(100, (this.ctxUsed / total) * 100) * 10) / 10;
             const k = (v) => {
               if (v >= 1024) return (v / 1024).toFixed(1).replace(/\.0$/, "") + "k";
@@ -2471,7 +2471,7 @@
           applyCtxWindow(value) {
             this.ctxWindow = value;
             const opt = this.ctxOptions.find((o) => o.value === value);
-            this.ctxWindowText = opt ? opt.label : "128k";
+            this.ctxWindowText = opt ? opt.label : "768k";
             this.syncCtx();
             store.setContextWindow(Number(value));
             this.syncActiveKeyText();

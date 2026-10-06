@@ -30,6 +30,22 @@ export const MODEL_OPTIONS = {
 };
 
 /**
+ * 「自动」模式下的 key 选择：deepseek 优先；只有一台时直接锁定（模型清单
+ * 展示与实际请求保持一致），多台非 deepseek 时随机负载均衡。
+ * builder-store 的 pickAssistant（发请求）与 refreshModelOptions（拉模型清单）
+ * 共用此逻辑，保证「自动」下拉取到的清单就是即将使用的那把 key 的。
+ * @param {Array} keys 已过滤 disabled 的 key 列表
+ * @returns {object|null} 命中的 key；空列表返回 null
+ */
+export function pickAutoKey(keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return null;
+  const deepseekKey = keys.find((k) => k.provider === "deepseek");
+  if (deepseekKey) return deepseekKey;
+  if (keys.length === 1) return keys[0];
+  return keys[Math.floor(Math.random() * keys.length)];
+}
+
+/**
  * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留
  * 回合若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整体丢弃
  * 该回合——悬空的 tool_calls 会让下一次模型请求报错。

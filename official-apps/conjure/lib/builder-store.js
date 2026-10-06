@@ -41,6 +41,7 @@ import {
   tailThread,
   contextInfo,
   MODEL_OPTIONS,
+  pickAutoKey,
   COMPACTION_PROMPT,
 } from "./builder.js";
 import { diffLines, diffStat, compactHunks } from "./diff.js";
@@ -316,22 +317,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const { getAssistant, getApiKeys } = aiModules;
     const keys = getApiKeys().filter((k) => !k.disabled);
 
-    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效）；
-    // 否则自动——deepseek 优先，其余随机负载均衡
+    // key 选择：用户手动指定的优先（切换后经 invalidateAgent 生效），否则
+    // 自动（pickAutoKey：deepseek 优先 / 单台锁定 / 多台随机负载均衡）
     let key = null;
     if (state.activeKeyId) {
       key = keys.find((k) => k.id === state.activeKeyId) || null;
     }
-    if (!key && keys.length) {
-      key = keys.find((k) => k.provider === "deepseek") || null;
-      if (!key && keys.length > 1) {
-        key = keys[Math.floor(Math.random() * keys.length)];
-      }
+    if (!key) {
+      key = pickAutoKey(keys);
     }
 
     // 模型选择：手动选中的模型优先，但须在已知可用清单里——清单来自
     // getModels 动态拉取（缓存数组）；拉取失败用内置表校验（缓存 null）；
-    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则放行，交由 API 报错兜底
+    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则不指定模型，relay 供应商
+    // 会自行静默取上游首个可用模型，其余供应商走各自默认
     const cached = key ? modelOptionsCache.get(key.id) : undefined;
     const knownModels = Array.isArray(cached)
       ? cached.map((o) => o.id)
@@ -1154,12 +1153,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     ]);
   };
 
-  // 拉取当前选中 key 的可用模型（getModels，relay 供应商即 /v1/models），
-  // 写入 state.modelOptions 供输入区气泡展示；自动 Key（activeKeyId 为 ""）
-  // 不拉取，模型 select 维持禁用（跟随供应商默认）
+  // 拉取当前生效 key 的可用模型（getModels，relay 供应商即 /v1/models），
+  // 写入 state.modelOptions 供输入区气泡展示。静默自动拉取：进应用 / key 列表
+  // 变化（syncApiKeyList）/ 手动切换 key 时都会执行，「自动」模式下解析的是
+  // 自动选择将命中的 key（deepseek 优先，否则第一台），无需用户手动点开菜单
   async function refreshModelOptions() {
     const seq = ++modelOptionsSeq;
-    const key = state.apiKeys.find((k) => k.id === state.activeKeyId);
+    const key = state.activeKeyId
+      ? state.apiKeys.find((k) => k.id === state.activeKeyId)
+      : pickAutoKey(state.apiKeys);
     if (!key || !aiModules?.getAssistant) {
       set("modelOptions", []);
       return;

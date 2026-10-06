@@ -114,6 +114,8 @@ unsub();
 
 对接自建 AI API 转发服务器（`server/ai-relay/`，见其 CONTEXT.md）。`apiKey` 字段保存的不是明文 key，而是服务器签发的**完整邀请码**（URL-safe Base64 的 JSON `{"u": serverUrl, "k": bearkey}`）；`RelayAssistant` 内部解出服务器地址与 bearkey，以 OpenAI 兼容接口访问 `/v1/*`。服务器端按模型名前缀路由上游（`glm-*` / `deepseek-*`），token 按用户累计配额统计。
 
+> **默认模型**：`chat()` 不传 `model` 时，会静默请求 `/v1/models`（服务器按该用户的模型白名单过滤后返回）并取首个可用模型，结果按邀请码缓存在模块级；不写死任何厂商模型名——写死的模型不在上游白名单时会 403。清单拉取失败时回退旧默认名 `deepseek-chat` 发起请求，让上游错误自然透出。
+
 ```javascript
 import { saveKey, testApiKey, getAssistant } from "/mz/ai/main.js";
 import { fetchServerInfo, decodeInvite } from "/mz/ai/supplier/relay.js";
@@ -224,7 +226,7 @@ const response = await assistant.chat({
 | messages | array | - | 消息数组，包含 role 和 content |
 | thinking | boolean | false | 是否启用思考模式（DeepSeek / GLM / Kimi k2.6 / k2.5 生效；GLM-5.3+ 思考不可关闭，仅影响默认档位，见下方 GLM 节） |
 | stream | boolean | false | 是否启用流式输出 |
-| model | string | - | 模型名称 |
+| model | string | - | 模型名称；relay 供应商不传时静默取上游首个可用模型（见 Relay 节） |
 | onStream | function | null | 流式输出回调 |
 | reasoningEffort | string | "low" | 推理强度。DeepSeek：`low` / `high` / `max`（官方另接受 `minimal` / `medium` / `xhigh` / `ultra` 并自动映射到三档）；kimi-k3：`low` / `high` / `max`；GLM-5.3+：`low` / `high` / `max`（见下方 GLM 思考模式） |
 | thinkingKeep | string | null | 仅 Kimi `kimi-k2.6` 支持，传 `"all"` 启用保留式思考 |
