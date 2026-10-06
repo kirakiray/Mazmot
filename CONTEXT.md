@@ -31,6 +31,10 @@ Mazmot/
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
 ├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
+├── _setup/                   # 测试套件前置引导（目录名 _ 排序在 apps/、bridge/、main/ 等所有测试目录之前，
+│                             #   保证 sb-test 生成的清单里它最先执行）：install-nos.sb.html 经
+│                             #   <nos-version auto-install> 为测试环境安装 NoneOS Core，后续依赖 /nos/*、/mz/*
+│                             #   的测试文件全部依赖它先跑（清单 test-all.html 为生成物已 gitignore，勿提交）
 │
 ├── apps/                     # 应用（monorepo 风格）
 │   ├── run-app/              # 分享接收应用，URL = /apps/run-app/?u=...&h=...
@@ -70,7 +74,7 @@ Mazmot/
 │       ├── official-app-writer.js  # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
 │       ├── app-status.js           # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │       ├── official-app-state.js   # 官方应用 stanz 状态（仅主应用使用）
-│       └── test/                   # sibyl-test 单元测试（welcome-plan.sb.html / _install-nos.sb.html）
+│       └── test/                   # sibyl-test 单元测试（welcome-plan.sb.html）
 │
 ├── mz/                       # Mazmot 平台 API（与 /nos/ 对称的宿主命名空间）
 │   ├── app-runner.js         # 应用运行辅助：mount() 本地目录 / 生成运行 URL
@@ -408,7 +412,8 @@ npm run static
 **主应用工具库测试**（[main/lib/test/](main/lib/test/)）
 
 - `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
-- `http://localhost:30031/main/lib/test/_install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（其他测试依赖 Core 已就绪）
+- `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
+- `http://localhost:30031/_setup/install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（**整个测试套件的 Core 前置引导**：`_setup/` 目录名排序在 `apps/`、`bridge/` 等之前，保证 sb-test 生成的清单里它最先执行装好 Core——主应用迁入 `main/` 后原 `apps/main/lib/test/` 路径的字母序红利失效，曾导致 CI 的 run-app-utils/preview-flow 在 Core 就绪前运行而挂掉；清单 test-all.html 为生成物已 gitignore）
 - `http://localhost:30031/mz/test/app-runner.sb.html` — 测试 [app-runner.js](mz/app-runner.js) 的 URL 生成与文件读取
 - `http://localhost:30031/mz/test/share-mgr.sb.html` — 测试 [share-mgr.js](mz/share-mgr.js) 的 Base64URL、分享链接与打包结构
 - `http://localhost:30031/mz/net/test/net.sb.html` — 测试 [mz/net/main.js](mz/net/main.js) 的正文提取、URL 预检与 relay webFetch 请求映射（mock fetch 不出网）
