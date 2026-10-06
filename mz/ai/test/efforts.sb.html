@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>思考档位表（efforts）测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 /mz/ai/efforts.js（纯函数，无网络）：
+      - effortLevelsFor：各供应商 / 模型的可用思考档位（含空表 = 不可调）
+      - clampEffort：偏好档位夹取到模型支持档（就近向下，无更低取最低）
+      - EFFORT_LABELS：档位 id 与 label 一一对应
+    -->
+
+    <sb-test name="effortLevelsFor 各家档位表" parallel>
+      <template>
+        <script type="module">
+          const { effortLevelsFor } = await import("/mz/ai/efforts.js");
+          const checks = {
+            deepseek: JSON.stringify(effortLevelsFor("deepseek", "deepseek-v4-flash")) ===
+              JSON.stringify(["off", "low", "high", "max"]),
+            kimiK3: JSON.stringify(effortLevelsFor("kimi", "kimi-k3")) ===
+              JSON.stringify(["low", "high", "max"]),
+            kimiCode: effortLevelsFor("kimi", "kimi-k2.7-code").length === 0,
+            kimiK26: JSON.stringify(effortLevelsFor("kimi", "kimi-k2.6")) ===
+              JSON.stringify(["off", "low"]),
+            glm5: JSON.stringify(effortLevelsFor("glm", "glm-5.3")) ===
+              JSON.stringify(["low", "high", "max"]),
+            glm4: JSON.stringify(effortLevelsFor("glm", "glm-4.7")) ===
+              JSON.stringify(["off", "low"]),
+            openaiGpt5: JSON.stringify(effortLevelsFor("openai", "gpt-5.6")) ===
+              JSON.stringify(["minimal", "low", "medium", "high"]),
+            openaiO4: JSON.stringify(effortLevelsFor("openai", "o4-mini")) ===
+              JSON.stringify(["low", "medium", "high"]),
+            openaiGpt4o: effortLevelsFor("openai", "gpt-4o").length === 0,
+            gemini: JSON.stringify(effortLevelsFor("gemini", "gemini-3-flash")) ===
+              JSON.stringify(["off", "low", "high"]),
+            anthropic: effortLevelsFor("anthropic", "claude-sonnet-5-5").length === 0,
+            qwen: JSON.stringify(effortLevelsFor("qwen", "qwen3-max")) ===
+              JSON.stringify(["off", "low"]),
+            relay: effortLevelsFor("relay", "anything").includes("max"),
+            generic: JSON.stringify(effortLevelsFor("unknown", "")) ===
+              JSON.stringify(["off", "low", "medium", "high"]),
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="clampEffort 夹取规则" parallel>
+      <template>
+        <script type="module">
+          const { clampEffort } = await import("/mz/ai/efforts.js");
+          const checks = {
+            // 偏好在表内：原样
+            inTable: clampEffort("deepseek", "deepseek-v4-flash", "high") === "high",
+            // 偏好不在表内：就近向下（medium → low；GLM-5 无 medium 档）
+            downGrade: clampEffort("deepseek", "deepseek-v4-flash", "medium") === "low",
+            glmMedium: clampEffort("glm", "glm-5.3", "medium") === "low",
+            // off 被支持时保留
+            offKept: clampEffort("deepseek", "deepseek-v4-flash", "off") === "off",
+            // 模型不支持 off（kimi-k3 恒思考）：取最低档 low
+            noOff: clampEffort("kimi", "kimi-k3", "off") === "low",
+            // 思考不可调（空表）：null（调用方跳过思考参数）
+            notAdjustable: clampEffort("anthropic", "claude-sonnet-5-5", "high") === null,
+            openai4o: clampEffort("openai", "gpt-4o", "low") === null,
+            // gpt-5 系偏好 off（不支持完全关）：夹到最弱档 minimal
+            openaiOff: clampEffort("openai", "gpt-5.6", "off") === "minimal",
+            // 未知偏好值（null/undefined）按 low 档处理
+            nullEffort: clampEffort("deepseek", "deepseek-v4-flash", null) === "low",
+          };
+          return {
+            assert: Object.values(checks).every(Boolean),
+            content: { checks },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="EFFORT_LABELS 覆盖全部档位 id" parallel>
+      <template>
+        <script type="module">
+          const { EFFORT_LABELS, effortLevelsFor } = await import("/mz/ai/efforts.js");
+          const providers = [
+            "deepseek", "kimi", "glm", "openai", "gemini", "anthropic", "qwen", "relay",
+          ];
+          const models = ["deepseek-v4-flash", "kimi-k3", "kimi-k2.7-code",
+            "glm-5.3", "gpt-5.6", "o4-mini", "gemini-3-flash", "claude-sonnet-5-5",
+            "qwen3-max", ""];
+          const missing = [];
+          for (const p of providers) {
+            for (const m of models) {
+              for (const level of effortLevelsFor(p, m)) {
+                if (!EFFORT_LABELS[level]) missing.push(`${p}/${m}/${level}`);
+              }
+            }
+          }
+          return {
+            assert: missing.length === 0,
+            content: { missing },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

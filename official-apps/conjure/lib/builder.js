@@ -21,12 +21,17 @@ export const LEGACY_NAMESPACE = "mazmot-apps";
 export const REQUIRED_FILES = ["app.json", "index.html", "app-config.js"];
 
 // 各供应商可用的对话模型（与 mz/ai/supplier 里支持的模型清单保持一致）；
-// 模型可选项依赖当前选中的 API Key 所属供应商
+// 模型可选项依赖当前选中的 API Key 所属供应商。
+// 国外供应商与 Qwen 动态拉取（getModels）为准，这里仅作拉取失败时的兜底校验表。
 export const MODEL_OPTIONS = {
   deepseek: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"],
   glm: ["glm-5.3-flash", "glm-5.3"],
   "glm-coding": ["glm-5.3-flash", "glm-5.3"],
   kimi: ["kimi-k3", "kimi-k2.7-code"],
+  qwen: ["qwen3-max", "qwen3-plus", "qwen3-flash"],
+  openai: ["gpt-5.6", "gpt-5.5", "gpt-5.1", "gpt-5"],
+  gemini: ["gemini-3-flash", "gemini-3-pro", "gemini-2.5-pro", "gemini-2.5-flash"],
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
 };
 
 /**

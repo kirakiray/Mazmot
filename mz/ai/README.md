@@ -10,9 +10,24 @@
 | Kimi | kimi-k3, kimi-k2.7-code, kimi-k2.6, kimi-k2.5 | ✅ | ✅ |
 | GLM | glm-5.3 / glm-5.3-flash / glm-4.7 等（`open.bigmodel.cn/api/paas/v4`） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
-| Relay（转发服务器） | 取决于服务器分配的上游（`glm-*` / `deepseek-*` 前缀），Bearer 为邀请码 bearkey | 透传 | ✅ |
+| OpenAI | gpt-5.6 / gpt-5.5 / gpt-5.1 等（`api.openai.com/v1`，动态拉取为准） | ✅（reasoning_effort） | ✅ |
+| Gemini | gemini-3-flash / gemini-3-pro 等（官方 OpenAI 兼容端点 `generativelanguage.googleapis.com/v1beta/openai`） | ✅（reasoning_effort） | ✅ |
+| Anthropic | claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-4-5（官方 OpenAI 兼容层 `api.anthropic.com/v1`） | 自适应思考（不透传档位） | ✅ |
+| Qwen | qwen3-max / qwen3-plus / qwen3-flash 等（DashScope OpenAI 兼容模式 `dashscope.aliyuncs.com/compatible-mode/v1`） | ✅（enable_thinking 开关） | ✅ |
+| Relay（转发服务器） | 取决于服务器分配的上游（`deepseek-*` / `glm-*` / `gpt-*` / `gemini-*` / `claude-*` / `qwen-*` 前缀），Bearer 为邀请码 bearkey | 透传（qwen 系转 `enable_thinking`，其余转 `reasoning_effort`） | ✅ |
 
 > 注：`kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已于 2026 年陆续下线，请使用 `kimi-k3` 等新模型。`deepseek-chat` / `deepseek-reasoner` 旧模型名已于 2026/07/24 弃用，分别对应 `deepseek-v4-flash` 的非思考与思考模式。
+
+### openai-compat 基类供应商（OpenAI / Gemini / Anthropic / Qwen）
+
+OpenAI / Gemini / Anthropic / Qwen 四家共用 `supplier/openai-compat.js` 基类（OpenAI 兼容 wire：`/chat/completions` + `/models` + Bearer 鉴权），差异全部以钩子实现：
+
+- **模型清单动态拉取为准**：`getModels()` 调各家 `/models` 并过滤非对话模型（OpenAI 剔除 embedding / dall-e / gpt-image / whisper / tts；Gemini 只留 `gemini-*`）；内置静态表仅作拉取失败时的兜底。
+- **思考档位**：OpenAI / Gemini 在 `thinking: true` 时透传 `reasoning_effort`（low / medium / high）；Anthropic 兼容层对 `reasoning_effort` 支持有限，不透传（Claude 4.5+ 自适应思考），避免 400。
+- **Anthropic 附加头**：请求同时带 `Authorization: Bearer`、`x-api-key` 与 `anthropic-version: 2023-06-01`，覆盖官方 OpenAI 兼容层与原生端点两种鉴权理解；该兼容层官方定位为测试 / 评估用，非长期生产承诺。
+- **Qwen（DashScope）**：`dashscope.aliyuncs.com/compatible-mode/v1`，与原生 API 同一把 DashScope Key；思考控制是 `enable_thinking` 布尔（qwen3 系混合思考模型，无细档位），`getModels` 只留 `qwen-*` 对话系。
+- **思考档位表**：各供应商 / 模型支持的思考档位（`efforts.js` 的 `effortLevelsFor` / `clampEffort`）供宿主 UI 动态生成「推理等级」菜单并在注入 Agent 前夹取——如 DeepSeek/GLM-5/Kimi-k3 为 off·low·high·max 系、OpenAI gpt-5 系为 minimal~high（不可全关）、Qwen 仅开/关、Anthropic / gpt-4o 不可调（空表）。
+- **无余额接口**：三家均无余额查询 API，`getRemaining()` 返回空 balances（与 GLM Coding 同款，UI 展示为无余额数据）。
 
 ## 安装使用
 
@@ -32,7 +47,7 @@ import { saveKey, getAssistant, getApiKeys, onApiKeysChange, removeKey, setKeyDi
 
 保存 API Key。`extra` 可选，附加字段合并进 key 对象（如 relay 的 `serverName`）。并返回 Assistant 实例。写入后会自动持久化到本地存储（nos storage），并通知所有 `onApiKeysChange` 订阅者。
 
-- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）/ `"relay"`（转发服务器邀请码，见下节）
+- `provider` 取值：`"deepseek"` / `"kimi"` / `"glm"`（按量付费 Key）/ `"glm-coding"`（Coding Plan 订阅 Key）/ `"openai"` / `"gemini"` / `"anthropic"` / `"qwen"`（见上「openai-compat 基类供应商」）/ `"relay"`（转发服务器邀请码，见下节）
 
 ```javascript
 const assistant = await saveKey("sk-xxx", "deepseek");
@@ -89,7 +104,7 @@ console.log(keys.length, keys.map(k => k.maskedKey));
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | string | 内部生成的唯一 id（用于 `getAssistant` / `removeKey`） |
-| `provider` | string | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` |
+| `provider` | string | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"openai"` / `"gemini"` / `"anthropic"` / `"qwen"` / `"relay"` |
 | `apiKey` | string | 原始 key（敏感，UI 展示请用 `maskedKey`） |
 | `maskedKey` | string | 脱敏后的展示串，如 `sk-abcd...wxyz` |
 | `disabled` | boolean | 是否被临时禁用（禁用后 `getAssistant` 不可用，可随时恢复） |
@@ -183,7 +198,7 @@ removeKey("某条 id");
 
 ```javascript
 const assistant = getAssistant();
-console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding"
+console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding" / "openai" / "gemini" / "anthropic" / "qwen" / "relay"
 ```
 
 ### chat(options)
@@ -465,12 +480,19 @@ npx serve .
 ```
 mz/ai/
 ├── main.js                  # 主入口，API Key 管理和 Assistant 工厂
+├── efforts.js               # 思考档位表：effortLevelsFor / clampEffort / EFFORT_LABELS
 ├── README.md
 ├── supplier/                # AI 提供商实现
 │   ├── assistant.js         # Assistant 基类（公共流式/tool_calls 累积/错误处理）
 │   ├── deepseek.js          # DeepSeek 实现
 │   ├── kimi.js              # Kimi 实现
-│   └── glm.js               # GLM 实现（含 GlmAssistant / GlmCodingAssistant）
+│   ├── glm.js               # GLM 实现（含 GlmAssistant / GlmCodingAssistant）
+│   ├── openai-compat.js     # OpenAI wire 公共基类（国外三家共用，钩子实现差异）
+│   ├── openai.js            # OpenAI 实现（api.openai.com/v1）
+│   ├── gemini.js            # Gemini 实现（官方 OpenAI 兼容端点 v1beta/openai）
+│   ├── anthropic.js         # Anthropic 实现（官方 OpenAI 兼容层，附加鉴权/版本头）
+│   ├── qwen.js              # Qwen 实现（DashScope 兼容模式，enable_thinking 开关）
+│   └── relay.js             # ai-relay 转发服务器实现（邀请码鉴权；思考参数按模型前缀透传）
 └── chain/                   # Agent 封装（基于 supplier 层，纯函数库）
     ├── README.md            # Chain 教程与 API 参考
     ├── main.js              # chain 入口（统一 re-export）

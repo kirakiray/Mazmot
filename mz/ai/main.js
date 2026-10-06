@@ -2,6 +2,10 @@ import DeepseekAssistant from "./supplier/deepseek.js";
 import KimiAssistant from "./supplier/kimi.js";
 import { GlmAssistant, GlmCodingAssistant } from "./supplier/glm.js";
 import RelayAssistant from "./supplier/relay.js";
+import OpenAIAssistant from "./supplier/openai.js";
+import GeminiAssistant from "./supplier/gemini.js";
+import AnthropicAssistant from "./supplier/anthropic.js";
+import QwenAssistant from "./supplier/qwen.js";
 
 // /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
 // 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
@@ -47,6 +51,14 @@ const _createAssistant = (provider, id, apiKey) => {
     case "relay":
       // apiKey 字段存的是服务器签发的完整邀请码
       return new RelayAssistant(id, apiKey);
+    case "openai":
+      return new OpenAIAssistant(id, apiKey);
+    case "gemini":
+      return new GeminiAssistant(id, apiKey);
+    case "anthropic":
+      return new AnthropicAssistant(id, apiKey);
+    case "qwen":
+      return new QwenAssistant(id, apiKey);
     default:
       throw new Error(`provider not supported: ${provider}`);
   }

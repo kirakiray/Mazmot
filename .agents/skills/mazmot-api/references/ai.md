@@ -20,15 +20,15 @@ const { content } = await assistant.chat({
 
 ## 应用侧常用 API
 
-由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` / `new GlmAssistant(id, apiKey)` / `new GlmCodingAssistant(id, apiKey)` / `new RelayAssistant(id, inviteCode)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`，子类在 `deepseek.js` / `kimi.js` / `glm.js` / `relay.js`。
+由 `getAssistant()` / `new DeepseekAssistant(id, apiKey)` / `new KimiAssistant(id, apiKey)` / `new GlmAssistant(id, apiKey)` / `new GlmCodingAssistant(id, apiKey)` / `new OpenAIAssistant(id, apiKey)` / `new GeminiAssistant(id, apiKey)` / `new AnthropicAssistant(id, apiKey)` / `new RelayAssistant(id, inviteCode)` 获得。基类 `Assistant` 位于 `/mz/ai/supplier/assistant.js`；国内厂商子类在 `deepseek.js` / `kimi.js` / `glm.js` / `relay.js`，openai-compat 家族（openai / gemini / anthropic / qwen）共用 `openai-compat.js` 基类（OpenAI 兼容 wire，模型清单动态拉取并过滤非对话模型，无余额接口返回空 balances，Anthropic 附加 `x-api-key` + `anthropic-version` 头且不透传思考档位，Qwen 思考走 `enable_thinking` 开关）。
 
 ### assistant.providerName
 
-只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
+只读属性，标识该实例来自哪个提供商，取值为全小写字符串 `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"openai"` / `"gemini"` / `"anthropic"` / `"qwen"` / `"relay"`（与 key 对象的 `provider` 一致）。当用 `getAssistant()` 随机取实例、又想知道拿到的是哪家时可读取它：
 
 ```js
 const assistant = getAssistant();
-console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding" / "relay"
+console.log(assistant.providerName); // "deepseek" / "kimi" / "glm" / "glm-coding" / "openai" / "gemini" / "anthropic" / "qwen" / "relay"
 ```
 
 ### chat(options)
@@ -103,6 +103,12 @@ import {
 | Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.6`, `kimi-k2.5` | ✅ | ✅ |
 | GLM | `glm-5.3`, `glm-5.3-flash`, `glm-4.7` 等（按量付费 Key） | ✅ | ✅ |
 | GLM Coding Plan | Coding Plan 订阅 Key（`open.bigmodel.cn/api/coding/paas/v4`） | ✅ | ✅ |
+| OpenAI | `gpt-5.6` / `gpt-5.5` / `gpt-5.1` 等（`api.openai.com/v1`，动态拉取为准） | ✅（reasoning_effort） | ✅ |
+| Gemini | `gemini-3-flash` / `gemini-3-pro` 等（官方 OpenAI 兼容端点 `generativelanguage.googleapis.com/v1beta/openai`） | ✅（reasoning_effort） | ✅ |
+| Anthropic | `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-4-5`（官方 OpenAI 兼容层 `api.anthropic.com/v1`） | 自适应思考（不透传档位） | ✅ |
+| Qwen | `qwen3-max` / `qwen3-plus` / `qwen3-flash` 等（DashScope 兼容模式 `dashscope.aliyuncs.com/compatible-mode/v1`） | ✅（enable_thinking 开关） | ✅ |
+
+> 思考档位按供应商 / 模型不同：`/mz/ai/efforts.js` 的 `effortLevelsFor(provider, model)` 返回可用档位（空数组 = 不可调）、`clampEffort` 把偏好夹取到有效档、`EFFORT_LABELS` 为中文标签——宿主「推理等级」菜单应据此动态生成。
 
 > `kimi-k2-thinking` / `kimi-latest` / `kimi-thinking-preview` 已下线。`deepseek-chat` / `deepseek-reasoner` 旧名已于 2026/07/24 弃用。
 
@@ -116,7 +122,7 @@ import {
 
 保存 key，返回新保存的 key 对象（含 `id`，可用于 `removeKey` / `getAssistant`）。自动持久化到本地存储（nos storage）并通知订阅者。
 
-- `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"`（relay 时 apiKey 传服务器签发的完整邀请码）
+- `provider`：`"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"openai"` / `"gemini"` / `"anthropic"` / `"qwen"` / `"relay"`（relay 时 apiKey 传服务器签发的完整邀请码）
 - `extra`（可选）：附加字段合并进 key 对象，如 `{ serverName: "团队中转" }`（relay 添加时经 `fetchServerInfo(baseUrl)` 拉取服务器命名，`/mz/ai/supplier/relay.js` 导出）
 
 ```js
@@ -157,7 +163,7 @@ const anyAssistant = getAssistant(); // 随机取
 | 字段 | 说明 |
 |------|------|
 | `id` | 内部唯一 id |
-| `provider` | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"relay"` |
+| `provider` | `"deepseek"` / `"kimi"` / `"glm"` / `"glm-coding"` / `"openai"` / `"gemini"` / `"anthropic"` / `"qwen"` / `"relay"` |
 | `apiKey` | 原始 key（敏感，UI 展示用 `maskedKey`） |
 | `maskedKey` | 脱敏串，如 `sk-abcd...wxyz` |
 | `disabled` | 是否被临时禁用（boolean） |

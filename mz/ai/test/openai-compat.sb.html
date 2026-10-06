@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>国外供应商（OpenAI / Gemini / Anthropic）测试</title>
+    <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 mz/ai/supplier 的国外三家供应商（openai-compat 基类体系）。
+      无真实 Key，全部 mock fetch（请求形态 / 响应映射 / 模型过滤 / 鉴权头差异）：
+      - OpenAI：api.openai.com/v1，默认 gpt-5.6，thinking → reasoning_effort，
+        getModels 过滤 embedding / 图像 / 音频等非对话模型
+      - Gemini：官方 OpenAI 兼容端点 v1beta/openai，默认 gemini-3-flash，只留 gemini-*
+      - Anthropic：官方 OpenAI 兼容层 api.anthropic.com/v1，附加 x-api-key +
+        anthropic-version 头，不透传 reasoning_effort
+      操作 window.fetch 的用例均不标 parallel（mock 会被并发用例的 finally 踩掉）
+    -->
+
+    <sb-test name="OpenAI: chat 请求形态与默认模型">
+      <template>
+        <script type="module">
+          const { default: OpenAIAssistant } = await import("/mz/ai/supplier/openai.js");
+          const assistant = new OpenAIAssistant("key-openai-1", "sk-openai-test");
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                model: "gpt-5.6",
+                choices: [
+                  {
+                    message: {
+                      content: "你好",
+                      tool_calls: [
+                        {
+                          id: "call_1",
+                          type: "function",
+                          function: { name: "run", arguments: "{}" },
+                        },
+                      ],
+                    },
+                  },
+                ],
+                usage: { prompt_tokens: 4, completion_tokens: 6 },
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const result = await assistant.chat({
+              thinking: true,
+              reasoningEffort: "medium",
+              messages: [{ role: "user", content: "hi" }],
+              tools: [
+                {
+                  type: "function",
+                  function: { name: "run", description: "", parameters: {} },
+                },
+              ],
+            });
+            const urlOk = capturedUrl === "https://api.openai.com/v1/chat/completions";
+            const authOk = capturedOptions.headers.Authorization === "Bearer sk-openai-test";
+            const body = JSON.parse(capturedOptions.body);
+            const bodyOk =
+              body.model === "gpt-5.6" &&
+              body.reasoning_effort === "medium" &&
+              body.tool_choice === "auto";
+            const mapOk =
+              result.content === "你好" &&
+              result.toolCalls.length === 1 &&
+              result.usage.prompt_tokens === 4;
+            return {
+              assert: urlOk && authOk && bodyOk && mapOk,
+              content: { urlOk, authOk, bodyOk, mapOk, capturedUrl, body },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="OpenAI: getModels 过滤非对话模型 + 空余额">
+      <template>
+        <script type="module">
+          const { default: OpenAIAssistant } = await import("/mz/ai/supplier/openai.js");
+          const assistant = new OpenAIAssistant(null, "sk-openai-test");
+
+          const originalFetch = window.fetch;
+          window.fetch = async (url) => {
+            if (!url.endsWith("/models")) throw new Error("unexpected url: " + url);
+            return new Response(
+              JSON.stringify({
+                data: [
+                  { id: "gpt-5.6" },
+                  { id: "o4-mini" },
+                  { id: "text-embedding-3-large" },
+                  { id: "dall-e-3" },
+                  { id: "gpt-image-1" },
+                  { id: "whisper-1" },
+                  { id: "tts-1" },
+                ],
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const models = await assistant.getModels();
+            const ids = models.map((m) => m.id);
+            const filteredOk =
+              ids.length === 2 && ids.includes("gpt-5.6") && ids.includes("o4-mini");
+            const remaining = await assistant.getRemaining();
+            const emptyBalance =
+              Array.isArray(remaining.balances) && remaining.balances.length === 0;
+            return {
+              assert: filteredOk && emptyBalance,
+              content: { ids, filteredOk, emptyBalance },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Gemini: OpenAI 兼容端点请求与模型过滤">
+      <template>
+        <script type="module">
+          const { default: GeminiAssistant } = await import("/mz/ai/supplier/gemini.js");
+          const assistant = new GeminiAssistant("key-gemini-1", "gemini-api-key");
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            if (url.endsWith("/chat/completions")) {
+              capturedUrl = url;
+              capturedOptions = options;
+              return new Response(
+                JSON.stringify({
+                  model: "gemini-3-flash",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: { prompt_tokens: 1, completion_tokens: 2 },
+                }),
+                { status: 200 },
+              );
+            }
+            if (url.endsWith("/models")) {
+              return new Response(
+                JSON.stringify({
+                  data: [
+                    { id: "gemini-3-flash" },
+                    { id: "gemini-3-pro" },
+                    { id: "text-embedding-004" },
+                    { id: "gemma-3-27b-it" },
+                  ],
+                }),
+                { status: 200 },
+              );
+            }
+            throw new Error("unexpected url: " + url);
+          };
+          try {
+            // 未传 model：走默认 gemini-3-flash
+            const result = await assistant.chat({
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const urlOk =
+              capturedUrl ===
+              "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+            const authOk = capturedOptions.headers.Authorization === "Bearer gemini-api-key";
+            const defaultModelOk = JSON.parse(capturedOptions.body).model === "gemini-3-flash";
+            const models = await assistant.getModels();
+            const ids = models.map((m) => m.id);
+            const filteredOk =
+              ids.length === 2 && ids.every((id) => id.startsWith("gemini"));
+            return {
+              assert: urlOk && authOk && defaultModelOk && result.content === "ok" && filteredOk,
+              content: { urlOk, authOk, defaultModelOk, filteredOk, ids },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Anthropic: 鉴权头 / 版本头 / 不透传 reasoning_effort">
+      <template>
+        <script type="module">
+          const { default: AnthropicAssistant } = await import(
+            "/mz/ai/supplier/anthropic.js"
+          );
+          const assistant = new AnthropicAssistant("key-claude-1", "sk-ant-test");
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            capturedUrl = url;
+            capturedOptions = options;
+            return new Response(
+              JSON.stringify({
+                model: "claude-sonnet-5-5",
+                choices: [{ message: { content: "ok" } }],
+                usage: { prompt_tokens: 2, completion_tokens: 3 },
+              }),
+              { status: 200 },
+            );
+          };
+          try {
+            const result = await assistant.chat({
+              thinking: true,
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const headers = capturedOptions.headers;
+            const urlOk = capturedUrl === "https://api.anthropic.com/v1/chat/completions";
+            const headersOk =
+              headers.Authorization === "Bearer sk-ant-test" &&
+              headers["x-api-key"] === "sk-ant-test" &&
+              headers["anthropic-version"] === "2023-06-01";
+            const body = JSON.parse(capturedOptions.body);
+            const bodyOk =
+              body.model === "claude-sonnet-5-5" &&
+              !("reasoning_effort" in body) &&
+              !("thinking" in body);
+            return {
+              assert: urlOk && headersOk && bodyOk && result.content === "ok",
+              content: { urlOk, headersOk, bodyOk, headers, body },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Anthropic: 错误响应带 providerName 前缀">
+      <template>
+        <script type="module">
+          const { default: AnthropicAssistant } = await import(
+            "/mz/ai/supplier/anthropic.js"
+          );
+          const assistant = new AnthropicAssistant(null, "sk-ant-test");
+
+          const originalFetch = window.fetch;
+          window.fetch = async () =>
+            new Response(JSON.stringify({ error: { message: "invalid api key" } }), {
+              status: 401,
+              statusText: "Unauthorized",
+            });
+          try {
+            let msg = "";
+            let threw = false;
+            try {
+              await assistant.chat({ messages: [{ role: "user", content: "hi" }] });
+            } catch (error) {
+              threw = true;
+              msg = error.message;
+            }
+            return {
+              assert: threw && msg.startsWith("anthropic API error") && msg.includes("401"),
+              content: { threw, msg },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="main.js: openai / gemini / anthropic 路由到对应 Assistant">
+      <template>
+        <script type="module">
+          const mod = await import("/mz/ai/main.js");
+          const savedIds = [];
+          try {
+            const checks = {};
+            for (const provider of ["openai", "gemini", "anthropic", "qwen"]) {
+              const key = mod.saveKey(`fake-key-for-${provider}-route`, provider);
+              savedIds.push(key.id);
+              const assistant = mod.getAssistant(key.id);
+              checks[provider] = assistant.providerName === provider;
+            }
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          } finally {
+            // 清场：同页用例共享 main.js 模块内存（apiKeys）
+            savedIds.forEach((id) => mod.removeKey(id));
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Qwen: DashScope 兼容端点请求与思考开关 / 模型过滤">
+      <template>
+        <script type="module">
+          const { default: QwenAssistant } = await import("/mz/ai/supplier/qwen.js");
+          const assistant = new QwenAssistant("key-qwen-1", "sk-qwen-test");
+
+          let capturedUrl = "";
+          let capturedOptions = null;
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            if (url.endsWith("/chat/completions")) {
+              capturedUrl = url;
+              capturedOptions = options;
+              return new Response(
+                JSON.stringify({
+                  model: "qwen3-max",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: { prompt_tokens: 3, completion_tokens: 4 },
+                }),
+                { status: 200 },
+              );
+            }
+            if (url.endsWith("/models")) {
+              return new Response(
+                JSON.stringify({
+                  data: [
+                    { id: "qwen3-max" },
+                    { id: "qwen3.8-max-0902" },
+                    { id: "text-embedding-v4" },
+                    { id: "wanx2.1-t2i" },
+                  ],
+                }),
+                { status: 200 },
+              );
+            }
+            // 其余请求（NoneOS 用户激活等）：静默放行
+            return new Response(JSON.stringify({ mode: "open" }), { status: 200 });
+          };
+          try {
+            // thinking 开 → enable_thinking 布尔（不是 reasoning_effort）
+            const result = await assistant.chat({
+              thinking: true,
+              reasoningEffort: "high",
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const urlOk =
+              capturedUrl ===
+              "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+            const body = JSON.parse(capturedOptions.body);
+            const bodyOk =
+              body.model === "qwen3-max" &&
+              body.enable_thinking === true &&
+              !("reasoning_effort" in body);
+            const models = await assistant.getModels();
+            const ids = models.map((m) => m.id);
+            const filteredOk =
+              ids.length === 2 && ids.every((id) => id.startsWith("qwen"));
+            return {
+              assert: urlOk && bodyOk && result.content === "ok" && filteredOk,
+              content: { urlOk, bodyOk, filteredOk, body, ids },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Relay: 思考参数按模型前缀透传（qwen 开关 / 其余 effort）">
+      <template>
+        <script type="module">
+          const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
+          const code = btoa(
+            JSON.stringify({ u: "https://relay.example.com", k: "bk-effort-passthrough" }),
+          );
+
+          const chatBodies = [];
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            if (url.endsWith("/chat/completions")) {
+              chatBodies.push(JSON.parse(options.body));
+              return new Response(
+                JSON.stringify({
+                  model: "m",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: {},
+                }),
+                { status: 200 },
+              );
+            }
+            // /v1/models / /v1/activate 等：models 给 qwen + glm 两台混合清单，
+            // 其余静默放行
+            if (url.endsWith("/v1/models")) {
+              return new Response(
+                JSON.stringify({ data: [{ id: "qwen3-max" }, { id: "glm-5.3" }] }),
+                { status: 200 },
+              );
+            }
+            return new Response(JSON.stringify({ mode: "open" }), { status: 200 });
+          };
+          try {
+            const a = new RelayAssistant(null, code);
+            // 显式 qwen 模型 + thinking：enable_thinking
+            await a.chat({
+              model: "qwen3-max",
+              thinking: true,
+              reasoningEffort: "low",
+              messages: [{ role: "user", content: "hi" }],
+            });
+            // 显式 glm 模型 + thinking：reasoning_effort
+            await a.chat({
+              model: "glm-5.3",
+              thinking: true,
+              reasoningEffort: "high",
+              messages: [{ role: "user", content: "hi" }],
+            });
+            // 不思考：两种字段都不出现
+            await a.chat({
+              model: "glm-5.3",
+              thinking: false,
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const qwenOk =
+              chatBodies[0].enable_thinking === true &&
+              !("reasoning_effort" in chatBodies[0]);
+            const glmOk = chatBodies[1].reasoning_effort === "high";
+            const offOk =
+              !("reasoning_effort" in chatBodies[2]) &&
+              !("enable_thinking" in chatBodies[2]);
+            return {
+              assert: qwenOk && glmOk && offOk,
+              content: { qwenOk, glmOk, offOk, chatBodies },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
