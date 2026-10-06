@@ -268,7 +268,8 @@
                 { status: 200 },
               );
             }
-            throw new Error("unexpected url: " + url);
+            // 其余请求（NoneOS 用户激活 /v1/activate 等）：静默放行，不计入断言
+            return new Response(JSON.stringify({ mode: "open" }), { status: 200 });
           };
           try {
             const assistant = new RelayAssistant("key-1", code);
@@ -316,15 +317,19 @@
                 status: 200,
               });
             }
-            chatBodies.push(JSON.parse(options.body));
-            return new Response(
-              JSON.stringify({
-                model: "kimi-k3",
-                choices: [{ message: { content: "ok" } }],
-                usage: {},
-              }),
-              { status: 200 },
-            );
+            if (url.endsWith("/v1/chat/completions")) {
+              chatBodies.push(JSON.parse(options.body));
+              return new Response(
+                JSON.stringify({
+                  model: "kimi-k3",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: {},
+                }),
+                { status: 200 },
+              );
+            }
+            // 其余请求（NoneOS 用户激活 /v1/activate 等）：静默放行，不混入 chat 断言
+            return new Response(JSON.stringify({ mode: "open" }), { status: 200 });
           };
           try {
             const assistant = new RelayAssistant(null, code);
@@ -345,7 +350,7 @@
       </template>
     </sb-test>
 
-    <sb-test name="chat 清单拉取失败：回退默认名并透传上游错误">
+    <sb-test name="chat 清单拉取失败：回退默认名发起请求">
       <template>
         <script type="module">
           const { default: RelayAssistant } = await import("/mz/ai/supplier/relay.js");
@@ -360,23 +365,27 @@
                 status: 500,
               });
             }
-            chatBodies.push(JSON.parse(options.body));
-            return new Response(
-              JSON.stringify({
-                model: "deepseek-chat",
-                choices: [{ message: { content: "ok" } }],
-                usage: {},
-              }),
-              { status: 200 },
-            );
+            if (url.endsWith("/v1/chat/completions")) {
+              chatBodies.push(JSON.parse(options.body));
+              return new Response(
+                JSON.stringify({
+                  model: "deepseek-flash",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: {},
+                }),
+                { status: 200 },
+              );
+            }
+            // 其余请求（NoneOS 用户激活 /v1/activate 等）：静默放行
+            return new Response(JSON.stringify({ mode: "open" }), { status: 200 });
           };
           try {
             const assistant = new RelayAssistant(null, code);
             const result = await assistant.chat({
               messages: [{ role: "user", content: "hi" }],
             });
-            // 清单挂了 → 保留旧默认名发起请求（错误由上游自然透出），仍能正常响应
-            const fallbackUsed = chatBodies[0]?.model === "deepseek-chat";
+            // 清单挂了 → 以 DeepSeek 当前标准模型名兜底发起请求，仍能正常响应
+            const fallbackUsed = chatBodies[0]?.model === "deepseek-flash";
             return {
               assert: fallbackUsed && result.content === "ok",
               content: { fallbackUsed, chatModels: chatBodies.map((b) => b.model) },

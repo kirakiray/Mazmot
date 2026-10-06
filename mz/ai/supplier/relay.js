@@ -167,13 +167,13 @@ export class RelayAssistant extends Assistant {
     tools = null,
     toolChoice = null,
   }) {
-    // 调用方未指定模型：静默解析上游首个可用模型；清单拉取失败时保留
-    // 旧默认名发起请求，让真实错误自然透出
+    // 调用方未指定模型：静默解析上游首个可用模型；清单拉取失败时以
+    // DeepSeek 当前标准模型名兜底发起请求，让真实错误自然透出
     if (!model) {
       try {
         model = await this.#defaultModel();
       } catch {
-        model = "deepseek-chat";
+        model = "deepseek-flash";
       }
     }
     const requestBody = { model, stream, messages };

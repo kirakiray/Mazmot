@@ -313,7 +313,7 @@ mod tests {
         assert!(Provider::GlmCoding.serves_model("glm-5.3"));
         assert!(Provider::GlmCoding.serves_model("glm-x"));
         assert!(Provider::Deepseek.serves_model("deepseek-v4-flash"));
-        assert!(!Provider::Glm.serves_model("deepseek-chat"));
+        assert!(!Provider::Glm.serves_model("deepseek-flash"));
         assert!(!Provider::Deepseek.serves_model("gpt-4o"));
     }
 
@@ -346,7 +346,7 @@ mod tests {
             web_fetch_enabled: true,
         };
         assert!(model_allowed(&user.allowed_models, "glm-5.3"));
-        assert!(!model_allowed(&user.allowed_models, "deepseek-chat"));
+        assert!(!model_allowed(&user.allowed_models, "deepseek-flash"));
         assert!(model_allowed(&[], "anything"));
         put_row(&db, USERS_TABLE, "u1", serde_json::to_vec(&user).unwrap().as_slice()).unwrap();
         let usage = UsageRec {

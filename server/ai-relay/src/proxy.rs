@@ -158,7 +158,7 @@ pub(crate) async fn probe_key(
 ) -> Result<(), String> {
     let base = key.provider.upstream_base();
     let fallback_model = if key.provider == Provider::Deepseek {
-        "deepseek-chat"
+        "deepseek-flash"
     } else {
         "glm-4.7"
     };
