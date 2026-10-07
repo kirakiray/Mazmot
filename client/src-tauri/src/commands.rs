@@ -35,13 +35,19 @@ pub fn runtime_open_window(
     let parsed: tauri::Url = url
         .parse()
         .map_err(|e| format!("无效 URL {}: {}", url, e))?;
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
         .title("Mazmot")
         .inner_size(1180.0, 820.0)
         .min_inner_size(420.0, 320.0)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
         .initialization_script(SHIM_JS);
+    // macOS 专属 API，Windows/Linux 交叉编译目标下不存在
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
     if let (Some(w), Some(h)) = (width, height) {
         builder = builder.inner_size(w, h);
     }

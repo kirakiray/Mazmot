@@ -130,12 +130,19 @@ client/
 
 ## 打包产物
 
-- `npm run build` → `src-tauri/target/release/bundle/macos/Mazmot.app`（站点资源 3.4M 打进 `Contents/Resources/_up_/_up_/`）。
-- DMG：tauri 的 `bundle_dmg.sh` 需要 Finder 自动化权限（终端里 AppleEvent 超时 -1712），用 hdiutil 兜底：
+- **macOS（arm64）**：`npm run build` → `src-tauri/target/release/bundle/macos/Mazmot.app`（站点资源 3.4M 打进 `Contents/Resources/_up_/_up_/`）；DMG 用 hdiutil 兜底（tauri 的 `bundle_dmg.sh` 需要 Finder 自动化权限，终端里 AppleEvent 超时 -1712）：
   ```bash
   # stage 目录放 Mazmot.app + Applications 软链后：
   hdiutil create -volname "Mazmot" -srcfolder <stage> -ov -format UDZO dmg/Mazmot_1.0.0_aarch64.dmg
   ```
+- **Windows（x86_64 / aarch64）便携 zip**：macOS 上经 cargo-xwin 交叉编译（MSVC ABI，WebView2Loader 静态链接，产物只有单 exe）：
+  ```bash
+  brew install llvm && cargo install cargo-xwin --locked
+  rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+  export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+  cargo xwin build --release --target x86_64-pc-windows-msvc   # aarch64 同理
+  ```
+  便携包布局（`bundle/windows-portable/Mazmot-<ver>-windows-<arch>.zip`）：`Mazmot/Mazmot.exe` + 站点静态文件平铺在 exe 旁（Windows 的 resource_dir = exe 目录，resolver depth-0 命中）。运行需系统已有 WebView2 Runtime（Win10/11 默认自带）。NSIS/MSI 安装包无法在 macOS 上出，需要时走 GitHub Actions windows runner。
 
 ## 验证清单（改 shim / 命令 / 端口 / 打包配置后）
 

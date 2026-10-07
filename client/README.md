@@ -62,6 +62,8 @@ npm run icon     # 重新派生图标（源：assets/icon.png，由 scripts/gen_
 
 ## 已知限制
 
-- 服务器绑定失败时主站会回退候选端口，此时 origin 变化会导致该次启动看不到历史数据（正常情况下端口稳定）。
+- 主站端口被占用回退后，该次启动 origin 变化会导致该次启动看不到历史数据（正常情况下端口稳定）。
 - 30032 被占用时仅 conjure 隔离预览降级，主站不受影响。
+- 自绘顶栏仅 macOS（Overlay 标题栏）；Windows / Linux 保持系统原生标题栏。
+- Windows 便携包需系统自带 WebView2 Runtime；NSIS/MSI 安装包需在 Windows 上构建（或 GitHub Actions windows runner）。
 - Linux 需 webkitgtk ≥ 2.40（Service Worker 支持）；Windows 使用 WebView2，均需实测验证后再正式分发。

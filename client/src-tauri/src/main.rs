@@ -84,15 +84,20 @@ fn main() {
             let app_handle = app.handle().clone();
             // macOS Overlay 标题栏：系统灰条消失、页面内容顶到窗口边，红绿灯浮在
             // 左上；拖拽区与标题由 shim.js 注入的自绘顶栏承担（VS Code 式）
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin))
+            #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+            let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin))
                 .title("Mazmot")
                 .inner_size(1200.0, 800.0)
                 .min_inner_size(860.0, 600.0)
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .hidden_title(true)
                 .initialization_script(SHIM_JS)
-                .on_navigation(move |url| handle_navigation(&app_handle, url))
-                .build()?;
+                .on_navigation(move |url| handle_navigation(&app_handle, url));
+            #[cfg(target_os = "macos")]
+            {
+                builder = builder
+                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .hidden_title(true);
+            }
+            builder.build()?;
 
             eprintln!(
                 "[mazmot-runtime] 主窗口就绪 http://localhost:{}（bridge: {:?}）",
