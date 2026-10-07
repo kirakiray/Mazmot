@@ -449,6 +449,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         const mod = await ensurePreviewMod();
         return mod.listPreviewWindows();
       },
+      // 弹窗放行探测（preview 工具 action=check-popup）：被拦截后的确认重试用
+      checkPopup: async () => {
+        const mod = await ensurePreviewMod();
+        return mod.checkPopupAllowed();
+      },
       onPreviewShot: pushPreviewShot,
       // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),

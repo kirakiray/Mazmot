@@ -41,7 +41,15 @@ const ACTION_CMDS = {
   eval: "eval",
   screenshot: "shot",
 };
-const ACTIONS = ["app", "windows", ...Object.keys(ACTION_CMDS)];
+const ACTIONS = ["app", "windows", "check-popup", ...Object.keys(ACTION_CMDS)];
+
+// 弹窗被拦截时的统一行动指引（action=app 返回 code=POPUP_BLOCKED 的错误、
+// action=check-popup 探测未放行时共用）：给模型的必须是可执行的处理顺序——
+// 指导用户放行 → 停下等确认 → 验证 → 再重推；窗口放行前一切调试指令都会失败
+const POPUP_GUIDE = `预览窗口被浏览器拦截：浏览器默认禁止页面自动打开新窗口，预览窗口放行前无法继续调试（这不是应用代码问题，其余调试指令也会全部失败）。请严格按以下顺序处理：
+1. 立即用一段话告诉用户：浏览器拦截了预览窗口，请点浏览器地址栏右侧的「弹窗已拦截」图标（Chrome 在地址栏右端，Edge / Safari / Firefox 位置类似），选择「始终允许来自此网站的弹出式窗口」并确认；
+2. 然后停下来等待用户回复确认（如「已允许」），期间不要重试 preview 的任何 action，也不要继续其他调试步骤；
+3. 用户确认后调用 action=check-popup 验证放行：通过后再 action=app 重推应用；若仍被拦截，请用户打开浏览器设置 → 隐私设置 / 站点权限 → 弹出式窗口和重定向，把本站手动加入「允许」列表，再回复你一次。`;
 
 // 各 action 的必填参数校验；返回错误文案或 null
 const checkArgs = (action, appName, args) => {
@@ -63,8 +71,9 @@ const timeoutFor = (action, args) => {
 };
 
 const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔离域运行 AI 生成的应用，本工具是与它交互的唯一通道；支持最多 10 个窗口，本机 popup 与手机扫码设备平等，每个窗口一行注册表条目）。用 action 指定操作，操作专属参数放 args 对象：
-- app：推送应用实际运行（无窗口则新开；已有窗口则增量更新并自动刷新，多个窗口时全部同步；返回时已在跑最新代码且调试代理在线）。顶层 appName 必填。新功能写完/代码修复完用它；排查用户反馈的问题先用 status 确认在线再直接取证，不要急着重推（刷新会清空控制台缓冲，丢失报错现场）。
+- app：推送应用实际运行（无窗口则新开；已有窗口则增量更新并自动刷新，多个窗口时全部同步；返回时已在跑最新代码且调试代理在线）。顶层 appName 必填。新功能写完/代码修复完用它；排查用户反馈的问题先用 status 确认在线再直接取证，不要急着重推（刷新会清空控制台缓冲，丢失报错现场）。若返回「预览窗口被浏览器拦截」的指引，严格按指引处理（告知用户放行 → 等确认 → check-popup → 重推），不要原地重试。
 - windows：列出当前打开的预览窗口（id / 应用 / 设备 / 在线状态 / 最近心跳）。多窗口调试前先调用；顶层 winId 选定目标窗口，省略 winId 的调试指令投递给最近活跃的在线窗口。
+- check-popup：探测本站是否允许自动打开新窗口（会短暂闪现一个空白小窗）。两种用途：推送前预检；用户按指引放行弹窗后的确认。未放行时返回给用户的指导话术，按其执行。
 - status：查预览窗口状态：是否在线、页面 URL/标题、日志与错误条数。
 - console：读控制台日志（log/warn/error/未捕获异常）。args：limit（默认 50）、since（增量拉取时间戳）。不传 since 从头拉全部现场；返回末尾带 latestTs，修复后传 since 对比新日志。检查报错首选。
 - dom：DOM 样式快照——每个可见节点一行（几何 + 颜色/字号/边框等关键样式 + 文本），穿 shadow DOM，免授权。args：selector（默认 body）、depth（默认 4）、maxNodes（默认 60）。验证布局/渲染首选。
@@ -112,9 +121,25 @@ export default {
     // 推送运行：走 builder-store 的预览主流程（返回即代理可用）
     if (action === "app") {
       if (typeof ctx.openPreview !== "function") return unavailable();
-      return wrap(async () => {
+      try {
         const done = await ctx.openPreview(appName);
         return `预览就绪：${done.url}\n预览窗口已在运行最新代码，可继续用 preview 的 status / console / dom 等 action 调试验证。`;
+      } catch (err) {
+        // 弹窗被浏览器拦截（remote-preview 约定 code=POPUP_BLOCKED）：
+        // 返回行动指引而非失败文案，模型据此指导用户放行后再继续
+        if (err?.code === "POPUP_BLOCKED") return POPUP_GUIDE;
+        return `操作失败：${err.message}`;
+      }
+    }
+
+    // 弹窗放行探测：推送前预检 / 用户放行后的确认
+    if (action === "check-popup") {
+      if (typeof ctx.checkPopup !== "function") return unavailable();
+      return wrap(async () => {
+        const { allowed } = await ctx.checkPopup();
+        return allowed
+          ? "弹窗探测通过：本站已允许自动打开新窗口，可以 action=app 推送应用继续调试。"
+          : POPUP_GUIDE;
       });
     }
 
