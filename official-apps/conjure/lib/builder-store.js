@@ -21,6 +21,7 @@ import {
   registerAppRecord,
   unregisterAppRecord,
   deleteVfsApp,
+  publishAppToHome,
   sanitizeAppName,
   listAppFiles,
   readAppFile,
@@ -96,6 +97,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     backups: [],
     backupBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
+    // 发布到首页应用列表：publishBusy 防重入；publishedInfo 为当前应用的
+    // 发布态（null = 未发布；{ version, at } = 已发布，顶栏发布按钮提示用）
+    publishBusy: false,
+    publishedInfo: null,
     // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
     // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
     previewBusy: false,
@@ -681,6 +686,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     await applyApp(hit);
     // 刷新备份清单（含每项 current 标记）：变更卡「备份代码」的已备份感知依赖它
     refreshBackups();
+    syncPublishedInfo();
     const latest = [...(hit.sessions || [])].sort(
       (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
     )[0];
@@ -722,6 +728,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       currentSessionTitle: "",
       permGrantNeeded: false,
       keyError: "", // 离开本地应用上下文，旧提示随之清除
+      publishedInfo: null, // 回到草稿：发布态随应用上下文清空
     });
     localRootHandle = null;
     set("localDirLabel", "");
@@ -1677,23 +1684,74 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     return localRootHandle;
   }
 
+  // 读当前应用在 mazmot apps[] 登记记录里的发布态（mazmot 子对象，无则 null）
+  async function readPublishedMeta() {
+    if (!mazmotStore || state.currentAppName === "") return null;
+    try {
+      const apps = (await mazmotStore.getItem("apps")) || [];
+      const rec = apps.find(
+        (a) => a.mazmot?.source === "ai-builder" && a.name === state.currentAppName,
+      );
+      return rec?.mazmot?.published ? rec.mazmot : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 同步发布态到页面状态（顶栏发布按钮提示；切应用 / 发布后调用）
+  async function syncPublishedInfo() {
+    const meta = await readPublishedMeta();
+    set(
+      "publishedInfo",
+      meta ? { version: meta.publishedVersion, at: meta.publishedAt } : null,
+    );
+  }
+
   async function refreshBackups() {
     if (state.currentAppName === "" || !fs) return;
     try {
       const rootHandle = await backupRootHandle();
       // listAppBackups 返回 { id, label, note }；当前内容指纹与 id 尾部 hash
-      // 一致的项标记 current（即「这份备份就是现在的内容」）
+      // 一致的项标记 current（即「这份备份就是现在的内容」）；内容指纹命中
+      // 发布记录 publishedVersions 的项带 publishedVersion（「已发布 vX.Y.Z」徽标）
       const currentHash = await currentAppHash(fs, state.currentAppName, rootHandle);
       const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+      const publishedVersions =
+        (await readPublishedMeta())?.publishedVersions || {};
       set(
         "backups",
         list.map((b) => ({
           ...b,
           current: currentHash !== "" && b.id.endsWith(`-${currentHash}`),
+          publishedVersion: publishedVersions[b.id.slice(-8)] || "",
         })),
       );
     } catch (err) {
       console.warn("读取备份列表失败：", err);
+    }
+  }
+
+  // 发布当前应用到首页应用列表（mazmot apps[] 记录打 published 标记；
+  // 首发用 app.json 版本，内容有变化的再次发布 patch +1 写回 app.json）
+  async function publishCurrent() {
+    if (state.publishBusy || state.currentAppName === "" || !fs) return null;
+    set("publishBusy", true);
+    try {
+      const rootHandle = await backupRootHandle();
+      const res = await publishAppToHome(
+        fs,
+        mazmotStore,
+        state.currentAppName,
+        rootHandle,
+      );
+      await syncPublishedInfo();
+      await refreshBackups(); // 发布版本的指纹徽标即刻反映到备份清单
+      return res;
+    } catch (err) {
+      set("keyError", `发布失败：${err.message}`);
+      return null;
+    } finally {
+      set("publishBusy", false);
     }
   }
 
@@ -3092,6 +3150,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     refreshBackups,
     createBackup,
     smartBackup,
+    publishCurrent,
     deleteBackup,
     renameBackup,
     setNote,

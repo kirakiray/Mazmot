@@ -1,7 +1,7 @@
 ---
 name: "mazmot-api"
 description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪、联网抓取等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
-version: "1.5.5"
+version: "1.5.6"
 ---
 
 # Mazmot 能力 API 速查
@@ -87,7 +87,10 @@ Mazmot 把应用列表存在 `getStorage("mazmot")` 空间的 `apps` 键下，�
 | `payloadHash` | 分享清单哈希（分享安装记录，即短链接里的 `h`） |
 | `officialId` | 官方应用 ID（官方市场记录） |
 | `createdAt` | 创建时间戳 |
-| `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏全部生成应用，记录仅供生成器持久化句柄与应用管理 |
+| `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏**未发布**的生成应用，记录仅供生成器持久化句柄与应用管理 |
+| `mazmot.published` | 妙造发布标记（`true`）：主系统列表放行该记录，首页可见可打开（NoneOS 挂载路径直达） |
+| `mazmot.publishedVersion` / `publishedAt` | 发布版本与时间。版本规则（conjure `publishAppToHome`）：首发用 app.json 现值（如 `0.1.0`）；内容有变化的再次发布把 app.json `version` patch +1 写回；内容与上次发布一致则幂等重发不 bump |
+| `mazmot.publishedHash` / `publishedVersions` | 发布落盘后的内容指纹（8 位 hex，含刚写回的 app.json）与 `{ [hash8]: version }` 指纹表——妙造备份列表据此给内容一致的备份挂「已发布 vX.Y.Z」徽标（备份 id 尾部即指纹） |
 
 读写示例：
 

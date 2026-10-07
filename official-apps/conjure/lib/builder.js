@@ -599,6 +599,111 @@ export async function deleteVfsApp(fs, appName) {
   if (dir && dir.kind === "dir") await dir.remove();
 }
 
+/* ---------- 发布到首页应用列表 ----------
+ * 生成的应用记录本就写在 mazmot 空间 apps[] 里（mazmot.source = "ai-builder"，
+ * 主系统首页列表据此隐藏）。「发布」= 在记录的 mazmot 子对象上打发布标记 +
+ * 维护版本信息，首页列表放行带标记的记录即可见可打开（NoneOS 挂载路径直达）。
+ */
+
+/**
+ * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
+ * @param {string} version
+ * @returns {string}
+ */
+export function bumpPatchVersion(version) {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version || "").trim());
+  if (!m) return "0.1.1";
+  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
+}
+
+/**
+ * 把当前应用发布到主系统首页应用列表（mazmot 空间 apps[] 的登记记录打标）。
+ * 版本规则：
+ * - 首次发布：app.json 版本原样发布（如 0.1.0）；
+ * - 内容与上次发布一致（内容指纹相同）：幂等重发，不 bump、不写盘；
+ * - 内容有变化：app.json 的 version patch +1 写回后发布新版本。
+ * 记录 mazmot 子对象新增字段：published（true）/ publishedVersion /
+ * publishedAt / publishedHash（发布落盘后的内容指纹，8 位 hex——含刚写回的
+ * app.json 版本号，发布后立刻打的备份与发布内容一致）/
+ * publishedVersions: { [hash8]: version }——备份列表据此给内容一致的备份
+ * 挂「已发布 vX.Y.Z」徽标（备份 id 尾部即内容指纹）。
+ * @param {Object} fs 注入的 /nos/fs/main.js 模块
+ * @param {Object} mazmotStore getStorage("mazmot") 实例
+ * @param {string} appName 应用名
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{ version: string, hash: string, bumped: boolean }>}
+ */
+export async function publishAppToHome(fs, mazmotStore, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  if (!mazmotStore) throw new Error("存储不可用，无法发布");
+  if (!(await listAppFiles(fs, clean, rootHandle)).length) {
+    throw new Error("应用目录为空，请先生成应用文件");
+  }
+
+  const apps = (await mazmotStore.getItem("apps")) || [];
+  const record = apps.find(
+    (a) => a.mazmot?.source === "ai-builder" && a.name === clean,
+  );
+
+  const rawJson = await readAppFile(fs, clean, "app.json", rootHandle);
+  let meta = {};
+  try {
+    meta = JSON.parse(rawJson) || {};
+  } catch {
+    /* app.json 损坏按空对象处理，发布用默认值兜底 */
+  }
+  const hashBefore = await currentAppHash(fs, clean, rootHandle);
+  // 内容与上次发布一致 → 幂等重发；否则首次用现值、有变化 patch +1 写回
+  const unchanged =
+    !!record?.mazmot?.published && record.mazmot.publishedHash === hashBefore;
+  const version = unchanged
+    ? record.mazmot.publishedVersion
+    : record?.mazmot?.published
+      ? bumpPatchVersion(meta.version)
+      : String(meta.version || "0.1.0");
+  if (!unchanged) {
+    meta.version = version;
+    await writeAppFile(
+      fs,
+      clean,
+      "app.json",
+      JSON.stringify(meta, null, 2),
+      rootHandle,
+    );
+  }
+
+  // 指纹取发布落盘后的内容（含刚写回的 app.json 版本号）：发布后立刻打的
+  // 备份与发布内容一致，备份列表的版本徽标能对上
+  const hash = unchanged
+    ? hashBefore
+    : (await currentAppHash(fs, clean, rootHandle)) || hashBefore;
+
+  const base =
+    record ||
+    buildAppRecord({
+      appName: clean,
+      displayName: meta.displayName,
+      icon: meta.icon,
+    });
+  base.desc = String(meta.description || base.desc || meta.displayName || clean);
+  base.icon = meta.icon || base.icon || "📦";
+  base.mazmot = {
+    ...base.mazmot,
+    source: "ai-builder",
+    published: true,
+    publishedVersion: version,
+    publishedAt: unchanged ? record.mazmot.publishedAt : Date.now(),
+    publishedHash: hash,
+    publishedVersions: {
+      ...(base.mazmot?.publishedVersions || {}),
+      [hash]: version,
+    },
+  };
+  await registerAppRecord(mazmotStore, base);
+  return { version, hash, bumped: !unchanged };
+}
+
 /* ---------- 数据备份管理 ----------
  * 备份落点：client/ 同层的 backup/<id>/ 目录（id 形如 backup-20260908-153012），
  * 把当前 client/ 全部文本文件按原相对路径复制进去；node_modules 等目录整体忽略。

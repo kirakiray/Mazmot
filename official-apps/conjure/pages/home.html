@@ -159,6 +159,16 @@
               </div>
             </o-if>
           </div>
+          <st-icon-button
+            class:published="publishedInfo"
+            attr:title="publishedInfo ? '已发布 v' + publishedInfo.version + ' · 点击更新发布' : '发布到首页应用列表'"
+            attr:disabled="publishBusy"
+            on:click="handlePublish"
+          >
+            <n-icon
+              attr:icon="publishedInfo ? 'mdi:rocket-launch' : 'mdi:rocket-launch-outline'"
+            ></n-icon>
+          </st-icon-button>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
             <n-icon icon="mdi:backup-restore"></n-icon>
           </st-icon-button>
@@ -1206,6 +1216,12 @@
                 <o-if :value="$data.current">
                   <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
                 </o-if>
+                <o-if :value="$data.publishedVersion">
+                  <span
+                    class="backup-published-badge"
+                    attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
+                  >v{{$data.publishedVersion}} 已发布</span>
+                </o-if>
               </div>
               <div class="backup-item-dir">{{$data.id}}/</div>
               <o-if :value="$data.note !== ''">
@@ -1774,6 +1790,8 @@
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           backupBusy: false, // 正在打包备份
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
+          publishBusy: false, // 发布到首页应用列表进行中
+          publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
@@ -3286,6 +3304,22 @@
               );
               toast("内容未变化，已跳过重复备份");
             }
+          },
+
+          // 发布当前应用到首页应用列表（成功 / 幂等重发都弹 toast 反馈；
+          // 失败经仓库写入 keyError 横幅）
+          async handlePublish() {
+            const res = await store.publishCurrent();
+            if (!res) return;
+            const { default: toast } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+            );
+            toast({
+              message: res.bumped
+                ? `已发布 v${res.version}，可在首页应用列表打开`
+                : `内容未变化，v${res.version} 已是最新发布`,
+              color: "success",
+            });
           },
 
           backupTime(id) {
