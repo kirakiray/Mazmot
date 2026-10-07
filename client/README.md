@@ -51,9 +51,10 @@ Tauri WebView 原生不支持 `window.open`，注入每个 WebView 的初始化�
 ```bash
 cd client
 npm install
-npm run dev      # 调试运行（伺服仓库根，站点改动实时生效）
-npm run build    # release 打包（.app / .dmg）
-npm run icon     # 重新派生图标（源：assets/icon.png，由 scripts/gen_icon.py 生成）
+npm run dev       # 调试运行（伺服仓库根，站点改动实时生效）
+npm run build     # release 打包（.app / .dmg）
+npm run collect   # 归拢各平台产物到 dist/（一层目录，含 Windows 便携包）
+npm run icon      # 重新派生图标（源：assets/icon.png，由 scripts/gen_icon.py 生成）
 ```
 
 - Rust 单元测试（静态服务器路径/MIME/Range/端口绑定）：`cd src-tauri && cargo test`
