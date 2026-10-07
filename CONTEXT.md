@@ -126,9 +126,9 @@ Mazmot/
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）；scripts/start-handshake.sh 在各任务测试前启动本地信令服务器（test-bin/）
 │
 ├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外；
-│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
-│                             #   https://c1.dev.mazmot.noneos.com——conjure 侧 remote-preview.js 的 BRIDGE_ORIGIN 按
-│                             #   location.hostname 自动选择，bridge 侧自身不感知具体域名）
+│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036）、线上统一
+│                             #   https://c1.dev.mazmot.noneos.com、桌面运行时（client/）同域伺服 30032——conjure 侧
+│                             #   remote-preview.js 的 BRIDGE_ORIGIN 按 location.hostname 自动选择，bridge 侧自身不感知具体域名）
 │   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app；
 │   │                         #   head 首位内联域名白名单守卫（经典脚本解析期立即执行，
 │   │                         #   非允许域名 window.stop + 整页替换为错误说明，ofa/主题不再加载）
@@ -197,6 +197,26 @@ Mazmot/
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
+├── client/                   # 桌面运行时（Tauri 2 壳，独立 npm workspace，详见 client/README.md）：内置回环 HTTP 静态服务器
+│                             #   伺服站点（端口沿用本地开发约定 30031 主站 / 30032 隔离域，origin 稳定保证 SW 与
+│                             #   IndexedDB 跨启动持久；不用 tauri:// asset 协议——自定义协议源下 SW 无法注册），
+│                             #   dev 伺服仓库根（源码实时生效）、release 把站点静态文件打进 bundle resources
+│   ├── src-tauri/
+│   │   ├── src/main.rs       # 壳入口：起静态服务器 → 建主窗口（http://localhost:30031）；导航分流（内部端口段放行，
+│   │   │                     #   其余 http(s) 经 opener 插件转系统浏览器）；关主窗即退出；MAZMOT_WEB_ROOT 可覆盖站点根
+│   │   ├── src/static_server.rs # 静态服务器（tiny_http，IPv4+IPv6 双栈）：MIME / ETag 304 / 单区间 Range 206 /
+│   │   │                     #   目录 308 补尾斜杠 / 404 返回 404.html（对齐 CF Pages，禁 SPA 回退）/ Host 校验防 rebinding
+│   │   ├── src/shim.js       # 注入每个 WebView 的 window.open shim：同源 URL → 原生多窗口（命名复用/聚焦不重开，
+│   │   │                     #   features 解析宽高定位；window.open("", name) 只取引用；假窗口支持 closed/focus/close），
+│   │   │                     #   外部链接 → 系统浏览器；标题跟随 document.title
+│   │   ├── src/commands.rs   # runtime_* 命令层（open/navigate/focus/close 窗口、外链、probe、log）
+│   │   ├── build.rs          # AppManifest 声明应用命令 → 自动生成 allow-* ACL 权限（远端源调用命令必须显式授权）
+│   │   ├── capabilities/main.json # 放行回环源（localhost/127.0.0.1 的 30031-30036）的 IPC + core:default + allow-*
+│   │   └── tauri.conf.json   # bundle.resources 收录站点静态文件（index.html/sw.js/sw/main/apps/mz/official-apps/bridge/
+│   │                         #   cache-manifest.json/locale-text.json）；单实例插件；macOS 最低 13.3（WKWebView SW 支持）
+│   ├── scripts/gen_icon.py   # 纯 Python SDF 渲染应用图标源（assets/icon.png，`npx tauri icon` 派生全平台尺寸）
+│   └── placeholder/          # frontendDist 占位（前端由内置服务器提供，此目录仅满足 Tauri 配置）
+│
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/v1/web/fetch 服务端网页抓取 + /v1/web/search 联网搜索（AI_RELAY_TAVILY_KEY 转发 Tavily，与抓取共用按用户联网开关）（relay 用户零配置联网，见 mz/net/）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
 │   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN，凭据按账户存 getStorage("ai-relay-admin") 的 accounts 列表（[{id,url,token,name,version}]，id=url，同 url 重连覆盖 token；version 取自 /admin/overview，顶栏副标题与账户列表展示所连服务器版本号）+ activeId 活跃账户；支持多服务器账户：连接页已保存列表一键重连、面板「切换服务器」弹窗一键切换（失败回滚）、删除账户（删活跃账户即断开回连接页；断开连接二次确认且保留账户）、旧版单账户键 serverUrl/adminToken/serverName 自动迁移；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑、Web Fetch 联网开关——新建用户勾选 + 详情对话框开关 + 列表关闭态徽标，服务端按用户 403 拦截）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
@@ -234,6 +254,15 @@ Mazmot/
 ### 安全说明
 
 由于应用和主系统**同域**运行，应用理论上可以访问主系统的 IndexedDB / Service Worker。当前方案以"兼容 Safari、简化部署"为优先，不再做 Origin 级隔离。容器模式已废弃，相关代码仅保留在 `old/v4/container/` 中。
+
+## 桌面运行时（client/）
+
+Tauri 2 壳把 Mazmot 封装为桌面 Runtime（详见 [client/README.md](client/README.md)），架构要点：
+
+- **不用 tauri:// asset 协议**：自定义协议源下 Service Worker 无法注册，而 NoneOS Core 依赖 SW。壳内置回环 HTTP 静态服务器（[client/src-tauri/src/static_server.rs](client/src-tauri/src/static_server.rs)），端口沿用本地开发约定（**30031 主站 / 30032 隔离域**，主站被占用时依次回退 30033-30036），origin 含端口跨启动稳定，SW 缓存与 IndexedDB 数据不丢；站点代码零补丁，所有 `hostname ∈ LOCAL_HOSTS` 分支行为与本地开发一致。
+- **window.open → 原生多窗口**：注入每个 WebView 的 [shim.js](client/src-tauri/src/shim.js) 把 `window.open(runUrl, "mazmot-app-<name>", features)` 接管为原生 WebviewWindow，语义对齐浏览器：同名窗口复用/聚焦不重开、`window.open("", name)` 只取引用不导航、features 解析宽高定位、假窗口支持 Mazmot 用到的 `closed`（实时，含用户手关，经 Rust 侧 eval 回调）/ `focus()` / `close()`；外部 http(s) 转系统默认浏览器（页内导航由 Rust `on_navigation` 同样分流）。
+- **远端源 IPC 必须显式授权**：Tauri 对非本地源（`http://localhost:30031` 等）的应用命令强制 ACL 校验——`build.rs` 用 `AppManifest::commands()` 为 `runtime_*` 命令自动生成 `allow-*` 权限，`capabilities/main.json` 引用之并放行回环源；`core:default` 只覆盖核心插件命令，**不覆盖应用自定义命令**。
+- 其余行为：dev 伺服仓库根（源码实时生效）、release 打进 bundle resources；单实例插件防端口/数据漂移；关主窗即退出整个 runtime；404 语义对齐 CF Pages（返回 404.html，禁 SPA 回退）。
 
 ## 应用生命周期
 
@@ -523,6 +552,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
+| 桌面运行时（Tauri 壳：内置静态服务器 / window.open 原生多窗口 / 外链分流） | [client/](client/README.md)（[src-tauri/src/main.rs](client/src-tauri/src/main.rs) + [static_server.rs](client/src-tauri/src/static_server.rs) + [shim.js](client/src-tauri/src/shim.js) + [commands.rs](client/src-tauri/src/commands.rs)） |
 | 主应用 ofa.js 配置 | [main/app-config.js](main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js)（core dist.js + [sw/host-cache.js](sw/host-cache.js)） |
