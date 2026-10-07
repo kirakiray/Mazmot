@@ -90,13 +90,13 @@ client/
 
 同源判定：host ∈ {localhost, 127.0.0.1, [::1]} 且端口 ∈ 30031-30036。`target="_blank"` 锚点点击捕获走同一分流；外部 http(s) 由 Rust `on_navigation` 兜底分流。窗口标题跟随 `document.title`（500ms 轮询）。启动时 `runtime_probe` 探测结果回传 `runtime_log` 写 stderr——**这是远端源 IPC 是否可用的唯一外部观测点**。
 
-## 自绘顶栏（macOS Overlay 标题栏）
+## 顶部透明拖拽区（macOS Overlay 标题栏）
 
-所有窗口（主窗口 + `runtime_open_window` 创建的应用窗口）以 `TitleBarStyle::Overlay` + `hidden_title` 创建：系统标题栏灰条消失，页面内容顶到窗口边缘，macOS 红绿灯浮在左上。VS Code 式顶栏由 shim 注入承担（仅 macOS；`runtime_probe` 返回 `titlebar: "overlay"`，其余平台保持原生标题栏不注入）：
+所有窗口（主窗口 + `runtime_open_window` 创建的应用窗口）以 `TitleBarStyle::Overlay` + `hidden_title` 创建：无系统标题栏，页面内容顶到窗口边缘，macOS 红绿灯浮在左上。shim 注入的顶部处理（仅 macOS；`runtime_probe` 返回 `titlebar: "overlay"`，其余平台保持原生标题栏不注入）：
 
-- **顶栏**：40px 固定条，挂 `<html>` 下（ofa 应用可能重写 body，避免被清掉）；`data-tauri-drag-region` 提供拖拽 + 双击最大化（capabilities 显式放行 `core:window:allow-start-dragging` / `core:window:allow-internal-toggle-maximize`）；居中标题跟随 `document.title`；底色自适应页面表面色（采样 body/html computed backgroundColor，兜底 M3 暗色 `#141218`），文字与发丝线按亮度取黑白。
-- **内容下移**：`:root` 注入 `--mazmot-tb: 40px` + `body { padding-top: var(--mazmot-tb); box-sizing: border-box }`。站点全站无 `100vh` 布局（统一 `height:100%` 链 + overflow:hidden），该方式不破坏任何页面；固定全屏层（引导/loading，`inset:0`）不随 padding 移动，顶栏底色与其表面色一致故视觉无缝。
-- **已知取舍**：站点内 `position: fixed; top: 0` 的浮层（如顶部 toast）会被顶栏盖住（顶栏 z-index 最大）；系统全屏时顶栏仍在。
+- **无可见 bar**：不画任何条线/标题/底色——只铺一块 40px 的透明热区（`data-tauri-drag-region`，z-index 最大，挂 `<html>` 下防 ofa 重写 body 清掉），提供拖拽 + 双击最大化（capabilities 显式放行 `core:window:allow-start-dragging` / `core:window:allow-internal-toggle-maximize`）；视觉上顶部就是页面自己的留白，红绿灯悬浮其上。
+- **内容下移**：`:root` 注入 `--mazmot-tb: 40px` + `body { padding-top: var(--mazmot-tb); box-sizing: border-box }`，让页面自身元素避开热区与红绿灯。站点全站无 `100vh` 布局（统一 `height:100%` 链 + overflow:hidden），该方式不破坏任何页面；固定全屏层（引导/loading，`inset:0`）不随 padding 移动。
+- **已知取舍**：顶部 40px 区域是拖拽热区，页面自身在该区域放置的元素会被热区挡住点击（当前站点顶部均为留白，无冲突）；系统全屏时热区仍在。
 
 ## 命令速查（commands.rs，全部 `runtime_*`）
 
