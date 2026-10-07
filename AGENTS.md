@@ -138,7 +138,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **测试位置**：测试文件应跟随被测组件或页面模块存放，推荐在被测模块同级建 `test/` 子目录，文件名与被测模块同名（如 `run-app-utils.sb.html` 测试 `run-app-utils.js`）。
 - **执行前确认**：写完测试文件后，不要急于自动执行测试，应先询问开发者是否让 AI 执行自动化测试并根据反馈自动修复模块。
 - **快速反馈**：开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速测试，根据结果动态修复代码。
-- **完整测试**：执行 `npm test`（即 `sb-test`）启动默认多浏览器测试流程。
+- **完整测试**：执行 `npm test` 启动默认多浏览器测试流程。内部经 [scripts/run-sb-test.js](scripts/run-sb-test.js) 收集测试文件后传给 `sb-test`，**自动排除 `client/`**（桌面壳构建产物里含整套站点测试副本，非源码测试）；单文件快速反馈仍直接用 `npx sb-test -f`。
 - **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 会在 `push` / `pull_request` 到 main/master 时，通过 `ofajs/sibyl-test@v1` action 跑 **Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）** 三浏览器矩阵。修改测试或被测代码前请意识到：在一种浏览器下通过不等于全绿。
 - **查阅 Skill**：在编写、修改或调试 `.sb.html` 测试前，必须先查阅 `sibyl-test` Skill 文档。
 - **测试基建 URL 例外**：`.sb.html` 中加载 sibyl-test 运行时（`sb-test.mjs`）等**测试基建**允许使用 jsdelivr 完整 URL——测试由 sb-test 本地服务器承载，环境内没有 NoneOS Core SW，`/gh/` 不可用；被测的业务模块引用仍遵守 `/gh/` 规则。

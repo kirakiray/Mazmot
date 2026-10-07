@@ -32,7 +32,7 @@ Mazmot/
 ├── 404.html                  # 部署产物含顶层 404.html 即关闭 Cloudflare Pages 的 SPA 回退（否则未命中路径被回退成 index.html + 200，模块加载报错伪装成 MIME 错误）；Pages 对未命中路径以 404 状态返回本页；本页正是 SW 未命中透传时由源站返回，必须零依赖内联样式（禁止 /gh/ /nos/ /mz/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
-├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
+├── package.json              # 提供 static（http-server:30031）/ test（scripts/run-sb-test.js 包装 sb-test，排除 client/ 产物测试副本）/ build 等脚本
 ├── _setup/                   # 测试套件前置引导（目录名 _ 排序在 apps/、bridge/、main/ 等所有测试目录之前，
 │                             #   保证 sb-test 生成的清单里它最先执行）：install-nos.sb.html 经
 │                             #   <nos-version auto-install> 为测试环境安装 NoneOS Core，后续依赖 /nos/*、/mz/*
@@ -470,6 +470,8 @@ npm run static
 ```bash
 npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 ```
+
+**本地完整测试**：`npm test` 经 [scripts/run-sb-test.js](scripts/run-sb-test.js) 收集全部 `.sb.html` 后传给 `sb-test`，**自动排除 `client/`**——桌面壳构建产物（`client/dist/`、`client/src-tauri/target/`，均 gitignore）内含整套站点测试副本，直接 `npx sb-test` 全量扫描会把这 200+ 份重复文件收进清单；CI 在干净 checkout 上运行、产物不入库，不受影响。
 
 **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵；各任务先执行 [.github/scripts/start-handshake.sh](.github/scripts/start-handshake.sh) 用 [test-bin/](test-bin/) 的二进制启动本地信令服务器（ws://localhost:8081），跨用户通信用例（bridge 隔离预览等）完全闭环在本地，不依赖公网中继。
 

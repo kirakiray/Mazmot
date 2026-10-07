@@ -447,6 +447,8 @@
             onOffline: (info) => ensureServer(receiverUser, info),
           });
           // 接收端对 sync-check 的 reply（sync-diff）经链路回传给发送端
+          let notifyAppEnd = null;
+          let appEndHandled = Promise.resolve();
           receiverUser.registerService("conjure-bridge-t2", {
             onMessage: (data, ctx) => {
               const payload = receiverLink.receive(data, (env) => {
@@ -459,6 +461,11 @@
               if (!payload) return;
               receiver.handle(payload).then((result) => {
                 if (result && result.reply) receiverLink.send(result.reply);
+                // app-end 处理完 = 串行链上此前全部文件写入已落盘（同用例 1 的 done 信号）
+                if (payload.type === "app-end" && notifyAppEnd) {
+                  notifyAppEnd(result);
+                  notifyAppEnd = null;
+                }
               }).catch(() => {});
             },
           });
@@ -514,6 +521,7 @@
           });
           const diff1 = await waitDiff(1);
           const pushFiles = async (list, wipe) => {
+            appEndHandled = new Promise((r) => (notifyAppEnd = r));
             await senderLink.send({
               type: "app-begin",
               appName,
@@ -526,6 +534,9 @@
               }
             }
             await senderLink.send({ type: "app-end", appName });
+            // send 返回只代表链路层投递，不代表接收端业务处理完成；
+            // 等 app-end 落盘收口后再返回，否则读盘断言与写入赛跑
+            await appEndHandled;
           };
           await pushFiles(
             v1.filter((f) => diff1.missing.includes(f.path)),
