@@ -39,6 +39,8 @@ pub fn runtime_open_window(
         .title("Mazmot")
         .inner_size(1180.0, 820.0)
         .min_inner_size(420.0, 320.0)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
         .initialization_script(SHIM_JS);
     if let (Some(w), Some(h)) = (width, height) {
         builder = builder.inner_size(w, h);
@@ -123,6 +125,9 @@ pub fn runtime_open_external(app: AppHandle, url: String) -> Result<(), String> 
 pub fn runtime_probe(info: tauri::State<HostsInfo>) -> serde_json::Value {
     json!({
         "version": env!("CARGO_PKG_VERSION"),
+        "os": std::env::consts::OS,
+        // macOS 为 Overlay 自绘顶栏（shim 据此注入顶栏与内容下移），其余平台原生标题栏
+        "titlebar": if cfg!(target_os = "macos") { "overlay" } else { "native" },
         "mainPort": info.main_port,
         "bridgePort": info.bridge_port,
     })

@@ -212,15 +212,99 @@
     true
   );
 
-  // 窗口标题跟随页面 document.title（浏览器窗口语义）
+  // 窗口标题跟随页面 document.title（浏览器窗口语义）；同步更新自绘顶栏文字
   var lastTitle = "";
   setInterval(function () {
     var t = document.title;
     if (t && t !== lastTitle) {
       lastTitle = t;
       INV("runtime_set_window_title", { title: t }).catch(function () {});
+      var tbLabel = document.querySelector("#mazmot-titlebar span");
+      if (tbLabel) tbLabel.textContent = t;
     }
   }, 500);
+
+  // ---- 桌面壳自绘顶栏（仅 macOS：Rust 侧窗口用 TitleBarStyle::Overlay +
+  // hiddenTitle，系统灰条消失、内容顶到窗口边，红绿灯浮在左上；本段注入
+  // VS Code 式顶栏承担拖拽区与标题。Windows/Linux 为原生标题栏，不注入）----
+  var IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
+  if (IS_MAC && !document.getElementById("mazmot-titlebar")) {
+    var TB_H = 40;
+
+    // 内容下移：站点统一 height:100% 链 + overflow:hidden，border-box +
+    // padding-top 让内容区正好缩短一条顶栏高度，不破坏任何布局；
+    // 固定全屏层（引导/loading，inset:0）不随 padding 移动，顶栏底色与其
+    // 表面色一致，视觉无缝
+    var shellStyle = document.createElement("style");
+    shellStyle.textContent =
+      ":root{--mazmot-tb:" + TB_H + "px}" +
+      "body{padding-top:var(--mazmot-tb) !important;box-sizing:border-box !important}";
+    (document.head || document.documentElement).appendChild(shellStyle);
+
+    var shellBar = document.createElement("div");
+    shellBar.id = "mazmot-titlebar";
+    // 拖拽 + 双击最大化由 Tauri 对 data-tauri-drag-region 的内建处理承担
+    shellBar.setAttribute("data-tauri-drag-region", "");
+    shellBar.style.cssText = [
+      "position:fixed",
+      "top:0",
+      "left:0",
+      "right:0",
+      "height:" + TB_H + "px",
+      "z-index:2147483647",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "background:#141218",
+      "box-shadow:inset 0 -1px 0 rgba(255,255,255,0.07)",
+      "user-select:none",
+      "-webkit-user-select:none",
+    ].join(";");
+    var shellLabel = document.createElement("span");
+    shellLabel.style.cssText =
+      "pointer-events:none;font:500 13px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
+      "color:rgba(255,255,255,0.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%";
+    shellLabel.textContent = document.title || "Mazmot";
+    shellBar.appendChild(shellLabel);
+    // 挂在 <html> 下而非 body：ofa 应用可能重写 body，避免顶栏被清掉
+    document.documentElement.appendChild(shellBar);
+
+    // 底色自适应页面表面色（M3 surface），文字/发丝线按亮度取黑白
+    function shellSurface() {
+      var targets = [document.body, document.documentElement];
+      for (var i = 0; i < targets.length; i++) {
+        if (!targets[i]) continue;
+        try {
+          var bg = getComputedStyle(targets[i]).backgroundColor;
+          if (bg && bg !== "transparent" && !/rgba\([^)]*,\s*0\)$/.test(bg)) {
+            return bg;
+          }
+        } catch (e) {}
+      }
+      return matchMedia("(prefers-color-scheme: dark)").matches
+        ? "#141218"
+        : "#fef7ff";
+    }
+    function shellTune() {
+      var bg = shellSurface();
+      shellBar.style.background = bg;
+      var m = bg.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      var lum = m
+        ? (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255
+        : 0.1;
+      var light = lum > 0.6;
+      shellLabel.style.color = light
+        ? "rgba(0,0,0,0.78)"
+        : "rgba(255,255,255,0.82)";
+      shellBar.style.boxShadow = light
+        ? "inset 0 -1px 0 rgba(0,0,0,0.08)"
+        : "inset 0 -1px 0 rgba(255,255,255,0.07)";
+    }
+    shellTune();
+    document.addEventListener("DOMContentLoaded", shellTune);
+    window.addEventListener("load", shellTune);
+    setTimeout(shellTune, 900);
+  }
 
   // 启动探测：IPC 可用性写进 runtime 日志（stderr），便于排查远端源权限问题
   INV("runtime_probe")
