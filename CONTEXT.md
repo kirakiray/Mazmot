@@ -214,7 +214,7 @@ Mazmot/
 │   │   ├── capabilities/main.json # 放行回环源（localhost/127.0.0.1 的 30031-30036）的 IPC + core:default + allow-*
 │   │   └── tauri.conf.json   # bundle.resources 收录站点静态文件（index.html/sw.js/sw/main/apps/mz/official-apps/bridge/
 │   │                         #   cache-manifest.json/locale-text.json）；单实例插件；macOS 最低 13.3（WKWebView SW 支持）
-│   ├── scripts/gen_icon.py   # 纯 Python SDF 渲染应用图标源（assets/icon.png，`npx tauri icon` 派生全平台尺寸）
+│   ├── scripts/gen_icon.py   # 纯 Python SDF 渲染应用图标源（assets/icon.png）——按 [mz/comps/mascot/mascot.html](mz/comps/mascot/mascot.html) 默认态相机机器人复刻（银色双环镜头 + 12 片蓝色光圈 + 瞳孔/高光/眼睑/螺丝，背景用 model-badge 品牌渐变），`npx tauri icon` 派生全平台尺寸
 │   └── placeholder/          # frontendDist 占位（前端由内置服务器提供，此目录仅满足 Tauri 配置）
 │
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
