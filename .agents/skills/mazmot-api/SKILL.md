@@ -1,7 +1,7 @@
 ---
 name: "mazmot-api"
 description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪、联网抓取等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
-version: "1.5.8"
+version: "1.5.9"
 ---
 
 # Mazmot 能力 API 速查
@@ -88,7 +88,7 @@ Mazmot 把应用列表存在 `getStorage("mazmot")` 空间的 `apps` 键下，�
 | `officialId` | 官方应用 ID（官方市场记录） |
 | `createdAt` | 创建时间戳 |
 | `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏**未发布**的生成应用，记录仅供生成器持久化句柄与应用管理 |
-| `mazmot.published*` | 妙造发布元数据（发布动作不动源记录的可见性）：`published`（true）/ `publishedVersion` / `publishedAt` / `publishedHash` / `publishedVersions: { [hash8]: version }`（备份徽标指纹表）/ `publishedName`（副本目录名）。**发布本体是另一条普通虚拟应用记录**：把 client/ 复制到 `mazmot-apps/<发布名>/client/` 并登记 `mazmot.source: "conjure-publish"`（首页可见可打开，与妙造工作目录互相独立；本地渠道同样复制发布）。版本规则（`publishAppToHome`）：首发用 app.json 现值（如 `0.1.0`）；内容有变化的再次发布把源 app.json `version` patch +1 写回并清空重拷副本；内容与上次发布一致则幂等重发不 bump |
+| `mazmot.published*` | 妙造发布元数据（发布动作不动源记录的可见性）：`published`（true）/ `publishedVersion` / `publishedAt` / `publishedHash` / `publishedVersions: { [hash8]: version }`（备份徽标指纹表）/ `publishedName`（副本目录名）。**发布本体是另一条普通虚拟应用记录**：把 client/ 复制到 `mazmot-apps/<发布名>/client/` 并登记 `mazmot.source: "conjure-publish"`（首页可见可打开，与妙造工作目录互相独立；本地渠道同样复制发布）。副本带 `appId`（`${发布名}-${userId}`，首页显示「我开发的」自建标记）与 `autoShare: true`（默认进入分享状态，列表加载自动 P2P 发布并回写 `payloadHash` / `fileHash`）；妙造发布时也同步做一次 P2P 发布并在源记录 `mazmot.publishedShare` 记 shareUrl。版本规则（`publishAppToHome`）：首发用 app.json 现值（如 `0.1.0`）；内容有变化的再次发布把源 app.json `version` patch +1 写回并清空重拷副本；内容与上次发布一致则幂等重发不 bump |
 
 读写示例：
 

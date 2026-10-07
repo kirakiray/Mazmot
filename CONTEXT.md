@@ -277,7 +277,7 @@ Tauri 2 壳把 Mazmot 封装为桌面 Runtime（详见 [client/README.md](client
 「添加应用」弹窗不再内置创建向导，只做引导：
 
 - **应用市场**：[main/pages/market.html](main/pages/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
-- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，默认不进主系统应用列表（[main/pages/apps.html](main/pages/apps.html) 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）；在妙造顶栏点「发布」会把应用文件复制一份到 `mazmot-apps/` 并登记为普通虚拟应用记录（`mazmot.source: "conjure-publish"`），即可出现在本列表正常打开，与妙造工作目录互相独立。
+- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，默认不进主系统应用列表（[main/pages/apps.html](main/pages/apps.html) 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）；在妙造顶栏点「发布」会把应用文件复制一份到 `mazmot-apps/` 并登记为普通虚拟应用记录（`mazmot.source: "conjure-publish"`，带 `appId` 自建标记 + `autoShare: true` 默认分享），即可出现在本列表正常打开，与妙造工作目录互相独立。
 - **外源下载**：URL / ZIP 安装的禁用占位 UI（功能未实现）。
 
 ### 2. 启动应用（[main/pages/apps.html](main/pages/apps.html)）

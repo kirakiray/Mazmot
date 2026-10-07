@@ -203,6 +203,27 @@
                       <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
                     </o-if>
                   </div>
+                  <o-if :value="publishedInfo">
+                    <div class="pub-row">
+                      <span class="pub-label">分享链接</span>
+                      <o-if :value="publishShareUrl">
+                        <span
+                          class="pub-link"
+                          attr:title="publishShareUrl"
+                        >{{shortUrl(publishShareUrl)}}</span>
+                        <st-icon-button
+                          class="pub-copy"
+                          title="复制分享链接"
+                          on:click="copyText(publishShareUrl)"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </st-icon-button>
+                      </o-if>
+                      <o-if :value="!publishShareUrl">
+                        <span>打开首页应用列表后自动生成</span>
+                      </o-if>
+                    </div>
+                  </o-if>
                 </div>
                 <st-button
                   variant="filled"
@@ -1843,6 +1864,7 @@
           publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
           publishPopOpen: false, // 发布下拉气泡开关
           publishMatch: null, // 发布内容与当前代码一致性（true 一致 / false 有修改 / null 未知）
+          publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标

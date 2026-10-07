@@ -2292,11 +2292,24 @@
                 getApiKeys: () => [],
                 onApiKeysChange: () => {},
               };
+              // share-mgr 替身：发布副本的 P2P 分享链路（不连真实网络）
+              const shareFake = {
+                ensureUser: async () => ({ userId: "u-e2e" }),
+                publishApp: async () => ({
+                  shareUrl: "http://localhost:30031/apps/run-app/?u=u-e2e&h=abc123",
+                  appId: "pub-app-u-e2e",
+                  payloadHash: "abc123",
+                  fileHash: "filehash1",
+                }),
+                buildRunUrl: (origin, uid, hash) =>
+                  `${origin}/apps/run-app/?u=${uid}&h=${hash}`,
+              };
               const store = createBuilderStore({
                 fs: fsFake,
                 mazmotStore,
                 selfStore: fakeStore,
-                load: async () => aiFake,
+                load: async (path) =>
+                  String(path).includes("share-mgr") ? shareFake : aiFake,
               });
               await store.init({});
 
@@ -2355,6 +2368,15 @@
                   homeRecord?.source === "virtual" &&
                   homeRecord?.dirName === "mazmot-apps/pub-app" &&
                   !homeRecord?.mazmot?.source?.includes?.("ai-builder"),
+                // 我开发的应用 + 默认分享：appId 带 userId、autoShare 默认开
+                mineMarked:
+                  homeRecord?.appId === "pub-app-u-e2e" &&
+                  homeRecord?.autoShare === true,
+                sharePublished:
+                  homeRecord?.payloadHash === "abc123" &&
+                  homeRecord?.fileHash === "filehash1" &&
+                  store.state.publishShareUrl ===
+                    "http://localhost:30031/apps/run-app/?u=u-e2e&h=abc123",
                 backupBadged:
                   !!badged &&
                   badged.publishedVersion === "0.1.0" &&

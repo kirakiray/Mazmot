@@ -611,7 +611,7 @@ export async function deleteVfsApp(fs, appName) {
  */
 
 // 发布副本落点的常规应用命名空间（与安装 / 分享应用共用）
-const PUBLISH_NAMESPACE = "mazmot-apps";
+export const PUBLISH_NAMESPACE = "mazmot-apps";
 
 /**
  * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
@@ -653,13 +653,18 @@ async function findFreePublishName(fs, apps, base, exceptRecord) {
  * 版本号，发布后立刻打的备份与发布内容一致）/ publishedVersions:
  * { [hash8]: version }（备份列表据此给内容一致的备份挂「已发布 vX.Y.Z」徽标，
  * 备份 id 尾部即指纹）/ publishedName（发布副本目录名，重复发布沿用）。
+ * 副本记录带 appId（options.userId 传入时 = `${发布名}-${userId}`，首页据此
+ * 显示「我开发的」自建标记）与 autoShare: true（主系统列表加载时对 autoShare
+ * 记录自动 P2P 发布分享，默认进入分享状态）。
  * @param {Object} fs 注入的 /nos/fs/main.js 模块
  * @param {Object} mazmotStore getStorage("mazmot") 实例
  * @param {string} appName 应用名
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @param {Object} [options]
+ * @param {string} [options.userId] 当前用户 userId（生成副本 appId 用）
  * @returns {Promise<{ version: string, hash: string, bumped: boolean, publishName: string }>}
  */
-export async function publishAppToHome(fs, mazmotStore, appName, rootHandle) {
+export async function publishAppToHome(fs, mazmotStore, appName, rootHandle, options = {}) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   if (!mazmotStore) throw new Error("存储不可用，无法发布");
@@ -797,6 +802,10 @@ export async function publishAppToHome(fs, mazmotStore, appName, rootHandle) {
     meta.description || homeRec.desc || meta.displayName || publishName,
   );
   homeRec.icon = meta.icon || homeRec.icon || "📦";
+  // 我开发的应用：appId 以当前用户 userId 结尾，首页列表据此显示自建标记
+  if (options.userId) homeRec.appId = `${publishName}-${options.userId}`;
+  // 默认进入应用分享状态：主系统列表加载时对 autoShare 记录自动 P2P 发布
+  homeRec.autoShare = true;
   homeRec.mazmot = { source: "conjure-publish", project: clean };
   await registerAppRecord(mazmotStore, homeRec);
 
