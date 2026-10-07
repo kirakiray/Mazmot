@@ -1000,7 +1000,9 @@
 
       async function loadApps() {
         // 妙造生成的应用不进主列表：虚拟应用在独立命名空间 ai-apps/
-        // 下自管理，本地渠道记录仅供妙造（conjure）持久化句柄
+        // 下自管理，本地渠道记录仅供妙造（conjure）持久化句柄；在妙造里
+        // 「发布」的应用以普通虚拟应用记录（mazmot-apps/ 下的副本，无
+        // ai-builder 标记）进列表，无需在此放行
         const apps = ((await storage.getItem("apps")) || []).filter(
           (a) => a.mazmot?.source !== "ai-builder",
         );
@@ -1041,7 +1043,12 @@
                 const rootDir = await init(namespaceForApp);
                 handle = await rootDir.get(virtualDirName, { create: "dir" });
               } else if (app.handle) {
-                handle = new DirHandle(app.handle);
+                // storage 读回的 nos/fs 句柄（有 path/kind）本身即可用——
+                // 妙造本地渠道的登记记录存的就是这类句柄（还原后是 DirHandle），
+                // 再包一层会变成「DirHandle 套 DirHandle」，_handle 丢失原生方法
+                // （getFileHandle / isSameEntry 全链路报错）；只有裸原生句柄
+                // （旧数据，无 path）才需要包一层
+                handle = app.handle.path ? app.handle : new DirHandle(app.handle);
               }
             } catch (err) {
               console.warn(`初始化 ${app.name} 的句柄失败：`, err);
@@ -1845,8 +1852,15 @@
               }
 
               const apps = (await storage.getItem("apps")) || [];
+              // 按 记录名 + 命名空间 匹配：妙造发布的副本（mazmot-apps）与
+              // 它的源登记记录（ai-apps / 本地渠道，ai-builder 标记）可能同名，
+              // 删副本不能级联删掉妙造的源记录
               const next = apps.filter(
-                (a) => !(a.name === (app._recordName || app.name)),
+                (a) =>
+                  !(
+                    a.name === (app._recordName || app.name) &&
+                    (a.namespace || "") === (app.namespace || "")
+                  ),
               );
               await storage.setItem("apps", next);
 

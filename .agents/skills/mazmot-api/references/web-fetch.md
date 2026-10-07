@@ -15,7 +15,7 @@ const net = await load("/mz/net/main.js");
 // 低层：与原生 fetch 同形（把 fetch 换成 net.fetch 即可读跨域页面）
 const res = await net.fetch("https://example.com/docs");
 // res.ok / res.status（上游状态码）/ res.url（重定向后最终地址）
-// res.provider（custom|relay|hub|jina）/ res.truncated
+// res.provider（custom|relay|jina）/ res.truncated
 // res.headers.get("content-type") / await res.text() / await res.json()
 // 仅 GET 语义（init.method 非 GET 拒绝）；中转层错误抛错，上游 4xx/5xx 用 res.ok 判断
 
@@ -60,10 +60,9 @@ await net.clearCustomEndpoint();
 | ---- | -------- | ---- | -------- |
 | 1 | `custom` | `setCustomEndpoint` 配置 | **直接抛错**（用户明确指定，静默换道会把 URL 泄露给第三方） |
 | 2 | `relay` | `/mz/ai` 里第一个启用的 relay 邀请码 → 其服务器的 `POST /v1/web/fetch` | **直接抛错**（理由同上） |
-| 3 | `hub` | 官方 web-hub（`DEFAULT_HUB_URL`，NoneOS 签名鉴权） | 自动降级 jina |
-| 4 | `jina` | `r.jina.ai` 公共 Reader（免 key、有限流，URL 经过第三方） | 抛错 |
+| 3 | `jina` | `r.jina.ai` 公共 Reader（免 key、有限流，URL 经过第三方） | 抛错 |
 
-含义：**零配置开箱即用**（hub → jina）；配了 relay 邀请码自动走自己的服务器（ai-relay 的 `/v1/web/fetch`，SSRF 防护见其 CONTEXT.md）；开发者自部署 web-hub 后 `setCustomEndpoint` 完全自主。
+含义：配了 relay 邀请码自动走自己的服务器（ai-relay 的 `/v1/web/fetch`，SSRF 防护见其 CONTEXT.md）；开发者自部署中转实现（如 [server/web-hub-cf](../../../server/web-hub-cf/)）后 `setCustomEndpoint` 完全自主；都没有时兜底公共 Jina Reader。
 
 ## conjure 的 web_fetch 工具
 

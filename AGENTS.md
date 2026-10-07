@@ -114,6 +114,16 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **业务工具库**：`apps/<app>/lib/`（主应用为 [main/lib/](main/lib/)，参考 [main/lib/official-app-state.js](main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
+## client/（桌面运行时，Tauri 2）
+
+[client/](client/README.md) 是独立的 Tauri 2 桌面壳：内置回环静态服务器（沿用 `npm run static` 的 30031 主站 / 30032 隔离域约定）伺服本仓库静态站点，`window.open` 接管为原生多窗口。查看或修改前**必须先读 [client/AGENTS.md](client/AGENTS.md)（硬性规范：IPC 三件套联动、端口即 origin、站点零补丁等）与 [client/CONTEXT.md](client/CONTEXT.md)（架构活文档：启动流程、shim 契约、命令速查、踩坑索引）**，本节仅是全局约束摘要：
+
+- **禁止把 WebView 指向 `tauri://` asset 协议**：NoneOS Core 依赖 Service Worker，自定义协议源下 SW 无法注册；新增能力一律走内置静态服务器 + 回环源。
+- **端口即 origin**：主站 origin（含端口）跨启动必须稳定，否则 SW 缓存与 IndexedDB 数据丢失；主站端口候选与回退顺序定义在 [client/src-tauri/src/static_server.rs](client/src-tauri/src/static_server.rs) 的 `MAIN_PORTS`，不得随意改动。
+- **站点零补丁**：`client/` 不得 fork / 修改站点源码来适配壳；兼容性问题优先在 shim（[client/src-tauri/src/shim.js](client/src-tauri/src/shim.js)）或 Rust 侧解决。
+- **远端源 IPC 授权**：新增 `runtime_*` 命令时必须同步更新 [client/src-tauri/build.rs](client/src-tauri/build.rs) 的 `AppManifest::commands()` 与 [capabilities/main.json](client/src-tauri/capabilities/main.json)，否则远端源调用会被 ACL 拒绝（`core:default` 不覆盖应用命令）。
+- **bundle 资源清单**：站点新增顶层目录/文件且需打进桌面包时，同步更新 [tauri.conf.json](client/src-tauri/tauri.conf.json) 的 `resources`（与 `sw/host-cache.js` 的离线缓存范围、`cache-manifest.json` 生成脚本对照）。
+
 ## server/（独立 Rust 后端服务）
 
 `server/` 下是独立 Rust 后端服务，不随前端静态部署，与 NoneOS Core / ofa.js 体系无直接关系（本节之前的组件、存储、加载时机等规则均不适用于纯服务端代码）。
@@ -128,7 +138,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **测试位置**：测试文件应跟随被测组件或页面模块存放，推荐在被测模块同级建 `test/` 子目录，文件名与被测模块同名（如 `run-app-utils.sb.html` 测试 `run-app-utils.js`）。
 - **执行前确认**：写完测试文件后，不要急于自动执行测试，应先询问开发者是否让 AI 执行自动化测试并根据反馈自动修复模块。
 - **快速反馈**：开发者同意后，优先使用 `npx sb-test -f <目标测试文件>.sb.html --browsers chrome` 在 Chrome 中快速测试，根据结果动态修复代码。
-- **完整测试**：执行 `npm test`（即 `sb-test`）启动默认多浏览器测试流程。
+- **完整测试**：执行 `npm test` 启动默认多浏览器测试流程。内部经 [scripts/run-sb-test.js](scripts/run-sb-test.js) 收集测试文件后传给 `sb-test`，**自动排除 `client/`**（桌面壳构建产物里含整套站点测试副本，非源码测试）；单文件快速反馈仍直接用 `npx sb-test -f`。
 - **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 会在 `push` / `pull_request` 到 main/master 时，通过 `ofajs/sibyl-test@v1` action 跑 **Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）** 三浏览器矩阵。修改测试或被测代码前请意识到：在一种浏览器下通过不等于全绿。
 - **查阅 Skill**：在编写、修改或调试 `.sb.html` 测试前，必须先查阅 `sibyl-test` Skill 文档。
 - **测试基建 URL 例外**：`.sb.html` 中加载 sibyl-test 运行时（`sb-test.mjs`）等**测试基建**允许使用 jsdelivr 完整 URL——测试由 sb-test 本地服务器承载，环境内没有 NoneOS Core SW，`/gh/` 不可用；被测的业务模块引用仍遵守 `/gh/` 规则。

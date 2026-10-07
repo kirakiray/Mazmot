@@ -66,6 +66,43 @@ const previewWindowFeatures = () => {
   return `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
 };
 
+// 弹窗被浏览器拦截的专用错误：window.open 返回 null（非用户手势 + 本站未放行，
+// 浏览器默认如此）。preview 工具按 code 识别后给模型返回「指导用户放行 →
+// 等确认 → check-popup 验证 → 重推」的行动指引，而不是普通失败文案（防止
+// 模型在窗口放行前原地重试烧回合）。
+export const POPUP_BLOCKED = "POPUP_BLOCKED";
+export const popupBlockedError = () =>
+  Object.assign(
+    new Error(
+      "预览窗口被浏览器拦截：浏览器默认禁止页面自动打开新窗口，需要用户放行后重试",
+    ),
+    { code: POPUP_BLOCKED },
+  );
+
+/**
+ * 探测本站当前是否允许自动打开新窗口（弹窗未被拦截）：
+ * 试开一个空白小窗并立即关闭。已放行时会闪现一个空白小窗，属预期；
+ * 未放行时浏览器静默拦截，window.open 返回 null（不弹任何提示）。
+ * @returns {{ allowed: boolean }}
+ */
+export function checkPopupAllowed() {
+  let win = null;
+  try {
+    win = window.open(
+      "about:blank",
+      "_blank",
+      "popup=yes,width=240,height=160,left=48,top=48",
+    );
+  } catch (_) {}
+  if (win) {
+    try {
+      win.close();
+    } catch (_) {}
+    return { allowed: true };
+  }
+  return { allowed: false };
+}
+
 // ---------- 预览窗口注册表（多窗口） ----------
 
 // 同时在线的预览窗口上限；超出后新窗口加入会被拒绝（对端收到 preview-full）
@@ -750,9 +787,7 @@ export async function openRemotePreview({
   const url = `${bridgeOrigin}/bridge/?u=${encodeURIComponent(user.userId)}`;
   const win = window.open(url, PREVIEW_WINDOW_NAME, previewWindowFeatures());
   if (!win) {
-    throw new Error(
-      "预览窗口被浏览器拦截：请允许本站的弹出式窗口后重试",
-    );
+    throw popupBlockedError();
   }
   previewSlots.set(1, win); // 槽位 1 = 主预览窗口（新开窗口从槽位 2 起找空闲）
 
@@ -968,7 +1003,7 @@ export async function openPreviewWindow({
     (app ? `&app=${encodeURIComponent(app)}` : "");
   const win = window.open(url, slotWindowName(slot), previewWindowFeatures());
   if (!win) {
-    throw new Error("预览窗口被浏览器拦截：请允许本站的弹出式窗口后重试");
+    throw popupBlockedError();
   }
   previewSlots.set(slot, win);
   return { slot, url };

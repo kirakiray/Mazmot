@@ -599,6 +599,219 @@ export async function deleteVfsApp(fs, appName) {
   if (dir && dir.kind === "dir") await dir.remove();
 }
 
+/* ---------- 发布到首页应用列表 ----------
+ * 「发布」= 把当前应用的 client/ **复制一份**到常规应用命名空间 mazmot-apps/
+ * 下，并登记一条普通虚拟应用记录（mazmot.source = "conjure-publish"，不带
+ * ai-builder 标记）——首页列表天然可见，点开走 NoneOS 挂载路径直接运行。
+ * 发布副本与妙造的工作目录相互独立：删妙造项目不影响已发布副本，在首页删
+ * 副本也不影响妙造项目；本地目录渠道（含跨机器不可用的句柄）同样以复制方
+ * 式发布，副本不再依赖句柄。版本写在 app.json（首发用现值；内容有变化的
+ * 再次发布 patch +1 并写回）；发布状态元数据记在妙造的源登记记录（ai-builder
+ * 标记，首页始终隐藏）上，供发布按钮提示与备份列表挂版本徽标。
+ */
+
+// 发布副本落点的常规应用命名空间（与安装 / 分享应用共用）
+export const PUBLISH_NAMESPACE = "mazmot-apps";
+
+/**
+ * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
+ * @param {string} version
+ * @returns {string}
+ */
+export function bumpPatchVersion(version) {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version || "").trim());
+  if (!m) return "0.1.1";
+  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
+}
+
+// 在发布命名空间里找一个未被登记记录与既有目录占用的名字（demo-app、
+// demo-app-2、demo-app-3 …）；妙造源登记记录自己的名字让给副本（二者命名
+// 空间不同、互不冲突），其余记录名占用时要避开
+async function findFreePublishName(fs, apps, base, exceptRecord) {
+  const root = await fs.init(PUBLISH_NAMESPACE);
+  const taken = new Set(
+    apps.filter((a) => a !== exceptRecord).map((a) => a.name),
+  );
+  let name = base;
+  let i = 2;
+  while (taken.has(name) || (await root.get(name))) {
+    name = `${base}-${i++}`;
+  }
+  return name;
+}
+
+/**
+ * 把当前应用发布到首页应用列表：client/ 全量复制到 mazmot-apps/<发布名>/client/，
+ * 登记一条普通虚拟应用记录（mazmot.source = "conjure-publish"）。
+ * 版本规则：
+ * - 首次发布：app.json 版本原样发布（如 0.1.0）；
+ * - 内容与上次发布一致且发布副本完好：幂等重发，不 bump、不拷贝；
+ * - 内容有变化：app.json 的 version patch +1 写回后，全量重拷（清空旧 client/
+ *   再写，避免上一版的残留文件）。
+ * 妙造源登记记录（ai-builder 标记）记发布元数据：published / publishedVersion /
+ * publishedAt / publishedHash（发布内容指纹，8 位 hex——含刚写回的 app.json
+ * 版本号，发布后立刻打的备份与发布内容一致）/ publishedVersions:
+ * { [hash8]: version }（备份列表据此给内容一致的备份挂「已发布 vX.Y.Z」徽标，
+ * 备份 id 尾部即指纹）/ publishedName（发布副本目录名，重复发布沿用）。
+ * 副本记录带 appId（options.userId 传入时 = `${发布名}-${userId}`，首页据此
+ * 显示「我开发的」自建标记）与 autoShare: true（主系统列表加载时对 autoShare
+ * 记录自动 P2P 发布分享，默认进入分享状态）。
+ * @param {Object} fs 注入的 /nos/fs/main.js 模块
+ * @param {Object} mazmotStore getStorage("mazmot") 实例
+ * @param {string} appName 应用名
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @param {Object} [options]
+ * @param {string} [options.userId] 当前用户 userId（生成副本 appId 用）
+ * @returns {Promise<{ version: string, hash: string, bumped: boolean, publishName: string }>}
+ */
+export async function publishAppToHome(fs, mazmotStore, appName, rootHandle, options = {}) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  if (!mazmotStore) throw new Error("存储不可用，无法发布");
+  // 复制清单用 currentAppFiles（与智能备份同源）：只收集 client/ 下的文本文件
+  // 并返回 { path, text }。不能用 listAppFiles——本地渠道它按项目根 flat() 枚举，
+  // backup/ 等非 client 文件的路径剥不掉 client/ 前缀会原样返回，逐个 readAppFile
+  // 读不到返回 null，dest.write(null) 即报
+  // 「Failed to execute 'write' ... not of type 'WriteParams'」（实测踩坑）
+  const files = await currentAppFiles(fs, clean, rootHandle);
+  if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
+
+  const apps = (await mazmotStore.getItem("apps")) || [];
+  const sourceRecord = apps.find(
+    (a) => a.mazmot?.source === "ai-builder" && a.name === clean,
+  );
+  const published =
+    sourceRecord?.mazmot?.published && sourceRecord.mazmot.publishedName
+      ? sourceRecord.mazmot
+      : null;
+
+  // 上次发布副本的记录与副本内 app.json（判定「副本仍然完好」用）
+  let homeRecord = null;
+  let destJson = null;
+  if (published) {
+    homeRecord =
+      apps.find(
+        (a) =>
+          a.namespace === PUBLISH_NAMESPACE &&
+          a.name === published.publishedName &&
+          a.mazmot?.source === "conjure-publish",
+      ) || null;
+    try {
+      const publishRoot = await fs.init(PUBLISH_NAMESPACE);
+      const destJsonFile = await publishRoot.get(
+        `${published.publishedName}/client/app.json`,
+      );
+      if (destJsonFile && destJsonFile.kind === "file") {
+        destJson = JSON.parse(await destJsonFile.text());
+      }
+    } catch {
+      destJson = null;
+    }
+  }
+
+  let meta = {};
+  try {
+    meta = JSON.parse(files.find((f) => f.path === "app.json")?.text || "") || {};
+  } catch {
+    /* app.json 损坏按空对象处理，发布用默认值兜底 */
+  }
+  const hashBefore = await currentAppHash(fs, clean, rootHandle);
+  const unchanged =
+    !!published &&
+    published.publishedHash === hashBefore &&
+    !!homeRecord &&
+    destJson?.version === published.publishedVersion;
+
+  let version;
+  if (unchanged) {
+    version = published.publishedVersion;
+  } else {
+    version = published
+      ? bumpPatchVersion(meta.version)
+      : String(meta.version || "0.1.0");
+    meta.version = version;
+    await writeAppFile(
+      fs,
+      clean,
+      "app.json",
+      JSON.stringify(meta, null, 2),
+      rootHandle,
+    );
+  }
+
+  // 指纹取发布落盘后的源内容（含刚写回的 app.json 版本号）：发布后立刻打的
+  // 备份与发布内容一致，备份列表的版本徽标能对上
+  const hash = unchanged
+    ? hashBefore
+    : (await currentAppHash(fs, clean, rootHandle)) || hashBefore;
+
+  // 复制副本：沿用上次发布名（首页记录与地址保持稳定），首次发布找空闲名；
+  // 清空旧 client/ 再全量写入，避免上一版的残留文件
+  const publishName =
+    published?.publishedName ||
+    (await findFreePublishName(fs, apps, clean, sourceRecord));
+  if (!unchanged) {
+    // 拷贝清单在版本写回之后重新收集（含刚写回的新版 app.json）——
+    // 复用函数开头的 files 会把旧版本号拷进副本（实测踩坑）
+    const copyFiles = await currentAppFiles(fs, clean, rootHandle);
+    const publishRoot = await fs.init(PUBLISH_NAMESPACE);
+    const destDir = await publishRoot.get(publishName, { create: "dir" });
+    const oldClient = await destDir.get("client");
+    if (oldClient && oldClient.kind === "dir") await oldClient.remove();
+    for (const f of copyFiles) {
+      const dest = await destDir.get(`client/${f.path}`, { create: "file" });
+      await dest.write(f.text);
+    }
+  }
+
+  // 源登记记录：记发布元数据（始终带 ai-builder 标记、首页隐藏）
+  const base =
+    sourceRecord ||
+    buildAppRecord({
+      appName: clean,
+      displayName: meta.displayName,
+      icon: meta.icon,
+    });
+  base.mazmot = {
+    ...base.mazmot,
+    source: "ai-builder",
+    published: true,
+    publishedVersion: version,
+    publishedAt: unchanged ? published.publishedAt : Date.now(),
+    publishedHash: hash,
+    publishedVersions: {
+      ...(base.mazmot?.publishedVersions || {}),
+      [hash]: version,
+    },
+    publishedName: publishName,
+  };
+  await registerAppRecord(mazmotStore, base);
+
+  // 发布副本记录：普通虚拟应用（无 ai-builder 标记，首页列表天然可见）
+  const homeRec =
+    homeRecord || {
+      name: publishName,
+      source: "virtual",
+      namespace: PUBLISH_NAMESPACE,
+      dirName: `${PUBLISH_NAMESPACE}/${publishName}`,
+      virtualDirName: publishName,
+      handle: null,
+      createdAt: Date.now(),
+    };
+  homeRec.desc = String(
+    meta.description || homeRec.desc || meta.displayName || publishName,
+  );
+  homeRec.icon = meta.icon || homeRec.icon || "📦";
+  // 我开发的应用：appId 以当前用户 userId 结尾，首页列表据此显示自建标记
+  if (options.userId) homeRec.appId = `${publishName}-${options.userId}`;
+  // 默认进入应用分享状态：主系统列表加载时对 autoShare 记录自动 P2P 发布
+  homeRec.autoShare = true;
+  homeRec.mazmot = { source: "conjure-publish", project: clean };
+  await registerAppRecord(mazmotStore, homeRec);
+
+  return { version, hash, bumped: !unchanged, publishName };
+}
+
 /* ---------- 数据备份管理 ----------
  * 备份落点：client/ 同层的 backup/<id>/ 目录（id 形如 backup-20260908-153012），
  * 把当前 client/ 全部文本文件按原相对路径复制进去；node_modules 等目录整体忽略。
@@ -944,7 +1157,7 @@ export async function loadProjectChats(rootHandle) {
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
-export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。你可调用的工具（write_file / edit_file / read_file / list_files / create_app / preview / show_form / read_skill / web_fetch / web_search）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
+export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。生成出的应用也运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），因此应用既能使用 Mazmot 平台 API（/mz/*），也能使用 NoneOS Core 系统 API（/nos/*），详见「平台能力」一节。你可调用的工具（write_file / edit_file / read_file / list_files / create_app / preview / show_form / read_skill / web_fetch / web_search）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
 
 ## 工作流程
 1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。
@@ -959,6 +1172,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - 预览页内容渲染在 \`o-app\`/\`o-page\` 的 shadow DOM 里：action=text 读不到页面文本，用 action=dom 或 eval 查 \`shadowRoot\`；白屏或报「加载页面模块 … 失败」时，真实错误栈在 \`document.querySelector('o-app > o-page').shadowRoot.textContent\` 里（该报错不带原因、status 的 errors 计数也不含它），先 eval 取证再改；
    - 修复 → preview action=app 刷新 → 复查（记住 action=console 返回的 latestTs，修复后传 args.since 增量对比新日志），直到控制台无错误、核心交互实测可用为止；
    - 用户反馈界面/运行问题时：先用 preview 的 action=status 看预览窗口是否已开着——已开着就直接在现场排查（action=console 查错误日志、action=dom / text 看实际渲染、action=click / type 复现用户操作），**不要先 action=app**：刷新会清空控制台缓冲，丢失用户报的错误现场；预览没开才 action=app 拉起再排查；
+   - 预览返回「预览窗口被浏览器拦截」时：浏览器默认禁止页面自动开新窗口，首次预览很容易撞上，调试在放行前无法继续——按工具返回的指引告诉用户怎么放行（点地址栏的弹窗拦截图标 → 「始终允许」本站弹窗），然后**停下来等用户回复确认**，确认后用 check-popup 验证放行成功再 action=app 重推；放行前禁止反复重试或继续其他调试动作。
    - 预览窗口是用户的真实环境：不要故意输入垃圾数据、不要触发破坏性操作（删除全部数据之类）。
 4. 卡住就求助：同一个问题连续 2 次修复尝试仍然失败（改了 A 坏 B、多种写法都不对、开始怀疑是框架/平台的 bug）时，**停止盲目试错**——把「期望什么 / 实际什么 / 已试过哪些方案与各自结果 / 当前怀疑」整理成一段话直接向用户求助，或用 show_form 给出候选方案让用户拍板，不要无限循环消耗回合。
 5. 调试通过后，把项目文档体系填充为真实内容（系统创建项目时已在 client/ 预写了 AGENTS.md / CONTEXT.md / MEMORY.md / pitfalls/README.md 四份骨架，write_file 整文件覆盖填充即可；内容基于你实际写的代码，不要写空话——这套文档是后续会话的记忆载体，宿主会把 AGENTS.md 自动注入每次对话）：
@@ -1004,6 +1218,30 @@ export const home = "./pages/home.html";
 - 模板引用的每个变量必须先在 data 声明安全默认值；proto/data 不能叫 back/goto/replace/src。
 - o-fill 的 {{}} 表达式里不要写 &&（会编译失败），抽成 $host 方法。
 
+### 平台能力（Mazmot 与 NoneOS Core 双层 API）
+生成的应用运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），可用两套系统 API：
+- NoneOS Core（/nos/*）：/nos/storage/main.js 键值存储（见「数据持久化」）、/nos/fs/main.js 文件系统、/nos/user/main.js 用户等；
+- Mazmot 平台（/mz/*）：/mz/net/main.js 联网抓取与搜索（见下一节）、/mz/ai/main.js 多供应商 AI 对话、/mz/share-mgr.js 应用分享等。
+加载约束与 /nos/* 相同：页面模块顶层禁止 import，必须用页面工厂参数注入的 load 按需加载。API 用法不确定时先 read_skill 查知识库（Mazmot 平台 → mazmot-api，NoneOS Core → noneos-core-docs）。
+
+### 联网请求必须用平台 fetch（原生 fetch 跨域必失败）
+浏览器原生 fetch 请求任何非同源地址都会被 CORS 拦截（绝大多数第三方接口 / 网页不开放跨域），生成的应用代码里凡是要访问外部 http(s) 接口或网页，必须用 Mazmot 平台的 /mz/net/main.js——它经服务端中转，没有跨域限制，平台已配好通道，应用零配置可用：
+\`\`\`js
+export default async ({ load }) => {
+  const net = await load("/mz/net/main.js");
+  // net.fetch 与原生 fetch 同形：把 fetch 换成 net.fetch 即可读跨域资源（仅支持 GET）
+  const res = await net.fetch("https://api.example.com/data");
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  // 抓网页正文用便捷层：自动提取正文（去 HTML 标签）+ 截断 + 会话缓存
+  const page = await net.fetchText("https://example.com/article");
+  // 联网搜索：const sr = await net.searchWeb("关键词"); sr.results → [{ title, url, content }]
+  return { data: {} };
+};
+\`\`\`
+- 仅 GET 语义（POST 等写请求不经中转，需要第三方写接口时如实告知用户该平台限制，不要假装已调用成功）；上游 4xx/5xx 不抛错，用 res.ok / res.status 判断。
+- 应用自身同源资源（./ 相对路径、/gh/、/nos/、/mz/ 等）不涉及跨域，仍用原生 fetch。
+
 ### 视觉与组件
 - 配色只用 Material Design 3 语义色 CSS 变量：var(--md-sys-color-primary)、surface、on-surface、surface-variant、primary-container、error-container 等，不得写死十六进制色。
 - 需要弹窗/提示时可用 senti-ui 的 st-dialog / toast（先 \`<l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/st-dialog.html"></l-m>\` 声明）。
@@ -1025,6 +1263,7 @@ export default async ({ load }) => {
 - 修改已有应用：先用 read_file / list_files 查看，改动局部内容**优先用 edit_file 差量编辑**（old_string 按原文精确引用，省 token 且不碰未提及部分；未命中时重新 read_file 对照原文），新建文件或整体重写才用 write_file；改完重新用 preview 工具（action=app）验证无回归（增量更新很快）再收尾；改动后按项目 AGENTS.md 的「文档同步规则」同步文档——CONTEXT.md 对应小节 + MEMORY.md 登记，踩了新坑沉淀到 pitfalls/ 并登记索引（沉淀出新硬规则则追加进 AGENTS.md）。
 - **写 ofa.js 模板 / 用到底部「可用知识库」清单内的技术前禁止凭记忆编写**：先调用 read_skill 读对应知识库校对语法与 API（至少每次会话首次编写前读一次；拿不准的语法查 references）。
 - **联网查阅用 web_search + web_fetch**：时效性问题、不知道确切网址、需要多来源对比时先用 web_search（结果含标题/链接/摘要）；需要某个页面的完整内容时用 web_fetch 抓取（返回正文已去 HTML 标签且超长截断）。典型组合：search 找到相关 URL → fetch 读全文。抓不到（反爬/需登录/私网地址）时如实告知用户，不要对同一目标反复重试，更不要抓取猜测拼凑的地址。
+- **生成应用代码里的联网请求必须用 /mz/net/main.js**：原生 fetch 请求第三方地址会 CORS 失败，一律用 net.fetch / fetchText / searchWeb（见「联网请求」节）；用户让应用「联网查数据 / 抓取页面」时优先想到它，不要写原生 fetch 然后跨域报错。
 - 回复用户时使用中文，简洁说明写了哪些文件、如何使用。`;
 
 /**

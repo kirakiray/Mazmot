@@ -431,6 +431,13 @@
                 !draft.includes("const load = lm(import.meta)"),
               // 页面加载失败 / shadow DOM 取证捷径进基础提示词
               shadowDomProbe: draft.includes("shadowRoot.textContent"),
+              // 平台双层 API（Mazmot /mz/* + NoneOS Core /nos/*）与
+              // 「联网请求必须用平台 fetch（CORS）」进基础提示词
+              platformFetch:
+                draft.includes("Mazmot 基于 NoneOS Core 开发") &&
+                draft.includes('load("/mz/net/main.js")') &&
+                draft.includes("net.fetch") &&
+                draft.includes("CORS"),
               // 工作流程的文档体系：宿主预写四份骨架 → 模型填充、不留占位
               docsSystem:
                 draft.includes(
@@ -2032,6 +2039,358 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, appName },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="发布到首页：publishAppToHome 复制副本与版本规则">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            readAppFile,
+            publishAppToHome,
+            bumpPatchVersion,
+            createAppBackup,
+            listAppBackups,
+          } from "../lib/builder.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fsFake = createVirtualFs();
+              const mazmotStore = createVirtualStorage();
+
+              // 版本号纯函数：正常进位 / 缺失非法回退
+              const bumpChecks = {
+                patch: bumpPatchVersion("0.1.0") === "0.1.1",
+                carry: bumpPatchVersion("1.2.9") === "1.2.10",
+                fallback: bumpPatchVersion("") === "0.1.1" && bumpPatchVersion("abc") === "0.1.1",
+              };
+
+              await createAppDir(fsFake, { name: "Pub App", displayName: "发布演示" });
+              await writeAppFile(fsFake, "pub-app", "index.html", "<html>v1</html>");
+
+              // 首次发布：版本用 app.json 现值 0.1.0；产生两条记录——
+              // 源登记（ai-builder，首页隐藏）+ 发布副本（普通虚拟应用，首页可见）
+              const r1 = await publishAppToHome(fsFake, mazmotStore, "pub-app");
+              const readRecs = async () => (await mazmotStore.getItem("apps")) || [];
+              const recs1 = await readRecs();
+              const src1 = recs1.find((a) => a.mazmot?.source === "ai-builder");
+              const home1 = recs1.find(
+                (a) => a.namespace === "mazmot-apps" && a.name === r1.publishName,
+              );
+              // 副本文件落位：mazmot-apps/<发布名>/client/
+              const pubRoot = await fsFake.init("mazmot-apps");
+              const destJson1 = JSON.parse(
+                await (await pubRoot.get("pub-app/client/app.json")).text(),
+              );
+              const destIndex1 = await (
+                await pubRoot.get("pub-app/client/index.html")
+              ).text();
+
+              // 内容未变的重复发布：幂等（不 bump、指纹表不增）。
+              // 注意 getItem 返回存储内对象的活引用，立即把计数快照成数值
+              const r2 = await publishAppToHome(fsFake, mazmotStore, "pub-app");
+              const versionCountAfterRepublish = Object.keys(
+                src1?.mazmot?.publishedVersions || {},
+              ).length;
+
+              // 内容变化后再发布：patch +1 写回源 app.json，副本全量重拷
+              // （上一版残留文件被清空、副本 app.json 带新版本）
+              const stale = await pubRoot.get("pub-app/client/stale.txt", {
+                create: "file",
+              });
+              await stale.write("leftover");
+              await writeAppFile(fsFake, "pub-app", "index.html", "<html>v2</html>");
+              const r3 = await publishAppToHome(fsFake, mazmotStore, "pub-app");
+              const recs3 = await readRecs();
+              const src3 = recs3.find((a) => a.mazmot?.source === "ai-builder");
+              const srcJson3 = JSON.parse(
+                await readAppFile(fsFake, "pub-app", "app.json"),
+              );
+              const destJson3 = JSON.parse(
+                await (await pubRoot.get("pub-app/client/app.json")).text(),
+              );
+              const destIndex3 = await (
+                await pubRoot.get("pub-app/client/index.html")
+              ).text();
+              let staleLeft = false;
+              try {
+                staleLeft = !!(await pubRoot.get("pub-app/client/stale.txt"));
+              } catch {
+                staleLeft = false;
+              }
+
+              // 发布后立刻打的备份按内容指纹挂上版本号（备份 id 尾部 = hash8）
+              const backup = await createAppBackup(fsFake, "pub-app");
+              const backups = await listAppBackups(fsFake, "pub-app");
+              const hitBackup = backups.find((b) => b.id === backup.id);
+
+              const checks = {
+                ...bumpChecks,
+                firstPublishVersion: r1.version === "0.1.0" && r1.bumped === true,
+                firstPublishRecord:
+                  src1?.mazmot?.published === true &&
+                  src1?.mazmot?.publishedVersion === "0.1.0" &&
+                  src1?.mazmot?.publishedVersions?.[r1.hash] === "0.1.0" &&
+                  src1?.mazmot?.publishedName === "pub-app",
+                homeRecordVisible:
+                  home1?.source === "virtual" &&
+                  home1?.dirName === "mazmot-apps/pub-app" &&
+                  home1?.mazmot?.source === "conjure-publish" &&
+                  home1?.mazmot?.project === "pub-app" &&
+                  home1?.mazmot?.source !== "ai-builder",
+                copyFiles:
+                  destJson1.version === "0.1.0" &&
+                  destIndex1 === "<html>v1</html>",
+                republishIdempotent:
+                  r2.bumped === false && r2.version === "0.1.0" && r2.hash === r1.hash,
+                republishNoExtraVersions: versionCountAfterRepublish === 1,
+                changedPublishBumps:
+                  r3.bumped === true && r3.version === "0.1.1",
+                bumpWrittenBack: srcJson3.version === "0.1.1",
+                copyRefreshed:
+                  destJson3.version === "0.1.1" &&
+                  destIndex3 === "<html>v2</html>" &&
+                  !staleLeft,
+                twoPublishedVersions:
+                  Object.keys(src3?.mazmot?.publishedVersions || {}).length === 2 &&
+                  src3?.mazmot?.publishedVersion === "0.1.1" &&
+                  src3?.mazmot?.publishedHash === r3.hash,
+                backupCarriesVersion:
+                  !!hitBackup &&
+                  hitBackup.id.endsWith(`-${r3.hash}`) &&
+                  src3?.mazmot?.publishedVersions?.[hitBackup.id.slice(-8)] === "0.1.1",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, r1, r2, r3, backupId: backup.id },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="发布到首页：本地渠道发布（复制不依赖句柄、不含 client/ 外文件）">
+      <template>
+        <script type="module">
+          import {
+            publishAppToHome,
+          } from "../lib/builder.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fsFake = createVirtualFs();
+              const mazmotStore = createVirtualStorage();
+
+              // 模拟本地渠道项目：rootHandle = 用户选中的项目根目录，
+              // 应用文件在 client/ 下，根目录另有 backup/ 与散落文件（非应用内容）
+              const rootHandle = await fsFake.init("local-mounts/demo-project");
+              const mk = async (p, text) => {
+                const f = await rootHandle.get(p, { create: "file" });
+                await f.write(text);
+              };
+              await mk("client/app.json", JSON.stringify({
+                name: "loc-app", displayName: "本地应用", version: "0.1.0",
+                description: "本地渠道发布", icon: "📁",
+              }));
+              await mk("client/index.html", "<html>local</html>");
+              await mk("client/pages/home.html", "<template page></template page>");
+              await mk("backup/backup-1/x.txt", "旧备份内容");
+              await mk("notes.md", "根目录散落文件，不属于应用");
+
+              // 本地渠道发布：必须成功（回归：此前 listAppFiles 把 client/ 外的
+              // backup/、notes.md 混进清单，readAppFile 读不到返回 null，
+              // dest.write(null) 在真实环境抛 WriteParams 错误）
+              const r1 = await publishAppToHome(
+                fsFake,
+                mazmotStore,
+                "loc-app",
+                rootHandle,
+              );
+
+              const pubRoot = await fsFake.init("mazmot-apps");
+              const destIndex = await (
+                await pubRoot.get("loc-app/client/index.html")
+              ).text();
+              const destJson = JSON.parse(
+                await (await pubRoot.get("loc-app/client/app.json")).text(),
+              );
+              const destHome = await pubRoot.get("loc-app/client/pages/home.html");
+              // client/ 外的内容不进副本
+              let destStale = false;
+              try {
+                destStale = !!(await pubRoot.get("loc-app/client/backup/backup-1/x.txt"));
+              } catch { destStale = false; }
+              let destNotes = false;
+              try {
+                destNotes = !!(await pubRoot.get("loc-app/client/notes.md"));
+              } catch { destNotes = false; }
+
+              const recs = (await mazmotStore.getItem("apps")) || [];
+              const src = recs.find((a) => a.mazmot?.source === "ai-builder");
+              const home = recs.find((a) => a.mazmot?.source === "conjure-publish");
+
+              const checks = {
+                published: r1.version === "0.1.0" && r1.publishName === "loc-app",
+                copyIndex: destIndex === "<html>local</html>",
+                copyAppJson: destJson.version === "0.1.0",
+                copyNested: !!destHome,
+                noBackupCopied: !destStale,
+                noStrayCopied: !destNotes,
+                sourceMarked: src?.mazmot?.published === true,
+                homeRecorded: home?.namespace === "mazmot-apps",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, r1 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="发布到首页：store.publishCurrent 发布态与备份徽标">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            buildAppRecord,
+            registerAppRecord,
+          } from "../lib/builder.js";
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fsFake = createVirtualFs();
+              const fakeStore = createVirtualStorage({ "apps-registry": [] });
+              const mazmotStore = createVirtualStorage();
+              const aiFake = {
+                getApiKeys: () => [],
+                onApiKeysChange: () => {},
+              };
+              // share-mgr 替身：发布副本的 P2P 分享链路（不连真实网络）
+              const shareFake = {
+                ensureUser: async () => ({ userId: "u-e2e" }),
+                publishApp: async () => ({
+                  shareUrl: "http://localhost:30031/apps/run-app/?u=u-e2e&h=abc123",
+                  appId: "pub-app-u-e2e",
+                  payloadHash: "abc123",
+                  fileHash: "filehash1",
+                }),
+                buildRunUrl: (origin, uid, hash) =>
+                  `${origin}/apps/run-app/?u=${uid}&h=${hash}`,
+              };
+              const store = createBuilderStore({
+                fs: fsFake,
+                mazmotStore,
+                selfStore: fakeStore,
+                load: async (path) =>
+                  String(path).includes("share-mgr") ? shareFake : aiFake,
+              });
+              await store.init({});
+
+              // 建项目 + 双登记（mazmot apps[] + conjure registry）后选中
+              await createAppDir(fsFake, { name: "Pub App", displayName: "发布演示" });
+              await writeAppFile(fsFake, "pub-app", "index.html", "<html>v1</html>");
+              await registerAppRecord(
+                mazmotStore,
+                buildAppRecord({ appName: "pub-app", displayName: "发布演示" }),
+              );
+              fakeStore.setItem("apps-registry", [
+                { name: "pub-app", displayName: "发布演示", icon: "📦", mode: "vfs", sessions: [] },
+              ]);
+              await store.selectApp("pub-app");
+              const before = store.state.publishedInfo;
+
+              const r1 = await store.publishCurrent();
+              const after = store.state.publishedInfo;
+              const allRecords = (await mazmotStore.getItem("apps")) || [];
+              const srcRecord = allRecords.find(
+                (a) => a.mazmot?.source === "ai-builder" && a.name === "pub-app",
+              );
+              const homeRecord = allRecords.find(
+                (a) =>
+                  a.namespace === "mazmot-apps" &&
+                  a.name === "pub-app" &&
+                  a.mazmot?.source === "conjure-publish",
+              );
+
+              // 打包当前（已发布）内容 → 刷新备份清单 → 徽标出现
+              await createAppBackup(fsFake, "pub-app");
+              await store.refreshBackups();
+              const st = store.state;
+              const badged = st.backups.find((b) => b.publishedVersion !== "");
+
+              // 发布时应已自动打了一条带版本号标注的备份（发布与备份内容指纹
+              // 一致，这里再打包只会命中同一条）；发布后 publishMatch 应为 true
+              const labeled = st.backups.find((b) => b.label === "发布 v0.1.0");
+              const matchAfterPublish = st.publishMatch;
+
+              // 内容变化 → 重算一致性 → false（气泡显示「有未发布的修改」）
+              await writeAppFile(fsFake, "pub-app", "index.html", "<html>v2</html>");
+              await store.refreshPublishState();
+              const st2 = store.state;
+              const matchAfterEdit = st2.publishMatch;
+
+              const checks = {
+                notPublishedBefore: before === null,
+                publishedAfter:
+                  r1?.version === "0.1.0" &&
+                  after?.version === "0.1.0" &&
+                  typeof after?.at === "number",
+                sourceRecordMarked: srcRecord?.mazmot?.published === true,
+                // 发布副本是普通虚拟应用记录（无 ai-builder 标记，首页列表天然可见）
+                homeRecordVisible:
+                  homeRecord?.source === "virtual" &&
+                  homeRecord?.dirName === "mazmot-apps/pub-app" &&
+                  !homeRecord?.mazmot?.source?.includes?.("ai-builder"),
+                // 我开发的应用 + 默认分享：appId 带 userId、autoShare 默认开
+                mineMarked:
+                  homeRecord?.appId === "pub-app-u-e2e" &&
+                  homeRecord?.autoShare === true,
+                sharePublished:
+                  homeRecord?.payloadHash === "abc123" &&
+                  homeRecord?.fileHash === "filehash1" &&
+                  store.state.publishShareUrl ===
+                    "http://localhost:30031/apps/run-app/?u=u-e2e&h=abc123",
+                backupBadged:
+                  !!badged &&
+                  badged.publishedVersion === "0.1.0" &&
+                  badged.current === true,
+                // 发布自动备份：带「发布 vX.Y.Z」标注且带发布徽标
+                publishBackupLabeled:
+                  !!labeled && labeled.publishedVersion === "0.1.0",
+                matchTrueAfterPublish: matchAfterPublish === true,
+                matchFalseAfterEdit: matchAfterEdit === false,
+                publishIdle: st.publishBusy === false,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, r1, after, backups: st.backups },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };

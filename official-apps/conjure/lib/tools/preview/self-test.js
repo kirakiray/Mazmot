@@ -7,6 +7,7 @@ const N_SHAPE = "包结构完整（key / name / description / schema / exec / se
 const N_UNKNOWN = "未知 action 返回可读错误并列出可用值";
 const N_ARGS = "各 action 必填参数校验（app/click/type/wait/eval）";
 const N_APP = "action=app：透传 appName，返回预览就绪与后续引导";
+const N_APP_BLOCKED = "action=app 弹窗被拦截：返回放行行动指引而非失败文案";
 const N_APP_UNAVAILABLE = "未注入 openPreview / previewDebug 时返回不可用提示";
 const N_DISPATCH = "调试 action 分发：cmd 映射（screenshot→shot）与 args 透传";
 const N_FORMAT = "结果排版：meta.ms 前缀 + result 正文；无 meta 不加前缀";
@@ -15,6 +16,7 @@ const N_SHOT = "screenshot：onPreviewShot 收 dataUrl 与 meta，文案引导�
 const N_SHOT_FALLBACK = "screenshot 无图时：不调 onPreviewShot，返回无尺寸文案";
 const N_WINDOWS = "action=windows：清单排版（在线/离线/id/设备），空清单可读提示";
 const N_WINDOWS_UNAVAILABLE = "未注入 listPreviewWindows 时 windows 返回不可用提示";
+const N_CHECKPOPUP = "action=check-popup：放行/未放行两路文案（未放行返回指引）";
 const N_WINID = "顶层 winId 定向：作为第 4 参透传给 previewDebug";
 const N_ERROR = "通道抛错时包装为「操作失败」可读文案";
 
@@ -23,9 +25,11 @@ const testPlan = [
   N_UNKNOWN,
   N_ARGS,
   N_APP,
+  N_APP_BLOCKED,
   N_APP_UNAVAILABLE,
   N_WINDOWS,
   N_WINDOWS_UNAVAILABLE,
+  N_CHECKPOPUP,
   N_WINID,
   N_DISPATCH,
   N_FORMAT,
@@ -105,6 +109,26 @@ const previewTest = defineSelfTest({
       appRes,
     );
 
+    // ---- action=app 弹窗被拦截 → 行动指引（指导用户 → 等确认 → check-popup）----
+    const blockedRes = await plugin.exec(
+      { action: "app", appName: "todo-app" },
+      {
+        openPreview: async () => {
+          const err = new Error("预览窗口被浏览器拦截");
+          err.code = "POPUP_BLOCKED"; // 与 remote-preview 约定
+          throw err;
+        },
+      },
+    );
+    await check(
+      N_APP_BLOCKED,
+      blockedRes.includes("始终允许") &&
+        blockedRes.includes("等待用户回复确认") &&
+        blockedRes.includes("check-popup") &&
+        !blockedRes.startsWith("操作失败"),
+      blockedRes,
+    );
+
     const noOpen = await plugin.exec({ action: "app", appName: "x" }, {});
     const noDebug = await plugin.exec({ action: "status" }, {});
     await check(
@@ -156,6 +180,26 @@ const previewTest = defineSelfTest({
 
     const winUnavailable = await plugin.exec({ action: "windows" }, {});
     await check(N_WINDOWS_UNAVAILABLE, winUnavailable === noDebug, winUnavailable);
+
+    // ---- action=check-popup：放行 / 未放行两路 + 未注入时不可用提示 ----
+    const popOk = await plugin.exec(
+      { action: "check-popup" },
+      { checkPopup: async () => ({ allowed: true }) },
+    );
+    const popNo = await plugin.exec(
+      { action: "check-popup" },
+      { checkPopup: async () => ({ allowed: false }) },
+    );
+    const popMissing = await plugin.exec({ action: "check-popup" }, {});
+    await check(
+      N_CHECKPOPUP,
+      popOk.includes("action=app") &&
+        !popOk.includes("拦截") &&
+        popNo.includes("check-popup") &&
+        popNo.includes("始终允许") &&
+        popMissing === noDebug,
+      `ok=${popOk} | no=${popNo} | missing=${popMissing}`,
+    );
 
     // ---- 顶层 winId 定向：第 4 参透传 ----
     let winIdSeen = null;

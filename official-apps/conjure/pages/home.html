@@ -159,6 +159,86 @@
               </div>
             </o-if>
           </div>
+          <div class="publish-wrap">
+            <st-icon-button
+              class:published="publishedInfo"
+              attr:title="publishedInfo ? '已发布 v' + publishedInfo.version : '发布到首页应用列表'"
+              attr:disabled="publishBusy"
+              on:click="togglePublishPop"
+            >
+              <n-icon
+                attr:icon="publishedInfo ? 'mdi:rocket-launch' : 'mdi:rocket-launch-outline'"
+              ></n-icon>
+            </st-icon-button>
+            <o-if :value="publishPopOpen">
+              <div class="publish-pop">
+                <div class="pp-head">
+                  <span class="pp-title">发布到首页应用列表</span>
+                  <o-if :value="publishedInfo">
+                    <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
+                  </o-if>
+                  <o-if :value="!publishedInfo">
+                    <span class="pp-badge">未发布</span>
+                  </o-if>
+                </div>
+                <div class="pub-rows">
+                  <div class="pub-row">
+                    <span class="pub-label">发布版本</span>
+                    <o-if :value="publishedInfo">
+                      <span>v{{publishedInfo.version}}</span>
+                    </o-if>
+                    <o-if :value="!publishedInfo">
+                      <span>未发布</span>
+                    </o-if>
+                  </div>
+                  <div class="pub-row">
+                    <span class="pub-label">代码状态</span>
+                    <o-if :value="!publishedInfo">
+                      <span>发布后即可在首页打开</span>
+                    </o-if>
+                    <o-if :value="publishMatch === true">
+                      <span class="pub-ok">发布内容就是当前代码</span>
+                    </o-if>
+                    <o-if :value="publishMatch === false">
+                      <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
+                    </o-if>
+                  </div>
+                  <o-if :value="publishedInfo">
+                    <div class="pub-row">
+                      <span class="pub-label">分享链接</span>
+                      <o-if :value="publishShareUrl">
+                        <span
+                          class="pub-link"
+                          attr:title="publishShareUrl"
+                        >{{shortUrl(publishShareUrl)}}</span>
+                        <st-icon-button
+                          class="pub-copy"
+                          title="复制分享链接"
+                          on:click="copyText(publishShareUrl)"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </st-icon-button>
+                      </o-if>
+                      <o-if :value="!publishShareUrl">
+                        <span>打开首页应用列表后自动生成</span>
+                      </o-if>
+                    </div>
+                  </o-if>
+                </div>
+                <st-button
+                  variant="filled"
+                  attr:disabled="publishBusy"
+                  on:click="handlePublish"
+                >
+                  <o-if :value="!publishedInfo">🚀 发布</o-if>
+                  <o-if :value="publishedInfo">🚀 更新发布</o-if>
+                </st-button>
+                <div class="pub-note">
+                  发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
+                </div>
+              </div>
+            </o-if>
+          </div>
           <st-icon-button title="备份管理" on:click="openBackupDrawer">
             <n-icon icon="mdi:backup-restore"></n-icon>
           </st-icon-button>
@@ -1206,6 +1286,12 @@
                 <o-if :value="$data.current">
                   <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
                 </o-if>
+                <o-if :value="$data.publishedVersion">
+                  <span
+                    class="backup-published-badge"
+                    attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
+                  >v{{$data.publishedVersion}} 已发布</span>
+                </o-if>
               </div>
               <div class="backup-item-dir">{{$data.id}}/</div>
               <o-if :value="$data.note !== ''">
@@ -1774,6 +1860,11 @@
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           backupBusy: false, // 正在打包备份
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
+          publishBusy: false, // 发布到首页应用列表进行中
+          publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
+          publishPopOpen: false, // 发布下拉气泡开关
+          publishMatch: null, // 发布内容与当前代码一致性（true 一致 / false 有修改 / null 未知）
+          publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
@@ -2033,9 +2124,14 @@
             if (
               !e
                 .composedPath()
-                .some((el) => el.classList?.contains?.("preview-wrap"))
+                .some(
+                  (el) =>
+                    el.classList?.contains?.("preview-wrap") ||
+                    el.classList?.contains?.("publish-wrap"),
+                )
             ) {
               this.previewPopOpen = false;
+              this.publishPopOpen = false;
             }
           };
           this._docKey = (e) => {
@@ -2043,6 +2139,7 @@
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
             if (this.previewPopOpen) this.previewPopOpen = false;
+            if (this.publishPopOpen) this.publishPopOpen = false;
           };
           document.addEventListener("mousedown", this._docClose);
           document.addEventListener("keydown", this._docKey);
@@ -3286,6 +3383,30 @@
               );
               toast("内容未变化，已跳过重复备份");
             }
+          },
+
+          // 发布下拉气泡：打开时计算发布内容与当前代码的一致性（publishMatch）
+          async togglePublishPop() {
+            const next = !this.publishPopOpen;
+            this.publishPopOpen = next;
+            if (next) await store.refreshPublishState();
+          },
+
+          // 发布当前应用到首页应用列表（成功 / 幂等重发都弹 toast 反馈；
+          // 失败经仓库写入 keyError 横幅）
+          async handlePublish() {
+            const res = await store.publishCurrent();
+            if (!res) return;
+            await store.refreshPublishState();
+            const { default: toast } = await load(
+              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+            );
+            toast({
+              message: res.bumped
+                ? `已发布 v${res.version}，可在首页应用列表打开`
+                : `内容未变化，v${res.version} 已是最新发布`,
+              color: "success",
+            });
           },
 
           backupTime(id) {

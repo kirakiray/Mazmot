@@ -1,7 +1,7 @@
 ---
 name: "mazmot-api"
 description: "Mazmot 自身提供的能力速查：app.json 应用结构、应用运行 / 分享 / 安装 / 状态追踪、联网抓取等 Mazmot 专属 API。当用户在 Mazmot 仓库内编写或修改应用相关代码时调用。"
-version: "1.5.5"
+version: "1.5.6"
 ---
 
 # Mazmot 能力 API 速查
@@ -80,14 +80,15 @@ Mazmot 把应用列表存在 `getStorage("mazmot")` 空间的 `apps` 键下，�
 | `desc` | 应用描述 |
 | `source` | `"local"`（本地目录）/ `"virtual"`（虚拟目录，含分享安装）/ `"official"`（官方市场） |
 | `namespace` | 虚拟目录命名空间（虚拟/官方为 `mazmot-apps`；AI 生成器生成的应用为独立命名空间 `ai-apps`） |
-| `handle` | 本地目录句柄（本地应用为原生 handle，虚拟/官方为 `null`） |
+| `handle` | 渠道句柄（本地应用有值，虚拟/官方为 `null`）。写入 nos/fs 句柄时 storage 自动转为路径引用序列化，读回**还原成 nos/fs DirHandle 实例**——消费方直接使用（有 `.path`/`.get`），**不要再包一层 `new DirHandle(...)`**（双层包装会丢原生方法，`getFileHandle`/`isSameEntry` 全链路报错）；只有历史数据里的裸原生句柄才需要包 |
 | `dirName` | 虚拟目录全路径（如 `mazmot-apps/my-app`；AI 生成应用为 `ai-apps/my-app`） |
 | `appId` | `` `${name}-${publisherUserId}` ``，用于判定分享归属 |
 | `fileHash` | 应用包内容哈希（分享安装记录） |
 | `payloadHash` | 分享清单哈希（分享安装记录，即短链接里的 `h`） |
 | `officialId` | 官方应用 ID（官方市场记录） |
 | `createdAt` | 创建时间戳 |
-| `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏全部生成应用，记录仅供生成器持久化句柄与应用管理 |
+| `mazmot.source` | `"ai-builder"`（AI 应用生成器生成的应用）：主系统应用列表据此隐藏**未发布**的生成应用，记录仅供生成器持久化句柄与应用管理 |
+| `mazmot.published*` | 妙造发布元数据（发布动作不动源记录的可见性）：`published`（true）/ `publishedVersion` / `publishedAt` / `publishedHash` / `publishedVersions: { [hash8]: version }`（备份徽标指纹表）/ `publishedName`（副本目录名）。**发布本体是另一条普通虚拟应用记录**：把 client/ 复制到 `mazmot-apps/<发布名>/client/` 并登记 `mazmot.source: "conjure-publish"`（首页可见可打开，与妙造工作目录互相独立；本地渠道同样复制发布）。副本带 `appId`（`${发布名}-${userId}`，首页显示「我开发的」自建标记）与 `autoShare: true`（默认进入分享状态，列表加载自动 P2P 发布并回写 `payloadHash` / `fileHash`）；妙造发布时也同步做一次 P2P 发布并在源记录 `mazmot.publishedShare` 记 shareUrl。版本规则（`publishAppToHome`）：首发用 app.json 现值（如 `0.1.0`）；内容有变化的再次发布把源 app.json `version` patch +1 写回并清空重拷副本；内容与上次发布一致则幂等重发不 bump |
 
 读写示例：
 

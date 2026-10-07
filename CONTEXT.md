@@ -27,10 +27,12 @@ Mazmot/
 ├── sw.js                     # SW 引导（根入口注册，scope=/）：importScripts NoneOS Core dist.js（默认线上，coreDev:true 且 localhost 走本地 3002、失败回退线上），随后加载宿主离线缓存引擎 sw/host-cache.js
 ├── sw/                       # SW 侧模块（sw-config.js 本地调试开关 / host-cache.js 引擎 + test/ 单测；随 SW script 由浏览器缓存，不入 cache-manifest）
 ├── cache-manifest.json       # 宿主离线缓存清单（name/version/hashes[{path,hash,size}]），由 scripts/update-cache-manifest.js 生成，version 内容派生无需手工 bump
+├── favicon.ico               # 站点首页 favicon（mascot 相机机器人无底色透明版，16/32/48/64 PNG-in-ICO；
+│                             #   由 client/scripts/gen_icon.py 与应用图标一体生成，改图标两份都会更新）
 ├── 404.html                  # 部署产物含顶层 404.html 即关闭 Cloudflare Pages 的 SPA 回退（否则未命中路径被回退成 index.html + 200，模块加载报错伪装成 MIME 错误）；Pages 对未命中路径以 404 状态返回本页；本页正是 SW 未命中透传时由源站返回，必须零依赖内联样式（禁止 /gh/ /nos/ /mz/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
-├── package.json              # 提供 static（http-server:30031）/ test（sb-test）/ build 等脚本
+├── package.json              # 提供 static（http-server:30031）/ test（scripts/run-sb-test.js 包装 sb-test，排除 client/ 产物测试副本）/ build 等脚本
 ├── _setup/                   # 测试套件前置引导（目录名 _ 排序在 apps/、bridge/、main/ 等所有测试目录之前，
 │                             #   保证 sb-test 生成的清单里它最先执行）：install-nos.sb.html 经
 │                             #   <nos-version auto-install> 为测试环境安装 NoneOS Core，后续依赖 /nos/*、/mz/*
@@ -118,7 +120,7 @@ Mazmot/
 
 │   ├── speed-dial/           # 网页收藏夹（Speed Dial 风格网址快捷入口，分组/搜索/拖拽排序，数据存 getStorage("speed-dial") 的 dials 键，纯单机）
 │   ├── cloud-drive/          # P2P 云盘（旧版：服务端管理存储/凭证/分享链接，客户端经 P2P 上传下载管理文件，文件分块 SHA-256 校验 + 二进制 send 传输）
-│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview / web_fetch / web_search 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/windows/status/console/dom/text/click/type/wait/eval/screenshot + 顶层 winId 定向）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、action=windows 列窗口注册表、其余查证与交互，形成「写→跑→查→修」闭环）；预览支持**多窗口（上限 10，本机 popup + 手机扫码设备平等）**：窗口经 announce 心跳注册进注册表（remote-preview.js），顶栏预览按钮下拉气泡展示窗口清单 / 跨设备二维码（/bridge/?u=<conjure userId>&app=<应用>，链接头尾省略 + 复制），扫码 hello 自动推送当前应用，更新全量同步所有在线窗口，dbg 指令按 winId（userId|sessionId）定向投递；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏全部生成应用；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一个独立包目录：index.js 插件 + self-test.js 内置测试 + README + test/<tool>.sb.html，默认导出 { key, name, description, schema, exec(args, ctx) } 并具名导出 selfTest 地址，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot, netFetch（/mz/net 的 fetchText，web_fetch 工具底层） } 并用 chain 的 tool 工厂包装，新增工具只需建包目录 + 登记 TOOL_DEFS；preview/ 包为单一 preview 工具，action 参数分发各操作；测试基建统一在 lib/test-space/——virtual-space.js 内存版 fs/storage 与 self-test-kit / visual-test-kit 两套基座，工具详情对话框对所有带 selfTest 的工具开放「内置测试」Tab）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html 与各工具包内置测试 lib/tools/<tool>/test/
+│   ├── conjure/             # 妙造（Conjure）：对话式 AI Agent（mz/ai/chain 工具循环，优先 deepseek-flash）经 create_app / write_file / read_file / list_files / read_skill / show_form / preview / web_fetch / web_search 工具生成并调试 ofa.js 应用；写入目标在「新应用」草稿阶段二选一（虚拟系统 VFS ai-apps/<name>/client/——独立命名空间，生成应用不进主系统应用列表；或本地目录 fs.open() 选盘上目录、仅 Chrome），create_app 落地后随应用锁定不可切换；多应用 / 多会话管理：右侧面板为应用列表（新建应用 / 切换 / 两步确认删除；删除虚拟应用连带删 ai-apps 载体目录与登记，本地应用仅移除登记保留盘上文件），选中应用后左侧常驻该应用的历史对话栏（新建/切换/删除会话），草稿创建成功后消息与 Agent 记忆迁移为该应用首个会话（自存 registry/chat:/thread: 键于 getStorage("conjure")）；预览：一律推送 bridge 隔离域运行（见下方 bridge/；preview 统一工具（action 分发 app/windows/status/console/dom/text/click/type/wait/eval/screenshot + 顶层 winId 定向）经 dbg 指令远程调试运行中的预览页——action=app 推送运行、action=windows 列窗口注册表、其余查证与交互，形成「写→跑→查→修」闭环）；预览支持**多窗口（上限 10，本机 popup + 手机扫码设备平等）**：窗口经 announce 心跳注册进注册表（remote-preview.js），顶栏预览按钮下拉气泡展示窗口清单 / 跨设备二维码（/bridge/?u=<conjure userId>&app=<应用>，链接头尾省略 + 复制），扫码 hello 自动推送当前应用，更新全量同步所有在线窗口，dbg 指令按 winId（userId|sessionId）定向投递；lib/builder.js：系统提示词 + 路径/应用名校验 + apps[] 登记（虚拟记录 source: virtual / 本地记录 source: local 且句柄随记录持久化；记录均带 mazmot.source: "ai-builder" 标记，主系统列表据此隐藏未发布的生成应用；发布（publishAppToHome：把 client/ 复制到 mazmot-apps/<发布名>/ 并登记普通虚拟应用记录 conjure-publish（首页可见、与工作目录互相独立，本地渠道也复制发布），版本规则「首发用 app.json 现值 / 内容有变化 patch +1 写回源 app.json 后清空重拷副本 / 幂等重发」，发布元数据记在源记录（publishedVersions 指纹表供备份列表挂版本徽标））；历史迁到 mazmot-apps/ 的生成应用启动时按登记逐个迁回 ai-apps/）；工具按插件模式拆分在 lib/tools/（每工具一个独立包目录：index.js 插件 + self-test.js 内置测试 + README + test/<tool>.sb.html，默认导出 { key, name, description, schema, exec(args, ctx) } 并具名导出 selfTest 地址，index.js 注册中心 createTools() 注入 ctx = { fs, rootHandle, onAppCreated, onFileWrite, readSkill, requestForm, openPreview, previewDebug, onPreviewShot, netFetch（/mz/net 的 fetchText，web_fetch 工具底层） } 并用 chain 的 tool 工厂包装，新增工具只需建包目录 + 登记 TOOL_DEFS；preview/ 包为单一 preview 工具，action 参数分发各操作；测试基建统一在 lib/test-space/——virtual-space.js 内存版 fs/storage 与 self-test-kit / visual-test-kit 两套基座，工具详情对话框对所有带 selfTest 的工具开放「内置测试」Tab）；应用内另有自包含的 AGENTS.md / CONTEXT.md（规则同 official-apps/speed-dial，详见应用内 CONTEXT.md）；测试 test/builder.sb.html 与各工具包内置测试 lib/tools/<tool>/test/
 │   ├── cloud-drive-server/   # 云盘服务器（新版，base 模板骨架）：lib/protocol.js + lib/reliable.js + lib/server-core.js（CloudDriveServer：空间/账号管理、指令处理、审计日志，详见应用内 CONTEXT.md）；pages/home.html 单页管理「空间管理 / 用户管理」双 tab；服务端文件树存 getStorage("cloud-drive-server")（spaces / accounts / tree:<spaceId> / upload:<id>），文件内容存 fs init("cloud-drive-server") 的 spaces/<spaceId>/<fileId> 与 tmp/<uploadId>/<index>；客户端经 NoneOS 服务消息（cloud-drive-v1）+ ReliableChannel 可靠层访问
 │   └── cloud-drive-client/   # 云盘客户端（新版，百度网盘式体验）：lib/protocol.js + lib/reliable.js + lib/client-core.js（CloudDriveClient，getSharedClient 单例）；home.html 两步登录（连接服务器 userId → 账号密码）+ layout.html 布局父页面（顶栏：面包屑导航 / 连接状态点红绿 / 退出，子页面经 export const parent 挂载，用冒泡事件 cloud-nav 同步导航状态）+ files.html 文件页（面包屑在顶栏 / 新建文件夹 / 上传 / 搜索 / 重命名 / 删除 / 下载，底部传输进度条，连接中显示 spinner）；登录态 / 续传记录存 getStorage("cloud-drive-client") 的 session 与 transfers 键。protocol.js / reliable.js 在两个云盘应用内各持一份相同副本（保持应用自包含），修改协议或可靠层时必须双侧同步
 │
@@ -126,9 +128,9 @@ Mazmot/
 ├── .github/workflows/        # CI：test.yml 跑 sibyl-test 多浏览器矩阵（Chrome/Firefox/WebKit）；scripts/start-handshake.sh 在各任务测试前启动本地信令服务器（test-bin/）
 │
 ├── bridge/                   # 隔离预览域（Core 引导入口，URL = /bridge/；入口资源走 jsdelivr 完整 URL 同 apps/run-app 例外；
-│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036），线上统一
-│                             #   https://c1.dev.mazmot.noneos.com——conjure 侧 remote-preview.js 的 BRIDGE_ORIGIN 按
-│                             #   location.hostname 自动选择，bridge 侧自身不感知具体域名）
+│                             #   部署形态：本地开发 http://localhost:30032（npm run static 同伺服 30031–30036）、线上统一
+│                             #   https://c1.dev.mazmot.noneos.com、桌面运行时（client/）同域伺服 30032——conjure 侧
+│                             #   remote-preview.js 的 BRIDGE_ORIGIN 按 location.hostname 自动选择，bridge 侧自身不感知具体域名）
 │   ├── index.html            # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app；
 │   │                         #   head 首位内联域名白名单守卫（经典脚本解析期立即执行，
 │   │                         #   非允许域名 window.stop + 整页替换为错误说明，ofa/主题不再加载）
@@ -197,6 +199,28 @@ Mazmot/
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
+├── client/                   # 桌面运行时（Tauri 2 壳，独立 npm workspace；规范见 client/AGENTS.md、
+│                             #   架构活文档见 client/CONTEXT.md、使用说明见 client/README.md）：
+│                             #   内置回环 HTTP 静态服务器
+│                             #   伺服站点（端口沿用本地开发约定 30031 主站 / 30032 隔离域，origin 稳定保证 SW 与
+│                             #   IndexedDB 跨启动持久；不用 tauri:// asset 协议——自定义协议源下 SW 无法注册），
+│                             #   dev 伺服仓库根（源码实时生效）、release 把站点静态文件打进 bundle resources
+│   ├── src-tauri/
+│   │   ├── src/main.rs       # 壳入口：起静态服务器 → 建主窗口（http://localhost:30031）；导航分流（内部端口段放行，
+│   │   │                     #   其余 http(s) 经 opener 插件转系统浏览器）；关主窗即退出；MAZMOT_WEB_ROOT 可覆盖站点根
+│   │   ├── src/static_server.rs # 静态服务器（tiny_http，IPv4+IPv6 双栈）：MIME / ETag 304 / 单区间 Range 206 /
+│   │   │                     #   目录 308 补尾斜杠 / 404 返回 404.html（对齐 CF Pages，禁 SPA 回退）/ Host 校验防 rebinding
+│   │   ├── src/shim.js       # 注入每个 WebView 的 window.open shim：同源 URL → 原生多窗口（命名复用/聚焦不重开，
+│   │   │                     #   features 解析宽高定位；window.open("", name) 只取引用；假窗口支持 closed/focus/close），
+│   │   │                     #   外部链接 → 系统浏览器；标题跟随 document.title
+│   │   ├── src/commands.rs   # runtime_* 命令层（open/navigate/focus/close 窗口、外链、probe、log）
+│   │   ├── build.rs          # AppManifest 声明应用命令 → 自动生成 allow-* ACL 权限（远端源调用命令必须显式授权）
+│   │   ├── capabilities/main.json # 放行回环源（localhost/127.0.0.1 的 30031-30036）的 IPC + core:default + allow-*
+│   │   └── tauri.conf.json   # bundle.resources 收录站点静态文件（index.html/sw.js/sw/main/apps/mz/official-apps/bridge/
+│   │                         #   cache-manifest.json/locale-text.json）；单实例插件；macOS 最低 13.3（WKWebView SW 支持）
+│   ├── scripts/gen_icon.py   # 纯 Python SDF 渲染应用图标源（assets/icon.png）——按 [mz/comps/mascot/mascot.html](mz/comps/mascot/mascot.html) 默认态相机机器人复刻（银色双环镜头 + 12 片蓝色光圈 + 瞳孔/高光/眼睑/螺丝，背景用 model-badge 品牌渐变），`npx tauri icon` 派生全平台尺寸
+│   └── placeholder/          # frontendDist 占位（前端由内置服务器提供，此目录仅满足 Tauri 配置）
+│
 ├── server/                   # 独立后端服务（不随前端静态部署；详见 AGENTS.md「server/」章节）
 │   ├── ai-relay/             # AI API 转发服务器（Rust + axum + redb，独立 crate）：管理员集中保管 DeepSeek/GLM 上游 apikey，创建带累计 token 配额的用户并签发邀请码（URL-safe Base64 的 JSON {"u": serverUrl, "k": bearkey}）；用户经 OpenAI 兼容 /v1/*（Bearer=用户 bearkey）转发使用，按模型名前缀路由上游（glm-* / deepseek-*）并统计 token 用量；支持一人一码（bindMode=bound 时经 /v1/activate 以 ECDSA P-256 签名激活绑定 NoneOS 用户，后续请求验 X-Relay-Auth 签名头）；/v1/web/fetch 服务端网页抓取 + /v1/web/search 联网搜索（AI_RELAY_TAVILY_KEY 转发 Tavily，与抓取共用按用户联网开关）（relay 用户零配置联网，见 mz/net/）；/admin/* 走 AI_RELAY_ADMIN_TOKEN Bearer（未配置一律 404）；管理后台前端在 server/ai-relay-admin/（与服务器同级，UI e2e 见 e2e/admin-ui.e2e.test.js）；详见其 CONTEXT.md
 │   ├── ai-relay-admin/       # AI 转发管理台前端（ofa.js + senti-ui 纯静态，配 server/ai-relay 使用，仓库静态服务器 + NoneOS Core 环境打开）：连接页填服务器地址 + AI_RELAY_ADMIN_TOKEN，凭据按账户存 getStorage("ai-relay-admin") 的 accounts 列表（[{id,url,token,name,version}]，id=url，同 url 重连覆盖 token；version 取自 /admin/overview，顶栏副标题与账户列表展示所连服务器版本号）+ activeId 活跃账户；支持多服务器账户：连接页已保存列表一键重连、面板「切换服务器」弹窗一键切换（失败回滚）、删除账户（删活跃账户即断开回连接页；断开连接二次确认且保留账户）、旧版单账户键 serverUrl/adminToken/serverName 自动迁移；上游 API Key 管理 / 用户管理（配额留空=无限、勾选可用 key、绑定模式 open/bound 与绑定者展示 / 解绑、Web Fetch 联网开关——新建用户勾选 + 详情对话框开关 + 列表关闭态徽标，服务端按用户 403 拦截）/ 邀请码查看复制 / 重置 bearkey / 用量清零与流水；UI e2e 在 server/ai-relay/e2e/
@@ -235,6 +259,15 @@ Mazmot/
 
 由于应用和主系统**同域**运行，应用理论上可以访问主系统的 IndexedDB / Service Worker。当前方案以"兼容 Safari、简化部署"为优先，不再做 Origin 级隔离。容器模式已废弃，相关代码仅保留在 `old/v4/container/` 中。
 
+## 桌面运行时（client/）
+
+Tauri 2 壳把 Mazmot 封装为桌面 Runtime（详见 [client/README.md](client/README.md)），架构要点：
+
+- **不用 tauri:// asset 协议**：自定义协议源下 Service Worker 无法注册，而 NoneOS Core 依赖 SW。壳内置回环 HTTP 静态服务器（[client/src-tauri/src/static_server.rs](client/src-tauri/src/static_server.rs)），端口沿用本地开发约定（**30031 主站 / 30032 隔离域**，主站被占用时依次回退 30033-30036），origin 含端口跨启动稳定，SW 缓存与 IndexedDB 数据不丢；站点代码零补丁，所有 `hostname ∈ LOCAL_HOSTS` 分支行为与本地开发一致。
+- **window.open → 原生多窗口**：注入每个 WebView 的 [shim.js](client/src-tauri/src/shim.js) 把 `window.open(runUrl, "mazmot-app-<name>", features)` 接管为原生 WebviewWindow，语义对齐浏览器：同名窗口复用/聚焦不重开、`window.open("", name)` 只取引用不导航、features 解析宽高定位、假窗口支持 Mazmot 用到的 `closed`（实时，含用户手关，经 Rust 侧 eval 回调）/ `focus()` / `close()`；外部 http(s) 转系统默认浏览器（页内导航由 Rust `on_navigation` 同样分流）。
+- **远端源 IPC 必须显式授权**：Tauri 对非本地源（`http://localhost:30031` 等）的应用命令强制 ACL 校验——`build.rs` 用 `AppManifest::commands()` 为 `runtime_*` 命令自动生成 `allow-*` 权限，`capabilities/main.json` 引用之并放行回环源；`core:default` 只覆盖核心插件命令，**不覆盖应用自定义命令**。
+- 其余行为：dev 伺服仓库根（源码实时生效）、release 打进 bundle resources；单实例插件防端口/数据漂移；关主窗即退出整个 runtime；404 语义对齐 CF Pages（返回 404.html，禁 SPA 回退）。
+
 ## 应用生命周期
 
 > 以下流程以主应用 [/main/pages/apps.html](main/pages/apps.html) 的实现描述。
@@ -244,7 +277,7 @@ Mazmot/
 「添加应用」弹窗不再内置创建向导，只做引导：
 
 - **应用市场**：[main/pages/market.html](main/pages/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
-- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，不进主系统应用列表（`home.html` 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）。
+- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，默认不进主系统应用列表（[main/pages/apps.html](main/pages/apps.html) 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）；在妙造顶栏点「发布」会把应用文件复制一份到 `mazmot-apps/` 并登记为普通虚拟应用记录（`mazmot.source: "conjure-publish"`，带 `appId` 自建标记 + `autoShare: true` 默认分享），即可出现在本列表正常打开，与妙造工作目录互相独立。
 - **外源下载**：URL / ZIP 安装的禁用占位 UI（功能未实现）。
 
 ### 2. 启动应用（[main/pages/apps.html](main/pages/apps.html)）
@@ -296,7 +329,10 @@ clearOpened → 关闭窗口
 {
   name: "my-app",           // 唯一 recordName（字母/数字/_-，不含空格）；运行时常被映射到 _recordName
   desc: "描述",
-  handle: FileSystemDirectoryHandle | null, // 本地目录存原生句柄；虚拟目录/官方应用为 null
+  handle: FileSystemDirectoryHandle | null, // 本地渠道存句柄（conjure 本地渠道存
+                                             // nos/fs 句柄，storage 按路径引用序列化、
+                                             // 读回还原成 DirHandle 实例，消费方直接
+                                             // 使用、不要再包一层 DirHandle）；虚拟/官方为 null
   dirName: "选择的目录名 / 虚拟命名空间",   // 虚拟目录形如 "<namespace>/<name>"（AI 生成应用为 "ai-apps/<name>"）
   source: "local" | "virtual" | "official",
   namespace: "mazmot-apps | ai-apps",  // virtual / official / AI 生成应用有值，(await init(namespace)).get(name) 即可重建 handle
@@ -304,8 +340,14 @@ clearOpened → 关闭窗口
   officialId: "ai-manager", // 仅 official 有值：官方应用 ID，用于市场去重判断
   autoShare: false,          // 是否开启自动分享（开关切换时由 _persistAppField 写回）
   mazmot: { source: "ai-builder" }, // 仅妙造生成的应用有值：来源标记；
-                             // 主系统应用列表据此隐藏全部生成应用（记录仅供
-                             // conjure 持久化句柄与应用管理）
+                             // 主系统应用列表据此隐藏（记录仅供 conjure 持久化
+                             // 句柄与应用管理）。在妙造里「发布」后追加发布元数据：
+                             // published: true / publishedVersion / publishedAt /
+                             // publishedHash / publishedVersions: { [hash8]: version }
+                             // （备份徽标指纹表）/ publishedName（副本目录名）——
+                             // 发布本体是把 client/ 复制到 mazmot-apps/<发布名>/ 的
+                             // 另一条普通虚拟应用记录（mazmot.source: "conjure-publish"，
+                             // 首页可见可打开，与妙造工作目录互相独立）
   fileHash: "",              // 仅经 run-app 安装的应用有值：应用包内容 SHA-256（= payload.fileHash）
   payloadHash: "",           // 分享清单内容哈希（= URL 的 h），用于"无改动秒跳"。经 run-app 安装、或本机开启自动分享成功后写入
   createdAt: timestamp
@@ -429,6 +471,8 @@ npm run static
 npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 ```
 
+**本地完整测试**：`npm test` 经 [scripts/run-sb-test.js](scripts/run-sb-test.js) 收集全部 `.sb.html` 后传给 `sb-test`，**自动排除 `client/`**——桌面壳构建产物（`client/dist/`、`client/src-tauri/target/`，均 gitignore）内含整套站点测试副本，直接 `npx sb-test` 全量扫描会把这 200+ 份重复文件收进清单；CI 在干净 checkout 上运行、产物不入库，不受影响。
+
 **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵；各任务先执行 [.github/scripts/start-handshake.sh](.github/scripts/start-handshake.sh) 用 [test-bin/](test-bin/) 的二进制启动本地信令服务器（ws://localhost:8081），跨用户通信用例（bridge 隔离预览等）完全闭环在本地，不依赖公网中继。
 
 ### 安装并运行第一个应用
@@ -523,6 +567,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 分享接收页业务逻辑 | [apps/run-app/lib/](apps/run-app/lib/)（install-flow / connection / diag / run-app-utils） |
 | 分享一键跳转入口 | [apps/run-app/index.html](apps/run-app/index.html) + [apps/run-app/run-app.html](apps/run-app/run-app.html) |
 | 静态服务器 / npm 脚本 | [package.json](package.json)（`npm run static` 直接调 http-server，无独立脚本文件） |
+| 桌面运行时（Tauri 壳：内置静态服务器 / window.open 原生多窗口 / 外链分流） | [client/](client/README.md)（[src-tauri/src/main.rs](client/src-tauri/src/main.rs) + [static_server.rs](client/src-tauri/src/static_server.rs) + [shim.js](client/src-tauri/src/shim.js) + [commands.rs](client/src-tauri/src/commands.rs)） |
 | 主应用 ofa.js 配置 | [main/app-config.js](main/app-config.js) |
 | 接收应用 ofa.js 配置 | [apps/run-app/app-config.js](apps/run-app/app-config.js) |
 | 主 SW | [sw.js](sw.js)（core dist.js + [sw/host-cache.js](sw/host-cache.js)） |

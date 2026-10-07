@@ -21,6 +21,8 @@ import {
   registerAppRecord,
   unregisterAppRecord,
   deleteVfsApp,
+  publishAppToHome,
+  PUBLISH_NAMESPACE,
   sanitizeAppName,
   listAppFiles,
   readAppFile,
@@ -96,6 +98,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     backups: [],
     backupBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
+    // 发布到首页应用列表：publishBusy 防重入；publishedInfo 为当前应用的
+    // 发布态（null = 未发布；{ version, at } = 已发布，顶栏发布按钮提示用）；
+    // publishMatch 为发布内容与当前代码的一致性（null = 未知 / 未发布，
+    // true = 已是当前代码，false = 有未发布的修改），打开发布气泡时计算
+    publishBusy: false,
+    publishedInfo: null,
+    publishMatch: null,
+    publishShareUrl: "", // 已发布副本的 P2P 分享链接（?u=&h=，空 = 尚未生成）
     // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
     // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
     previewBusy: false,
@@ -449,6 +459,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         const mod = await ensurePreviewMod();
         return mod.listPreviewWindows();
       },
+      // 弹窗放行探测（preview 工具 action=check-popup）：被拦截后的确认重试用
+      checkPopup: async () => {
+        const mod = await ensurePreviewMod();
+        return mod.checkPopupAllowed();
+      },
       onPreviewShot: pushPreviewShot,
       // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),
@@ -659,6 +674,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       localRootHandle = null;
       setMany({ localDirLabel: "", keyError: "" });
     }
+    refreshPublishState(); // 发布态 + 与当前代码一致性（顶栏发布按钮 / 气泡用）
     invalidateAgent(); // 切换应用后重建 Agent（工具根目录随应用变化）
   }
 
@@ -717,6 +733,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       currentSessionTitle: "",
       permGrantNeeded: false,
       keyError: "", // 离开本地应用上下文，旧提示随之清除
+      publishedInfo: null, // 回到草稿：发布态随应用上下文清空
+      publishMatch: null,
+      publishShareUrl: "",
     });
     localRootHandle = null;
     set("localDirLabel", "");
@@ -1307,6 +1326,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   /* ---------- 隔离预览（bridge 跨域推送） ---------- */
 
+  // share-mgr 模块缓存（发布副本的 P2P 分享：ensureUser / publishApp / buildRunUrl）
+  let shareMod = null;
+  async function ensureShareMod() {
+    if (!shareMod) shareMod = await load("/mz/share-mgr.js");
+    return shareMod;
+  }
+
   // remote-preview 模块缓存（预览主流程 / 窗口清单 / 分享地址共用）
   let previewMod = null;
   async function ensurePreviewMod() {
@@ -1672,23 +1698,204 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     return localRootHandle;
   }
 
+  // 读当前应用在 mazmot apps[] 登记记录里的发布态（mazmot 子对象，无则 null）
+  async function readPublishedMeta() {
+    if (!mazmotStore || state.currentAppName === "") return null;
+    try {
+      const apps = (await mazmotStore.getItem("apps")) || [];
+      const rec = apps.find(
+        (a) => a.mazmot?.source === "ai-builder" && a.name === state.currentAppName,
+      );
+      return rec?.mazmot?.published ? rec.mazmot : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 同步发布态到页面状态（顶栏发布按钮提示；切应用 / 发布后调用）
+  async function syncPublishedInfo() {
+    const meta = await readPublishedMeta();
+    set(
+      "publishedInfo",
+      meta ? { version: meta.publishedVersion, at: meta.publishedAt } : null,
+    );
+  }
+
+  // 计算发布内容与当前代码的一致性（打开发布气泡时调用）：
+  // publishMatch = true（已是当前代码）/ false（有未发布的修改）/ null（未知）；
+  // 同时解析发布副本的 P2P 分享链接（优先用上次发布记住的，否则按副本
+  // payloadHash 现场拼装）
+  async function refreshPublishState() {
+    await syncPublishedInfo();
+    let match = null;
+    let shareUrl = "";
+    if (state.publishedInfo && fs && state.currentAppName !== "") {
+      try {
+        const rootHandle = await backupRootHandle();
+        const meta = await readPublishedMeta();
+        const hash = await currentAppHash(fs, state.currentAppName, rootHandle);
+        match = hash !== "" && meta?.publishedHash === hash;
+      } catch {
+        match = null;
+      }
+      try {
+        const shareMgr = await ensureShareMod();
+        const meta = await readPublishedMeta();
+        if (meta?.publishedShare?.shareUrl) {
+          shareUrl = meta.publishedShare.shareUrl;
+        } else if (meta?.publishedName) {
+          const apps = (await mazmotStore.getItem("apps")) || [];
+          const home = apps.find(
+            (a) =>
+              a.namespace === PUBLISH_NAMESPACE &&
+              a.name === meta.publishedName &&
+              a.mazmot?.source === "conjure-publish",
+          );
+          if (home?.payloadHash) {
+            const { userId } = await shareMgr.ensureUser();
+            shareUrl = shareMgr.buildRunUrl(
+              location.origin,
+              userId,
+              home.payloadHash,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[publish] 分享链接解析失败：", err);
+        shareUrl = "";
+      }
+    }
+    setMany({ publishMatch: match, publishShareUrl: shareUrl });
+  }
+
   async function refreshBackups() {
     if (state.currentAppName === "" || !fs) return;
     try {
       const rootHandle = await backupRootHandle();
       // listAppBackups 返回 { id, label, note }；当前内容指纹与 id 尾部 hash
-      // 一致的项标记 current（即「这份备份就是现在的内容」）
+      // 一致的项标记 current（即「这份备份就是现在的内容」）；内容指纹命中
+      // 发布记录 publishedVersions 的项带 publishedVersion（「已发布 vX.Y.Z」徽标）
       const currentHash = await currentAppHash(fs, state.currentAppName, rootHandle);
       const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+      const publishedVersions =
+        (await readPublishedMeta())?.publishedVersions || {};
       set(
         "backups",
         list.map((b) => ({
           ...b,
           current: currentHash !== "" && b.id.endsWith(`-${currentHash}`),
+          publishedVersion: publishedVersions[b.id.slice(-8)] || "",
         })),
       );
     } catch (err) {
       console.warn("读取备份列表失败：", err);
+    }
+  }
+
+  // 发布当前应用到首页应用列表（复制 client/ 到 mazmot-apps/<发布名>/）；
+  // 发布成功同时在备份管理打一条带正式版本号标注的备份（已有同内容备份
+  // 且用户未命名时也补标注，不覆盖用户自定义名称）
+  async function publishCurrent() {
+    if (state.publishBusy || state.currentAppName === "" || !fs) return null;
+    set("publishBusy", true);
+    try {
+      // 当前用户 userId：副本记录的 appId 用（首页「我开发的」标记）
+      let userId = "";
+      try {
+        const shareMgr = await ensureShareMod();
+        userId = (await shareMgr.ensureUser()).userId;
+      } catch (err) {
+        console.warn("[publish] 获取用户失败（appId 省略）：", err);
+      }
+      const rootHandle = await backupRootHandle();
+      const res = await publishAppToHome(
+        fs,
+        mazmotStore,
+        state.currentAppName,
+        rootHandle,
+        { userId },
+      );
+      try {
+        const backup = await createAppBackup(
+          fs,
+          state.currentAppName,
+          rootHandle,
+        );
+        const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+        const hit = list.find((b) => b.id === backup.id);
+        if (!hit?.label) {
+          await renameAppBackup(
+            fs,
+            state.currentAppName,
+            backup.id,
+            `发布 v${res.version}`,
+          );
+        }
+      } catch (err) {
+        // 备份标注失败不影响发布结果
+        console.warn("[publish] 发布备份标注失败：", err);
+      }
+      // P2P 分享发布：把副本发布到分享网络并回写 payloadHash，分享链接
+      // 立即可用；失败不阻断发布（主系统列表打开时 autoShare 会自动重试）
+      let shareUrl = "";
+      try {
+        const shareMgr = await ensureShareMod();
+        const publishRoot = await fs.init(PUBLISH_NAMESPACE);
+        const copyHandle = await publishRoot.get(res.publishName);
+        const apps = (await mazmotStore.getItem("apps")) || [];
+        const home = apps.find(
+          (a) =>
+            a.namespace === PUBLISH_NAMESPACE &&
+            a.name === res.publishName &&
+            a.mazmot?.source === "conjure-publish",
+        );
+        const { shareUrl: url, payloadHash, fileHash } =
+          await shareMgr.publishApp(
+            {
+              source: "virtual",
+              namespace: PUBLISH_NAMESPACE,
+              name: res.publishName,
+              virtualDirName: res.publishName,
+              dirName: `${PUBLISH_NAMESPACE}/${res.publishName}`,
+              version: res.version,
+              desc: home?.desc || "",
+              icon: home?.icon || "📦",
+              _recordName: res.publishName,
+              _handle: copyHandle,
+            },
+            { appId: home?.appId || undefined },
+          );
+        shareUrl = url;
+        if (home) {
+          home.payloadHash = payloadHash;
+          home.fileHash = fileHash || "";
+        }
+        const src = apps.find(
+          (a) =>
+            a.mazmot?.source === "ai-builder" &&
+            a.name === state.currentAppName,
+        );
+        if (src) {
+          src.mazmot = {
+            ...src.mazmot,
+            publishedShare: { payloadHash, shareUrl, at: Date.now() },
+          };
+        }
+        await mazmotStore.setItem("apps", apps);
+        set("publishShareUrl", shareUrl);
+      } catch (err) {
+        console.warn("[publish] 分享发布失败（首页列表会自动重试）：", err);
+        set("publishShareUrl", "");
+      }
+      await syncPublishedInfo();
+      await refreshBackups(); // 发布版本的指纹徽标 / 备份标注即刻反映到备份清单
+      set("publishMatch", true);
+      return res;
+    } catch (err) {
+      set("keyError", `发布失败：${err.message}`);
+      return null;
+    } finally {
+      set("publishBusy", false);
     }
   }
 
@@ -3087,6 +3294,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     refreshBackups,
     createBackup,
     smartBackup,
+    publishCurrent,
+    refreshPublishState,
     deleteBackup,
     renameBackup,
     setNote,
