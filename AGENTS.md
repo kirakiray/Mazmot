@@ -116,7 +116,7 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 
 ## client/（桌面运行时，Tauri 2）
 
-[client/](client/README.md) 是独立的 Tauri 2 桌面壳：内置回环静态服务器（沿用 `npm run static` 的 30031 主站 / 30032 隔离域约定）伺服本仓库静态站点，`window.open` 接管为原生多窗口。修改前先读 [client/README.md](client/README.md) 与根 [CONTEXT.md](CONTEXT.md) 的「桌面运行时（client/）」章节。关键约束：
+[client/](client/README.md) 是独立的 Tauri 2 桌面壳：内置回环静态服务器（沿用 `npm run static` 的 30031 主站 / 30032 隔离域约定）伺服本仓库静态站点，`window.open` 接管为原生多窗口。查看或修改前**必须先读 [client/AGENTS.md](client/AGENTS.md)（硬性规范：IPC 三件套联动、端口即 origin、站点零补丁等）与 [client/CONTEXT.md](client/CONTEXT.md)（架构活文档：启动流程、shim 契约、命令速查、踩坑索引）**，本节仅是全局约束摘要：
 
 - **禁止把 WebView 指向 `tauri://` asset 协议**：NoneOS Core 依赖 Service Worker，自定义协议源下 SW 无法注册；新增能力一律走内置静态服务器 + 回环源。
 - **端口即 origin**：主站 origin（含端口）跨启动必须稳定，否则 SW 缓存与 IndexedDB 数据丢失；主站端口候选与回退顺序定义在 [client/src-tauri/src/static_server.rs](client/src-tauri/src/static_server.rs) 的 `MAIN_PORTS`，不得随意改动。

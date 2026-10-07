@@ -197,7 +197,9 @@ Mazmot/
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /
                                #   增量同步只传差异文件；失败 content 为紧凑单行诊断（send/recv/evt/conn），CI 日志不截断）
 │
-├── client/                   # 桌面运行时（Tauri 2 壳，独立 npm workspace，详见 client/README.md）：内置回环 HTTP 静态服务器
+├── client/                   # 桌面运行时（Tauri 2 壳，独立 npm workspace；规范见 client/AGENTS.md、
+│                             #   架构活文档见 client/CONTEXT.md、使用说明见 client/README.md）：
+│                             #   内置回环 HTTP 静态服务器
 │                             #   伺服站点（端口沿用本地开发约定 30031 主站 / 30032 隔离域，origin 稳定保证 SW 与
 │                             #   IndexedDB 跨启动持久；不用 tauri:// asset 协议——自定义协议源下 SW 无法注册），
 │                             #   dev 伺服仓库根（源码实时生效）、release 把站点静态文件打进 bundle resources

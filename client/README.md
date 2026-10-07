@@ -2,6 +2,8 @@
 
 用 [Tauri 2](https://tauri.app) 把 Mazmot 静态站点封装成桌面应用运行时：原生窗口里跑的仍是完整的 Mazmot 平台（NoneOS Core + ofa.js），`window.open` 接管为原生多窗口，应用获得浏览器标签页无法拥有的桌面体验。
 
+> AI 代理开发请先读本目录的 [`AGENTS.md`](AGENTS.md)（硬性规范）与 [`CONTEXT.md`](CONTEXT.md)（架构活文档：启动流程 / shim 契约 / 命令速查 / 踩坑索引）。
+
 ## 为什么是「内置静态服务器」而不是 Tauri asset 协议
 
 Mazmot 的运行时依赖 **NoneOS Core Service Worker**（提供 `/nos/*`、`/gh/*`、`/$虚拟目录/*`）。Service Worker 无法在 `tauri://` 自定义协议源上注册，所以本壳在 Rust 侧内置了一个回环 HTTP 静态服务器（[src-tauri/src/static_server.rs](src-tauri/src/static_server.rs)），WebView 指向真实的 `http://localhost` 源——SW、IndexedDB、BroadcastChannel 等平台能力与浏览器完全一致。
