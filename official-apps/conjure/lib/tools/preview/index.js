@@ -123,7 +123,13 @@ export default {
       if (typeof ctx.openPreview !== "function") return unavailable();
       try {
         const done = await ctx.openPreview(appName);
-        return `预览就绪：${done.url}\n预览窗口已在运行最新代码，可继续用 preview 的 status / console / dom 等 action 调试验证。`;
+        // 调试代理未在窗口期内回线（应用页可能仍在加载/跳转）：如实告知，
+        // 避免模型把紧随的调试指令离线报错误判为应用故障
+        const agentNote =
+          done?.agentOnline === false
+            ? "\n注意：调试代理尚未回线（应用页可能仍在加载），紧接的调试指令若报「预览未打开 / 不在线」，稍候重试即可，不是应用故障。"
+            : "";
+        return `预览就绪：${done.url}${agentNote}\n预览窗口已在运行最新代码，可继续用 preview 的 status / console / dom 等 action 调试验证。`;
       } catch (err) {
         // 弹窗被浏览器拦截（remote-preview 约定 code=POPUP_BLOCKED）：
         // 返回行动指引而非失败文案，模型据此指导用户放行后再继续

@@ -254,9 +254,10 @@ const AGENT_PROBE_TIMEOUT = 8_000;
 // 探测失败后，最近 RELOAD_GRACE 内还见过对端信封（ACK 等）时判定「只是
 // reload 中」，再给一轮探测宽限；超过该窗口视为真离线
 const RELOAD_GRACE = 15_000;
-// done 后等应用页代理回线（agent-online）的窗口：覆盖 reload / 跳转 +
-// 代理重连信令服务器全程；超时不视为推送失败（预览本身已成功）
-const AGENT_BACK_TIMEOUT = 30_000;
+// done 后等应用页代理回线（agent-online）的窗口：健康时代理 1~2s 内回线，
+// 覆盖 reload / 跳转 + 重连信令的常规耗时即可；超时不视为推送失败（预览
+// 本身已成功），也不值得为此烧几十秒——调试指令自带超时与重试
+const AGENT_BACK_TIMEOUT = 8_000;
 // 调试指令等待结果的默认/上限窗口（wait/eval/shot 可由 args 放宽到上限）
 const DBG_TIMEOUT = 25_000;
 const DBG_TIMEOUT_MAX = 120_000;
@@ -742,22 +743,34 @@ export async function openRemotePreview({
           );
         }
         const pushed = await pushFiles(diff);
-        const done = await withTimeout(
-          waiters.done,
-          DONE_TIMEOUT,
-          "等待预览页应用更新超时",
-        );
+        // 零差异：代理对 sync-check 会自行补发 done，但无需依赖——没有写入
+        // 就没有「等待更新」可言，直接合成结果（done 缺失时白等 120s，实测踩坑）
+        const done = pushed
+          ? await withTimeout(
+              waiters.done,
+              DONE_TIMEOUT,
+              "等待预览页应用更新超时",
+            )
+          : { url: `/$ai-apps/${appName}/client/index.html`, appName, agentOnline: true };
         await storeBridgeId(selfStore, storedId);
         agentRemotes.set(storedId, remote); // 调试通道复用该连接
         lastAgentRemoteId = storedId;
         // 有文件写入 → 应用页即将 reload：等代理回线（agent-online）再返回，
-        // 调用方（preview_app 工具）紧接着的调试指令不会扑空；零差异无刷新，跳过
+        // 调用方（preview_app 工具）紧接着的调试指令不会扑空；零差异无刷新，
+        // 代理仍在线。回线结果记进 done.agentOnline（false = 工具文案提示稍候重试）
+        let agentBack = { agent: !pushed };
         if (pushed) {
           resetWaiters(storedId);
-          await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览页刷新超时").catch(
-            (err) => console.warn("[remote-preview]", err.message),
-          );
+          agentBack = await withTimeout(
+            waiters.hello,
+            AGENT_BACK_TIMEOUT,
+            "等待预览页刷新超时",
+          ).catch((err) => {
+            console.warn("[remote-preview]", err.message);
+            return null;
+          });
         }
+        done.agentOnline = agentBack?.agent === true;
         link.dispose();
         refreshWatcher?.();
         status(`预览已更新：${done.url}`);
@@ -815,21 +828,40 @@ export async function openRemotePreview({
     console.warn("[remote-preview] 增量比对失败，回退全量推送：", err);
     diff = { missing: files.map((f) => f.path) };
   }
-  await pushFiles(diff);
+  const pushed = await pushFiles(diff);
 
-  const done = await withTimeout(
-    waiters.done,
-    DONE_TIMEOUT,
-    "等待 bridge 写入完成超时",
-  );
+  // bridge 引导页只在收到 app-end（有实际写入）后回报 done：零差异时推送
+  // 侧不发任何消息，这里必须跳过 done 等待，否则白等 DONE_TIMEOUT
+  // （bridge VFS 已有同内容副本，预览本身就是最新的）
+  const done = pushed
+    ? await withTimeout(
+        waiters.done,
+        DONE_TIMEOUT,
+        "等待 bridge 写入完成超时",
+      )
+    : {
+        url: `/$ai-apps/${appName}/client/index.html`,
+        appName,
+        agentOnline: false, // 引导页未跳转，应用页代理不在线
+      };
   agentRemotes.set(bridgeUserId, remote); // 应用页代理与 bridge 页同一本地用户，连接可复用
   lastAgentRemoteId = bridgeUserId;
   // 引导页正跳转成应用页：等代理回线（agent-online）再返回，调用方紧接着的
-  // 调试指令不会扑空；超时不视为失败（预览本身已成功），由轮询/事件点亮按钮
+  // 调试指令不会扑空；超时不视为失败（预览本身已成功），由轮询/事件点亮按钮，
+  // 结果记进 done.agentOnline 供工具文案提示
   resetWaiters();
-  await withTimeout(waiters.hello, AGENT_BACK_TIMEOUT, "等待预览应用页加载超时").catch(
-    (err) => console.warn("[remote-preview]", err.message),
-  );
+  let agentBack = null;
+  if (pushed) {
+    agentBack = await withTimeout(
+      waiters.hello,
+      AGENT_BACK_TIMEOUT,
+      "等待预览应用页加载超时",
+    ).catch((err) => {
+      console.warn("[remote-preview]", err.message);
+      return null;
+    });
+  }
+  done.agentOnline = agentBack?.agent === true;
   link.dispose();
   status(`隔离预览就绪：${done.url}`);
   refreshWatcher?.();
