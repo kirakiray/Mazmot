@@ -130,6 +130,8 @@ client/
 
 ## 打包产物
 
+**版本号跟随仓库根 `package.json`**：`scripts/sync-version.js` 把根版本写入 `src-tauri/tauri.conf.json` 与 `Cargo.toml`（后者是 `runtime_probe` 与 `X-Mazmot-Runtime` 头的版本来源），由 npm `predev`/`prebuild` 钩子自动执行；交叉编译前手动跑 `npm run sync:version`。
+
 各平台产物最终统一收进 **`client/dist/`**（一层目录，`npm run collect`，脚本 `scripts/collect-artifacts.sh`；`dist/` 已 gitignore，产物不入库）。Tauri CLI 的原始输出固定在 `src-tauri/target/release/bundle/<类型>/` 下（macos/ dmg/ 等，路径约定不可改），collect 脚本负责归拢。
 
 - **macOS（arm64）**：`npm run build` → `src-tauri/target/release/bundle/macos/Mazmot.app`（站点资源 3.4M 打进 `Contents/Resources/_up_/_up_/`）；DMG 用 hdiutil 兜底（tauri 的 `bundle_dmg.sh` 需要 Finder 自动化权限，终端里 AppleEvent 超时 -1712）：
