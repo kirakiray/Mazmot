@@ -105,7 +105,7 @@ const res = await netFetch("https://example.com/docs");
 res.ok;                          // 上游 2xx（404 等上游状态不抛错，看 ok）
 res.status;                      // 上游 HTTP 状态码
 res.url;                         // 最终地址（跟随重定向后）
-res.provider;                    // 实际生效的中转方：custom / relay / hub / jina
+res.provider;                    // 实际生效的中转方：custom / relay / jina
 res.truncated;                   // 响应体是否被中转端截断
 res.headers.get("content-type");
 const html = await res.text();   // 原始响应体（未做正文提取）

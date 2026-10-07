@@ -431,6 +431,13 @@
                 !draft.includes("const load = lm(import.meta)"),
               // 页面加载失败 / shadow DOM 取证捷径进基础提示词
               shadowDomProbe: draft.includes("shadowRoot.textContent"),
+              // 平台双层 API（Mazmot /mz/* + NoneOS Core /nos/*）与
+              // 「联网请求必须用平台 fetch（CORS）」进基础提示词
+              platformFetch:
+                draft.includes("Mazmot 基于 NoneOS Core 开发") &&
+                draft.includes('load("/mz/net/main.js")') &&
+                draft.includes("net.fetch") &&
+                draft.includes("CORS"),
               // 工作流程的文档体系：宿主预写四份骨架 → 模型填充、不留占位
               docsSystem:
                 draft.includes(

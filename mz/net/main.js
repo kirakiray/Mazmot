@@ -413,7 +413,7 @@ export class WebFetchResponse {
     this.status = result.status; // 上游 HTTP 状态码（404 等不算调用错误，判断用 ok）
     this.ok = result.status >= 200 && result.status < 300;
     this.truncated = !!result.truncated;
-    this.provider = result.provider; // 实际生效的中转提供方（custom/relay/hub/jina）
+    this.provider = result.provider; // 实际生效的中转提供方（custom/relay/jina）
     this.headers = new Headers({ "content-type": result.contentType || "" });
     this.#text = result.text ?? "";
   }
@@ -486,7 +486,7 @@ export const fetchText = async (url, opts = {}) => {
   return { ...out };
 };
 
-/** 通道调度：「auto」按优先级取第一个可用（custom > relay > hub → jina 降级）；
+/** 通道调度：「auto」按优先级取第一个可用（custom > relay > jina）；
  *  固定通道只用用户选的，不可用直接抛错——显式选择不静默换道 */
 const dispatchFetch = async (target, signal) => {
   const channel = await getWebFetchChannel();
