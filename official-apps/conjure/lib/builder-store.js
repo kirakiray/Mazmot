@@ -98,9 +98,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     backupBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
     // 发布到首页应用列表：publishBusy 防重入；publishedInfo 为当前应用的
-    // 发布态（null = 未发布；{ version, at } = 已发布，顶栏发布按钮提示用）
+    // 发布态（null = 未发布；{ version, at } = 已发布，顶栏发布按钮提示用）；
+    // publishMatch 为发布内容与当前代码的一致性（null = 未知 / 未发布，
+    // true = 已是当前代码，false = 有未发布的修改），打开发布气泡时计算
     publishBusy: false,
     publishedInfo: null,
+    publishMatch: null,
     // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
     // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
     previewBusy: false,
@@ -669,6 +672,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       localRootHandle = null;
       setMany({ localDirLabel: "", keyError: "" });
     }
+    refreshPublishState(); // 发布态 + 与当前代码一致性（顶栏发布按钮 / 气泡用）
     invalidateAgent(); // 切换应用后重建 Agent（工具根目录随应用变化）
   }
 
@@ -686,7 +690,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     await applyApp(hit);
     // 刷新备份清单（含每项 current 标记）：变更卡「备份代码」的已备份感知依赖它
     refreshBackups();
-    syncPublishedInfo();
     const latest = [...(hit.sessions || [])].sort(
       (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
     )[0];
@@ -729,6 +732,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       permGrantNeeded: false,
       keyError: "", // 离开本地应用上下文，旧提示随之清除
       publishedInfo: null, // 回到草稿：发布态随应用上下文清空
+      publishMatch: null,
     });
     localRootHandle = null;
     set("localDirLabel", "");
@@ -1707,6 +1711,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     );
   }
 
+  // 计算发布内容与当前代码的一致性（打开发布气泡时调用）：
+  // publishMatch = true（已是当前代码）/ false（有未发布的修改）/ null（未知）
+  async function refreshPublishState() {
+    await syncPublishedInfo();
+    let match = null;
+    if (state.publishedInfo && fs && state.currentAppName !== "") {
+      try {
+        const rootHandle = await backupRootHandle();
+        const meta = await readPublishedMeta();
+        const hash = await currentAppHash(fs, state.currentAppName, rootHandle);
+        match = hash !== "" && meta?.publishedHash === hash;
+      } catch {
+        match = null;
+      }
+    }
+    set("publishMatch", match);
+  }
+
   async function refreshBackups() {
     if (state.currentAppName === "" || !fs) return;
     try {
@@ -1731,8 +1753,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 发布当前应用到首页应用列表（mazmot apps[] 记录打 published 标记；
-  // 首发用 app.json 版本，内容有变化的再次发布 patch +1 写回 app.json）
+  // 发布当前应用到首页应用列表（复制 client/ 到 mazmot-apps/<发布名>/）；
+  // 发布成功同时在备份管理打一条带正式版本号标注的备份（已有同内容备份
+  // 且用户未命名时也补标注，不覆盖用户自定义名称）
   async function publishCurrent() {
     if (state.publishBusy || state.currentAppName === "" || !fs) return null;
     set("publishBusy", true);
@@ -1744,8 +1767,29 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         state.currentAppName,
         rootHandle,
       );
+      try {
+        const backup = await createAppBackup(
+          fs,
+          state.currentAppName,
+          rootHandle,
+        );
+        const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+        const hit = list.find((b) => b.id === backup.id);
+        if (!hit?.label) {
+          await renameAppBackup(
+            fs,
+            state.currentAppName,
+            backup.id,
+            `发布 v${res.version}`,
+          );
+        }
+      } catch (err) {
+        // 备份标注失败不影响发布结果
+        console.warn("[publish] 发布备份标注失败：", err);
+      }
       await syncPublishedInfo();
-      await refreshBackups(); // 发布版本的指纹徽标即刻反映到备份清单
+      await refreshBackups(); // 发布版本的指纹徽标 / 备份标注即刻反映到备份清单
+      set("publishMatch", true);
       return res;
     } catch (err) {
       set("keyError", `发布失败：${err.message}`);
@@ -3151,6 +3195,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     createBackup,
     smartBackup,
     publishCurrent,
+    refreshPublishState,
     deleteBackup,
     renameBackup,
     setNote,

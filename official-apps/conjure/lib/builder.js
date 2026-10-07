@@ -600,10 +600,18 @@ export async function deleteVfsApp(fs, appName) {
 }
 
 /* ---------- 发布到首页应用列表 ----------
- * 生成的应用记录本就写在 mazmot 空间 apps[] 里（mazmot.source = "ai-builder"，
- * 主系统首页列表据此隐藏）。「发布」= 在记录的 mazmot 子对象上打发布标记 +
- * 维护版本信息，首页列表放行带标记的记录即可见可打开（NoneOS 挂载路径直达）。
+ * 「发布」= 把当前应用的 client/ **复制一份**到常规应用命名空间 mazmot-apps/
+ * 下，并登记一条普通虚拟应用记录（mazmot.source = "conjure-publish"，不带
+ * ai-builder 标记）——首页列表天然可见，点开走 NoneOS 挂载路径直接运行。
+ * 发布副本与妙造的工作目录相互独立：删妙造项目不影响已发布副本，在首页删
+ * 副本也不影响妙造项目；本地目录渠道（含跨机器不可用的句柄）同样以复制方
+ * 式发布，副本不再依赖句柄。版本写在 app.json（首发用现值；内容有变化的
+ * 再次发布 patch +1 并写回）；发布状态元数据记在妙造的源登记记录（ai-builder
+ * 标记，首页始终隐藏）上，供发布按钮提示与备份列表挂版本徽标。
  */
+
+// 发布副本落点的常规应用命名空间（与安装 / 分享应用共用）
+const PUBLISH_NAMESPACE = "mazmot-apps";
 
 /**
  * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
@@ -616,53 +624,106 @@ export function bumpPatchVersion(version) {
   return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
 }
 
+// 在发布命名空间里找一个未被登记记录与既有目录占用的名字（demo-app、
+// demo-app-2、demo-app-3 …）；妙造源登记记录自己的名字让给副本（二者命名
+// 空间不同、互不冲突），其余记录名占用时要避开
+async function findFreePublishName(fs, apps, base, exceptRecord) {
+  const root = await fs.init(PUBLISH_NAMESPACE);
+  const taken = new Set(
+    apps.filter((a) => a !== exceptRecord).map((a) => a.name),
+  );
+  let name = base;
+  let i = 2;
+  while (taken.has(name) || (await root.get(name))) {
+    name = `${base}-${i++}`;
+  }
+  return name;
+}
+
 /**
- * 把当前应用发布到主系统首页应用列表（mazmot 空间 apps[] 的登记记录打标）。
+ * 把当前应用发布到首页应用列表：client/ 全量复制到 mazmot-apps/<发布名>/client/，
+ * 登记一条普通虚拟应用记录（mazmot.source = "conjure-publish"）。
  * 版本规则：
  * - 首次发布：app.json 版本原样发布（如 0.1.0）；
- * - 内容与上次发布一致（内容指纹相同）：幂等重发，不 bump、不写盘；
- * - 内容有变化：app.json 的 version patch +1 写回后发布新版本。
- * 记录 mazmot 子对象新增字段：published（true）/ publishedVersion /
- * publishedAt / publishedHash（发布落盘后的内容指纹，8 位 hex——含刚写回的
- * app.json 版本号，发布后立刻打的备份与发布内容一致）/
- * publishedVersions: { [hash8]: version }——备份列表据此给内容一致的备份
- * 挂「已发布 vX.Y.Z」徽标（备份 id 尾部即内容指纹）。
+ * - 内容与上次发布一致且发布副本完好：幂等重发，不 bump、不拷贝；
+ * - 内容有变化：app.json 的 version patch +1 写回后，全量重拷（清空旧 client/
+ *   再写，避免上一版的残留文件）。
+ * 妙造源登记记录（ai-builder 标记）记发布元数据：published / publishedVersion /
+ * publishedAt / publishedHash（发布内容指纹，8 位 hex——含刚写回的 app.json
+ * 版本号，发布后立刻打的备份与发布内容一致）/ publishedVersions:
+ * { [hash8]: version }（备份列表据此给内容一致的备份挂「已发布 vX.Y.Z」徽标，
+ * 备份 id 尾部即指纹）/ publishedName（发布副本目录名，重复发布沿用）。
  * @param {Object} fs 注入的 /nos/fs/main.js 模块
  * @param {Object} mazmotStore getStorage("mazmot") 实例
  * @param {string} appName 应用名
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
- * @returns {Promise<{ version: string, hash: string, bumped: boolean }>}
+ * @returns {Promise<{ version: string, hash: string, bumped: boolean, publishName: string }>}
  */
 export async function publishAppToHome(fs, mazmotStore, appName, rootHandle) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   if (!mazmotStore) throw new Error("存储不可用，无法发布");
-  if (!(await listAppFiles(fs, clean, rootHandle)).length) {
-    throw new Error("应用目录为空，请先生成应用文件");
-  }
+  // 复制清单用 currentAppFiles（与智能备份同源）：只收集 client/ 下的文本文件
+  // 并返回 { path, text }。不能用 listAppFiles——本地渠道它按项目根 flat() 枚举，
+  // backup/ 等非 client 文件的路径剥不掉 client/ 前缀会原样返回，逐个 readAppFile
+  // 读不到返回 null，dest.write(null) 即报
+  // 「Failed to execute 'write' ... not of type 'WriteParams'」（实测踩坑）
+  const files = await currentAppFiles(fs, clean, rootHandle);
+  if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
 
   const apps = (await mazmotStore.getItem("apps")) || [];
-  const record = apps.find(
+  const sourceRecord = apps.find(
     (a) => a.mazmot?.source === "ai-builder" && a.name === clean,
   );
+  const published =
+    sourceRecord?.mazmot?.published && sourceRecord.mazmot.publishedName
+      ? sourceRecord.mazmot
+      : null;
 
-  const rawJson = await readAppFile(fs, clean, "app.json", rootHandle);
+  // 上次发布副本的记录与副本内 app.json（判定「副本仍然完好」用）
+  let homeRecord = null;
+  let destJson = null;
+  if (published) {
+    homeRecord =
+      apps.find(
+        (a) =>
+          a.namespace === PUBLISH_NAMESPACE &&
+          a.name === published.publishedName &&
+          a.mazmot?.source === "conjure-publish",
+      ) || null;
+    try {
+      const publishRoot = await fs.init(PUBLISH_NAMESPACE);
+      const destJsonFile = await publishRoot.get(
+        `${published.publishedName}/client/app.json`,
+      );
+      if (destJsonFile && destJsonFile.kind === "file") {
+        destJson = JSON.parse(await destJsonFile.text());
+      }
+    } catch {
+      destJson = null;
+    }
+  }
+
   let meta = {};
   try {
-    meta = JSON.parse(rawJson) || {};
+    meta = JSON.parse(files.find((f) => f.path === "app.json")?.text || "") || {};
   } catch {
     /* app.json 损坏按空对象处理，发布用默认值兜底 */
   }
   const hashBefore = await currentAppHash(fs, clean, rootHandle);
-  // 内容与上次发布一致 → 幂等重发；否则首次用现值、有变化 patch +1 写回
   const unchanged =
-    !!record?.mazmot?.published && record.mazmot.publishedHash === hashBefore;
-  const version = unchanged
-    ? record.mazmot.publishedVersion
-    : record?.mazmot?.published
+    !!published &&
+    published.publishedHash === hashBefore &&
+    !!homeRecord &&
+    destJson?.version === published.publishedVersion;
+
+  let version;
+  if (unchanged) {
+    version = published.publishedVersion;
+  } else {
+    version = published
       ? bumpPatchVersion(meta.version)
       : String(meta.version || "0.1.0");
-  if (!unchanged) {
     meta.version = version;
     await writeAppFile(
       fs,
@@ -673,35 +734,73 @@ export async function publishAppToHome(fs, mazmotStore, appName, rootHandle) {
     );
   }
 
-  // 指纹取发布落盘后的内容（含刚写回的 app.json 版本号）：发布后立刻打的
+  // 指纹取发布落盘后的源内容（含刚写回的 app.json 版本号）：发布后立刻打的
   // 备份与发布内容一致，备份列表的版本徽标能对上
   const hash = unchanged
     ? hashBefore
     : (await currentAppHash(fs, clean, rootHandle)) || hashBefore;
 
+  // 复制副本：沿用上次发布名（首页记录与地址保持稳定），首次发布找空闲名；
+  // 清空旧 client/ 再全量写入，避免上一版的残留文件
+  const publishName =
+    published?.publishedName ||
+    (await findFreePublishName(fs, apps, clean, sourceRecord));
+  if (!unchanged) {
+    // 拷贝清单在版本写回之后重新收集（含刚写回的新版 app.json）——
+    // 复用函数开头的 files 会把旧版本号拷进副本（实测踩坑）
+    const copyFiles = await currentAppFiles(fs, clean, rootHandle);
+    const publishRoot = await fs.init(PUBLISH_NAMESPACE);
+    const destDir = await publishRoot.get(publishName, { create: "dir" });
+    const oldClient = await destDir.get("client");
+    if (oldClient && oldClient.kind === "dir") await oldClient.remove();
+    for (const f of copyFiles) {
+      const dest = await destDir.get(`client/${f.path}`, { create: "file" });
+      await dest.write(f.text);
+    }
+  }
+
+  // 源登记记录：记发布元数据（始终带 ai-builder 标记、首页隐藏）
   const base =
-    record ||
+    sourceRecord ||
     buildAppRecord({
       appName: clean,
       displayName: meta.displayName,
       icon: meta.icon,
     });
-  base.desc = String(meta.description || base.desc || meta.displayName || clean);
-  base.icon = meta.icon || base.icon || "📦";
   base.mazmot = {
     ...base.mazmot,
     source: "ai-builder",
     published: true,
     publishedVersion: version,
-    publishedAt: unchanged ? record.mazmot.publishedAt : Date.now(),
+    publishedAt: unchanged ? published.publishedAt : Date.now(),
     publishedHash: hash,
     publishedVersions: {
       ...(base.mazmot?.publishedVersions || {}),
       [hash]: version,
     },
+    publishedName: publishName,
   };
   await registerAppRecord(mazmotStore, base);
-  return { version, hash, bumped: !unchanged };
+
+  // 发布副本记录：普通虚拟应用（无 ai-builder 标记，首页列表天然可见）
+  const homeRec =
+    homeRecord || {
+      name: publishName,
+      source: "virtual",
+      namespace: PUBLISH_NAMESPACE,
+      dirName: `${PUBLISH_NAMESPACE}/${publishName}`,
+      virtualDirName: publishName,
+      handle: null,
+      createdAt: Date.now(),
+    };
+  homeRec.desc = String(
+    meta.description || homeRec.desc || meta.displayName || publishName,
+  );
+  homeRec.icon = meta.icon || homeRec.icon || "📦";
+  homeRec.mazmot = { source: "conjure-publish", project: clean };
+  await registerAppRecord(mazmotStore, homeRec);
+
+  return { version, hash, bumped: !unchanged, publishName };
 }
 
 /* ---------- 数据备份管理 ----------
