@@ -1,0 +1,189 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      height: 100%;
+      overflow-y: auto;
+      box-sizing: border-box;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap {
+      min-height: 100%;
+      box-sizing: border-box;
+      padding: 2.5rem 1.25rem 3rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .hero { text-align: center; }
+    .emoji { font-size: 3.5rem; line-height: 1; }
+    h1 {
+      margin: 0.5rem 0 0.25rem;
+      font-size: 2rem;
+      letter-spacing: -0.02em;
+      color: var(--md-sys-color-primary);
+    }
+    .sub { margin: 0; font-size: 0.9rem; color: var(--md-sys-color-on-surface-variant); }
+    st-card.card { width: min(100%, 30rem); }
+    .body { display: flex; flex-direction: column; gap: 1.1rem; padding: 0.4rem; }
+    .greeting {
+      font-size: 1.6rem;
+      font-weight: 600;
+      text-align: center;
+      word-break: break-word;
+    }
+    .flag { margin-right: 0.4rem; }
+    .hint {
+      text-align: center;
+      font-size: 0.85rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.75rem;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
+    .langs { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; max-width: 34rem; }
+    .chip {
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.85rem;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      transition: background 0.2s, color 0.2s;
+    }
+    .chip.is-active {
+      border-color: transparent;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    footer { font-size: 0.75rem; color: var(--md-sys-color-on-surface-variant); }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/card/card.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+
+  <div class="wrap">
+    <div class="hero">
+      <div class="emoji">{{emoji}}</div>
+      <h1>Hello, World!</h1>
+      <p class="sub">ofa.js + senti-ui · 无构建步骤的网页应用示例</p>
+    </div>
+
+    <st-card class="card" variant="outlined">
+      <div class="body">
+        <st-input
+          placeholder="输入你的名字，问候语会跟着变…"
+          on:input="onNameInput($event)"
+        ></st-input>
+
+        <div class="greeting"><span class="flag">{{flag}}</span>{{greeting}}</div>
+
+        <o-if :value="hint !== ''">
+          <div class="hint">{{hint}}</div>
+        </o-if>
+
+        <div class="row">
+          <st-button on:click="nextLang()">🎲 换个语言</st-button>
+          <st-button variant="outlined" color="secondary" on:click="sayHello()">👋 打个招呼</st-button>
+        </div>
+      </div>
+    </st-card>
+
+    <div class="langs">
+      <o-fill :value="langs" fill-key="id">
+        <span
+          class="chip"
+          class:is-active="$data.id === $host.langId"
+          on:click="$host.pickLang($data.id)"
+        >{{$data.flag}} {{$data.word}}</span>
+      </o-fill>
+    </div>
+
+    <footer>已打招呼 {{bumpTimes}} 次 · 点上面的气泡可以切换问候语言</footer>
+  </div>
+
+  <script>
+    const LANGS = [
+      { id: "en", flag: "🇬🇧", word: "Hello" },
+      { id: "zh", flag: "🇨🇳", word: "你好" },
+      { id: "ja", flag: "🇯🇵", word: "こんにちは" },
+      { id: "vi", flag: "🇻🇳", word: "Xin chào" },
+    ];
+
+    const EMOJIS = ["👋", "🎉", "✨", "🚀", "🌈", "🍀", "😄"];
+
+    let hintTimer = null;
+
+    export default async () => {
+      return {
+        data: {
+          langs: LANGS,
+          langId: "en",
+          flag: LANGS[0].flag,
+          word: LANGS[0].word,
+          name: "",
+          greeting: "Hello, World!",
+          emoji: "👋",
+          bumpTimes: 0,
+          hint: "",
+        },
+        ready() {
+          // 定位点：ready 是否执行（供 preview 调试确认生命周期生效）
+          window.__helloReady = true;
+          console.log("[hello] ready:", this.langs.length, "种问候语已就绪");
+        },
+        proto: {
+          /** 根据当前语言与姓名重算问候语 */
+          refresh() {
+            const lang = this.langs.find((item) => item.id === this.langId) || this.langs[0];
+            this.flag = lang.flag;
+            this.word = lang.word;
+            const who = this.name.trim() === "" ? "World" : this.name.trim();
+            this.greeting = lang.word + ", " + who + "!";
+          },
+          showHint(text) {
+            this.hint = text;
+            if (hintTimer) clearTimeout(hintTimer);
+            hintTimer = setTimeout(() => {
+              this.hint = "";
+            }, 2400);
+          },
+          onNameInput(event) {
+            this.name = (event && event.target && event.target.value) || "";
+            this.refresh();
+            console.log("[hello] name ->", this.name);
+          },
+          pickLang(id) {
+            if (id === this.langId) return;
+            this.langId = id;
+            this.refresh();
+            this.showHint("已切换为「" + this.word + "」");
+            console.log("[hello] lang ->", id);
+          },
+          nextLang() {
+            const rest = this.langs.filter((item) => item.id !== this.langId);
+            const picked = rest[Math.floor(Math.random() * rest.length)] || this.langs[0];
+            this.langId = picked.id;
+            this.refresh();
+            this.showHint("已切换为「" + this.word + "」");
+            console.log("[hello] lang ->", picked.id);
+          },
+          sayHello() {
+            this.bumpTimes += 1;
+            const rest = EMOJIS.filter((item) => item !== this.emoji);
+            this.emoji = rest[Math.floor(Math.random() * rest.length)] || "👋";
+            this.showHint(this.greeting + " 很高兴见到你 🎉");
+            console.log("[hello] hello x", this.bumpTimes);
+          },
+        },
+      };
+    };
+  </script>
+</template>
