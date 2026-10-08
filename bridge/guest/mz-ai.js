@@ -70,6 +70,7 @@ class BridgeAssistant {
               reasoning += d.deltaReasoning || "";
               onStream({
                 content,
+                reasoningContent: reasoning,
                 delta: d.delta || "",
                 deltaReasoning: d.deltaReasoning || "",
                 done: false,
@@ -78,8 +79,10 @@ class BridgeAssistant {
           : null,
       },
     );
-    // 流式回调最后一帧补 done（与真模块 onStream 负载一致）
-    if (onStream) onStream({ content, delta: "", deltaReasoning: "", done: true });
+    // 流式回调最后一帧补 done（与真模块 onStream 负载一致：每帧 deltaReasoning
+    // 是增量，content / reasoningContent 是累计值）
+    if (onStream)
+      onStream({ content, reasoningContent: reasoning, delta: "", deltaReasoning: "", done: true });
     return {
       content: res?.content ?? content,
       reasoningContent: res?.reasoningContent ?? reasoning,

@@ -50,9 +50,13 @@
                   c.hasOnChunk &&
                   deltas.length === 3 &&
                   deltas[0].content === "你" &&
+                  deltas[0].deltaReasoning === "想" &&
                   deltas[1].content === "你好" &&
-                  deltas[1].deltaReasoning === "想" &&
+                  deltas[1].deltaReasoning === "" && // 每帧 deltaReasoning 是增量（与真模块一致）
+                  deltas[1].reasoningContent === "想" && // 每帧同步带累计 reasoning
                   last.done === true &&
+                  last.content === "你好" &&
+                  last.reasoningContent === "想" &&
                   res.content === "你好" &&
                   res.reasoningContent === "想" &&
                   res.model === "fake-1",
@@ -61,7 +65,13 @@
                     cap: c.cap,
                     argsOk: c.args.messages?.[0]?.content === "hi" && c.args.thinking === true,
                     noModelLeak: !("model" in c.args),
-                    streamFrames: deltas.length,
+                    streamFrames: deltas.map((d) => ({
+                      content: d.content,
+                      reasoningContent: d.reasoningContent,
+                      delta: d.delta,
+                      deltaReasoning: d.deltaReasoning,
+                      done: d.done,
+                    })),
                     done: last.done,
                     res,
                   },
@@ -237,15 +247,17 @@
             globalThis.__MZ_BRIDGE__ = {
               call: (cap, args, opts = {}) =>
                 new Promise((resolve, reject) => {
-                  // 模拟主容器侧 signal 直通：abort 时按真模块语义抛 AbortError
-                  if (opts.signal) {
-                    opts.signal.addEventListener("abort", () => {
-                      aborted.push(true);
-                      const err = new Error("The operation was aborted.");
-                      err.name = "AbortError";
-                      reject(err);
-                    });
-                  }
+                  // 模拟主容器侧 signal 直通：abort 时按真模块语义抛 AbortError。
+                  // 进桥时 signal 已 abort 也必须立即拒绝（真 fetch 语义）——
+                  // 只挂监听的话，先 abort 后进桥会永不 settle 把整轮测试卡死。
+                  const rejectAbort = () => {
+                    aborted.push(true);
+                    const err = new Error("The operation was aborted.");
+                    err.name = "AbortError";
+                    reject(err);
+                  };
+                  if (opts.signal?.aborted) return rejectAbort();
+                  opts.signal?.addEventListener("abort", rejectAbort);
                 }),
             };
             try {
