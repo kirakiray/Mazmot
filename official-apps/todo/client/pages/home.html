@@ -2,7 +2,10 @@
   <style>
     :host {
       display: block;
-      min-height: 100vh;
+      /* 必须是滚动容器：o-router fix-body 给自身 shadow 写死了 overflow:hidden，
+         若这里不自己滚动，长列表超出视口的部分会被裁掉且无法滚到 */
+      height: 100%;
+      overflow-y: auto;
       box-sizing: border-box;
       padding: 28px 16px 56px;
       background: var(--md-sys-color-surface);
@@ -109,6 +112,8 @@
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
       const store = getStorage(STORE_ID);
+      window.__todoInitCount = (window.__todoInitCount || 0) + 1;
+      console.log("[init] 待办页初始化 #" + window.__todoInitCount, "store=", STORE_ID);
 
       return {
         data: {
@@ -152,16 +157,18 @@
                   done: !!t.done,
                 }));
               }
+              console.log("[storage] 已读取待办，共", this.todos.length, "项");
             } catch (err) {
-              console.warn("读取待办失败：", err);
+              console.error("[storage] 读取待办失败", err);
             }
           },
 
           async persistTodos() {
             try {
               await store.setItem(STORE_KEY, JSON.parse(JSON.stringify(this.todos)));
+              console.log("[storage] 已保存待办，共", this.todos.length, "项");
             } catch (err) {
-              console.warn("保存待办失败：", err);
+              console.error("[storage] 保存待办失败", err);
             }
           },
 
@@ -171,6 +178,7 @@
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
             this.todos = [{ id, text, done: false }, ...this.todos];
             this.draft = "";
+            console.log("[todo] 新增", id, text);
             this.persistTodos();
           },
 
@@ -178,20 +186,26 @@
             this.todos = this.todos.map((t) =>
               t.id === id ? { ...t, done: !t.done } : t
             );
+            const cur = this.todos.find((t) => t.id === id);
+            console.log("[todo] 切换完成态", id, "→", cur ? cur.done : "已不存在");
             this.persistTodos();
           },
 
           deleteTodo(id) {
             this.todos = this.todos.filter((t) => t.id !== id);
+            console.log("[todo] 删除", id);
             this.persistTodos();
           },
 
           clearDone() {
+            const removed = this.doneCount;
             this.todos = this.todos.filter((t) => !t.done);
+            console.log("[todo] 清除已完成，移除", removed, "项");
             this.persistTodos();
           },
 
           setView(value) {
+            console.log("[todo] 切换筛选", value);
             this.view = value;
             this.emptyText =
               value === "done"

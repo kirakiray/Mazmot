@@ -277,6 +277,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 用户设定的上下文窗口大小（token），页面 select 切换时经 setContextWindow 注入；
   // 0 = 未设置（不做自动压缩）。仅用于发送前的水位判断，非响应式
   let contextWindow = 0;
+  // 单回合工具循环步数上限（createAgent 的 maxSteps），页面「单轮步数」菜单
+  // 切换时经 setMaxSteps 注入；默认 200（mz/ai 默认 80 对生成应用的完整
+  // 写文件→预览→实测→修复流程偏紧）。非响应式
+  let maxSteps = 200;
   // 本回合文件变更（[{path, op, prevText, nextText}]，同文件多次写保留
   // 「首改前 + 末改后」）：回合收尾统一算统计与行级内容，冻结进末条 AI 消息
   let turnChanges = [];
@@ -505,6 +509,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       ...(model ? { model } : {}),
       thinking: !!effort && effort !== "off",
       ...(effort && effort !== "off" ? { reasoningEffort: effort } : {}),
+      // 单回合步数上限（用户可在「单轮步数」菜单调整，见 setMaxSteps）
+      maxSteps,
       tools: isFresh
         ? toolList.filter((t) => t.name !== "create_app")
         : toolList,
@@ -1172,6 +1178,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 设定上下文窗口（token），发送前的自动压缩判断用
   function setContextWindow(n) {
     contextWindow = Number(n) || 0;
+  }
+
+  // 设定单回合步数上限（createAgent 的 maxSteps）；agent 按会话缓存，
+  // 这里置失效让下回合重建时带上新值（对话记忆在 checkpointer，不丢）
+  function setMaxSteps(n) {
+    const v = Math.round(Number(n) || 0);
+    if (v < 20 || v > 9999 || v === maxSteps) return;
+    maxSteps = v;
+    invalidateAgent();
   }
 
   /* ---------- 对话 API Key 切换 ---------- */
@@ -3274,6 +3289,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     forkSession,
     compress,
     setContextWindow,
+    setMaxSteps,
     selectApiKey,
     selectModel,
     selectMode,

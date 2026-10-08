@@ -1849,6 +1849,7 @@
                   agentCalls.push({
                     systemPrompt: opts.systemPrompt || "",
                     tools: (opts.tools || []).map((t) => t.name),
+                    maxSteps: opts.maxSteps,
                   });
                   return { chat };
                 },
@@ -1891,6 +1892,7 @@
                 ),
                 freshPrompt: call1.systemPrompt.includes("空项目"),
                 createAppFiltered: !call1.tools.includes("create_app"),
+                maxStepsDefault: call1.maxSteps === 200, // 单轮步数默认 200
                 viewFollowsProject: store.state.messages.length > 0, // 用户消息已进新会话视图
               };
 
@@ -1917,6 +1919,8 @@
                   "# 项目规范\n- 本项目禁止使用 localStorage",
               });
               const nAgents = agentCalls.length;
+              // 调整单轮步数上限：下回合重建的 Agent 应带上新值
+              store.setMaxSteps(400);
               await store.send("继续");
               const reg2 = (await fakeStore.getItem("apps-registry")) || [];
               const hit2 = reg2.find((a) => a.name === appName);
@@ -1932,6 +1936,7 @@
                   !call2.systemPrompt.includes("空项目") &&
                   call2.systemPrompt.includes("已存在的应用"),
                 turn2HasCreateApp: call2.tools.includes("create_app"),
+                turn2MaxStepsApplied: call2.maxSteps === 400, // setMaxSteps 下回合生效
                 turn2RulesAutoLoaded:
                   call2.systemPrompt.includes("已自动加载，必须遵守") &&
                   call2.systemPrompt.includes("禁止使用 localStorage"),
