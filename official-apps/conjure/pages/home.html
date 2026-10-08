@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=7" />
+  <link rel="stylesheet" href="./home.css?v=8" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -390,22 +390,53 @@
                 <span class="msg-ts" attr:data-role="$data.role">{{ $host.msgTs($data) }}</span>
               </o-if>
               <o-if :value="$data.role === 'user'">
-                <div class="user-bubble">
-                  <!-- 文本包一层单行 span：pre-wrap 在 span 上（保留用户手打
-                       换行），气泡自身的模板缩进空隙按普通空白折叠，不再被
-                       pre-wrap 渲染成撑高气泡的空行 -->
-                  <span class="user-text"><o-if :value="$data.content !== ''">{{$data.content}}</o-if></span>
-                  <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
-                  <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
-                    <o-fill :value="$host.msgImages($data)">
-                      <img
-                        class="user-img"
-                        attr:src="$data"
-                        on:click="$host.openImage($data)"
-                      />
-                    </o-fill>
+                <!-- 编辑态：末条用户消息就地改写后重发（仅停止后可进入） -->
+                <o-if :value="$host.editingMsgId === $data.id">
+                  <div class="user-edit">
+                    <!-- o-fill item 作用域内 sync 解析不到页面级 data：手动绑定
+                         （:value 单向 + input 表达式回写 $host.editDraft） -->
+                    <textarea
+                      class="edit-area"
+                      rows="3"
+                      :value="$host.editDraft"
+                      on:input="$host.editDraft = $event.target.value"
+                    ></textarea>
+                    <div class="edit-actions">
+                      <button class="edit-btn" on:click="$host.cancelMsgEdit()">取消</button>
+                      <button class="edit-btn primary" on:click="$host.saveMsgEdit()">重新发送</button>
+                    </div>
                   </div>
-                </div>
+                </o-if>
+                <o-if :value="$host.editingMsgId !== $data.id">
+                  <div class="user-row">
+                    <div class="user-bubble">
+                      <!-- 文本包一层单行 span：pre-wrap 在 span 上（保留用户手打
+                           换行），气泡自身的模板缩进空隙按普通空白折叠，不再被
+                           pre-wrap 渲染成撑高气泡的空行 -->
+                      <span class="user-text"><o-if :value="$data.content !== ''">{{$data.content}}</o-if></span>
+                      <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
+                      <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
+                        <o-fill :value="$host.msgImages($data)">
+                          <img
+                            class="user-img"
+                            attr:src="$data"
+                            on:click="$host.openImage($data)"
+                          />
+                        </o-fill>
+                      </div>
+                    </div>
+                    <!-- 编辑并重发：仅当前会话末条用户消息、且停止/完成后显示 -->
+                    <o-if :value="$host.canEditMsg($data)">
+                      <button
+                        class="msg-edit-btn"
+                        attr:title="'编辑并重发'"
+                        on:click="$host.startMsgEdit($data.id)"
+                      >
+                        <n-icon icon="mdi:pencil-outline"></n-icon>
+                      </button>
+                    </o-if>
+                  </div>
+                </o-if>
               </o-if>
 
               <!-- 视觉交互表单卡片（show-form 包的组件，ready 预载） -->
@@ -1877,6 +1908,8 @@
           hiddenOldCount: 0,
           turningKey: "", // 进行中回合的 chatKey（仓库镜像）
           turnInView: false, // 当前视图就是正在生成的会话（状态行/停止按钮只在此时显示）
+          editingMsgId: 0, // 就地编辑中的末条用户消息 id（0 = 无）；编辑仅限停止后
+          editDraft: "", // 编辑态草稿文本
           input: "",
           pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
@@ -2158,6 +2191,13 @@
           input() {
             this.autoGrow();
           },
+          // 生成开始 / 会话或项目切换：收起编辑态（编辑仅限停止后的末条消息）
+          sending() {
+            if (this.sending && this.editingMsgId) this.cancelMsgEdit();
+          },
+          currentSessionId() {
+            if (this.editingMsgId) this.cancelMsgEdit();
+          },
           // 标签页标题跟随项目切换
           currentAppName() {
             this.syncDocTitle();
@@ -2243,6 +2283,9 @@
           // ---- 仓库事件 → 页面消息列表 ----
 
           applyMessageEvent(evt) {
+            const op = evt?.op;
+            // 会话整体切换（replace）：编辑态指向的消息可能已不存在，收起
+            if (op === "replace" && this.editingMsgId) this.cancelMsgEdit();
             // 窗口模块统一处理：全量（_win.all）与渲染窗口（this.messages）
             // 同步更新；push 只加尾不丢头，replace 重置为最近一段
             this._win.apply(evt);
@@ -3128,6 +3171,54 @@
                 : `chat:${this.currentAppName}:${this.currentSessionId}`;
             this.turnInView =
               !!this.sending && (this.turningKey || "") === vk;
+          },
+
+          // ---- 编辑并重发末条用户消息 ----
+
+          // 仅当前会话最后一条用户消息、且停止/完成后可编辑（UI 与仓库双层守卫）
+          canEditMsg(m) {
+            if (this.sending || m.role !== "user") return false;
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              if (all[i].role === "user") return all[i].id === m.id;
+            }
+            return false;
+          },
+
+          startMsgEdit(id) {
+            if (this.sending || this.editingMsgId) return;
+            const m = this._win.all.find((x) => x.id === id);
+            if (!m || m.role !== "user") return;
+            this.editDraft = m.content || "";
+            this.editingMsgId = id;
+            requestAnimationFrame(() => {
+              const area = this.shadow.$(".edit-area")?.ele;
+              if (area) {
+                area.focus();
+                area.selectionStart = area.selectionEnd = area.value.length;
+              }
+            });
+          },
+
+          cancelMsgEdit() {
+            this.editingMsgId = 0;
+            this.editDraft = "";
+          },
+
+          // 保存编辑：撤销末回合并以新内容重发（仓库 resendLastUser 负责
+          // 删除其后消息 + 记忆截断 + 重新驱动；图片附件保留不可改）
+          async saveMsgEdit() {
+            if (this.editingMsgId === 0) return;
+            const text = String(this.editDraft ?? "").trim();
+            const target = this._win.all.find((x) => x.id === this.editingMsgId);
+            const hasImgs =
+              target && Array.isArray(target.images) && target.images.length > 0;
+            if (!text && !hasImgs) return;
+            this.editingMsgId = 0;
+            this.editDraft = "";
+            this.atBottom = true;
+            await store.resendLastUser(text);
+            this.followScroll(true);
           },
 
           // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖。

@@ -2987,13 +2987,112 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
     // wire 侧多模态组装：有图片时 content 为 OpenAI 数组（text 部分仅在有文本
     // 时包含），无图片保持纯字符串（与历史消息一致）
-    const wireContent = imgs.length
+    const wireContent = buildWireContent(body, imgs);
+    await driveTurn(threadId, body, [{ role: "user", content: wireContent }]);
+  }
+
+  // OpenAI wire 消息组装（send 与编辑重发共用）：图片随 content 数组携带
+  const buildWireContent = (body, imgs) =>
+    imgs.length
       ? [
           ...(body ? [{ type: "text", text: body }] : []),
           ...imgs.map((url) => ({ type: "image_url", image_url: { url } })),
         ]
       : body;
-    await driveTurn(threadId, body, [{ role: "user", content: wireContent }]);
+
+  /**
+   * 编辑并重发末条用户消息（仅停止/完成后可调用，UI 已限定入口）。
+   * 撤销最后一个回合：删除末条 user 之后的所有消息（AI 回复 / 工具记录）、
+   * user 内容就地更新、Agent 记忆截断到该回合之前，再以新内容重新驱动回合。
+   * 记忆截断按 wire 末条 user 定位而非 chat 侧序号——上下文压缩会改写
+   * thread 头部的回合结构，序号对应不可靠；wire 末条 user 恒为最近一次发送。
+   * 图片不可编辑（保留原消息的附件），仅文本可改。
+   */
+  async function resendLastUser(text) {
+    const body = String(text ?? "").trim();
+    if (state.sending) return { ok: false, reason: "sending" };
+    const key = viewKey();
+    const list = bucketFor(key);
+    let userIdx = -1;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].role === "user") {
+        userIdx = i;
+        break;
+      }
+    }
+    if (userIdx < 0) return { ok: false, reason: "no-user" };
+    const userMsg = list[userIdx];
+    const imgs = Array.isArray(userMsg.images) ? userMsg.images : [];
+    if (!body && !imgs.length) return { ok: false, reason: "empty" };
+    if (!fs) {
+      set("keyError", state.coreError);
+      return { ok: false, reason: "no-fs" };
+    }
+
+    // 撤销该轮：末条 user 之后全部删除，user 就地更新（逐条 splice 事件，
+    // 页面窗口按 fill-key 增量移除）
+    const removed = list.splice(userIdx + 1);
+    for (const m of removed) msgEvent({ op: "splice", id: m.id });
+    userMsg.content = body;
+    patchMessage(userMsg.id, { content: body });
+    scheduleSave(key);
+
+    // Agent 记忆回退：截掉 wire 末条 user 起的最后一个回合（停止留下的
+    // 悬空 tool_calls 恰好整段在删除范围内）
+    if (selfStore) {
+      const threadKey = `thread:${key.slice("chat:".length)}`;
+      try {
+        const wire = (await selfStore.getItem(threadKey)) || [];
+        let cut = -1;
+        for (let i = wire.length - 1; i >= 0; i--) {
+          if (wire[i]?.role === "user") {
+            cut = i;
+            break;
+          }
+        }
+        if (cut > -1) await selfStore.setItem(threadKey, wire.slice(0, cut));
+      } catch (err) {
+        console.warn("[builder] 重发前记忆截断失败：", err);
+      }
+    }
+
+    // 以下与 send 同构：建回合 → 自动压缩检查 → 驱动
+    setTurnKey(key);
+    turnStartAt = Date.now();
+    markBusy(key, true);
+    setMany({ keyError: "", turnStartTs: turnStartAt });
+    if (state.autoErrors.length) invalidateAgent();
+    // 旧回合的回滚通知已随撤销失效，不带入重发回合
+    if (pendingRollback && pendingRollback.appName === state.currentAppName) {
+      pendingRollback = null;
+    }
+    try {
+      await ensureAgent();
+    } catch {
+      setTurnKey(null);
+      turnStartAt = 0;
+      markBusy(null);
+      setMany({
+        keyError: "还没有可用的 API Key，请先在「AI 密钥管理器」应用中保存一个。",
+        turnStartTs: 0,
+      });
+      return { ok: false, reason: "no-key" };
+    }
+    set("sending", true);
+    try {
+      const info = contextInfo(bucketFor(turnKey));
+      const estimate = info.used + Math.ceil((body.length || 0) / 2) + 64;
+      if (contextWindow > 0 && info.used > 0 && estimate >= contextWindow) {
+        await compressThread(turnKey);
+      }
+    } catch (err) {
+      console.warn("自动压缩上下文失败：", err);
+    }
+    const threadId = key.slice("chat:".length);
+    await driveTurn(threadId, body, [
+      { role: "user", content: buildWireContent(body, imgs) },
+    ]);
+    return { ok: true };
   }
 
   // 驱动一轮 agent 对话循环：流式转发、错误入气泡、收尾（取消挂起表单、
@@ -3466,6 +3565,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 事件
     init,
     send,
+    resendLastUser,
     stop,
     reloadApps,
     selectApp,
