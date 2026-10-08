@@ -2404,5 +2404,207 @@
         </script>
       </template>
     </sb-test>
+
+    <sb-test name="预览能力桥 broker - ai.chat 流式 / ai.models / 未知能力拒绝">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const capStore = createVirtualStorage({ "apps-registry": [] });
+              const chatCalls = [];
+              const fakeAssistant = {
+                providerName: "Fake",
+                chat: async (opts) => {
+                  chatCalls.push(opts);
+                  opts.onStream?.({ delta: "你", deltaReasoning: "想" });
+                  opts.onStream?.({ delta: "好", deltaReasoning: "" });
+                  return {
+                    content: "你好",
+                    reasoningContent: "想",
+                    model: "fake-1",
+                    usage: { total_tokens: 5 },
+                  };
+                },
+                getModels: async () => ["m1", "m2"],
+              };
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => fakeAssistant,
+                onApiKeysChange: () => {},
+              };
+              const capHooks = {};
+              const previewFake = {
+                setPreviewHooks: (h) => Object.assign(capHooks, h),
+                watchPreviewAgent: () => {},
+              };
+              const store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: capStore,
+                load: async (path) => {
+                  const p = String(path);
+                  if (p.includes("/mz/ai/chain/main.js")) return { createAgent: () => ({ chat: async () => ({ content: "" }) }) };
+                  if (p.includes("remote-preview")) return previewFake;
+                  return aiFake;
+                },
+              });
+              await store.init({});
+              await new Promise((r) => setTimeout(r, 30)); // setPreviewHooks 为异步接线
+
+              const chunks = [];
+              const chatRes = await capHooks.onCapRequest({
+                cap: "ai.chat",
+                args: { messages: [{ role: "user", content: "hi" }], thinking: true },
+                onChunk: (c) => chunks.push(c),
+                signal: new AbortController().signal,
+              });
+              const chatOpts = chatCalls[0] || {};
+              const modelsRes = await capHooks.onCapRequest({
+                cap: "ai.models",
+                args: {},
+                onChunk: () => {},
+                signal: new AbortController().signal,
+              });
+              let unknownErr = "";
+              try {
+                await capHooks.onCapRequest({
+                  cap: "foo.bar",
+                  args: {},
+                  onChunk: () => {},
+                  signal: new AbortController().signal,
+                });
+              } catch (e) {
+                unknownErr = e.message;
+              }
+
+              const checks = {
+                hookWired: typeof capHooks.onCapRequest === "function",
+                chatStreams: chunks.length === 2 && chunks[0].delta === "你" && chunks[1].deltaReasoning === "想",
+                chatArgsOk: chatOpts.messages?.[0]?.content === "hi" && chatOpts.thinking === true,
+                chatNoModel: !("model" in chatOpts), // 模型不开放 guest 指定，pickAssistant 无选中时不传
+                chatResOk: chatRes.content === "你好" && chatRes.reasoningContent === "想" && chatRes.model === "fake-1",
+                modelsOk: modelsRes.models?.join() === "m1,m2",
+                unknownRejected: unknownErr.includes("未知能力"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, chunks, chatRes },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="预览能力桥 broker - net.fetch 截断 / fetchText / searchWeb">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const capStore2 = createVirtualStorage({ "apps-registry": [] });
+              const netCalls = [];
+              const netFake = {
+                fetch: async (url, init) => {
+                  netCalls.push({ kind: "fetch", url, init });
+                  const big = "x".repeat(500000);
+                  return {
+                    url,
+                    status: 200,
+                    ok: true,
+                    truncated: false,
+                    provider: "FakeNet",
+                    headers: { get: () => "text/html" },
+                    text: async () => big,
+                  };
+                },
+                fetchText: async (url, opts) => {
+                  netCalls.push({ kind: "fetchText", url, opts });
+                  return { url, status: 200, contentType: "text/html", text: "正文", truncated: false, provider: "FakeNet" };
+                },
+                searchWeb: async (query, opts) => {
+                  netCalls.push({ kind: "searchWeb", query, opts });
+                  return { query, engine: "duckduckgo", provider: "FakeNet", results: [{ title: "t", url: "u", content: "c" }] };
+                },
+              };
+              const aiFake2 = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const capHooks2 = {};
+              const previewFake2 = {
+                setPreviewHooks: (h) => Object.assign(capHooks2, h),
+                watchPreviewAgent: () => {},
+              };
+              const store2 = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: capStore2,
+                load: async (path) => {
+                  const p = String(path);
+                  if (p.includes("/mz/ai/chain/main.js")) return { createAgent: () => ({ chat: async () => ({ content: "" }) }) };
+                  if (p.includes("remote-preview")) return previewFake2;
+                  if (p.includes("/mz/net/main.js")) return netFake;
+                  return aiFake2;
+                },
+              });
+              await store2.init({});
+              await new Promise((r) => setTimeout(r, 30));
+
+              const signal2 = new AbortController().signal;
+              const fetched = await capHooks2.onCapRequest({
+                cap: "net.fetch",
+                args: { url: "https://x.example/big" },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const textOut = await capHooks2.onCapRequest({
+                cap: "net.fetchText",
+                args: { url: "https://x.example/p", raw: true, noCache: true },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const searchOut = await capHooks2.onCapRequest({
+                cap: "net.searchWeb",
+                args: { query: "关键词", engine: "bing" },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const fetchCall = netCalls.find((c) => c.kind === "fetch") || {};
+              const textCall = netCalls.find((c) => c.kind === "fetchText") || {};
+              const searchCall = netCalls.find((c) => c.kind === "searchWeb") || {};
+
+              const checks = {
+                fetchRouted: fetchCall.url === "https://x.example/big",
+                fetchTruncated: fetched.truncated === true && fetched.text.length === 400000,
+                fetchFields: fetched.status === 200 && fetched.ok === true && fetched.provider === "FakeNet" && fetched.contentType === "text/html",
+                fetchTextOpts: textCall.opts?.raw === true && textCall.opts?.noCache === true,
+                fetchTextOut: textOut.text === "正文",
+                searchRouted: searchCall.query === "关键词" && searchCall.opts?.engine === "bing",
+                searchOut: searchOut.results?.length === 1,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, fetched: { truncated: fetched.truncated, len: fetched.text.length }, textOut, searchOut },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

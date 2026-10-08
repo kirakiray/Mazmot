@@ -1530,6 +1530,80 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } catch (_) {}
   }
 
+  /* ---------- 预览能力桥 broker（remote-preview 接线） ----------
+   * 预览域的 /mz/* 替身（bridge/guest/*）经能力桥发来的调用：用主容器当前
+   * 选中的 key/模型（pickAssistant）与联网通道（mz/net）执行，结果序列化后
+   * 回传。key 与通道配置永不过桥；模型/推理档位不开放 guest 指定（统一用
+   * 主界面当前选中项，防止生成代码烧不认识的贵模型）。并发闸与窗口校验在
+   * remote-preview.handleCapEnvelope（本函数只做单次执行）。
+   */
+  async function handleCapRequest({ cap, args, onChunk, signal }) {
+    if (cap === "ai.chat") {
+      const messages = Array.isArray(args.messages) ? args.messages : null;
+      if (!messages?.length) throw new Error("ai.chat：messages 不能为空");
+      if (!aiModules) aiModules = await load("/mz/ai/main.js");
+      const { assistant, model } = await pickAssistant();
+      const res = await assistant.chat({
+        ...(model ? { model } : {}),
+        thinking: args.thinking === true,
+        stream: true,
+        messages,
+        onStream: (d) =>
+          onChunk({ delta: d.delta || "", deltaReasoning: d.deltaReasoning || "" }),
+        signal,
+      });
+      return {
+        content: res.content ?? "",
+        reasoningContent: res.reasoningContent ?? "",
+        model: res.model ?? model ?? "",
+        usage: res.usage ?? null,
+      };
+    }
+    if (cap === "ai.models") {
+      if (!aiModules) aiModules = await load("/mz/ai/main.js");
+      const { assistant } = await pickAssistant();
+      const models = await assistant.getModels();
+      return { models: Array.isArray(models) ? models : [] };
+    }
+    if (cap === "net.fetch") {
+      if (!netModules) netModules = await load("/mz/net/main.js");
+      const res = await netModules.fetch(String(args.url ?? ""), { signal });
+      let text = await res.text();
+      let truncated = !!res.truncated;
+      if (text.length > 400_000) {
+        text = text.slice(0, 400_000);
+        truncated = true;
+      }
+      return {
+        url: res.url,
+        status: res.status,
+        ok: res.ok,
+        truncated,
+        provider: res.provider,
+        contentType: res.headers?.get?.("content-type") || "",
+        text,
+      };
+    }
+    if (cap === "net.fetchText") {
+      if (!netModules) netModules = await load("/mz/net/main.js");
+      const maxChars = Number(args.maxChars);
+      return await netModules.fetchText(String(args.url ?? ""), {
+        raw: args.raw === true,
+        noCache: args.noCache === true,
+        ...(Number.isFinite(maxChars) && maxChars > 0 ? { maxChars } : {}),
+        signal,
+      });
+    }
+    if (cap === "net.searchWeb") {
+      if (!netModules) netModules = await load("/mz/net/main.js");
+      return await netModules.searchWeb(String(args.query ?? ""), {
+        signal,
+        ...(args.engine ? { engine: args.engine } : {}),
+      });
+    }
+    throw new Error(`未知能力：${cap}`);
+  }
+
   // 跨设备扫码入口地址：bridge 引导页（?u=<conjure userId>&app=<应用>），
   // 手机扫码即自动收到当前应用
   async function refreshPreviewInfo() {
@@ -3199,13 +3273,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
     // 预览窗口（应用页代理）在线状态监听：预览按钮亮标（失败静默，不影响主流程）。
     // 同时接线多窗口钩子：onWindowsChange 刷新注册表快照（下拉气泡），
-    // onBridgeHello 在扫码/新窗口引导页连入时自动推送对应应用
+    // onBridgeHello 在扫码/新窗口引导页连入时自动推送对应应用；
+    // onCapRequest 执行预览能力桥（guest 替身）的 AI/联网调用
     (async () => {
       try {
         const mod = await ensurePreviewMod();
         mod.setPreviewHooks({
           onBridgeHello: (userId, app) => pushToWindow(userId, app),
           onWindowsChange: () => refreshPreviewWindows(mod),
+          onCapRequest: handleCapRequest,
         });
         mod.watchPreviewAgent({
           load,

@@ -27,6 +27,12 @@
 // dbg-chunk/dbg-result 协议回传并在此结算；缺省投递给最近心跳的在线窗口，
 // 传 winId 可定向指定。文件推送与调试指令互不干扰。
 //
+// 能力桥（handleCapEnvelope）：应用页的 /mz/* 替身模块（bridge/guest/*，由
+// receiver 注入的 import map 顶替）发 cap-req 到本服务，本端校验窗口注册表 +
+// 并发闸后交 previewHooks.onCapRequest（builder-store 接线）用主容器自己的
+// key/模型与联网通道执行，cap-chunk/cap-res 经窗口专属链路回传——预览应用
+// 可间接使用 AI 与联网，key 与通道配置永不过桥。
+//
 // 通信协议与可靠投递实现见 /bridge/proto.js（双端共享）。
 
 import {
@@ -117,7 +123,8 @@ const winRegistry = new Map();
 // 本会话开过的预览窗口槽位（slot → Window 句柄），新开窗口时找空闲槽位
 const previewSlots = new Map();
 // 预览事件钩子（builder-store 接线）：onBridgeHello = 扫码/新窗口 hello 时自动推当前应用；
-// onWindowsChange = 注册表变化（下拉气泡刷新）
+// onWindowsChange = 注册表变化（下拉气泡刷新）；
+// onCapRequest({cap,args,onChunk,signal}) = 执行预览能力桥的 AI/联网调用（返回结果或抛错）
 const previewHooks = {};
 export const setPreviewHooks = (hooks) => Object.assign(previewHooks, hooks || {});
 
@@ -273,6 +280,98 @@ let dbgLink = null; // 常驻可靠链路（只承载 dbg 指令与其结果）
 const agentRemotes = new Map(); // userId → remoteUser（dbg 指令的投递目标，按对端缓存）
 let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
 const dbgWaiters = new Map(); // reqId -> { resolve, reject }
+
+/* ---------- 预览能力桥（guest 替身 ↔ 主容器 broker） ----------
+ * 应用页替身模块（bridge/guest/*，经 receiver 注入的 import map 顶替 /mz/*）
+ * 发 cap-req 到本服务；本端校验窗口注册表 + 并发闸后交给
+ * previewHooks.onCapRequest（builder-store 接线，用主容器自己的 key/模型
+ * 与联网通道执行），流式分片（cap-chunk）与终态（cap-res）经每窗口专属
+ * 可靠链路回传。key 与通道配置永不过桥；不经回合链路（activeLink 随回合
+ * 创建销毁，能力调用与回合无关）。
+ */
+const MAX_CAP_CONCURRENT = 2; // 同时在途的 cap-req 上限（防 AI 生成的代码失控烧额度）
+const CAP_RES_MAX_BYTES = 600_000; // 单次结果回传上限（超大小文本由 broker 侧先行截断）
+const capLinks = new Map(); // winKey(`userId|sessionId`) → 专属可靠链路
+const capControllers = new Map(); // `winKey|id` → AbortController
+let capCount = 0; // 在途 cap-req 计数（跨窗口共享并发闸）
+
+const capLinkFor = (ctx) => {
+  const key = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  let link = capLinks.get(key);
+  if (!link) {
+    link = createReliableLink({
+      sendTo: (env) =>
+        ctx.remoteUser.sendToService(SERVICE_ID_AGENT, env, {
+          sessionId: ctx.fromSessionId,
+        }),
+    });
+    capLinks.set(key, link);
+    if (capLinks.size > 12) capLinks.delete(capLinks.keys().next().value); // 上限同预览窗口数
+  }
+  return link;
+};
+
+const handleCapEnvelope = (data, ctx, reply) => {
+  const payload = capLinkFor(ctx).receive(data, reply);
+  if (!payload) return;
+  if (payload.type === "cap-abort") {
+    capControllers.get(`${ctx.fromUserId}|${ctx.fromSessionId}|${payload.id}`)?.abort();
+    return;
+  }
+  if (payload.type !== "cap-req") return;
+  const { id, cap } = payload;
+  const args = payload.args || {};
+  const winKey = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  const sendRes = (ok, result, error) => {
+    let body = { type: "cap-res", id, ok, result, error };
+    try {
+      if (JSON.stringify(body).length > CAP_RES_MAX_BYTES) {
+        body = { type: "cap-res", id, ok: false, result: null, error: "结果过大（>600KB），已拒绝回传" };
+      }
+    } catch (err) {
+      body = { type: "cap-res", id, ok: false, result: null, error: "结果不可序列化：" + (err?.message || err) };
+    }
+    capLinkFor(ctx).send(body).catch(() => {});
+  };
+  // 窗口校验：只服务注册表里的预览窗口（announce 心跳注册；应用页代理
+  // 连上即上报，正常调用永远晚于注册）。防同一用户体系的其他实例白嫖
+  if (!winRegistry.has(winKey)) {
+    sendRes(false, null, "预览窗口未注册（尚未收到该窗口的 announce），拒绝能力调用");
+    return;
+  }
+  if (typeof previewHooks.onCapRequest !== "function") {
+    sendRes(false, null, "妙造主容器未提供能力代理（版本过旧，请更新妙造后重试）");
+    return;
+  }
+  if (capCount >= MAX_CAP_CONCURRENT) {
+    sendRes(false, null, `预览能力并发已达上限（${MAX_CAP_CONCURRENT}），请稍后再试`);
+    return;
+  }
+  capCount++;
+  const abortCtl = new AbortController();
+  capControllers.set(`${winKey}|${id}`, abortCtl);
+  const started = Date.now();
+  Promise.resolve()
+    .then(() =>
+      previewHooks.onCapRequest({
+        cap,
+        args,
+        signal: abortCtl.signal,
+        onChunk: (chunk) =>
+          capLinkFor(ctx)
+            .send({ type: "cap-chunk", id, ...chunk })
+            .catch(() => {}),
+      }),
+    )
+    .then((result) => sendRes(true, result))
+    .catch((err) => sendRes(false, null, (err && err.message) || String(err)))
+    .finally(() => {
+      capCount--;
+      capControllers.delete(`${winKey}|${id}`);
+      // 用量观测：每次调用一行（谁、什么能力、耗时），不落盘
+      console.info(`[remote-preview] cap ${cap} ${Date.now() - started}ms (${winKey})`);
+    });
+};
 let dbgSeq = 0;
 // 定向调试：dbgLink.sendTo 构建信封时按 msgId 记下当时的投递目标（重发同目标）；
 // dbgNextTarget 由 debugPreviewCommand 在每次 send 前设置
@@ -344,9 +443,16 @@ function ensureService(user) {
       if (data && data.kind === "ack") {
         if (dbgLink) dbgLink.receive(data, reply);
         if (activeLink) activeLink.receive(data, reply);
+        // 能力桥回包的 ACK：msgId 各链路唯一，逐链路尝试结算（无命中即忽略）
+        for (const link of capLinks.values()) link.receive(data, reply);
         return;
       }
       const type = data?.payload?.type;
+      // 能力桥：guest 替身的调用请求 / 中断（不经回合链路，回包走窗口专属链路）
+      if (type === "cap-req" || type === "cap-abort") {
+        handleCapEnvelope(data, ctx, reply);
+        return;
+      }
       // 窗口注册表类控制消息：不依赖回合链路（扫码 hello / announce 心跳可能在
       // 任意时刻到达，activeLink 多为 null）。手动去重 + ACK；hello 触发
       // onBridgeHello 钩子（builder-store 据此自动推送当前应用给扫码设备）；

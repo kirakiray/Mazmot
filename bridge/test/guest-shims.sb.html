@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge/guest 替身模块（mz-ai / mz-net 能力桥）测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：mock window.__MZ_BRIDGE__（inject.js 挂载的桥对象），
+         断言替身把调用正确转发为主容器侧的 cap/args 并回放流式分片与结果。
+         用例间串行（共享 globalThis.__MZ_BRIDGE__），不标 parallel。 -->
+
+    <sb-test name="mz-ai 替身 - chat 转发 + 流式回放 + 终态">
+      <template>
+        <script type="module">
+          import { getAssistant } from "../guest/mz-ai.js";
+          {
+            const calls = [];
+            globalThis.__MZ_BRIDGE__ = {
+              call: async (cap, args, opts = {}) => {
+                calls.push({ cap, args, hasOnChunk: typeof opts.onChunk === "function" });
+                if (cap === "ai.chat") {
+                  opts.onChunk?.({ delta: "你", deltaReasoning: "想" });
+                  opts.onChunk?.({ delta: "好", deltaReasoning: "" });
+                  return { content: "你好", reasoningContent: "想", model: "fake-1", usage: { total_tokens: 5 } };
+                }
+                return {};
+              },
+            };
+            try {
+              const deltas = [];
+              const res = await getAssistant().chat({
+                messages: [{ role: "user", content: "hi" }],
+                model: "guest-wanted", // 预览不开放指定模型：应被忽略（args 不携带）
+                thinking: true,
+                stream: true,
+                onStream: (d) => deltas.push(d),
+              });
+              const c = calls[0] || {};
+              const last = deltas[deltas.length - 1] || {};
+              return {
+                assert:
+                  c.cap === "ai.chat" &&
+                  c.args.messages?.[0]?.content === "hi" &&
+                  c.args.thinking === true &&
+                  !("model" in c.args) &&
+                  c.hasOnChunk &&
+                  deltas.length === 3 &&
+                  deltas[0].content === "你" &&
+                  deltas[1].content === "你好" &&
+                  deltas[1].deltaReasoning === "想" &&
+                  last.done === true &&
+                  res.content === "你好" &&
+                  res.reasoningContent === "想" &&
+                  res.model === "fake-1",
+                content: {
+                  checks: {
+                    cap: c.cap,
+                    argsOk: c.args.messages?.[0]?.content === "hi" && c.args.thinking === true,
+                    noModelLeak: !("model" in c.args),
+                    streamFrames: deltas.length,
+                    done: last.done,
+                    res,
+                  },
+                  calls,
+                },
+              };
+            } finally {
+              delete globalThis.__MZ_BRIDGE__;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mz-ai 替身 - getModels 转发 / key 管理 API 拒绝">
+      <template>
+        <script type="module">
+          import {
+            getAssistant,
+            getApiKeys,
+            saveKey,
+            removeKey,
+            setKeyDisabled,
+            onApiKeysChange,
+          } from "../guest/mz-ai.js";
+          {
+            const caps = [];
+            globalThis.__MZ_BRIDGE__ = {
+              call: async (cap) => {
+                caps.push(cap);
+                if (cap === "ai.models") return { models: ["m1", "m2"] };
+                return {};
+              },
+            };
+            try {
+              const models = await getAssistant().getModels();
+              const providerName = getAssistant().providerName;
+              let saveErr = "";
+              try {
+                await saveKey("sk-x", "deepseek");
+              } catch (e) {
+                saveErr = e.message;
+              }
+              const keysEmpty = Array.isArray(getApiKeys()) && getApiKeys().length === 0;
+              const unsub = onApiKeysChange(() => {});
+              return {
+                assert:
+                  caps[0] === "ai.models" &&
+                  models.join() === "m1,m2" &&
+                  providerName === "bridge" &&
+                  keysEmpty &&
+                  !!saveErr &&
+                  typeof unsub === "function",
+                content: {
+                  checks: { caps, models, providerName, keysEmpty, saveErr },
+                },
+              };
+            } finally {
+              delete globalThis.__MZ_BRIDGE__;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mz-net 替身 - fetch 同形对象 / fetchText 参数钳制 / searchWeb">
+      <template>
+        <script type="module">
+          import {
+            fetch,
+            fetchText,
+            searchWeb,
+            DEFAULT_MAX_CHARS,
+            setWebFetchChannel,
+            getWebFetchChannel,
+          } from "../guest/mz-net.js";
+          {
+            const calls = [];
+            globalThis.__MZ_BRIDGE__ = {
+              call: async (cap, args, opts = {}) => {
+                calls.push({ cap, args, signal: opts.signal });
+                if (cap === "net.fetch") {
+                  return {
+                    url: "https://x.example/final",
+                    status: 404,
+                    ok: false,
+                    truncated: false,
+                    provider: "bridge",
+                    contentType: "application/json",
+                    text: '{"a":1}',
+                  };
+                }
+                if (cap === "net.fetchText") {
+                  return { url: args.url, status: 200, contentType: "text/html", text: "正文", truncated: false, provider: "bridge" };
+                }
+                if (cap === "net.searchWeb") {
+                  return { query: args.query, engine: "duckduckgo", provider: "bridge", results: [{ title: "t", url: "u", content: "c" }] };
+                }
+                return {};
+              },
+            };
+            try {
+              // 仅 GET 语义：POST 在进桥前就拒绝
+              let methodErr = "";
+              try {
+                await fetch("https://x.example", { method: "POST" });
+              } catch (e) {
+                methodErr = e.message;
+              }
+
+              const res = await fetch("https://x.example/api");
+              const jsonOk = await res.json().then((j) => j.a === 1);
+              const textOk = (await res.text()) === '{"a":1}';
+              const headersOk = res.headers.get("content-type") === "application/json";
+
+              const out = await fetchText("https://x.example/page", { maxChars: 999999, raw: true });
+              const clamped = calls.find((c) => c.cap === "net.fetchText")?.args?.maxChars;
+              const defaultChars = await fetchText("https://x.example/p2");
+              const defaultClamped =
+                calls.filter((c) => c.cap === "net.fetchText")[1]?.args?.maxChars === undefined;
+
+              const sr = await searchWeb("测试词");
+              const channelErr = await setWebFetchChannel("relay").catch((e) => e.message);
+              const channelGetter = await getWebFetchChannel();
+
+              return {
+                assert:
+                  !!methodErr &&
+                  res.status === 404 &&
+                  res.ok === false &&
+                  jsonOk &&
+                  textOk &&
+                  headersOk &&
+                  res.provider === "bridge" &&
+                  clamped === 100000 &&
+                  defaultClamped &&
+                  out.text === "正文" &&
+                  sr.results.length === 1 &&
+                  !!channelErr &&
+                  channelGetter === "bridge" &&
+                  DEFAULT_MAX_CHARS === 20000,
+                content: {
+                  checks: {
+                    methodErr,
+                    status: res.status,
+                    ok: res.ok,
+                    jsonOk,
+                    textOk,
+                    headersOk,
+                    clamped,
+                    defaultClamped,
+                    searchResults: sr.results.length,
+                    channelErr,
+                    channelGetter,
+                  },
+                  calls,
+                },
+              };
+            } finally {
+              delete globalThis.__MZ_BRIDGE__;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mz-ai 替身 - abort 中断本地立即收场">
+      <template>
+        <script type="module">
+          import { getAssistant } from "../guest/mz-ai.js";
+          {
+            const aborted = [];
+            globalThis.__MZ_BRIDGE__ = {
+              call: (cap, args, opts = {}) =>
+                new Promise((resolve, reject) => {
+                  // 模拟主容器侧 signal 直通：abort 时按真模块语义抛 AbortError
+                  if (opts.signal) {
+                    opts.signal.addEventListener("abort", () => {
+                      aborted.push(true);
+                      const err = new Error("The operation was aborted.");
+                      err.name = "AbortError";
+                      reject(err);
+                    });
+                  }
+                }),
+            };
+            try {
+              const ctl = new AbortController();
+              const p = getAssistant().chat({
+                messages: [{ role: "user", content: "hi" }],
+                signal: ctl.signal,
+              });
+              ctl.abort();
+              let errName = "";
+              try {
+                await p;
+              } catch (e) {
+                errName = e.name;
+              }
+              return {
+                assert: errName === "AbortError" && aborted.length === 1,
+                content: { errName, aborted: aborted.length },
+              };
+            } finally {
+              delete globalThis.__MZ_BRIDGE__;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

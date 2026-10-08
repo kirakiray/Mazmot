@@ -12,30 +12,64 @@ import {
   sha256Hex,
 } from "./proto.js";
 
-// 注入标记：写入 index.html 的代理脚本标签（幂等判据）
+// 注入标记：写入 index.html 的代理脚本块（guest importmap + 代理脚本标签）。
+// importmap 把 /mz/ai、/mz/net 的加载映射到预览域专属替身（bridge/guest/），
+// 应用代码经 load("/mz/...") 拿到的是走能力桥的替身；妙造主容器与安装环境
+// 没有这个映射，真模块不受影响。带 data-conjure-guest 标记锚定正则，避免误吞
+// 应用自己声明的 import map。
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const INJECT_RE = new RegExp(
-  `<script[^>]*src="${AGENT_SCRIPT_SRC.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*><\\/script>\\s*`,
+  `<script[^>]*data-conjure-guest[^>]*>[\\s\\S]*?<\\/script>\\s*<script[^>]*src="${escRe(
+    AGENT_SCRIPT_SRC,
+  )}"[^>]*><\\/script>\\s*`,
+);
+// 旧版本只注入代理脚本（无 importmap）：剥除用，注入时迁移为完整块
+const LEGACY_INJECT_RE = new RegExp(
+  `<script[^>]*src="${escRe(AGENT_SCRIPT_SRC)}"[^>]*><\\/script>\\s*`,
 );
 
+// 预览域模块映射：/mz/* → guest 替身（能力桥）。ofa 页面工厂的 load 可能以
+// 裸路径或解析后的完整 URL 调 import，import map 按键精确匹配，两种键都补上
+const GUEST_IMPORT_MAP = (() => {
+  const imports = {
+    "/mz/ai/main.js": "/bridge/guest/mz-ai.js",
+    "/mz/net/main.js": "/bridge/guest/mz-net.js",
+  };
+  for (const [k, v] of Object.entries({ ...imports })) {
+    try {
+      imports[new URL(k, location.href).href] = new URL(v, location.href).href;
+    } catch (_) {}
+  }
+  return JSON.stringify({ imports });
+})();
+
 /**
- * 往应用入口 index.html 注入常驻代理脚本（conjure 侧 userId 随 data 属性下发）。
- * 已注入则原样返回（幂等）。
+ * 往应用入口 index.html 注入常驻代理脚本块（guest importmap + 代理脚本，
+ * conjure 侧 userId 随 data 属性下发）。已注入则原样返回（幂等）；
+ * 旧版裸代理标签迁移为完整块；应用自带 import map 时（文档只允许一个）
+ * 跳过映射注入，仅注入代理脚本（该应用预览域内拿真模块，AI/联网不可用但运行不受影响）。
  */
 export function injectAgent(html, conjureId) {
-  const text = String(html ?? "");
+  let text = String(html ?? "");
   if (INJECT_RE.test(text)) return text;
-  const tag = `<script type="module" src="${AGENT_SCRIPT_SRC}" data-conjure-id="${encodeURIComponent(
+  text = text.replace(LEGACY_INJECT_RE, "");
+  const map = /<script[^>]*type=["']?importmap["']?[^>]*>/i.test(text)
+    ? ""
+    : `<script type="importmap" data-conjure-guest>${GUEST_IMPORT_MAP}<\/script>\n`;
+  const tag = `${map}<script type="module" src="${AGENT_SCRIPT_SRC}" data-conjure-id="${encodeURIComponent(
     String(conjureId || ""),
-  )}"><\/script>`;
+  )}"><\/script>\n`;
   // 优先 </head> 前，其次 </body> 前，都没有则追加到末尾
   if (/<\/head>/i.test(text)) return text.replace(/<\/head>/i, tag + "</head>");
   if (/<\/body>/i.test(text)) return text.replace(/<\/body>/i, tag + "</body>");
   return text + tag;
 }
 
-/** 剥离注入的代理脚本标签（增量比对 hash 前用，保证与发送端原始内容一致） */
+/** 剥离注入的代理脚本块（增量比对 hash 前用，保证与发送端原始内容一致） */
 export function stripAgent(html) {
-  return String(html ?? "").replace(INJECT_RE, "");
+  return String(html ?? "")
+    .replace(INJECT_RE, "")
+    .replace(LEGACY_INJECT_RE, "");
 }
 
 /**
@@ -87,10 +121,13 @@ export function createPreviewReceiver({
         } else if (
           item.path === "index.html" &&
           conjureId &&
-          !INJECT_RE.test(text)
+          !INJECT_RE.test(text) &&
+          // 自带 import map 的应用只能注入裸代理标签（文档仅允许一个
+          // import map），无法补 guest 映射，不强制重推
+          !/<script[^>]*type=["']?importmap["']?[^>]*>/i.test(text)
         ) {
-          // 存量 index.html 写于注入功能上线前：内容一致但缺代理脚本，
-          // 强制重传一次以补注入（此后走正常增量路径）
+          // 存量 index.html 写于注入功能上线前（缺代理脚本或缺 guest 映射）：
+          // 强制重传一次以补齐注入（此后走正常增量路径）
           missing.push(item.path);
         }
       }

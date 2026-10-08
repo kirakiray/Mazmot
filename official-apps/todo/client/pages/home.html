@@ -12,12 +12,64 @@
       color: var(--md-sys-color-on-surface);
       font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
     }
-    .wrap {
-      max-width: 640px;
+    /* 左右两栏：左侧固定分组列表，右侧任务区 */
+    .shell {
+      max-width: 900px;
       margin: 0 auto;
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+    /* 侧栏：分组列表 + 新建 / 改名 */
+    .side {
+      flex: none;
+      width: 190px;
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .side-title { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    .side st-input { width: 100%; min-width: 0; }
+    .new-actions { display: flex; gap: 4px; align-items: center; }
+    .glist { display: flex; flex-direction: column; gap: 4px; }
+    .gitem {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .gitem:hover { background: var(--md-sys-color-surface-variant); }
+    .gitem.active {
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .gitem .gname { flex: 1; min-width: 0; word-break: break-word; }
+    .gitem .gcount { flex: none; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    .gitem.active .gcount { color: var(--md-sys-color-on-primary-container); }
+    .side-actions {
+      display: flex;
+      gap: 4px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      padding-top: 8px;
+    }
+    .manage-title { margin: 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    /* 窄屏：侧栏转为顶部横向条 */
+    @media (max-width: 620px) {
+      .shell { flex-direction: column; }
+      .side { width: 100%; position: static; }
+      .glist { flex-direction: row; flex-wrap: wrap; }
     }
     h1 { font-size: 26px; margin: 0 0 4px; }
     .sub { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
@@ -97,7 +149,7 @@
       padding-top: 12px;
     }
     .count { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
-    /* 条件隐藏：详情弹窗里按条目状态显隐不同操作按钮 */
+    /* 列表项里的描述摘要按需隐藏 */
     .hidden { display: none !important; }
     .detail {
       display: flex;
@@ -124,8 +176,47 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
 
-  <div class="wrap">
-    <div class="top">
+  <div class="shell">
+    <!-- 左侧固定侧栏：选分组 / 新建分组 / 改名删除 -->
+    <aside class="side">
+      <p class="side-title">分组</p>
+      <st-input sync:value="groupDraft" placeholder="新分组名" on:change="submitGroup"></st-input>
+      <div class="new-actions">
+        <st-button on:click="submitGroup" attr:disabled="!groupDraft.trim()">{{groupSubmitLabel}}</st-button>
+        <st-button variant="text" class:hidden="!editingGroupId" on:click="cancelEditGroup">取消</st-button>
+      </div>
+      <p class="manage-title" class:hidden="!editingGroupId">正在改名：{{editingGroupName}}</p>
+
+      <div class="glist">
+        <!-- 根级绑定用裸方法名（$host 只在 o-fill 等子作用域里可用，见踩坑 006） -->
+        <div class="gitem" class:active="isGroupActive('all')" on:click="setGroup('all')">
+          <span class="gname">全部任务</span>
+          <span class="gcount">{{allCountText}}</span>
+        </div>
+        <o-fill :value="groups" fill-key="id">
+          <div class="gitem" class:active="$host.isGroupActive($data.id)" on:click="$host.setGroup($data.id)">
+            <span class="gname">{{$data.name}}</span>
+            <span class="gcount">{{$host.groupCountText($data.id)}}</span>
+          </div>
+        </o-fill>
+      </div>
+
+      <o-if :value="canModifyGroup">
+        <div class="side-actions">
+          <st-button variant="text" on:click="startEditGroup(groupFilter)">改名</st-button>
+          <st-button
+            variant="text"
+            color="error"
+            attr:disabled="groupFilter === 'default'"
+            on:click="requestDeleteGroup(groupFilter)"
+          >删除</st-button>
+        </div>
+      </o-if>
+    </aside>
+
+    <!-- 右侧任务区 -->
+    <div class="main">
+      <div class="top">
       <div>
         <h1>✅ 待办清单</h1>
         <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
@@ -139,6 +230,7 @@
       <st-button attr:variant="view === 'done' ? 'filled' : 'text'" on:click="setView('done')">已完成</st-button>
       <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">🗑 垃圾桶{{trashBadge}}</st-button>
     </st-button-group>
+
 
     <!-- 正常视图：勾选 / 倒计时删除 -->
     <o-if :value="!inTrashView">
@@ -162,7 +254,7 @@
 
     <!-- 垃圾桶视图：还原 / 彻底删除 -->
     <o-if :value="inTrashView">
-      <p class="trash-tip">垃圾桶里的任务不再计入统计；可随时还原，或彻底删除（彻底删除会二次确认）。</p>
+      <p class="trash-tip">垃圾桶显示所有分组的条目，不再计入统计；可随时还原，或彻底删除（彻底删除会二次确认）。</p>
       <div class="list">
         <o-fill :value="trashTodos" fill-key="id">
           <div class="item trash">
@@ -196,7 +288,7 @@
 
     <o-if :value="!inTrashView">
       <div class="footer">
-        <span class="count">{{remaining}} 项未完成 · 共 {{activeTodos.length}} 项</span>
+        <span class="count">{{remaining}} 项未完成 · 共 {{scopedActiveTodos.length}} 项</span>
         <st-button
           variant="text"
           color="error"
@@ -215,28 +307,26 @@
         sync:value="draft"
         placeholder="第一行是标题，换行后写的都是描述…"
       ></st-textarea>
+      <p class="manage-title">{{addGroupHint}}</p>
       <div slot="actions">
         <st-button variant="text" on:click="closeAdd">取消</st-button>
         <st-button on:click="submitAdd" attr:disabled="!draft.trim()">添加</st-button>
       </div>
     </st-dialog>
 
-    <!-- 任务详情：注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
-         所以展示用的文案与标志都在 openDetail 里预计算好，这里只读 detail 的字段 -->
+    <!-- 任务详情（只读：底部只有「关闭」）：注意 st-dialog 内不能调 $host.xxx()
+         （弹窗内部 $host 不指向页面），所以展示用的文案都在 openDetail 里预计算好 -->
     <st-dialog sync:open="detailOpen" auto-close>
       <span slot="headline">{{detail.title}}</span>
       <div class="detail">
         <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
+        <div class="detail-row"><span class="k">分组</span><span>{{detail.groupText}}</span></div>
         <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
         <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
         <div class="detail-row"><span class="k">状态变更</span><span>{{detail.statusChangedText}}</span></div>
         <div class="detail-row"><span class="k">删除时间</span><span>{{detail.deletedText}}</span></div>
       </div>
       <div slot="actions">
-        <st-button variant="text" class:hidden="detail.inTrash" on:click="toggleDetailDone">{{detail.doneLabel}}</st-button>
-        <st-button variant="text" color="error" class:hidden="detail.inTrash" on:click="deleteFromDetail">删除</st-button>
-        <st-button variant="text" class:hidden="!detail.inTrash" on:click="restoreFromDetail">还原</st-button>
-        <st-button variant="text" color="error" class:hidden="!detail.inTrash" on:click="purgeFromDetail">彻底删除</st-button>
         <st-button variant="text" on:click="closeDetail">关闭</st-button>
       </div>
     </st-dialog>
@@ -247,14 +337,19 @@
       <div>{{confirmText}}</div>
       <div slot="actions">
         <st-button variant="text" on:click="closeConfirm">取消</st-button>
-        <st-button color="error" on:click="confirmPurge">彻底删除</st-button>
+        <st-button color="error" on:click="confirmAction">确认</st-button>
       </div>
     </st-dialog>
+    </div>
   </div>
 
   <script>
     const STORE_ID = "conjure-todo-app";
     const STORE_KEY = "todos";
+    // 分组单独一个键存：Array<{ id, name }>（首项固定为默认分组）
+    const GROUPS_KEY = "groups";
+    const DEFAULT_GROUP_ID = "default";
+    const DEFAULT_GROUP_NAME = "默认";
     // 删除后的倒计时时长：到点后条目才真正进入垃圾桶
     const TRASH_DELAY_MS = 5000;
     const TICK_MS = 200;
@@ -271,35 +366,44 @@
           view: "all",
           todos: [],
           emptyText: "这里还什么都没有，添加第一件事吧 🎉",
+          // 分组：groups 为分组表；groupFilter 为 "all" 或分组 id
+          groups: [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME }],
+          groupFilter: "all",
+          groupDraft: "",
+          editingGroupId: null,
+          // 添加弹窗里提示“这条会加进哪个分组”
+          addGroupHint: "",
           // 倒计时刷新用：每次 tick 写入当前时间，驱动界面重算剩余秒数
           nowTick: 0,
-          // 彻底删除的二次确认
+          // 彻底删除 / 删除分组的二次确认
           confirmOpen: false,
           confirmTitle: "",
           confirmText: "",
           // 待彻底删除的目标：条目 id 或 "ALL"（清空垃圾桶）
           purgeTarget: null,
+          // 确认类型："purge"（彻底删除） | "deleteGroup"（删除分组）
+          confirmKind: "purge",
+          confirmGroupId: null,
           // 添加任务的弹窗
           addOpen: false,
-          // 任务详情弹窗：打开时把展示文案与标志全部预计算好
+          // 任务详情弹窗：打开时把展示文案全部预计算好
           // （st-dialog 内不能调 $host.xxx()，只能读 data 字段，见模板注释）
           detailOpen: false,
           detail: {
-            id: "",
             title: "",
             desc: "",
             hasDesc: false,
-            done: false,
-            inTrash: false,
             statusText: "",
+            groupText: "",
             createdText: "",
             statusChangedText: "",
             deletedText: "",
-            doneLabel: "",
           },
         },
 
         ready() {
+          // 先读分组（任务渲染时要靠它显示分组名），再读任务
+          this.loadGroups();
           this.loadTodos();
         },
 
@@ -322,24 +426,84 @@
             return this.trashTodos.length ? " " + this.trashTodos.length : "";
           },
 
-          get visibleTodos() {
-            if (this.inTrashView) return this.trashTodos;
+          // 当前分组范围内的列表条目（垃圾桶不计入）
+          get scopedActiveTodos() {
             const list = this.activeTodos;
+            if (this.groupFilter === "all") return list;
+            return list.filter((t) => t.groupId === this.groupFilter);
+          },
+
+          get visibleTodos() {
+            // 垃圾桶视图忽略分组过滤（显示所有分组的垃圾桶条目）
+            if (this.inTrashView) return this.trashTodos;
+            const list = this.scopedActiveTodos;
             if (this.view === "done") return list.filter((t) => t.done);
             if (this.view === "active") return list.filter((t) => !t.done);
             return list;
           },
 
           get remaining() {
-            return this.activeTodos.filter((t) => !t.done).length;
+            return this.scopedActiveTodos.filter((t) => !t.done).length;
           },
 
           get doneCount() {
-            return this.activeTodos.filter((t) => t.done).length;
+            return this.scopedActiveTodos.filter((t) => t.done).length;
+          },
+
+          // 添加任务会归属的分组：正在浏览某分组 → 该分组；在「全部任务」→ 默认分组
+          get draftGroupId() {
+            return this.groupFilter === "all" ? DEFAULT_GROUP_ID : this.groupFilter;
+          },
+
+          // 侧栏「全部任务」的计数（不含垃圾桶）
+          get allCountText() {
+            return this.activeTodos.length + " 项";
+          },
+
+          // 选中具体分组时才出现底部的「改名 / 删除」
+          get canModifyGroup() {
+            return this.groupFilter !== "all";
+          },
+
+          get editingGroupName() {
+            if (!this.editingGroupId) return "";
+            return this.groupName(this.editingGroupId);
+          },
+
+          get groupSubmitLabel() {
+            return this.editingGroupId ? "保存" : "新建";
           },
 
           get isListEmpty() {
             return this.visibleTodos.length === 0;
+          },
+
+          async loadGroups() {
+            try {
+              const saved = await store.getItem(GROUPS_KEY);
+              const list = Array.isArray(saved)
+                ? saved
+                    .filter((g) => g && typeof g.id === "string" && g.id)
+                    .map((g) => ({ id: String(g.id), name: String(g.name || "未命名") }))
+                : [];
+              if (!list.some((g) => g.id === DEFAULT_GROUP_ID)) {
+                list.unshift({ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME });
+              }
+              this.groups = list;
+              console.log("[group] 已读取分组，共", this.groups.length, "个");
+            } catch (err) {
+              console.error("[group] 读取分组失败", err);
+              this.groups = [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME }];
+            }
+          },
+
+          async persistGroups() {
+            try {
+              await store.setItem(GROUPS_KEY, JSON.parse(JSON.stringify(this.groups)));
+              console.log("[group] 已保存分组，共", this.groups.length, "个");
+            } catch (err) {
+              console.error("[group] 保存分组失败", err);
+            }
           },
 
           async loadTodos() {
@@ -351,6 +515,11 @@
                   text: String(t.text || ""),
                   // 描述：标题换行后的内容；旧数据没有，一律空字符串
                   desc: typeof t.desc === "string" ? t.desc : "",
+                  // 分组：旧数据没有 groupId，一律归入默认分组
+                  groupId:
+                    typeof t.groupId === "string" && t.groupId
+                      ? t.groupId
+                      : DEFAULT_GROUP_ID,
                   done: !!t.done,
                   // 旧数据没有时间字段，保留 null（界面显示“时间未知”），不伪造时间
                   createdAt: typeof t.createdAt === "number" ? t.createdAt : null,
@@ -377,11 +546,13 @@
             }
           },
 
-          // 打开添加弹窗：开一个新草稿
+          // 打开添加弹窗：开一个新草稿，并提示会加进哪个分组
           openAdd() {
             this.draft = "";
+            this.addGroupHint =
+              "将加入分组：「" + this.groupName(this.draftGroupId) + "」";
             this.addOpen = true;
-            console.log("[todo] 打开添加弹窗");
+            console.log("[todo] 打开添加弹窗，目标分组 =", this.draftGroupId);
           },
 
           closeAdd() {
@@ -419,6 +590,7 @@
                 id,
                 text: parsed.title,
                 desc: parsed.desc,
+                groupId: this.draftGroupId,
                 done: false,
                 createdAt: Date.now(),
                 statusChangedAt: null,
@@ -428,7 +600,14 @@
               ...this.todos,
             ];
             this.draft = "";
-            console.log("[todo] 新增", id, parsed.title, parsed.desc ? "（含描述）" : "");
+            console.log(
+              "[todo] 新增",
+              id,
+              parsed.title,
+              parsed.desc ? "（含描述）" : "",
+              "分组 =",
+              this.draftGroupId
+            );
             this.persistTodos();
             return true;
           },
@@ -458,18 +637,21 @@
             return date + " " + hm;
           },
 
-          // 列表项副标题：倒计时状态 > 垃圾桶状态 > 创建 / 状态变更时间
+          // 列表项副标题：分组名 · [倒计时状态 > 垃圾桶状态 > 创建 / 状态变更时间]
           timeMeta(todo) {
+            const g = this.groupName(todo.groupId);
             if (todo.pendingDeleteAt) {
               return (
-                "🗑 " +
+                g +
+                " · 🗑 " +
                 this.pendingSeconds(todo) +
                 " 秒后移入垃圾桶（点 ↩ 可撤销）"
               );
             }
             if (todo.deletedAt) {
               return (
-                "删除于 " +
+                g +
+                " · 删除于 " +
                 this.formatTime(todo.deletedAt) +
                 " · " +
                 (todo.createdAt
@@ -478,6 +660,7 @@
               );
             }
             const parts = [
+              g,
               todo.createdAt
                 ? "创建于 " + this.formatTime(todo.createdAt)
                 : "创建时间未知",
@@ -569,13 +752,24 @@
             this._tickId = setTimeout(step, TICK_MS);
           },
 
-          // 只作用于列表中的已完成项：垃圾桶里的和倒计时中的不动（前者等用户自己清，后者等倒计时走完）
+          // 清除已完成：只清当前分组范围内（「全部分组」下即全部列表）的已完成项；
+          // 垃圾桶里的、倒计时中的、其它分组的已完成项都不动
           clearDone() {
+            const scope = this.groupFilter;
             const removed = this.doneCount;
-            this.todos = this.todos.filter(
-              (t) => t.deletedAt || t.pendingDeleteAt || !t.done
+            this.todos = this.todos.filter((t) => {
+              if (t.deletedAt || t.pendingDeleteAt) return true;
+              if (!t.done) return true;
+              if (scope !== "all" && t.groupId !== scope) return true;
+              return false;
+            });
+            console.log(
+              "[todo] 清除已完成，范围 =",
+              scope,
+              "，移除",
+              removed,
+              "项"
             );
-            console.log("[todo] 清除已完成，移除", removed, "项");
             this.persistTodos();
           },
 
@@ -592,6 +786,7 @@
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) return;
             this.purgeTarget = id;
+            this.confirmKind = "purge";
             this.confirmTitle = "彻底删除这一条？";
             this.confirmText =
               "“" + todo.text + "”将被永久删除，无法还原。";
@@ -603,6 +798,7 @@
             const n = this.trashTodos.length;
             if (!n) return;
             this.purgeTarget = "ALL";
+            this.confirmKind = "purge";
             this.confirmTitle = "清空垃圾桶？";
             this.confirmText = "垃圾桶里的 " + n + " 项将被永久删除，无法还原。";
             this.confirmOpen = true;
@@ -612,12 +808,23 @@
           closeConfirm() {
             this.confirmOpen = false;
             this.purgeTarget = null;
+            this.confirmGroupId = null;
           },
 
-          confirmPurge() {
+          // 确认弹窗的统一入口：按 confirmKind 分发（彻底删除 / 删除分组）
+          confirmAction() {
+            const kind = this.confirmKind;
             const target = this.purgeTarget;
+            const groupId = this.confirmGroupId;
             this.confirmOpen = false;
             this.purgeTarget = null;
+            this.confirmGroupId = null;
+
+            if (kind === "deleteGroup") {
+              if (groupId) this.deleteGroup(groupId);
+              return;
+            }
+
             if (!target) return;
             const before = this.todos.length;
             if (target === "ALL") {
@@ -629,18 +836,16 @@
             this.persistTodos();
           },
 
-          // ===== 任务详情 =====
+          // ===== 任务详情（只读展示：弹窗里只提供「关闭」） =====
           // 把一条待办转成详情弹窗的展示对象（文案全在这里算好，模板只读字段）
           buildDetail(todo) {
             const timeOr = (ts) =>
               typeof ts === "number" ? this.formatTime(ts) : "—";
             return {
-              id: todo.id,
               title: todo.text || "（无标题）",
               desc: todo.desc || "",
               hasDesc: !!todo.desc,
-              done: !!todo.done,
-              inTrash: !!todo.deletedAt,
+              groupText: this.groupName(todo.groupId),
               statusText: todo.pendingDeleteAt
                 ? "待删除（倒计时中）"
                 : todo.deletedAt
@@ -651,7 +856,6 @@
               createdText: timeOr(todo.createdAt),
               statusChangedText: timeOr(todo.statusChangedAt),
               deletedText: timeOr(todo.deletedAt),
-              doneLabel: todo.done ? "标记为未完成" : "标记为已完成",
             };
           },
 
@@ -668,45 +872,135 @@
             console.log("[detail] 关闭详情");
           },
 
-          toggleDetailDone() {
-            const id = this.detail.id;
-            this.toggleTodo(id);
-            const cur = this.todos.find((t) => t.id === id);
-            // 同步刷新弹窗内容（保持弹窗开着，状态行与按钮文案跟着变）
-            if (cur) this.detail = this.buildDetail(cur);
-            console.log("[detail] 详情内切换完成态", id);
+          // ===== 分组 =====
+          groupName(id) {
+            const g = this.groups.find((x) => x.id === id);
+            return g ? g.name : DEFAULT_GROUP_NAME;
           },
 
-          deleteFromDetail() {
-            const id = this.detail.id;
-            this.detailOpen = false;
-            // 与列表上的 ✕ 同一语义：若已在倒计时中则撤销
-            this.handleDeleteClick(id);
+          groupCountText(id) {
+            // 只数列表里的任务（垃圾桶里的不计，与统计口径一致）
+            const n = this.todos.filter((t) => t.groupId === id && !t.deletedAt).length;
+            return n + " 项";
           },
 
-          restoreFromDetail() {
-            const id = this.detail.id;
-            this.detailOpen = false;
-            this.restoreTodo(id);
+          isGroupActive(id) {
+            return this.groupFilter === id;
           },
 
-          purgeFromDetail() {
-            const id = this.detail.id;
-            this.detailOpen = false;
-            this.purgeTodo(id);
+          setGroup(id) {
+            this.groupFilter = id;
+            console.log("[group] 切换分组过滤 →", id, this.groupName(id));
+            this.updateEmptyText();
+          },
+
+          // 新建 / 保存改名（同一个入口：编辑模式时是改名）
+          submitGroup() {
+            const raw = (this.groupDraft || "").trim();
+            if (!raw) return;
+            if (this.editingGroupId) {
+              const id = this.editingGroupId;
+              this.groups = this.groups.map((g) =>
+                g.id === id ? { ...g, name: raw } : g
+              );
+              console.log("[group] 重命名分组", id, "→", raw);
+              this.editingGroupId = null;
+            } else {
+              // 重名时自动加序号，避免列表里出现两个同名分组
+              let name = raw;
+              let i = 2;
+              while (this.groups.some((g) => g.name === name)) {
+                name = raw + " " + i;
+                i += 1;
+              }
+              const id =
+                "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+              this.groups = [...this.groups, { id, name }];
+              console.log("[group] 新建分组", id, name);
+            }
+            this.groupDraft = "";
+            this.persistGroups();
+          },
+
+          startEditGroup(id) {
+            const g = this.groups.find((x) => x.id === id);
+            if (!g) return;
+            this.editingGroupId = id;
+            this.groupDraft = g.name;
+            console.log("[group] 进入改名模式", id, g.name);
+          },
+
+          cancelEditGroup() {
+            this.editingGroupId = null;
+            this.groupDraft = "";
+            console.log("[group] 取消改名");
+          },
+
+          // 删除分组：默认分组不可删，其余先二次确认
+          requestDeleteGroup(id) {
+            const g = this.groups.find((x) => x.id === id);
+            if (!g || id === DEFAULT_GROUP_ID) return;
+            const n = this.todos.filter((t) => t.groupId === id && !t.deletedAt).length;
+            this.purgeTarget = null;
+            this.confirmKind = "deleteGroup";
+            this.confirmGroupId = id;
+            this.confirmTitle = "删除分组「" + g.name + "」？";
+            this.confirmText = n
+              ? "该分组下的 " +
+                n +
+                " 项任务会移入「" +
+                DEFAULT_GROUP_NAME +
+                "」，分组本身被删除。"
+              : "该分组下没有任务，删除后不可恢复。";
+            this.confirmOpen = true;
+            console.log("[group] 请求删除分组（待确认）", id, n, "项任务");
+          },
+
+          deleteGroup(id) {
+            const g = this.groups.find((x) => x.id === id);
+            if (!g || id === DEFAULT_GROUP_ID) return;
+            const moved = this.todos.filter((t) => t.groupId === id).length;
+            this.todos = this.todos.map((t) =>
+              t.groupId === id ? { ...t, groupId: DEFAULT_GROUP_ID } : t
+            );
+            this.groups = this.groups.filter((x) => x.id !== id);
+            if (this.groupFilter === id) this.groupFilter = "all";
+            if (this.editingGroupId === id) {
+              this.editingGroupId = null;
+              this.groupDraft = "";
+            }
+            console.log("[group] 已删除分组", id, "，移入默认分组的任务", moved, "项");
+            this.persistGroups();
+            this.persistTodos();
+            this.updateEmptyText();
+          },
+
+          // 空状态文案：按当前筛选 + 分组生成
+          updateEmptyText() {
+            if (this.view === "trash") {
+              this.emptyText = "垃圾桶是空的 🗑";
+              return;
+            }
+            if (this.groupFilter !== "all") {
+              const name = this.groupName(this.groupFilter);
+              if (this.view === "done") this.emptyText = "「" + name + "」里还没有完成的任务";
+              else if (this.view === "active")
+                this.emptyText = "「" + name + "」里没有未完成的任务 🎉";
+              else this.emptyText = "「" + name + "」里还没有任务，点右上角添加吧";
+              return;
+            }
+            this.emptyText =
+              this.view === "done"
+                ? "还没有完成的任务"
+                : this.view === "active"
+                ? "太棒了，没有未完成的任务 🎉"
+                : "左侧选个分组，或者在「全部任务」里查看所有事项 🎉";
           },
 
           setView(value) {
             console.log("[todo] 切换筛选", value);
             this.view = value;
-            this.emptyText =
-              value === "trash"
-                ? "垃圾桶是空的 🗑"
-                : value === "done"
-                ? "还没有完成的任务"
-                : value === "active"
-                ? "太棒了，没有未完成的任务 🎉"
-                : "这里还什么都没有，添加第一件事吧 🎉";
+            this.updateEmptyText();
           },
         },
       };

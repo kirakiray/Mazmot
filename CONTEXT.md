@@ -171,7 +171,14 @@ Mazmot/
 │   │                         #   首选 vendor snapdom 真实渲染截图免授权+手机可用，失败回退 wireSnapshot 线框清单交
 │   │                         #   conjure thumb-paint 重绘；抓图期间 capture.setMuted 静默控制台捕获防噪音报错污染 AI）、
 │   │                         #   formatConsoleEntries（since 增量拉取）、createOpLog 调用记录存储 + summarizeDbgArgs/
-│   │                         #   DBG_TOOL_NAMES（「妙造调用」视图数据源）
+│   │                         #   DBG_TOOL_NAMES（「妙造调用」视图数据源）；
+│   │                         #   另挂载预览能力桥 window.__MZ_BRIDGE__（call 入口；guest 替身的 cap-req 转发主容器，
+│   │                         #   cap-chunk/cap-res 回包路由到等待器，signal abort 转 cap-abort）
+│   ├── guest/                # /mz/* 替身模块（仅预览域，receiver 注入的 import map 把 /mz/ai|net 顶替到这里；
+│   │                         #   妙造主容器与安装环境不受影响仍加载真模块）：mz-ai.js（getAssistant().chat/getModels
+│   │                         #   同形替身）、mz-net.js（fetch/fetchText/searchWeb 同形替身）——内部经 __MZ_BRIDGE__
+│   │                         #   把调用转发给妙造主容器执行（key 与通道配置永不下发预览域）；⚠️ 导出面须与
+│   │                         #   mazmot-api skill 的应用侧 API 一致，改 /mz/* 应用侧用法时必须同步
 │   ├── vendor/                # 第三方库 vendor（本地文件，免 CDN 依赖）：snapdom.mjs（@zumer/snapdom v3.3.0，MIT，
 │   │                         #   DOM→图捕获引擎，open shadow DOM/字体/渐变保真——预览气泡窗口方块缩略图用）
 │   ├── proto.js              # 双端共享协议：服务 ID（conjure-preview / conjure-bridge / conjure-agent）/ 消息类型（含增量同步
@@ -194,6 +201,10 @@ Mazmot/
                                #   debug-runtime.sb.html（调试运行时与 dbg 结果协议 17 用例：
                                #   compileEval 自动 return / 深度选择器 / 序列化（Error 带消息前缀，Firefox/WebKit stack 不含消息）/ DOM 快照 /
                                #   控制台格式化 / 指令分发（shot 用 canvas 合成捕获流伪造 getDisplayMedia，不弹原生授权框））+
+                               #   receiver-inject.sb.html（注入块纯逻辑：importmap+代理脚本注入幂等 / stripAgent 还原 /
+                               #   旧版裸标签迁移 / 应用自带 import map 时仅注入代理脚本）+
+                               #   guest-shims.sb.html（guest 替身纯逻辑，mock __MZ_BRIDGE__：chat 转发与流式回放 /
+                               #   getModels / key 管理拒绝 / net.fetch 同形对象 / maxChars 钳制 / searchWeb / abort）+
                                #   host-guard.sb.html（域名白名单：预览子域/本地放行，主站 apex 与伪装域名拒绝）+
                                #   preview-flow.sb.html（双真实 LocalUser 全链路集成 7 用例，
                                #   需 Core 已就绪：hello → 分片推送 → 落盘 → VFS URL 可访问 / 覆盖重推 / 路径拦截 / waitUrlReady /

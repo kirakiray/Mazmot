@@ -2,6 +2,8 @@
 
 浏览器 `fetch` 任意第三方站点受 CORS 限制，网页抓取必须经服务端中转。`/mz/net` 把「中转端点」抽象为可插拔 provider，按优先级自动解析，应用侧只调 `fetchText`。协议契约（`/fetch` 请求/响应/SSRF 约束）的**单一事实来源**是仓库 [mz/net/README.md](../../../mz/net/README.md)，本文件讲应用侧怎么用。
 
+> **妙造隔离预览**：预览容器没有通道配置，receiver 注入的 import map 会把 `/mz/net/main.js` 顶替为 `bridge/guest/mz-net.js` 替身——`fetch` / `fetchText` / `searchWeb` 导出面与真模块同形，内部经能力桥转发妙造主容器用自己的通道执行（`res.provider` 标 `"bridge"`）。应用代码零感知；通道配置 API（`setWebFetchChannel` 等）在预览域抛可读错误。改真模块应用侧用法时必须同步替身（见 `official-apps/conjure/CONTEXT.md`「预览能力桥」）。
+
 ## 加载方式
 
 ```javascript

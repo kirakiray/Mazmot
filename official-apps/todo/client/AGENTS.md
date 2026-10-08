@@ -18,6 +18,7 @@
 - **改 `pages/*.html` 里 `proto` 的方法名 / 删方法后，必须全文件核对模板引用并在推送后读控制台**：模板的 `on:click="xxx"` / `{{$host.xxx(...)}}` / `attr:xxx="$host.xxx(...)"` 都是运行时按名字找方法的，对不上只会抛 `Event binding error: function "xxx" not found`——页面照常渲染、只有那个交互失效，肉眼极难发现（见 `pitfalls/003-template-callback-must-exist.md`）。所以「按钮点了没反应」先查控制台，不要先怀疑组件。
 - **定制 senti-ui 组件尺寸时只改尺寸类属性，不覆盖组件依赖的布局属性**：例如给 `st-input` 定宽只写 `width` / `min-width`，**不要写 `display`**——组件内部靠自己的 `:host { display: inline-flex }` 让原生 input 用 `flex: 1` 撑满，页面样式表会压过 shadow 的 `:host` 规则，被覆盖后外框看着照旧、真实可输入区却缩成 156px（见 `pitfalls/004-st-input-display-override-and-frozen-anim.md`）。
 - **`st-dialog` 等组件内部只用属性访问，不用 `$host.方法()`**：弹窗内部 `$host` 不指向页面实例，`{{$host.xxx()}}` / `attr:x="$host.xxx()"` 会**静默渲染为空**（不报错，而同一弹窗里 `{{data.字段}}` 却正常）——展示文案与布尔标志应在打开弹窗时预计算进 data 快照，模板只读字段（见 `pitfalls/005-host-in-dialog-not-page.md`）。
+- **页面根级绑定写裸方法名 / data 字段，只有 `o-fill` / `o-if` 内部才用 `$host.方法()`**：根级写 `$host.xxx()` 会在 `class:` / `attr:` 等表达式指令上报 `Error evaluating element expression` 且绑定静默失效（`on:click` 有时能跑，但不要依赖），见 `pitfalls/006-host-in-root-level-binding.md`。
 - **豁免规则（硬性约定与用户指令冲突时）**：用户明确要求的做法与某条硬性约定冲突时，**既不死守也不悄悄违反**——先向用户说明该约定存在的原因与违反的后果，用户仍坚持则按用户的决定执行，并**在 MEMORY.md 里记录这次豁免**（哪条约定、为什么豁免），防止后续会话的 AI 把它当成违规「修正」回去。
 
 ## 记忆体规则（MEMORY.md）
