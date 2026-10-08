@@ -1,0 +1,207 @@
+<template page>
+  <style>
+    :host {
+      display: block;
+      min-height: 100vh;
+      box-sizing: border-box;
+      padding: 28px 16px 56px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+    }
+    .wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    .sub { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    .add-row { display: flex; gap: 8px; align-items: center; }
+    .add-row st-input { flex: 1; }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: var(--md-sys-color-surface-variant);
+    }
+    .item .text { flex: 1; word-break: break-word; line-height: 1.4; }
+    .item.done .text {
+      text-decoration: line-through;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .empty {
+      text-align: center;
+      padding: 36px 0;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      padding-top: 12px;
+    }
+    .count { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button-group.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
+
+  <div class="wrap">
+    <div>
+      <h1>✅ 待办清单</h1>
+      <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
+    </div>
+
+    <div class="add-row">
+      <st-input
+        sync:value="draft"
+        placeholder="想做点什么？回车即可添加"
+        on:change="addTodo"
+      ></st-input>
+      <st-button on:click="addTodo" attr:disabled="!draft.trim()">添加</st-button>
+    </div>
+
+    <st-button-group>
+      <st-button attr:variant="view === 'all' ? 'filled' : 'text'" on:click="setView('all')">全部</st-button>
+      <st-button attr:variant="view === 'active' ? 'filled' : 'text'" on:click="setView('active')">未完成</st-button>
+      <st-button attr:variant="view === 'done' ? 'filled' : 'text'" on:click="setView('done')">已完成</st-button>
+    </st-button-group>
+
+    <div class="list">
+      <o-fill :value="visibleTodos" fill-key="id">
+        <div class="item" class:done="$data.done">
+          <st-checkbox attr:checked="$data.done" on:change="$host.toggleTodo($data.id)"></st-checkbox>
+          <span class="text">{{$data.text}}</span>
+          <st-icon-button title="删除" on:click="$host.deleteTodo($data.id)">✕</st-icon-button>
+        </div>
+      </o-fill>
+    </div>
+
+    <o-if :value="isListEmpty">
+      <div class="empty">{{emptyText}}</div>
+    </o-if>
+
+    <div class="footer">
+      <span class="count">{{remaining}} 项未完成 · 共 {{todos.length}} 项</span>
+      <st-button
+        variant="text"
+        color="error"
+        on:click="clearDone"
+        attr:disabled="doneCount === 0"
+      >清除已完成</st-button>
+    </div>
+  </div>
+
+  <script>
+    const STORE_ID = "conjure-todo-app";
+    const STORE_KEY = "todos";
+
+    export default async ({ load }) => {
+      const { getStorage } = await load("/nos/storage/main.js");
+      const store = getStorage(STORE_ID);
+
+      return {
+        data: {
+          draft: "",
+          view: "all",
+          todos: [],
+          emptyText: "这里还什么都没有，添加第一件事吧 🎉",
+        },
+
+        ready() {
+          this.loadTodos();
+        },
+
+        proto: {
+          // 计算属性必须放在 proto 中（放模块顶层会导致页面模块加载失败）
+          get visibleTodos() {
+            if (this.view === "done") return this.todos.filter((t) => t.done);
+            if (this.view === "active") return this.todos.filter((t) => !t.done);
+            return this.todos;
+          },
+
+          get remaining() {
+            return this.todos.filter((t) => !t.done).length;
+          },
+
+          get doneCount() {
+            return this.todos.filter((t) => t.done).length;
+          },
+
+          get isListEmpty() {
+            return this.visibleTodos.length === 0;
+          },
+
+          async loadTodos() {
+            try {
+              const saved = await store.getItem(STORE_KEY);
+              if (Array.isArray(saved)) {
+                this.todos = saved.map((t) => ({
+                  id: String(t.id),
+                  text: String(t.text || ""),
+                  done: !!t.done,
+                }));
+              }
+            } catch (err) {
+              console.warn("读取待办失败：", err);
+            }
+          },
+
+          async persistTodos() {
+            try {
+              await store.setItem(STORE_KEY, JSON.parse(JSON.stringify(this.todos)));
+            } catch (err) {
+              console.warn("保存待办失败：", err);
+            }
+          },
+
+          addTodo() {
+            const text = (this.draft || "").trim();
+            if (!text) return;
+            const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            this.todos = [{ id, text, done: false }, ...this.todos];
+            this.draft = "";
+            this.persistTodos();
+          },
+
+          toggleTodo(id) {
+            this.todos = this.todos.map((t) =>
+              t.id === id ? { ...t, done: !t.done } : t
+            );
+            this.persistTodos();
+          },
+
+          deleteTodo(id) {
+            this.todos = this.todos.filter((t) => t.id !== id);
+            this.persistTodos();
+          },
+
+          clearDone() {
+            this.todos = this.todos.filter((t) => !t.done);
+            this.persistTodos();
+          },
+
+          setView(value) {
+            this.view = value;
+            this.emptyText =
+              value === "done"
+                ? "还没有完成的任务"
+                : value === "active"
+                ? "太棒了，没有未完成的任务 🎉"
+                : "这里还什么都没有，添加第一件事吧 🎉";
+          },
+        },
+      };
+    };
+  </script>
+</template>
