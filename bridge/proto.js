@@ -444,9 +444,12 @@ export function createReliableLink({
     const prev = sendQueues.get(queueKey) ?? Promise.resolve();
     const next = prev.then(task, task);
     sendQueues.set(queueKey, next);
+    // 清理链必须自吞 rejection：next 被 dispose / ACK 超时拒绝时，finally 的
+    // 派生 promise 会透传 rejection 且无人接（业务侧接的是 next 本身，不是
+    // 这条清理链）→ Uncaught (in promise)
     next.finally(() => {
       if (sendQueues.get(queueKey) === next) sendQueues.delete(queueKey);
-    });
+    }).catch(() => {});
     return next;
   };
 

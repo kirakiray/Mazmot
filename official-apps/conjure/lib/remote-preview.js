@@ -485,6 +485,30 @@ async function isAgentLikelyOnline(user, targetId, { probe = true } = {}) {
   return false;
 }
 
+// 代理服务存在性探测（快路径 sync-check 前的门槛）：connectUser 只证明
+// 「对端用户可达」，证明不了「对端注册了 conjure-agent」——对端开着的可能
+// 是 bridge 引导页（只注册 conjure-bridge）。此前这种场景要等 sync-check
+// 无 ACK 烧满 AGENT_PROBE_TIMEOUT（每次尝试 no_receiver 3s + 重试间隔）才
+// 回退，预览固定慢 ~10s。直接 sendToService 一条 ping（ receiver 按未知
+// 类型忽略，无副作用），no_receiver 即代理不在，快速回退；reload 窗口代理
+// 重新注册需一两秒，给 2.5s 有界宽限
+const AGENT_SERVICE_PING_TIMEOUT = 2_500;
+const probeAgentService = async (remote) => {
+  const deadline = Date.now() + AGENT_SERVICE_PING_TIMEOUT;
+  for (;;) {
+    const res = await remote
+      .sendToService(
+        SERVICE_ID_AGENT,
+        { msgId: `ping-${Date.now()}`, kind: "data", payload: { type: "ping" } },
+        { waitForService: 1200 },
+      )
+      .catch(() => null);
+    if (res?.some?.((r) => r && r.status === "ok")) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+};
+
 const readStoredBridgeId = async (selfStore) => {
   if (!selfStore) return null;
   try {
@@ -724,12 +748,19 @@ export async function openRemotePreview({
       probedOnline = agentLikelyOnline;
     }
     if (agentLikelyOnline) {
-      // 一次探测 = 连接 + sync-check + 等 sync-diff；
+      // 一次探测 = 连接 + 服务存在性 ping + sync-check + 等 sync-diff；
       // 探测失败但刚见过对端信封（多半是应用页 reload 中）→ 再给一轮宽限
       const attemptAgent = async (ms, label) => {
         status(label);
         peerService = SERVICE_ID_AGENT;
         remote = await ensureAgentRemote(user, storedId);
+        // 服务不在（no_receiver，对端是 bridge 引导页 / 应用页已关）立即
+        // 失败回退，别等 sync-check 烧满重试窗口
+        if (!(await probeAgentService(remote))) {
+          throw Object.assign(new Error("预览页代理服务不在线"), {
+            code: "AGENT_SERVICE_OFFLINE",
+          });
+        }
         const manifest = await buildManifest(files, (d, t) => report(d, t));
         // 不 await 发送：代理离线时 link 重试耗尽前先由超时触发回退
         link.send({ type: "sync-check", appName, manifest }).catch(() => {});
@@ -742,8 +773,17 @@ export async function openRemotePreview({
         } catch (err) {
           // 宽限条件：近期见过对端信封（多半是应用页 reload 中），或本回合
           // 内连接探测刚成功过（新标签页里 lastPeerSeenAt 为 0，但代理几秒前
-          // 确实可达）——都值得换新等待器再等一轮；真离线才回退
-          if (Date.now() - lastPeerSeenAt > RELOAD_GRACE && !probedOnline) {
+          // 确实可达）——都值得换新等待器再等一轮；真离线才回退。
+          // 例外：服务 ping 的 no_receiver 是决定性失败（probeAgentService
+          // 内部已含 2.5s 宽限，且 announce 心跳只出自应用页代理）——仅当
+          // 近期见过代理信封（reload 中）才再试一轮；「连接可达」（probedOnline）
+          // 不算数，对端可能只是 bridge 引导页
+          const seenAgentRecently = Date.now() - lastPeerSeenAt <= RELOAD_GRACE;
+          const decisive = err?.code === "AGENT_SERVICE_OFFLINE";
+          const grace = decisive
+            ? seenAgentRecently
+            : seenAgentRecently || probedOnline;
+          if (!grace) {
             throw err;
           }
           resetWaiters(storedId);
@@ -947,6 +987,11 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {}, on
     remote = await withTimeout(user.connectUser(peerId), 8_000, "连接超时");
     agentRemotes.set(peerId, remote);
     lastAgentRemoteId = peerId;
+    // 服务存在性门槛：对端可达 ≠ 代理在（可能是 bridge 引导页），no_receiver
+    // 立即回退 bridge 流程，不等 sync-check 烧满重试窗口
+    if (!(await probeAgentService(remote))) {
+      throw new Error("预览页代理服务不在线");
+    }
     const manifest = await buildManifest(files, (d, t) => report(d, t));
     link.send({ type: "sync-check", appName, manifest }).catch(() => {});
     const diff = await withTimeout(waiters.diff, AGENT_PROBE_TIMEOUT, "代理无响应");
