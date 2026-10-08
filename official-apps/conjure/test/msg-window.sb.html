@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>conjure lib/msg-window.js 反向瀑布流窗口测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：普通数组作为渲染窗口注入（页面侧为 o-fill 的 stanz 源，
+         两者只需 push/splice/find/findIndex 同形） -->
+
+    <sb-test name="replace 初始只渲染最近一段（反向瀑布流）">
+      <template>
+        <script type="module">
+          import { createMsgWindow, MSG_WINDOW_INIT } from "../lib/msg-window.js";
+          {
+            const target = [];
+            const win = createMsgWindow(target);
+            const list = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, role: "user", content: `m${i + 1}` }));
+            const op = win.apply({ op: "replace", list });
+
+            const headOk = target[0].id === 50 - MSG_WINDOW_INIT + 1; // 最近 30 条的第一条
+            const tailOk = target[target.length - 1].id === 50;
+            const hiddenOk = win.hiddenCount === 50 - MSG_WINDOW_INIT;
+            const allOk = win.all.length === 50 && win.all[0].id === 1;
+            const ids = target.map((m) => m.id).join(",");
+            const contiguous = ids === Array.from({ length: MSG_WINDOW_INIT }, (_, i) => i + 21).join(",");
+
+            return {
+              assert: op === "replace" && target.length === MSG_WINDOW_INIT && headOk && tailOk && hiddenOk && allOk && contiguous,
+              content: { checks: { op, len: target.length, headOk, tailOk, hiddenOk, allOk, contiguous } },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="push 只加尾不丢头（上方阅读时新消息不挤掉旧消息）">
+      <template>
+        <script type="module">
+          import { createMsgWindow } from "../lib/msg-window.js";
+          {
+            const target = [];
+            const win = createMsgWindow(target, { init: 5 });
+            win.apply({ op: "replace", list: Array.from({ length: 10 }, (_, i) => ({ id: i + 1 })) });
+            const beforeHead = target[0].id;
+            const beforeLen = target.length;
+            win.apply({ op: "push", item: { id: 11 } });
+            win.apply({ op: "push", item: { id: 12 } });
+
+            return {
+              assert:
+                beforeLen === 5 &&
+                beforeHead === 6 &&
+                target.length === 7 && // 加尾不裁头
+                target[0].id === beforeHead &&
+                target[6].id === 12 &&
+                win.all.length === 12 &&
+                win.hiddenCount === 5,
+              content: { len: target.length, head: target[0].id, tail: target[target.length - 1].id, all: win.all.length },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="patch 双侧同步（窗口内即时更新，窗口外全量保持最新）">
+      <template>
+        <script type="module">
+          import { createMsgWindow } from "../lib/msg-window.js";
+          {
+            const target = [];
+            const win = createMsgWindow(target, { init: 3 });
+            win.apply({ op: "replace", list: [{ id: 1 }, { id: 2 }, { id: 3, content: "old" }, { id: 4, content: "old" }] });
+            // 窗口内：id 4 在 target 与 all 都更新
+            win.apply({ op: "patch", id: 4, patch: { content: "streaming…" } });
+            // 窗口外（hidden）：id 1 只在 all 更新，补挂时即是新值
+            win.apply({ op: "patch", id: 1, patch: { content: "回滚标注" } });
+
+            const inWin = target.find((m) => m.id === 4)?.content === "streaming…";
+            const allIn = win.all.find((m) => m.id === 4)?.content === "streaming…";
+            const hiddenAll = win.all.find((m) => m.id === 1)?.content === "回滚标注";
+            const hiddenTargetUntouched = target.find((m) => m.id === 1)?.content === undefined;
+            win.loadOlder();
+            const afterLoad = target.find((m) => m.id === 1)?.content === "回滚标注";
+
+            return {
+              assert: inWin && allIn && hiddenAll && hiddenTargetUntouched && afterLoad,
+              content: { checks: { inWin, allIn, hiddenAll, hiddenTargetUntouched, afterLoad } },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="splice 收缩 + loadOlder 分批补挂到 0">
+      <template>
+        <script type="module">
+          import { createMsgWindow, MSG_WINDOW_PAGE } from "../lib/msg-window.js";
+          {
+            const target = [];
+            const win = createMsgWindow(target, { init: 5, page: 4 });
+            win.apply({ op: "replace", list: Array.from({ length: 13 }, (_, i) => ({ id: i + 1 })) });
+            // 删除窗口内的尾条 → 窗口起点钳制不越界
+            win.apply({ op: "splice", id: 13 });
+
+            const first = win.loadOlder();
+            const second = win.loadOlder();
+            const third = win.loadOlder();
+            const allShown = win.hiddenCount === 0 && target.length === win.all.length;
+            const orderOk = target.map((m) => m.id).join(",") === "1,2,3,4,5,6,7,8,9,10,11,12";
+
+            return {
+              assert:
+                target.length === 4 &&
+                first === 4 &&
+                second === 4 &&
+                third === 0 && // 没有更早的了：返回 0 终止
+                win.hiddenCount === 0 &&
+                allShown &&
+                orderOk,
+              content: {
+                checks: { lenAfterSplice: target.length, first, second, third, allShown, orderOk },
+                ids: target.map((m) => m.id),
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="短会话全量直渲 / 会话切换重置窗口">
+      <template>
+        <script type="module">
+          import { createMsgWindow } from "../lib/msg-window.js";
+          {
+            const target = [];
+            const win = createMsgWindow(target, { init: 30 });
+            // 短会话（< init）：全部渲染、无省略提示
+            win.apply({ op: "replace", list: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+            const shortOk = target.length === 3 && win.hiddenCount === 0;
+            // 切会话：replace 重置窗口为最近 init 条
+            win.apply({ op: "replace", list: Array.from({ length: 80 }, (_, i) => ({ id: 100 + i })) });
+            const switchedOk =
+              target.length === 30 &&
+              target[0].id === 100 + 50 &&
+              target[29].id === 179 &&
+              win.hiddenCount === 50 &&
+              win.all.length === 80;
+
+            return {
+              assert: shortOk && switchedOk,
+              content: { checks: { shortOk, switchedOk, len: target.length, hidden: win.hiddenCount } },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

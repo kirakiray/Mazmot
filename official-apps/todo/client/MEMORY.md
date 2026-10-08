@@ -4,6 +4,20 @@
 
 ## 记录
 
+### 2026-10-08 · 布局定为三列网格：侧栏贴左 + 任务区居中（用户反馈：中间的得居中）
+
+- **改了什么**：`pages/home.html` 样式——`.shell` 由 flex 行改为 **grid 三列** `190px minmax(0,1fr) 190px`（左列侧栏 / 中列任务区 / 右列等宽留白，靠右侧留白把中列推到视口正中）；`.side` 去掉 `flex: none`，加 `grid-column: 1` 与 `max-height: calc(100vh - 56px); overflow-y: auto`（分组多了自身可滚）；`.main` 改 `grid-column: 2; width: 100%; max-width: 880px; margin: 0 auto`；媒体查询新增 `≤1100px` 去掉右侧留白列、`≤620px` 改单列（`.side` 取消 sticky / 限高 / overflow）。
+- **为什么**：用户反馈“你中间的得居中布局啊，只要左侧分组才一直在左边”——上一回合的 flex 方案（侧栏贴左 + 任务区占剩余宽度）会把任务区推到「侧栏右侧剩余区域」的中心，而不是**屏幕**中心；留白列使中列两侧对称，两者同时成立。
+- **验证结论**（预览实测，硬刷新后取数）：视口 1512 → `.side` x=16（贴左）、`.main` x=316 宽 880、**中列中心 = 756 = 视口中心 756（偏移 0）**、两栏无重叠；滚动实测（往 `.list` 注入 40 个填充节点，测完 `location.reload()` 复原）：`scrollHeight 3064 / clientHeight 882`，`scrollTop` 到底 2182，滚动后侧栏 y=28 仍可见（sticky 生效）、末条 bottom=757 在视口内；媒体规则从 shadowRoot 的 `style` 文本核出（`@media (max-width: 1100px)` / `620px` 均在，注意页面模块的 `style` 有 2 个，要挑含 `.shell` 的那个）；交互实测：点「＋ 添加任务」→ 弹窗 headline「添加任务」、提示「将加入分组：「默认」」、textarea 440x121、空输入时「添加」禁用，点「取消」→ 无弹窗残留；硬刷新后列表仍为用户原有 1 条（`111111`），未被测试污染；控制台 `errors: 0`。
+- **遗留 / 注意**：窄屏（≤1100 / ≤620px）分支无法在本机预览窗口（固定 1512x882）实测，只能从 `style` 文本核对规则已写入 + 代码审查；以后若要在窄屏上验证，需用 windows 找到移动设备窗口后再定向取证。
+
+### 2026-10-08 · （已被同日下一条取代）侧栏改为贴着屏幕左边缘 + 修正 CONTEXT.md 踩坑索引漏项
+
+- **改了什么**：① `pages/home.html` 样式——`.shell` 去掉 `max-width: 900px` + `margin: 0 auto`，改为 `width: 100%`（整宽 flex 行，不再整体居中）；行宽限制下移到 `.main` 的 `max-width: 880px`。② 文档——`CONTEXT.md`「踩坑索引」表补上漏登记的 `005` 行（`pitfalls/005-host-in-dialog-not-page.md`，正文与其它章节早已引用，仅索引表从 004 直接跳到 006），并在「使用指南」「组件与页面骨架」两处同步新的宽度/对齐规则。功能逻辑零改动。
+- **为什么**：用户反馈“我想要左侧的分组列表，始终靠着屏幕左侧，而不是现在这样，在正中间的左侧”——根因是 `.shell` 的 `max-width: 900px` + `margin: 0 auto` 在 1512px 视口下把整个两栏容器居中，侧栏被挤到 x=306。用户同时选择了“保持现状，先不改功能”，故本回合不做任何功能新增。
+- **验证结论**（预览实测，硬刷新后取数）：`preview action=app` 推送后 `status` 在线、`errors: 0`；`dom` 读 shadowRoot——`.shell` 改为 16,28 1480 宽、`.side` x=16（贴着屏幕左边缘）、`.main` x=226 宽 880，两栏无重叠；**滚动实测**（临时往 `.list` 注入 40 个填充节点，测完 `location.reload()` 复原）：`scrollHeight 3064 / clientHeight 882`，`scrollTop` 设为 99999 后实际到底 2182（= max），侧栏滚动后仍在 y=28 可见（sticky 生效），末条 bottom=757 在视口 882 内；**交互实测**：`click` 任务正文 → 控制台 `[detail] 打开详情 muz96kuhaul3 111111` 且 `st-dialog[open]` 的 headline 为「111111」，再 `click` 弹窗内「关闭」→ `[detail] 关闭详情` 且无 `[open]` 弹窗残留；硬刷新首帧日志为 `[group] 已读取分组，共 1 个` / `[storage] 已读取待办，共 2 项`，用户原有数据未被测试污染；控制台全程无应用报错。
+- **验证坑（已沉淀 `pitfalls/007`）**：`o-page` 元素上**读不到页面 data**（`page.detail` 为 `undefined`，实例只有 `__xhear__`）——直接 `page.todos = [...]` 只会挂一个普通属性、**不会驱动 `o-fill` 重渲染**（实测改成 40 条后 `.item` 仍为 1 个）；要构造长列表请往 shadowRoot 里的 `.list` 注入 DOM 节点再刷新页面；判断 `st-dialog` 是否打开也要看 **`hasAttribute('open')`**，`d.open` 恒为 `undefined`。
+
 ### 2026-10-08 · 分组改成左侧固定侧栏（用户反馈原方案难用）
 
 - **改了什么**：`pages/home.html`——布局改为左右两栏 `.shell`（左栏 `.side` 190px + `sticky`，右栏 `.main`）；侧栏常驻：分组名列表（「全部任务」+ 各分组，行内带计数，点选切换、选中 `primary-container` 高亮）、顶部新建输入框（回车 / 「新建」）、选中具体分组时底部出现「改名 / 删除」（改名会把顶部输入框切为改名模式：预填原名 + 按钮变「保存」+ 取消 + 「正在改名：xxx」提示）；删除原页面内的「分组栏 chips」与「⚙ 管理分组」展开式管理区，以及 `groupsEditing` / `groupManageLabel` / `toggleGroupManage` / `groupChipVariant`；新增 `isGroupActive` / `allCountText` / `canModifyGroup` / `editingGroupName`；窄屏（≤620px）侧栏改为顶部横向条。

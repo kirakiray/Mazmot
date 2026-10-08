@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=6" />
+  <link rel="stylesheet" href="./home.css?v=7" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -372,6 +372,11 @@
                 </div>
               </div>
             </o-if>
+          </o-if>
+
+          <!-- 反向瀑布流：上方更早消息被省略的提示（上滑自动按批补挂） -->
+          <o-if :value="hiddenOldCount > 0">
+            <div class="history-hint">已省略上方 {{hiddenOldCount}} 条更早消息 · 上滑加载</div>
           </o-if>
 
           <o-fill :value="messages" fill-key="id">
@@ -1613,6 +1618,7 @@
       const { renderMarkdown } = await load("../lib/markdown.js");
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
+      const { createMsgWindow } = await load("../lib/msg-window.js");
       const { contextInfo } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
@@ -1867,6 +1873,7 @@
       return {
         data: {
           messages: [],
+          hiddenOldCount: 0,
           input: "",
           pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
@@ -2086,6 +2093,10 @@
           store.setContextWindow(Number(this.ctxWindow));
           store.setMaxSteps(Number(this.maxSteps));
           this.syncActiveKeyText();
+          // 反向瀑布流窗口：只渲染最近一段消息（长会话全量渲染 DOM 是卡顿
+          // 主因），上滑到顶再按批次补挂更早消息。必须先于 subscribe 就位
+          //（init 期间的 replace 事件即走窗口）
+          this._win = createMsgWindow(this.messages);
           // 订阅仓库事件，把状态同步到页面响应式数据
           store.subscribe((evt) => {
             if (evt.type === "patch") {
@@ -2220,18 +2231,10 @@
           // ---- 仓库事件 → 页面消息列表 ----
 
           applyMessageEvent(evt) {
-            const { op } = evt;
-            if (op === "replace") {
-              this.messages = evt.list.map((m) => ({ ...m }));
-            } else if (op === "push") {
-              this.messages.push({ ...evt.item });
-            } else if (op === "patch") {
-              const item = this.messages.find((m) => m.id === evt.id);
-              if (item) Object.assign(item, evt.patch);
-            } else if (op === "splice") {
-              const idx = this.messages.findIndex((m) => m.id === evt.id);
-              if (idx > -1) this.messages.splice(idx, 1);
-            }
+            // 窗口模块统一处理：全量（_win.all）与渲染窗口（this.messages）
+            // 同步更新；push 只加尾不丢头，replace 重置为最近一段
+            this._win.apply(evt);
+            this.hiddenOldCount = this._win.hiddenCount;
             // usage 挂在回合末条 AI 消息上，done patch 时刷新进度条
             this.syncCtx();
             // 思考正文流式跟随：展开中的思考自动停在底部（rAF 节流）
@@ -2257,7 +2260,8 @@
 
           // 重算上下文占用进度（总量由窗口选择决定），并同步底部统计胶囊
           syncCtx() {
-            const info = contextInfo(this.messages);
+            // 上下文占用按全量会话算（渲染窗口只含最近一段）
+            const info = contextInfo(this._win.all);
             // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）
             const liveUsed =
               this.sending && this.liveTurnStats
@@ -2267,7 +2271,7 @@
             if (this.ctxUsed <= 0) {
               // 会话有 AI 消息但拿不到任何 usage → 占用未知，胶囊降级显示
               // （点开面板说明缺数据）；完全空会话才隐藏
-              this.ctxUnknown = this.messages.some(
+              this.ctxUnknown = this._win.all.some(
                 (m) => m.role === "assistant",
               );
               this.ctxPct = 0;
@@ -2310,7 +2314,7 @@
             // 已收尾（有 turnMs）但没有 usage 的回合：异常收场或早期会话，
             // 用量胶囊降级提示而不是隐藏
             let missing = 0;
-            for (const m of this.messages) {
+            for (const m of this._win.all) {
               if (m.role === "user") turns++;
               if (
                 m.role === "assistant" &&
@@ -2852,8 +2856,11 @@
           // 仅当前会话内最后一个带改动的回合可操作；历史回合只读（diff 仍可看，
           // 冻结内容不受影响）
           turnActionsAvailable(msg) {
-            for (let i = this.messages.length - 1; i >= 0; i--) {
-              const m = this.messages[i];
+            // 按「当前会话全部消息」找最后一个带改动的回合（渲染窗口可能
+            // 不含它——窗口只渲染最近一段）
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              const m = all[i];
               if (Array.isArray(m.changes) && m.changes.length) {
                 return m.id === msg.id;
               }
@@ -2930,7 +2937,8 @@
             );
             try {
               // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
-              const turnUser = [...this.messages]
+              // （按全量找：请求消息可能在渲染窗口之外）
+              const turnUser = [...this._win.all]
                 .reverse()
                 .find((m) => m.role === "user" && m.newGroup && m.id < msg.id);
               const res = await store.rollbackTurn(
@@ -3119,7 +3127,7 @@
 
           // 本轮是否有挂起中的表单（等待用户提交）：是则状态栏不显示倒计时
           formWaiting() {
-            return this.messages.some(
+            return this._win.all.some(
               (m) =>
                 m.role === "assistant" &&
                 m.type === "form" &&
@@ -3187,9 +3195,11 @@
 
           // ---- 交互 → 仓库方法（薄代理） ----
 
-          loadSession(sid) {
+          async loadSession(sid) {
             this.confirmingDelSession = "";
-            store.loadSession(sid);
+            await store.loadSession(sid);
+            // 切会话 = 看最新对话：窗口重建（最近一段）后回到底部
+            this.followScroll(true);
           },
 
           newSessionFor(name) {
@@ -3729,6 +3739,8 @@
             if (this.currentAppName === "" && !this.isTabOpen(name)) {
               await store.selectApp(name);
               this.projDrawerOpen = false;
+              // 原地切换项目：窗口重建后回到底部（新标签路径由新页面 ready 自滚）
+              this.followScroll(true);
               return;
             }
             this.focusOrOpenTab(this.projectUrl(name), `ai-builder-${name}`);
@@ -4002,6 +4014,27 @@
             if (!el) return;
             const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
             this.atBottom = dist <= 24;
+            // 反向瀑布流：滚近顶部且上方还有被省略的消息 → 补挂一批，并
+            // 补偿 scrollTop 锚住原内容（头部插入会把视口内容往下推）。
+            // 双 rAF 等 o-fill 渲染完成；补挂后仍贴顶（一批不满一屏）递归
+            // 续挂，loadOlder 返回 0（全部挂完）自然终止
+            if (el.scrollTop <= 80 && this.hiddenOldCount > 0 && !this._loadingOlder) {
+              this._loadingOlder = true;
+              const prevHeight = el.scrollHeight;
+              const prevTop = el.scrollTop;
+              const loaded = this._win.loadOlder();
+              this.hiddenOldCount = this._win.hiddenCount;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  const el2 = this.shadow.$("#chatScroll")?.ele;
+                  if (el2 && loaded > 0) {
+                    el2.scrollTop = el2.scrollHeight - prevHeight + prevTop;
+                  }
+                  this._loadingOlder = false;
+                  this.onChatScroll();
+                });
+              });
+            }
           },
 
           toBottomNow() {

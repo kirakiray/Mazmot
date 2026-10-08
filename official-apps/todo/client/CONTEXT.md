@@ -8,7 +8,7 @@
 
 ## 使用指南
 
-页面是**左右两栏** `.shell`：左栏 `.side`（固定宽度 190px、`position: sticky`，窄屏 ≤620px 时自动变为顶部横向分组条）只负责分组；右栏 `.main` 是任务区。
+页面是**三列网格** `.shell`：`grid-template-columns: 190px minmax(0, 1fr) 190px`——**左列** = 分组侧栏 `.side`（固定 190px、`position: sticky`、贴着屏幕左边缘，也只负责分组）；**中列** = 任务区 `.main`（`max-width: 880px` + `margin: 0 auto`，因此**落在屏幕正中间**）；**右列** = 与左列等宽的留白列，作用是把中列推到视口正中（两侧对称，而不是被侧栏挤偏）。超宽屏上任务文案不会拉得过长。视口 ≤1100px 时去掉右侧留白列（任务区不再居中，否则中列会被压得太窄）；≤620px 时进一步变单列堆叠、侧栏转为顶部横向分组条。
 
 ### 左栏（分组）
 
@@ -103,10 +103,11 @@ client/
 
 ### 组件与页面骨架
 
-- 页面结构自上而下：**左右两栏 `.shell`** → 左栏 `<aside class="side">`（标题 → 新建输入框 + 按钮 → 改名提示 → 分组列表 `.glist`（「全部任务」+ `o-fill :value="groups"`）→ 选中具体分组时出现的 `.side-actions`（改名 / 删除））；右栏 `<div class="main">`（标题栏 `.top`（h1 + 副标题 + 「＋ 添加任务」）→ 筛选按钮组 → 列表（列表视图 / 垃圾桶视图二选一）→ 空状态 → 底部栏（两种视图各一份））→ 三个 `st-dialog`（**添加任务**、**任务详情**、**统一二次确认**）。
+- 页面结构自上而下：**三列网格 `.shell`**（左列侧栏 / 中列任务区 / 右列等宽留白） → 左列 `<aside class="side">`（标题 → 新建输入框 + 按钮 → 改名提示 → 分组列表 `.glist`（「全部任务」+ `o-fill :value="groups"`）→ 选中具体分组时出现的 `.side-actions`（改名 / 删除））；右栏 `<div class="main">`（标题栏 `.top`（h1 + 副标题 + 「＋ 添加任务」）→ 筛选按钮组 → 列表（列表视图 / 垃圾桶视图二选一）→ 空状态 → 底部栏（两种视图各一份））→ 三个 `st-dialog`（**添加任务**、**任务详情**、**统一二次确认**）。
 - **侧栏放页面内而非弹窗里**：侧栏需要 `o-fill` 循环分组并在行内传 `$data.id` 调方法，而弹窗内 `$host` / `$data` 的行为不可靠（踩坑 005）。
 - **绑定写法要区分层级（踩坑 006）**：页面**根级**元素用裸方法名 / data 字段（`class:active="isGroupActive('all')"`、`on:click="setGroup('all')"`）；**`o-fill` / `o-if` 内部**用 `$host.方法($data.id)`。根级写 `$host.xxx()` 会报 `Error evaluating element expression` 且绑定静默失效。
-- 窄屏（≤620px）：`.shell` 改列向、`.side` 不再 sticky 而是通栏、`.glist` 改横向 wrap。
+- 窄屏（≤620px）：`.shell` 变单列、`.side` 不再 sticky 也不是限制高度而是通栏、`.glist` 改横向 wrap；≤1100px 时网格去掉右侧留白列。
+- **宽度与对齐**：`.shell` 只设 `width: 100%`（**不设 `max-width` / `margin: 0 auto`**，否则超宽屏上侧栏会被居中容器一起推到屏幕中间）；布局用三列 grid（左栏 / 中列 / 等宽留白列），**「任务区居中」与「侧栏贴左」靠留白列同时满足**——不要改回「`.shell` 居中」或「flex 剩余宽度」的写法（后者会把任务区推到侧栏右侧的剩余区中心、而非屏幕中心）；行宽限制只加在 `.main` 的 `max-width: 880px` 上。
 - `st-dialog` 用法统一为：`sync:open="xxxOpen"` + `auto-close`，`slot="headline"` 放标题、`slot="actions"` 放按钮；`st-dialog` 内直接 `querySelectorAll('st-button')` 能拿到两个操作按钮（`slot="actions"` 里的 div 不影响）。
 - `.dialog-field { width: 100%; }`：弹窗内输入框只改宽度，**不覆盖 `st-input` 的 `display`**（原因见踩坑 004）。
 
@@ -156,4 +157,6 @@ client/
 | 002 | 预览通道两个验证陷阱：增量刷新不重置页面状态、应用首帧日志捕获不到 | `pitfalls/002-preview-channel-verification-traps.md` |
 | 003 | 重构时删了 proto 方法、模板仍在调用，报 `function "xxx" not found` | `pitfalls/003-template-callback-must-exist.md` |
 | 004 | 给 `st-input` 覆盖 `display` 会让真实可输入区缩成 156px；后台标签页里弹窗动画被冻结，rect 量出的尺寸是缩放假象 | `pitfalls/004-st-input-display-override-and-frozen-anim.md` |
+| 005 | `st-dialog` 内部 `{{$host.xxx()}}` 静默渲染为空（弹窗里 `$host` 不指向页面） | `pitfalls/005-host-in-dialog-not-page.md` |
 | 006 | 页面根级绑定里写 `$host.xxx()` 会报 `Error evaluating element expression`（根级要用裸方法名） | `pitfalls/006-host-in-root-level-binding.md` |
+| 007 | 用 `preview eval` 取证的两个错觉：`o-page` 上读不到页面 data（改数据不驱动渲染）、`st-dialog` 打开状态要看 `hasAttribute('open')` | `pitfalls/007-page-data-and-dialog-open-introspection.md` |
