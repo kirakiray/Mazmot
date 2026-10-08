@@ -4,6 +4,21 @@
 
 ## 记录
 
+### 2026-10-08 · 分组行 ⋯ 菜单的两项加上前置图标（用户截图反馈「这里的 menu 也要 icon」）
+
+- **改了什么**：`pages/home.html`——`st-menu` 内的两个 `st-menu-item` 各加 `<n-icon slot="prefix">`：「重命名」用 `mdi:pencil`、「删除」用 `mdi:delete-outline`；CSS 新增 `st-menu-item n-icon { font-size: 1.15em }`（与 `st-button n-icon` 同规则，菜单项字号 14px → 图标实测 16.1px）。
+- **为什么**：用户看到分组行下拉菜单里只有纯文字，要求菜单项也配上图标（延续上一回合「功能图标统一 n-icon」）。
+- **验证结论**（预览实测，`preview` 工具 `eval`）：两项图标均 16.1×16.1、`svg` 已渲染、位于菜单项内（菜单项 106×37）；**点图标本身（向 `n-icon` shadow 里的 `svg` 派发冒泡 click）也能触发操作**——「重命名」→ 弹窗 headline「改名分组：「默认」」，临时建「图标测试组」后点删除图标 → 弹窗「删除分组「图标测试组」？」；默认分组的「删除」禁用时点图标**不弹窗**（拦截仍生效），图标随组件自带 `.item { opacity: 0.38 }` 与文字一起变淡；测试分组已清理（`.gitem` 回到 2 行）；硬刷新后存储仍为 `groups` 1 个 / `todos` 2 条，控制台 **errors: 0**。
+- **复查依据**：`st-menu-item` 支持 `prefix` / `suffix` / `sub-menu` 槽（已读 senti-ui `references/components/menu.md`）；禁用态视觉由组件内部 `.item` 的 `opacity: 0.38` 承担（实测 shadow 内部 `.item` opacity=0.38、宿主 `opacity` 仍为 1），所以不需要给禁用项另写图标灰化样式。
+
+### 2026-10-08 · 页内剩余 emoji 功能图标统一换成 n-icon（收尾上一回合的遗留项）
+
+- **改了什么**：`pages/home.html`——h1 前置 `<n-icon icon="mdi:check-circle-outline">`（CSS：`h1` 改 flex 对齐 + `h1 n-icon { font-size: 1em; color: var(--md-sys-color-primary) }`）；「添加任务」「新建分组」改用 `st-button` 的 `prefix` 槽放 `mdi:plus`、筛选栏垃圾桶用 `mdi:delete-outline`（统一 `st-button n-icon { font-size: 1.15em }` 与 14px 文字齐高）；列表删除按钮原 `deleteButtonIcon()`（返回 `"↩"`/`"✕"` 文本）改为 **`deleteButtonIconName()`** 返回 Iconify 名（`mdi:reply` / `mdi:close`），模板改成 `<n-icon attr:icon="$host.deleteButtonIconName($data)">`；垃圾桶「彻底删除」按钮的 🗑 换 `mdi:delete-outline`（`title` 顺带改为「彻底删除：<标题>」）；`timeMeta` 的倒计时文案去掉 🗑 前缀及其句式改为「点撤销按钮可撤销」。
+- **为什么**：上一回合 MEMORY 的遗留项（「页内其它图标仍是 emoji，若后续要求统一需一并替换」）+ AGENTS 硬性约定「UI 图标用 `n-icon`，不用 emoji 充当功能图标」；用户本回合说「继续」。
+- **验证结论**（预览实测，`preview` 工具）：`eval` 量得 h1 n-icon **26×26**（与 h1 同字号、内部 svg 已渲染）、三个 prefix 图标各 **16.1×16.1**、删除按钮 40×40 内图标 **22×22**（颜色继承 `currentColor`）；点删除按钮 → 图标变 **`mdi:reply`** + title「撤销删除」+ 副标题「默认 · 5 秒后移入垃圾桶（点撤销按钮可撤销）」+ pending 样式，再点 → 回 `mdi:close` 且无 pending 残留（撤销已落盘，硬刷新后仍 2 条）；垃圾桶条目「彻底删除」图标 `mdi:delete-outline`、title「彻底删除：22222」；「添加任务」/「新建分组」弹窗点开 → headline 正确 → 点「取消」关闭，无残留；硬刷新后 `[group] 已读取分组，共 1 个` / `[storage] 已读取待办，共 2 项`，控制台**无应用报错**；存储直读核对：`todos` 2 条（`111111` 未完成、`22222` 在垃圾桶）、`groups` 仅「默认」，**用户数据未被测试污染**。
+- **踩到的坑（已沉淀 `pitfalls/011`）**：想裸读 IndexedDB 核对落盘时用 `getStorage` 的 id 当库名 → 打开得到空库、`transaction('keyval')` 在 `onsuccess` 里抛错、promise 永不 resolve，`eval` **30s 静默超时**；正确库名是 `nos-storage-conjure-todo-app`、仓库名 `main`（记录形如 `{key, value}`）。
+- **遗留**：`＋` 已无 UI 残留（只剩 CSS 注释里）；空状态文案里的 🎉 等属文案装饰，保留。
+
 ### 2026-10-08 · 编辑按钮的 emoji 换成 NoneOS Core 的 n-icon
 
 - **改了什么**：`pages/home.html`——引入 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`；分组行编辑按钮内容由 `✏️` 改为 `<n-icon icon="mdi:pencil"></n-icon>`；CSS 删掉原先给 `n-icon` 写的 `width/height: 1.571em`，只保留 `display: inline-flex`（尺寸/颜色交给 `st-icon-button` 的 `::slotted` 规则）。

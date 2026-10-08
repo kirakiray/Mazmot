@@ -22,6 +22,7 @@
 - **UI 图标用 NoneOS Core 的 `n-icon`（`<l-m src="/nos/n-icon/n-icon.html"></l-m>` + Iconify 名如 `mdi:pencil`），不用 emoji 充当功能图标**：颜色随 `currentColor` 继承、自动适配主题。若把 `n-icon` 放进 `st-icon-button` 等自带 `::slotted` 字号规则的组件里，**不要再给 `n-icon` 写 `width` / `height` / `font-size`**（会与组件规则叠加把图标撑出按钮），缩放只改外层按钮的 `font-size`（见 `pitfalls/009-n-icon-inside-st-icon-button-sizing.md`）。
 - **`:hover` / 指针悬停类改动不能声称“已实测”**：预览窗口跑在后台标签页时浏览器不更新指针状态，`getComputedStyle(...).opacity` 等量不出悬停效果（同「弹窗动画被冻结」的成因）。做法：用旁证证明样式路径通（如选择器已生效的 em 尺寸），并给无 hover 设备 `@media (hover: none)` 兜底，然后在回复里**明确告诉用户这部分需他本人在前台用鼠标确认**，不要反复改代码（见 `pitfalls/010-st-menu-self-test-traps.md`）。
 - **豁免规则（硬性约定与用户指令冲突时）**：用户明确要求的做法与某条硬性约定冲突时，**既不死守也不悄悄违反**——先向用户说明该约定存在的原因与违反的后果，用户仍坚持则按用户的决定执行，并**在 MEMORY.md 里记录这次豁免**（哪条约定、为什么豁免），防止后续会话的 AI 把它当成违规「修正」回去。
+- **核对数据是否真正落盘，首选「硬刷新 + 读埋点日志」（`[storage] 已读取待办，共 N 项` / `[group] 已读取分组，共 N 个`），不要裸读 IndexedDB**：NoneOS 存储的库名是 `nos-storage-<getStorage 的 id>`、仓库名是 `main`（记录形如 `{ key, value }`）。拿 `getStorage` 的 id 当库名只会打开一个**空库**，随后 `transaction()` 在 `onsuccess` 里抛错会让 promise 永不 resolve，使 `preview eval` **静默超时 30s**（无报错、无返回值，极易误判为应用卡死，见 `pitfalls/011-nos-storage-indexeddb-shape.md`）。
 
 ## 记忆体规则（MEMORY.md）
 

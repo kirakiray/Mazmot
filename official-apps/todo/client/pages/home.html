@@ -106,7 +106,19 @@
       }
       .glist { flex-direction: row; flex-wrap: wrap; }
     }
-    h1 { font-size: 26px; margin: 0 0 4px; }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 26px;
+      margin: 0 0 4px;
+    }
+    /* 标题图标：跟 h1 同字号，颜色用 primary 做点缀 */
+    h1 n-icon { font-size: 1em; color: var(--md-sys-color-primary); }
+    /* st-button 的 prefix 图标略缩一点，和 14px 文字视觉齐高 */
+    st-button n-icon { font-size: 1.15em; }
+    /* 下拉菜单项的前置图标：跟菜单项字号（0.857em 尺寸体系）同比例放大到 16px 左右 */
+    st-menu-item n-icon { font-size: 1.15em; }
     .sub { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .top {
       display: flex;
@@ -236,18 +248,22 @@
                 class="gmenu"
                 attr:title="$host.groupMenuTitle($data.name)"
               ><n-icon icon="mdi:dots-horizontal"></n-icon></st-icon-button>
-              <st-menu-item on:click="$host.openRenameGroup($data.id)">重命名</st-menu-item>
+              <st-menu-item on:click="$host.openRenameGroup($data.id)"
+                ><n-icon slot="prefix" icon="mdi:pencil"></n-icon>重命名</st-menu-item
+              >
               <st-menu-item
                 attr:disabled="$host.isDefaultGroup($data.id)"
                 on:click="$host.requestDeleteGroup($data.id)"
-              >删除</st-menu-item>
+              ><n-icon slot="prefix" icon="mdi:delete-outline"></n-icon>删除</st-menu-item>
             </st-menu>
           </div>
         </o-fill>
       </div>
 
       <!-- 分组列表下方的新增入口：点击后在弹窗里输入（不再用常驻输入框） -->
-      <st-button variant="text" class="add-group-btn" on:click="openAddGroup">＋ 新建分组</st-button>
+      <st-button variant="text" class="add-group-btn" on:click="openAddGroup">
+        <n-icon slot="prefix" icon="mdi:plus"></n-icon>新建分组
+      </st-button>
 
     </aside>
 
@@ -255,17 +271,21 @@
     <div class="main">
       <div class="top">
       <div>
-        <h1>✅ 待办清单</h1>
+        <h1><n-icon icon="mdi:check-circle-outline"></n-icon>待办清单</h1>
         <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
       </div>
-      <st-button class="add-btn" on:click="openAdd">＋ 添加任务</st-button>
+      <st-button class="add-btn" on:click="openAdd">
+        <n-icon slot="prefix" icon="mdi:plus"></n-icon>添加任务
+      </st-button>
     </div>
 
     <st-button-group>
       <st-button attr:variant="view === 'all' ? 'filled' : 'text'" on:click="setView('all')">全部</st-button>
       <st-button attr:variant="view === 'active' ? 'filled' : 'text'" on:click="setView('active')">未完成</st-button>
       <st-button attr:variant="view === 'done' ? 'filled' : 'text'" on:click="setView('done')">已完成</st-button>
-      <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">🗑 垃圾桶{{trashBadge}}</st-button>
+      <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">
+        <n-icon slot="prefix" icon="mdi:delete-outline"></n-icon>垃圾桶{{trashBadge}}
+      </st-button>
     </st-button-group>
 
 
@@ -283,7 +303,7 @@
             <st-icon-button
               attr:title="$host.deleteButtonTitle($data)"
               on:click="$host.handleDeleteClick($data.id)"
-            >{{$host.deleteButtonIcon($data)}}</st-icon-button>
+            ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
           </div>
         </o-fill>
       </div>
@@ -301,7 +321,10 @@
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <st-button variant="text" on:click="$host.restoreTodo($data.id)">还原</st-button>
-            <st-icon-button title="彻底删除" on:click="$host.purgeTodo($data.id)">🗑</st-icon-button>
+            <st-icon-button
+              attr:title="'彻底删除：' + $data.text"
+              on:click="$host.purgeTodo($data.id)"
+            ><n-icon icon="mdi:delete-outline"></n-icon></st-icon-button>
           </div>
         </o-fill>
       </div>
@@ -693,9 +716,9 @@
             if (todo.pendingDeleteAt) {
               return (
                 g +
-                " · 🗑 " +
+                " · " +
                 this.pendingSeconds(todo) +
-                " 秒后移入垃圾桶（点 ↩ 可撤销）"
+                " 秒后移入垃圾桶（点撤销按钮可撤销）"
               );
             }
             if (todo.deletedAt) {
@@ -737,8 +760,9 @@
             );
           },
 
-          deleteButtonIcon(todo) {
-            return todo.pendingDeleteAt ? "↩" : "✕";
+          // 同一个删除按钮的图标名：倒计时中显示「撤销」图标，否则是关闭图标
+          deleteButtonIconName(todo) {
+            return todo.pendingDeleteAt ? "mdi:reply" : "mdi:close";
           },
 
           deleteButtonTitle(todo) {
