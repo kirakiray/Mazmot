@@ -4,6 +4,14 @@
 
 ## 记录
 
+### 2026-10-08 · 编辑按钮的 emoji 换成 NoneOS Core 的 n-icon
+
+- **改了什么**：`pages/home.html`——引入 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`；分组行编辑按钮内容由 `✏️` 改为 `<n-icon icon="mdi:pencil"></n-icon>`；CSS 删掉原先给 `n-icon` 写的 `width/height: 1.571em`，只保留 `display: inline-flex`（尺寸/颜色交给 `st-icon-button` 的 `::slotted` 规则）。
+- **为什么**：用户要求“你看看 noneos-core 的 n-icon，改了那个 emoji 的编辑按钮”——emoji 在不同平台字形/字号不一致且不受主题色控制，Iconify 图标能继承 `currentColor`。
+- **验证结论**（预览实测）：`/nos/n-icon/n-icon.html` 可加载（等价于 `core.noneos.com` 源，fetch 200）；`n-icon` 实测 18.9×18.9（按钮 34.3×34.3，`inside_btn: true`）、内部 svg 已渲染（`mdi:pencil` 的 path）、`color` 与按钮 `computedStyle.color` 完全一致；页面里已无 `✏️` 残留；点该按钮 → 日志 `[group] 打开改名弹窗 default 默认`、弹窗标题「改名分组：「默认」」且预填，**点击前后 active 分组未变**；取消后无弹窗残留；硬刷新后图标 ~100ms 出图（IndexedDB 缓存 `getStorage("n-icon")`），无未捕获错误。
+- **踩到的坑（已沉淀 `pitfalls/009`）**：最初按“图标 1.571em”给 `n-icon` 写了 `width/height: 1.571em`，结果图标变成 **30px**（`1.571 × n-icon 自身 18.85px 字号`，两层 em 相乘），撑得按钮很挤——正确做法是**什么都不设**，让它吃 `st-icon-button` 自带的 `::slotted { font-size: 1.571em }`。
+- **遗留**：页内其它图标仍是 emoji（标题 ✅、「＋ 添加任务 / 新建分组」的 ＋、删除 ✕/↩、垃圾桶 🗑）；用户本次只要求改编辑按钮，若后续要求统一，需一并替换并保留 `title` 无障碍名称。
+
 ### 2026-10-08 · 分组行右侧加 ✏️ 编辑按钮（用户要求），底部只留「删除分组」
 
 - **改了什么**：`pages/home.html`——`o-fill` 的分组行结构改为 `.gname` + `.gcount` + **`st-icon-button.gedit`（✏️）**；**分组行的 `on:click` 从整行 `.gitem` 移到 `.gname` 上**（「全部任务」行同样处理），这样点 ✏️ 不会顺带切分组（不依赖 `stopPropagation`）；底部 `.side-actions` 删掉「改名」按钮，只留「删除分组」；新增 proto 方法 `renameGroupTitle(name)` 给 ✏️ 提供 `title`（图标按钮必须有无障碍名称）；CSS：`.gitem` 改 `padding: 4px 4px 4px 10px` + 不再整行 `cursor: pointer`（改由 `.gname` 承担），新增 `.gitem .gedit { flex: none; font-size: 12px }`（em 尺寸等比缩到 34px）。

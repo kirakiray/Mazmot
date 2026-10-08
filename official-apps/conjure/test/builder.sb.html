@@ -2606,5 +2606,150 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="__app.json 安装清单：初始生成 / 增删 bump / 排除规则">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            syncAppManifest,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const mfFs = createVirtualFs();
+              await createAppDir(mfFs, {
+                name: "mf-app",
+                displayName: "清单应用",
+                description: "测试描述",
+                icon: "🧪",
+              });
+              const raw1 = await readAppFile(mfFs, "mf-app", "__app.json");
+              const mf1 = JSON.parse(raw1);
+              const app1 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const metaOk =
+                mf1.name === "清单应用" &&
+                mf1.icon === "🧪" &&
+                mf1.desc === "测试描述";
+              const firstFilesOk =
+                mf1.files[0] === "app.json" &&
+                mf1.files.includes("AGENTS.md") &&
+                mf1.files.includes("CONTEXT.md") &&
+                !mf1.files.includes("__app.json");
+              const firstNoBump = app1.version === "0.1.0"; // 初始生成不 bump
+
+              // 新增两个文件 → 追加进清单 + version bump
+              await writeAppFile(mfFs, "mf-app", "pages/detail.html", "<template page></template>");
+              await writeAppFile(mfFs, "mf-app", "lib/util.js", "export const x = 1;");
+              const r2 = await syncAppManifest(mfFs, "mf-app");
+              const mf2 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const app2 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const addOk =
+                r2.added.length === 2 &&
+                mf2.files.includes("pages/detail.html") &&
+                mf2.files.includes("lib/util.js");
+              const bump1 = r2.version === "0.1.1" && app2.version === "0.1.1";
+
+              // 纯内容修改 → 清单不变、不 bump
+              await writeAppFile(mfFs, "mf-app", "lib/util.js", "export const x = 2;");
+              const r3 = await syncAppManifest(mfFs, "mf-app");
+              const app3 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const contentOnlyOk = r3.changed === false && app3.version === "0.1.1";
+
+              // 排除规则：dotfiles / node_modules / test / *.sb.html 不进清单
+              await writeAppFile(mfFs, "mf-app", "node_modules/x.js", "x");
+              await writeAppFile(mfFs, "mf-app", "test/x.sb.html", "x");
+              await writeAppFile(mfFs, "mf-app", ".hidden.js", "x");
+              const r4 = await syncAppManifest(mfFs, "mf-app");
+              const mf4 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const excludeOk =
+                !mf4.files.includes("node_modules/x.js") &&
+                !mf4.files.includes("test/x.sb.html") &&
+                !mf4.files.includes(".hidden.js") &&
+                !r4.added.includes(".hidden.js");
+
+              // 删除文件 → 清单移除 + 再 bump
+              const dir = await mfFs.init("ai-apps");
+              const appDir = await dir.get("mf-app");
+              const clientDir = await appDir.get("client");
+              const victim = await clientDir.get("lib/util.js");
+              await victim.remove();
+              const r5 = await syncAppManifest(mfFs, "mf-app");
+              const mf5 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const app5 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const removeOk =
+                r5.removed.includes("lib/util.js") &&
+                !mf5.files.includes("lib/util.js") &&
+                r5.version === "0.1.2" &&
+                app5.version === "0.1.2";
+
+              const checks = {
+                metaOk, firstFilesOk, firstNoBump, addOk, bump1, contentOnlyOk, excludeOk, removeOk,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, files1: mf1.files, files5: mf5.files, r2, r5 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="__app.json 清单：还原备份后重新对齐">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            restoreAppBackup,
+            syncAppManifest,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const rbFs = createVirtualFs();
+              await createAppDir(rbFs, { name: "rb-app", displayName: "还原应用" });
+              await writeAppFile(rbFs, "rb-app", "pages/a.html", "<p>a</p>");
+              // 真实流程里清单在回合收尾同步；测试里手动收口
+              await syncAppManifest(rbFs, "rb-app");
+              // 备份时点：清单含 a.html
+              const snap = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const snapHasA = snap.files.includes("pages/a.html");
+              const bk = await createAppBackup(rbFs, "rb-app");
+              // 备份后再加一个文件（清单也跟进）
+              await writeAppFile(rbFs, "rb-app", "pages/b.html", "<p>b</p>");
+              await syncAppManifest(rbFs, "rb-app");
+              const mid = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const midHasB = mid.files.includes("pages/b.html");
+              // 还原到备份时点：b.html 消失，清单重新对齐（不含 b）
+              const res = await restoreAppBackup(rbFs, "rb-app", bk.id);
+              const after = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const appAfter = JSON.parse(await readAppFile(rbFs, "rb-app", "app.json"));
+              const checks = {
+                snapHasA,
+                midHasB,
+                restored: res.restored === true,
+                afterNoB: !after.files.includes("pages/b.html"),
+                afterHasA: after.files.includes("pages/a.html"),
+                // 新增 b +1 → 0.1.2；还原删 b 再 +1 → 0.1.3
+                versionBumped: appAfter.version === "0.1.3",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, snapFiles: snap.files, afterFiles: after.files, version: appAfter.version },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

@@ -375,6 +375,8 @@ export async function createAppDir(
       await doc.write(content);
     }
   }
+  // 初始安装清单（client/__app.json）：目录落成即与磁盘对齐
+  await syncAppManifest(fs, clean, rootHandle);
   return { name: clean, displayName: displayName || clean, dir: base };
 }
 
@@ -511,13 +513,39 @@ export async function listAppFiles(fs, appName, rootHandle) {
     return path;
   };
   const out = [];
-  const walk = async (dir) => {
-    if (typeof dir.flat === "function") {
-      for (const f of await dir.flat()) {
-        out.push(toRel(f.path));
+  // 真实 Core 的 flat() 可能列出整个命名空间（其他应用 / backup/ 等子树外
+  // 路径原样混入）——keys() 递归天然只走本应用子树，优先用它；
+  // 子树外路径的特征是 toRel 剥不掉前缀（返回值含 "ai-apps/" 或原样带多层
+  // 目录且不含本应用前缀），兜底分支里据此丢弃
+  const isOutside = (raw, relPath) =>
+    relPath.startsWith("/") ||
+    relPath.includes("../") ||
+    relPath.startsWith("ai-apps/") ||
+    relPath.includes("/backup/") ||
+    (raw !== relPath && relPath.includes("/client/"));
+  if (typeof base.keys === "function") {
+    const walk = async (dir) => {
+      for await (const key of dir.keys()) {
+        const item = await dir.get(key);
+        if (!item) continue;
+        if (item.kind === "dir") await walk(item);
+        else {
+          const r = toRel(item.path);
+          if (!isOutside(item.path, r)) out.push(r);
+        }
       }
-      return;
+    };
+    await walk(base);
+    return out.sort();
+  }
+  if (typeof base.flat === "function") {
+    for (const f of await base.flat()) {
+      const r = toRel(f.path);
+      if (!isOutside(f.path, r)) out.push(r);
     }
+    return out.sort();
+  }
+  const walk = async (dir) => {
     for await (const key of dir.keys()) {
       const item = await dir.get(key);
       if (!item) continue;
@@ -530,12 +558,110 @@ export async function listAppFiles(fs, appName, rootHandle) {
 }
 
 /**
+ * 同步应用的 client/__app.json（安装清单）与磁盘实际文件，生成应用与官方
+ * 应用同构（结构对齐 official-apps 下各应用的 __app.json）。宿主自动维护、
+ * AI 无须感知（SYSTEM_PROMPT 已声明禁止模型增删改它）：
+ *   - 清单已有条目且文件仍在磁盘 → 原样保留；
+ *   - 磁盘新增文件 → 追加（排除 __app.json 自身 / dotfiles / node_modules /
+ *     test 目录 / *.sb.html / __meta.json），app.json 固定居首；
+ *   - 文件增删 → 自动把 app.json 的 version 末段 +1（对齐 npm run update:apps
+ *     语义；首次生成不 bump，纯内容修改清单不变也不 bump）；
+ *   - 元数据（name/icon/desc）始终取自 app.json（app.json 是应用的唯一配置源）。
+ * 调用时机：createAppDir（初始生成）/ finishTurn（回合收尾，有文件写入时）/
+ * restoreAppBackup（覆盖还原后）/ adoptNewApp 非迁移分支（另建的新应用）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{changed: boolean, added: string[], removed: string[], version?: string}>}
+ *          version 为本次 bump 后的 app.json 版本（未 bump 时缺省）
+ */
+export async function syncAppManifest(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const include = (p) =>
+    p !== "__app.json" &&
+    p !== "__meta.json" &&
+    !p.endsWith(".sb.html") &&
+    !p
+      .split("/")
+      .some((seg) => seg.startsWith(".") || seg === "node_modules" || seg === "test");
+  const disk = new Set(
+    (await listAppFiles(fs, clean, rootHandle)).filter(include),
+  );
+
+  const prevRaw = await readAppFile(fs, clean, "__app.json", rootHandle);
+  const isFirst = prevRaw === null;
+  let prevFiles = [];
+  try {
+    const parsed = prevRaw ? JSON.parse(prevRaw) : null;
+    if (Array.isArray(parsed?.files)) prevFiles = parsed.files;
+  } catch {}
+
+  const entryPath = (e) => (typeof e === "string" ? e : e?.path);
+  const kept = [];
+  const listed = new Set();
+  const added = [];
+  const removed = [];
+  for (const e of prevFiles) {
+    const p = entryPath(e);
+    if (!p) continue;
+    if (disk.has(p)) {
+      listed.add(p);
+      kept.push(e);
+    } else {
+      removed.push(p);
+    }
+  }
+  for (const p of [...disk].filter((x) => !listed.has(x)).sort()) {
+    kept.push(p);
+    added.push(p);
+  }
+  kept.sort((a, b) => {
+    const pa = entryPath(a);
+    const pb = entryPath(b);
+    if (pa === "app.json") return -1;
+    if (pb === "app.json") return 1;
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
+  });
+  // 首次生成不 bump：0.1.0 就是应用的初始版本，建目录不算「更新」
+  const changed = !isFirst && (added.length > 0 || removed.length > 0);
+
+  const appRaw = await readAppFile(fs, clean, "app.json", rootHandle);
+  let meta = null;
+  try {
+    meta = appRaw ? JSON.parse(appRaw) : null;
+  } catch {}
+  let version;
+  if (changed && meta && typeof meta.version === "string") {
+    const next = bumpPatchVersion(meta.version);
+    if (next) {
+      meta.version = next;
+      version = next;
+      const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+      const f = await base.get(rel + "app.json");
+      await f.write(JSON.stringify(meta, null, 2));
+    }
+  }
+
+  const manifest = {
+    name: meta?.displayName || meta?.name || clean,
+    icon: meta?.icon || "📦",
+    desc: meta?.description || "",
+    files: kept,
+  };
+  const output = JSON.stringify(manifest, null, 2) + "\n";
+  if (output !== (prevRaw ?? "")) {
+    const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+    const f = await base.get(rel + "__app.json", { create: "file" });
+    await f.write(output);
+  }
+  return { changed, added, removed, ...(version ? { version } : {}) };
+}
+
+/**
  * 校验应用是否具备可运行的最小文件集。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ ready: boolean, missing: string[], files: string[] }>}
  */
-export async function validateApp(fs, appName, rootHandle) {
-  const files = await listAppFiles(fs, appName, rootHandle);
+export async function validateApp(fs, appName, rootHandle) {  const files = await listAppFiles(fs, appName, rootHandle);
   const missing = REQUIRED_FILES.filter(
     (f) => !files.some((p) => p === f || p.endsWith("/" + f)),
   );
@@ -1101,6 +1227,13 @@ export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
     }
   };
   await walk(bDir, "");
+  // 覆盖还原后文件集可能变化（旧备份无 __app.json / 文件集不同步）：
+  // 重新对齐安装清单（version 增删即 bump，与回合收尾同语义）
+  try {
+    await syncAppManifest(fs, clean, rootHandle);
+  } catch (err) {
+    console.warn("[builder] 还原后同步 __app.json 失败：", err);
+  }
   return { restored: true, files, bytes };
 }
 
@@ -1165,6 +1298,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
+   - client/ 下的 __app.json 由宿主自动维护（应用元数据与文件清单，版本随文件增删自动递增）——**禁止创建、修改或删除它**，list_files/read_file 看到它时跳过即可。
 3. 开发调试闭环（必须，不能只凭代码推断「应该没问题」）：
    - 尽早首跑：写完入口骨架（index.html / app-config.js / 首个页面）就先用 preview 工具（action=app，appName 必填）跑一次，确认应用能打开、骨架无报错，再继续写功能——不要全部写完才第一次运行，越早看到真实运行越早暴露问题；
    - 每完成一层功能（一个页面 / 一块交互 / 一组数据逻辑）都 write_file 后用 preview action=app 刷新实际运行验证，小步推进；

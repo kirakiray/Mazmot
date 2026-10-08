@@ -45,6 +45,7 @@ import {
   MODEL_OPTIONS,
   pickAutoKey,
   COMPACTION_PROMPT,
+  syncAppManifest,
 } from "./builder.js";
 import { diffLines, diffStat, compactHunks } from "./diff.js";
 import { createTools } from "./tools/index.js";
@@ -2595,6 +2596,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 本地渠道：回合结束把对话快照写入项目目录（conjure-chats.json），
     // 供下次选择该目录时走导入流程恢复对话数据
     if (appName) await syncLocalProjectChats(appName);
+
+    // 本回合有文件写入：同步 client/__app.json 安装清单（文件增删自动
+    // bump app.json 版本，AI 无须感知）；失败不阻塞收尾
+    if (fs && appName && turnChanges.length > 0) {
+      try {
+        await syncAppManifest(
+          fs,
+          appName,
+          state.currentAppName === appName && state.currentAppMode === "local"
+            ? localRootHandle
+            : undefined,
+        );
+      } catch (err) {
+        console.warn("[builder] 同步 __app.json 失败：", err);
+      }
+    }
   }
 
   // 导入本地既有项目：按 client/app.json 元数据登记应用，并从项目目录的
@@ -2798,6 +2815,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         missing: check.missing,
         newGroup: false,
       });
+      // 本回合 AI 已往新应用写文件：收口一次清单（createAppDir 只生成初始）
+      try {
+        await syncAppManifest(fs, info.appName, isLocal ? localRootHandle : undefined);
+      } catch (err) {
+        console.warn("[builder] 同步 __app.json 失败：", err);
+      }
       return;
     }
 
