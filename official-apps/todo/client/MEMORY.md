@@ -4,6 +4,22 @@
 
 ## 记录
 
+### 2026-10-08 · 添加支持多行（标题 + 描述）、点任务看详情弹窗
+
+- **改了什么**：`pages/home.html`——添加弹窗内 `st-input` 换成 `st-textarea`（`rows=4` + `.dialog-field { width:100%; min-height:7.5em }`，实测高 121px）；新增 `parseDraft(raw)`：**第一个非空行 = 标题，其后所有行（含内部换行）= 描述**；数据模型新增 `desc` 字段（旧数据补 `""`）；列表项在标题与时间行之间显示描述摘要（`-webkit-line-clamp: 2` 截断）；任务 `.body` 加 `on:click` 打开详情弹窗，新增 data `detailOpen` / `detail` 快照与方法 `buildDetail` / `openDetail` / `closeDetail` / `toggleDetailDone` / `deleteFromDetail` / `restoreFromDetail` / `purgeFromDetail`，详情弹窗展示完整标题、描述（`pre-wrap`）、状态、创建 / 状态变更 / 删除时间，并按 `inTrash` 用 `class:hidden` 切换操作按钮（列表内：标记完成/未完成 + 删除；垃圾桶内：还原 + 彻底删除）。
+- **为什么**：用户要求“添加和输入任务那里高一点、可换行，有换行则首行 title 其余为描述；单独点击任务可弹 dialog 看更多内容”。
+- **设计决策**：多行输入中回车 = 换行，所以**取消回车提交**，改为只点「添加」按钮（旧 placeholder「回车即可添加」已改）；点击触发只绑在 `.body`（**不用行级 click + stopPropagation**，避开 ofa 事件委托可能忽略 stopPropagation 的风险），因此点勾选框/删除按钮不会误开详情；详情操件全部转调已有方法，不复制业务逻辑。
+- **验证结论**（预览实测）：多行解析正确（标题「多行测试标题」/ 描述两行）；textarea 高 121px、原生输入区撑满 93%；点正文弹详情且标题/描述全文/状态/三个时间正确；点勾选框不弹详情且能正常切换完成态；详情内「标记为已完成」即时刷新状态与按钮文案（同时列表出现删除线与「完成于 …」）；详情内「删除」→ 关详情 + 开始倒计时；进垃圾桶后详情显示「已在垃圾桶」+ 删除时间，且只显「还原 / 彻底删除」；详情内「彻底删除」→ 关详情 +弹二次确认（取消不删）；详情内「还原」→ 移出垃圾桶；30 条带描述的长列表可滚到底（末条与底栏在视口内）；控制台无应用报错。测试数据已清理，用户 2 条数据字段恢复原样（`111111` 的 `statusChangedAt` 已回 `null`；`22222` 仍在垃圾桶）。
+- **踩到的坑（已沉淀 `pitfalls/005`）**：`st-dialog` 内 `{{$host.xxx()}}` 不渲染（弹窗里 `$host` 不指向页面），同图里 `{{detail.desc}}` 这种属性访问却正常，极易误判为数据没准备好；改为打开弹窗时把文案/标志预计算进 `detail` 快照。
+
+### 2026-10-08 · 添加任务改为「按钮 + 弹窗输入」
+
+- **改了什么**：`pages/home.html`——删掉页面中央常驻的 `.add-row` 输入条，改为标题栏 `.top`（左标题 + 右「＋ 添加任务」`st-button`，space-between）；新增「添加任务」`st-dialog`（`sync:open="addOpen"` + `auto-close`，内嵌 `st-input`，回车与「添加」按钮都走 `submitAdd`）；data 新增 `addOpen`；新增 proto 方法 `openAdd` / `closeAdd` / `submitAdd`，`addTodo` 改成返回布尔（成功才关弹窗）。
+- **为什么**：用户要求“不要这么正中央的显示，给个按钮，点击后 dialog 显示，在对话框内输入内容然后添加”。
+- **设计决策**：`addTodo` 返回布尔而不是内部直接关弹窗，便于弹窗与任何其他入口复用；`openAdd` / `closeAdd` 都清空 `draft`（但取消关闭不保留半成品草稿，下次干净开始）。
+- **验证结论**（预览实测）：点按钮弹窗打开、原位置输入条已无（`.add-row` 数量 0）；空输入时「添加」禁用，输入后启用；回车提交与点「添加」提交都新增成功且弹窗自动关闭、`draft` 清空；点「取消」关闭且不新增，重开弹窗草稿为空；新增条目带创建时间（`创建于 10-08 17:03`），计数同步；标题栏布局实测 rect 正常（左 247px 标题块 / 右侧 116x40 primary 按钮）；控制台无 error。测试条目已从存储删除，用户数据（列表 `111111`；垃圾桶 `22222`，删除于 10-08 16:50）保持原样。
+- **踩到的坑（已沉淀 `pitfalls/004`）**：给弹窗内 `st-input` 写 `display: block` 覆盖了组件默认 `inline-flex`，外框依然 440px 但真实可输入区只剩 156px（肉眼看不出来）；改成 `width: 100%` 后内部原生 input 410px 撑满。另：预览标签页在后台时 `st-dialog` 开场动画被冻结，rect 会量到缩放一半的假尺寸，判尺寸应看 `getComputedStyle`。
+
 ### 2026-10-08 · 新增垃圾桶（倒计时删除 + 还原 + 二次确认彻底删除）
 
 - **改了什么**：`pages/home.html` 新增垃圾桶功能——数据字段 `pendingDeleteAt`（倒计时中）/ `deletedAt`（已在垃圾桶）；点 ✕ 开始 5 秒倒计时（常量 `TRASH_DELAY_MS=5000`、轮询 `TICK_MS=200`），期间条目变错误容器色、副标题逐秒倒计时、图标变 ↩（再点即撤销），到点自动进垃圾桶；筛选栏新增「🗑 垃圾桶」视图（带数量），内可「还原」或 🗑 彻底删除，底部「清空垃圾桶」；彻底删除与清空均走 `st-dialog` 二次确认（`purgeTarget` = 条目 id 或 `"ALL"`，只有 `confirmPurge()` 才真删）；统计（未完成/共 N 项）只算非垃圾桶条目；`clearDone` 改为不误删垃圾桶与倒计时中的条目；新增 `formatTime/timeMeta/isPending/pendingSeconds/deleteButtonIcon/deleteButtonTitle` 等方法。

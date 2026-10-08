@@ -21,8 +21,16 @@
     }
     h1 { font-size: 26px; margin: 0 0 4px; }
     .sub { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
-    .add-row { display: flex; gap: 8px; align-items: center; }
-    .add-row st-input { flex: 1; }
+    .top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .top .add-btn { flex: none; }
+    /* 注意：不要在这里覆盖 st-input / st-textarea 的 display（组件默认 inline-flex，内部原生控件靠 flex 撑满），
+       只给宽度与最小高度即可，否则真实可输入区域会缩成组件默认宽度 */
+    .dialog-field { width: 100%; min-height: 7.5em; }
     .list { display: flex; flex-direction: column; gap: 8px; }
     .item {
       display: flex;
@@ -38,8 +46,21 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
+      cursor: pointer; /* 点正文区打开详情弹窗 */
     }
     .item .text { word-break: break-word; line-height: 1.4; }
+    /* 列表里的描述摘要：最多两行，超出截断（详情弹窗里看全文） */
+    .item .desc {
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
     .item .meta {
       font-size: 12px;
       line-height: 1.3;
@@ -55,6 +76,7 @@
       color: var(--md-sys-color-on-error-container);
     }
     .item.pending .meta { color: var(--md-sys-color-on-error-container); }
+    .item.pending .desc { color: var(--md-sys-color-on-error-container); }
     .item.trash { background: var(--md-sys-color-surface); border: 1px dashed var(--md-sys-color-outline-variant); }
     .trash-tip {
       margin: 0;
@@ -75,9 +97,27 @@
       padding-top: 12px;
     }
     .count { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    /* 条件隐藏：详情弹窗里按条目状态显隐不同操作按钮 */
+    .hidden { display: none !important; }
+    .detail {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 300px;
+      max-width: 460px;
+    }
+    .detail-desc {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+    .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    .detail-row .k { flex: none; width: 72px; }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button-group.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
@@ -85,18 +125,12 @@
   <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
 
   <div class="wrap">
-    <div>
-      <h1>✅ 待办清单</h1>
-      <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
-    </div>
-
-    <div class="add-row">
-      <st-input
-        sync:value="draft"
-        placeholder="想做点什么？回车即可添加"
-        on:change="addTodo"
-      ></st-input>
-      <st-button on:click="addTodo" attr:disabled="!draft.trim()">添加</st-button>
+    <div class="top">
+      <div>
+        <h1>✅ 待办清单</h1>
+        <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
+      </div>
+      <st-button class="add-btn" on:click="openAdd">＋ 添加任务</st-button>
     </div>
 
     <st-button-group>
@@ -112,8 +146,9 @@
         <o-fill :value="visibleTodos" fill-key="id">
           <div class="item" class:done="$data.done" class:pending="$host.isPending($data)">
             <st-checkbox attr:checked="$data.done" on:change="$host.toggleTodo($data.id)"></st-checkbox>
-            <div class="body">
+            <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
+              <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <st-icon-button
@@ -131,8 +166,9 @@
       <div class="list">
         <o-fill :value="trashTodos" fill-key="id">
           <div class="item trash">
-            <div class="body">
+            <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
+              <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <st-button variant="text" on:click="$host.restoreTodo($data.id)">还原</st-button>
@@ -169,6 +205,41 @@
         >清除已完成</st-button>
       </div>
     </o-if>
+
+    <!-- 添加任务：弹窗内输入 -->
+    <st-dialog sync:open="addOpen" auto-close>
+      <span slot="headline">添加任务</span>
+      <st-textarea
+        class="dialog-field"
+        rows="4"
+        sync:value="draft"
+        placeholder="第一行是标题，换行后写的都是描述…"
+      ></st-textarea>
+      <div slot="actions">
+        <st-button variant="text" on:click="closeAdd">取消</st-button>
+        <st-button on:click="submitAdd" attr:disabled="!draft.trim()">添加</st-button>
+      </div>
+    </st-dialog>
+
+    <!-- 任务详情：注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
+         所以展示用的文案与标志都在 openDetail 里预计算好，这里只读 detail 的字段 -->
+    <st-dialog sync:open="detailOpen" auto-close>
+      <span slot="headline">{{detail.title}}</span>
+      <div class="detail">
+        <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
+        <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
+        <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
+        <div class="detail-row"><span class="k">状态变更</span><span>{{detail.statusChangedText}}</span></div>
+        <div class="detail-row"><span class="k">删除时间</span><span>{{detail.deletedText}}</span></div>
+      </div>
+      <div slot="actions">
+        <st-button variant="text" class:hidden="detail.inTrash" on:click="toggleDetailDone">{{detail.doneLabel}}</st-button>
+        <st-button variant="text" color="error" class:hidden="detail.inTrash" on:click="deleteFromDetail">删除</st-button>
+        <st-button variant="text" class:hidden="!detail.inTrash" on:click="restoreFromDetail">还原</st-button>
+        <st-button variant="text" color="error" class:hidden="!detail.inTrash" on:click="purgeFromDetail">彻底删除</st-button>
+        <st-button variant="text" on:click="closeDetail">关闭</st-button>
+      </div>
+    </st-dialog>
 
     <!-- 彻底删除的二次确认 -->
     <st-dialog sync:open="confirmOpen" auto-close>
@@ -208,6 +279,24 @@
           confirmText: "",
           // 待彻底删除的目标：条目 id 或 "ALL"（清空垃圾桶）
           purgeTarget: null,
+          // 添加任务的弹窗
+          addOpen: false,
+          // 任务详情弹窗：打开时把展示文案与标志全部预计算好
+          // （st-dialog 内不能调 $host.xxx()，只能读 data 字段，见模板注释）
+          detailOpen: false,
+          detail: {
+            id: "",
+            title: "",
+            desc: "",
+            hasDesc: false,
+            done: false,
+            inTrash: false,
+            statusText: "",
+            createdText: "",
+            statusChangedText: "",
+            deletedText: "",
+            doneLabel: "",
+          },
         },
 
         ready() {
@@ -260,6 +349,8 @@
                 this.todos = saved.map((t) => ({
                   id: String(t.id),
                   text: String(t.text || ""),
+                  // 描述：标题换行后的内容；旧数据没有，一律空字符串
+                  desc: typeof t.desc === "string" ? t.desc : "",
                   done: !!t.done,
                   // 旧数据没有时间字段，保留 null（界面显示“时间未知”），不伪造时间
                   createdAt: typeof t.createdAt === "number" ? t.createdAt : null,
@@ -286,14 +377,48 @@
             }
           },
 
+          // 打开添加弹窗：开一个新草稿
+          openAdd() {
+            this.draft = "";
+            this.addOpen = true;
+            console.log("[todo] 打开添加弹窗");
+          },
+
+          closeAdd() {
+            this.addOpen = false;
+            this.draft = "";
+            console.log("[todo] 关闭添加弹窗（未添加）");
+          },
+
+          // 多行输入解析：第一个非空行 = 标题，其后所有行（含内部换行）= 描述
+          parseDraft(raw) {
+            const lines = String(raw || "").split(/\r?\n/);
+            const firstIdx = lines.findIndex((l) => l.trim());
+            if (firstIdx === -1) return null;
+            const title = lines[firstIdx].trim();
+            const desc = lines
+              .slice(firstIdx + 1)
+              .join("\n")
+              .trim();
+            return { title, desc };
+          },
+
+          // 多行输入提交：回车与「添加」按钮都走这里，成功后关闭弹窗
+          submitAdd() {
+            const ok = this.addTodo();
+            if (ok) this.addOpen = false;
+          },
+
+          // 备注：输入框是多行（回车 = 换行），因此只能点「添加」按钮提交，不用 on:change(失焦提交)。
           addTodo() {
-            const text = (this.draft || "").trim();
-            if (!text) return;
+            const parsed = this.parseDraft(this.draft);
+            if (!parsed) return false;
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
             this.todos = [
               {
                 id,
-                text,
+                text: parsed.title,
+                desc: parsed.desc,
                 done: false,
                 createdAt: Date.now(),
                 statusChangedAt: null,
@@ -303,8 +428,9 @@
               ...this.todos,
             ];
             this.draft = "";
-            console.log("[todo] 新增", id, text);
+            console.log("[todo] 新增", id, parsed.title, parsed.desc ? "（含描述）" : "");
             this.persistTodos();
+            return true;
           },
 
           toggleTodo(id) {
@@ -501,6 +627,73 @@
             }
             console.log("[trash] 彻底删除已确认，移除", before - this.todos.length, "项");
             this.persistTodos();
+          },
+
+          // ===== 任务详情 =====
+          // 把一条待办转成详情弹窗的展示对象（文案全在这里算好，模板只读字段）
+          buildDetail(todo) {
+            const timeOr = (ts) =>
+              typeof ts === "number" ? this.formatTime(ts) : "—";
+            return {
+              id: todo.id,
+              title: todo.text || "（无标题）",
+              desc: todo.desc || "",
+              hasDesc: !!todo.desc,
+              done: !!todo.done,
+              inTrash: !!todo.deletedAt,
+              statusText: todo.pendingDeleteAt
+                ? "待删除（倒计时中）"
+                : todo.deletedAt
+                ? "已在垃圾桶"
+                : todo.done
+                ? "已完成"
+                : "未完成",
+              createdText: timeOr(todo.createdAt),
+              statusChangedText: timeOr(todo.statusChangedAt),
+              deletedText: timeOr(todo.deletedAt),
+              doneLabel: todo.done ? "标记为未完成" : "标记为已完成",
+            };
+          },
+
+          openDetail(id) {
+            const todo = this.todos.find((t) => t.id === id);
+            if (!todo) return;
+            this.detail = this.buildDetail(todo);
+            this.detailOpen = true;
+            console.log("[detail] 打开详情", id, todo.text);
+          },
+
+          closeDetail() {
+            this.detailOpen = false;
+            console.log("[detail] 关闭详情");
+          },
+
+          toggleDetailDone() {
+            const id = this.detail.id;
+            this.toggleTodo(id);
+            const cur = this.todos.find((t) => t.id === id);
+            // 同步刷新弹窗内容（保持弹窗开着，状态行与按钮文案跟着变）
+            if (cur) this.detail = this.buildDetail(cur);
+            console.log("[detail] 详情内切换完成态", id);
+          },
+
+          deleteFromDetail() {
+            const id = this.detail.id;
+            this.detailOpen = false;
+            // 与列表上的 ✕ 同一语义：若已在倒计时中则撤销
+            this.handleDeleteClick(id);
+          },
+
+          restoreFromDetail() {
+            const id = this.detail.id;
+            this.detailOpen = false;
+            this.restoreTodo(id);
+          },
+
+          purgeFromDetail() {
+            const id = this.detail.id;
+            this.detailOpen = false;
+            this.purgeTodo(id);
           },
 
           setView(value) {
