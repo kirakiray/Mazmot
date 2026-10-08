@@ -1258,6 +1258,15 @@ export async function deleteAppBackup(fs, appName, backupId, rootHandle) {
 
 export const PROJECT_CHAT_FILE = "conjure-chats.json";
 
+/** 对话快照目录（新版布局：index.json 会话列表 + 每会话一个 <sid>.json） */
+export const PROJECT_CHAT_DIR = "conjure-chats";
+
+/** sid → 快照文件名（sid 中的非法字符过滤掉） */
+const chatSidFile = (sid) => {
+  const safe = String(sid || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return safe ? `${safe}.json` : null;
+};
+
 /** 探测目录是否为既有项目：存在 client/app.json 即是，返回其元数据（否则 null） */
 export async function detectLocalProject(rootHandle) {
   try {
@@ -1270,14 +1279,96 @@ export async function detectLocalProject(rootHandle) {
   }
 }
 
-/** 把对话快照写入项目目录（JSON 文本，放 client/ 同层） */
+/**
+ * 把对话快照写入项目目录（client/ 同层的 conjure-chats/，目录化布局）：
+ *   conjure-chats/index.json     会话列表元数据（不含消息，体量恒定）
+ *   conjure-chats/<sid>.json     每会话一个文件（messages + thread）
+ * data.onlySid 提供时只重写该会话的文件（回合收尾的增量场景，其余会话
+ * 文件不动、也不做孤儿清理——它们不在本次写入集合内）；缺省为全量模式，
+ * 会按 index 的会话列表清理已删除会话的孤儿文件。
+ */
 export async function saveProjectChats(rootHandle, data) {
-  const f = await rootHandle.get(PROJECT_CHAT_FILE, { create: "file" });
-  await f.write(JSON.stringify(data, null, 2));
+  const dir = await rootHandle.get(PROJECT_CHAT_DIR, { create: "dir" });
+  const index = {
+    version: 2,
+    app: data.app,
+    sessionOrder: data.sessionOrder ?? null,
+    sessions: data.sessions || [],
+    savedAt: Date.now(),
+  };
+  const idxFile = await dir.get("index.json", { create: "file" });
+  await idxFile.write(JSON.stringify(index, null, 2));
+
+  const onlySid = data.onlySid || null;
+  const targets = onlySid
+    ? (data.sessions || []).filter((s) => s.id === onlySid)
+    : data.sessions || [];
+  const alive = new Set();
+  for (const s of targets) {
+    const fname = chatSidFile(s.id);
+    if (!fname) continue;
+    alive.add(fname);
+    const payload = {
+      id: s.id,
+      messages: data.messages?.[s.id] || [],
+      thread: data.threads?.[s.id] || [],
+    };
+    const f = await dir.get(fname, { create: "file" });
+    await f.write(JSON.stringify(payload, null, 2));
+  }
+  if (!onlySid) {
+    // 全量模式：按会话列表清理已删除会话的孤儿文件
+    const keys = [];
+    for await (const key of dir.keys()) keys.push(key);
+    for (const key of keys) {
+      if (key === "index.json" || alive.has(key)) continue;
+      const f = await dir.get(key).catch(() => null);
+      if (f && f.kind === "file") await f.remove();
+    }
+  }
 }
 
-/** 读取项目目录的对话快照，缺失 / 损坏返回 null */
+/**
+ * 读取项目目录的对话快照，缺失 / 损坏返回 null。
+ * 目录格式优先；index.json 不存在时回退旧版单文件 conjure-chats.json
+ * （存量项目只读兼容——导入后首次回合收尾即写入新目录，旧文件可手动删除）。
+ * 返回聚合结构 { sessions, messages, threads, sessionOrder, app, savedAt }，
+ * 与旧版单文件结构同形，调用方无感。
+ */
 export async function loadProjectChats(rootHandle) {
+  try {
+    const dir = await rootHandle.get(PROJECT_CHAT_DIR);
+    if (dir && dir.kind === "dir") {
+      const idxFile = await dir.get("index.json");
+      if (idxFile && idxFile.kind === "file") {
+        const index = JSON.parse(await idxFile.text());
+        const sessions = index.sessions || [];
+        const messages = {};
+        const threads = {};
+        for (const s of sessions) {
+          const fname = chatSidFile(s.id);
+          if (!fname) continue;
+          try {
+            const f = await dir.get(fname);
+            if (f && f.kind === "file") {
+              const one = JSON.parse(await f.text());
+              messages[s.id] = Array.isArray(one.messages) ? one.messages : [];
+              threads[s.id] = Array.isArray(one.thread) ? one.thread : [];
+            }
+          } catch {}
+        }
+        return {
+          version: 2,
+          app: index.app,
+          sessionOrder: index.sessionOrder ?? null,
+          sessions,
+          messages,
+          threads,
+          savedAt: index.savedAt,
+        };
+      }
+    }
+  } catch {}
   try {
     const f = await rootHandle.get(PROJECT_CHAT_FILE);
     if (!f || f.kind !== "file") return null;

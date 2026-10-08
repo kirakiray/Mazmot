@@ -2751,5 +2751,95 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="对话快照目录化：index + 每会话文件 / 孤儿清理 / onlySid 增量 / 旧格式兼容">
+      <template>
+        <script type="module">
+          import {
+            saveProjectChats,
+            loadProjectChats,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fs = createVirtualFs();
+              const root = await fs.init("chat-root");
+              const mk = (id, title) => ({ id, title, createdAt: 1, updatedAt: 2, duration: 0 });
+              const data = {
+                version: 1,
+                app: { name: "snap-app", displayName: "快照应用", icon: "🗂" },
+                sessionOrder: null,
+                sessions: [mk("s1", "会话一"), mk("s2", "会话二")],
+                messages: {
+                  s1: [{ id: 1, role: "user", content: "你好" }],
+                  s2: [{ id: 2, role: "user", content: "第二条" }],
+                },
+                threads: { s1: [{ role: "user", content: "你好" }], s2: [] },
+                savedAt: 123,
+              };
+              // 全量写：index + 每会话文件
+              await saveProjectChats(root, data);
+              const dir = await root.get("conjure-chats");
+              const files = [];
+              for await (const k of dir.keys()) files.push(k);
+              files.sort();
+              const layoutOk =
+                files.join(",") === "index.json,s1.json,s2.json";
+
+              // 聚合读回：结构与旧单文件同形
+              const back = await loadProjectChats(root);
+              const readOk =
+                back.sessions.length === 2 &&
+                back.messages.s1?.[0]?.content === "你好" &&
+                back.threads.s2?.length === 0 &&
+                back.app?.displayName === "快照应用";
+
+              // onlySid 增量：只重写 s1，s2 文件内容保持；且不清理其他会话
+              data.messages.s1 = [{ id: 3, role: "user", content: "改写后" }];
+              await saveProjectChats(root, { ...data, onlySid: "s1" });
+              const mid = await loadProjectChats(root);
+              const onlyOk =
+                mid.messages.s1?.[0]?.content === "改写后" &&
+                mid.messages.s2?.[0]?.content === "第二条";
+
+              // 全量写但会话列表只剩 s1：s2.json 孤儿被清理
+              data.sessions = [mk("s1", "会话一")];
+              delete data.messages.s2;
+              delete data.threads.s2;
+              await saveProjectChats(root, data);
+              const files2 = [];
+              for await (const k of dir.keys()) files2.push(k);
+              files2.sort();
+              const orphanOk = files2.join(",") === "index.json,s1.json";
+              const after = await loadProjectChats(root);
+              const afterOk = after.sessions.length === 1;
+
+              // 旧格式兼容：无 index.json 时回退读 conjure-chats.json
+              const root2 = await fs.init("chat-root-legacy");
+              const legacy = await root2.get("conjure-chats.json", { create: "file" });
+              await legacy.write(JSON.stringify({
+                version: 1,
+                sessions: [mk("old1", "旧会话")],
+                messages: { old1: [{ id: 9, role: "user", content: "旧数据" }] },
+                threads: {},
+              }));
+              const legacyBack = await loadProjectChats(root2);
+              const legacyOk =
+                legacyBack.sessions[0].id === "old1" &&
+                legacyBack.messages.old1?.[0]?.content === "旧数据";
+
+              const checks = {
+                layoutOk, readOk, onlyOk, orphanOk, afterOk, legacyOk,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, files, files2, back },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

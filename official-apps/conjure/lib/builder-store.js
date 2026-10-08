@@ -1021,6 +1021,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       await selfStore.removeItem(`chat:${name}:${sid}`);
       await selfStore.removeItem(`thread:${name}:${sid}`);
     }
+    // 本地渠道：从项目快照目录移除该会话的文件（全量同步带孤儿清理）
+    const delApp = (await loadRegistry()).find((a) => a.name === name);
+    if (delApp?.mode === "local") await syncLocalProjectChats(name);
     // 删除的正是正在进行流式回合的会话：中断并丢弃实时桶，防止回合收尾复活它
     if (turnKey === `chat:${name}:${sid}`) {
       stop();
@@ -2593,9 +2596,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       // 兜底：记录缺失（历史会话/旧版本创建）时补登记，保证句柄可恢复
       await ensureAppRegistered(appName);
     }
-    // 本地渠道：回合结束把对话快照写入项目目录（conjure-chats.json），
-    // 供下次选择该目录时走导入流程恢复对话数据
-    if (appName) await syncLocalProjectChats(appName);
+    // 本地渠道：回合结束把对话快照写入项目目录（conjure-chats/ 目录，
+    // 只重写本会话的文件），供下次选择该目录时走导入流程恢复对话数据
+    if (appName) await syncLocalProjectChats(appName, sid || null);
 
     // 本回合有文件写入：同步 client/__app.json 安装清单（文件增删自动
     // bump app.json 版本，AI 无须感知）；失败不阻塞收尾
@@ -2681,9 +2684,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     await reloadApps();
   }
 
-  // 把当前本地项目的对话数据写快照到项目目录（conjure-chats.json）。
-  // 每次对话回合结束后调用；appName 可与当前视图不同（回合归属优先）
-  async function syncLocalProjectChats(appName = state.currentAppName) {
+  // 把当前本地项目的对话数据写快照到项目目录（conjure-chats/ 目录布局）。
+  // 每次对话回合结束后调用；appName 可与当前视图不同（回合归属优先）。
+  // onlySid 提供时只重写该会话的快照文件（回合收尾的增量场景，其余会话
+  // 文件不动）；缺省全量模式并清理已删除会话的孤儿文件
+  async function syncLocalProjectChats(appName = state.currentAppName, onlySid = null) {
     if (!selfStore || appName === "") return;
     try {
       const reg = await loadRegistry();
@@ -2722,6 +2727,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         messages,
         threads,
         savedAt: Date.now(),
+        onlySid,
       });
     } catch (err) {
       console.warn("写入项目对话快照失败：", err);
