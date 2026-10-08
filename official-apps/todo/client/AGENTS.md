@@ -20,6 +20,7 @@
 - **`st-dialog` 等组件内部只用属性访问，不用 `$host.方法()`**：弹窗内部 `$host` 不指向页面实例，`{{$host.xxx()}}` / `attr:x="$host.xxx()"` 会**静默渲染为空**（不报错，而同一弹窗里 `{{data.字段}}` 却正常）——展示文案与布尔标志应在打开弹窗时预计算进 data 快照，模板只读字段（见 `pitfalls/005-host-in-dialog-not-page.md`）。
 - **页面根级绑定写裸方法名 / data 字段，只有 `o-fill` / `o-if` 内部才用 `$host.方法()`**：根级写 `$host.xxx()` 会在 `class:` / `attr:` 等表达式指令上报 `Error evaluating element expression` 且绑定静默失效（`on:click` 有时能跑，但不要依赖），见 `pitfalls/006-host-in-root-level-binding.md`。
 - **UI 图标用 NoneOS Core 的 `n-icon`（`<l-m src="/nos/n-icon/n-icon.html"></l-m>` + Iconify 名如 `mdi:pencil`），不用 emoji 充当功能图标**：颜色随 `currentColor` 继承、自动适配主题。若把 `n-icon` 放进 `st-icon-button` 等自带 `::slotted` 字号规则的组件里，**不要再给 `n-icon` 写 `width` / `height` / `font-size`**（会与组件规则叠加把图标撑出按钮），缩放只改外层按钮的 `font-size`（见 `pitfalls/009-n-icon-inside-st-icon-button-sizing.md`）。
+- **`:hover` / 指针悬停类改动不能声称“已实测”**：预览窗口跑在后台标签页时浏览器不更新指针状态，`getComputedStyle(...).opacity` 等量不出悬停效果（同「弹窗动画被冻结」的成因）。做法：用旁证证明样式路径通（如选择器已生效的 em 尺寸），并给无 hover 设备 `@media (hover: none)` 兜底，然后在回复里**明确告诉用户这部分需他本人在前台用鼠标确认**，不要反复改代码（见 `pitfalls/010-st-menu-self-test-traps.md`）。
 - **豁免规则（硬性约定与用户指令冲突时）**：用户明确要求的做法与某条硬性约定冲突时，**既不死守也不悄悄违反**——先向用户说明该约定存在的原因与违反的后果，用户仍坚持则按用户的决定执行，并**在 MEMORY.md 里记录这次豁免**（哪条约定、为什么豁免），防止后续会话的 AI 把它当成违规「修正」回去。
 
 ## 记忆体规则（MEMORY.md）

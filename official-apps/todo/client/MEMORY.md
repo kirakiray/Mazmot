@@ -12,7 +12,16 @@
 - **踩到的坑（已沉淀 `pitfalls/009`）**：最初按“图标 1.571em”给 `n-icon` 写了 `width/height: 1.571em`，结果图标变成 **30px**（`1.571 × n-icon 自身 18.85px 字号`，两层 em 相乘），撑得按钮很挤——正确做法是**什么都不设**，让它吃 `st-icon-button` 自带的 `::slotted { font-size: 1.571em }`。
 - **遗留**：页内其它图标仍是 emoji（标题 ✅、「＋ 添加任务 / 新建分组」的 ＋、删除 ✕/↩、垃圾桶 🗑）；用户本次只要求改编辑按钮，若后续要求统一，需一并替换并保留 `title` 无障碍名称。
 
-### 2026-10-08 · 分组行右侧加 ✏️ 编辑按钮（用户要求），底部只留「删除分组」
+### 2026-10-08 · 行内 ✏️ 换成「⋯」下拉菜单（重命名 + 删除），并改成悬停 / 选中时显现（用户说“都换了”）
+
+- **改了什么**：`pages/home.html`——分组行右侧的单个编辑按钮换成 **`st-menu` 下拉菜单**：trigger 为 `st-icon-button.gmenu`（图标 `<n-icon icon="mdi:dots-horizontal">`），菜单项「重命名」→ `openRenameGroup($data.id)`、「删除」→ `requestDeleteGroup($data.id)`（`attr:disabled="$host.isDefaultGroup($data.id)"` 让默认分组的删除置灰）；新增 `mdi` 依赖 `<l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html">`；**删掉侧栏底部的 `.side-actions`（改名/删除按钮块）与其 CSS、去掉 `canModifyGroup` getter**（删除已收进行内菜单）；`renameGroupTitle(name)` → `groupMenuTitle(name)`，新增 `isDefaultGroup(id)`；CSS：`.gitem st-menu { flex: none }`、`.gitem .gmenu { font-size: 12px; opacity: 0; transition: opacity .15s }` + `.gitem:hover/.active/:focus-within .gmenu { opacity: 1 }` + `@media (hover: none) { opacity: 1 }`。
+- **为什么**：上一回合我把一个单功能按钮直接摆在行上，用户答复“都换了”（即接受我提的两条：平时隐藏、换成 ⋯ 菜单里放改名 + 删除）。
+- **验证结论**（预览实测）：菜单渲染正常（默认行两个菜单项，默认分组的「删除」`disabled: true`、临时分组为 `false`）；点 trigger → 面板打开（菜单项 rect 90×37@108,187，而关闭态为 0×0，不会占用行内布局）；点「重命名」→ 弹窗标题「改名分组：「默认」」、预填「默认」、按钮「取消 / 保存」，**点击前后选中分组未变**；点「删除」（临时组「菜单测试组」）→ 二次确认「删除分组「菜单测试组」？」→ 确认后分组消失、列表回到「全部任务」；尺寸：按钮 34.3×34.3、n-icon 18.9×18.9（全部在按钮内）、颜色 `rgb(195,198,207)` 继承 currentColor；遗留引用检查：`canModifyGroup` / `side-actions` / `renameGroupTitle` / `gedit` 均已不在页面中；最终数据只剩「默认」分组 + 用户原任务 `111111`，硬刷新一致，控制台无应用报错。
+- **无法实测的点**：`.gitem:hover` 的悬停淡入**量不到**——预览标签页在后台，浏览器不更新指针 hover 状态（`computedStyle.opacity` 始终 0，即使面板已开）。旁证：选择器路径通（`font-size: 12px` 已生效→ 按钮 34.3px），触屏有 `@media (hover: none)` 兜底；**需用户在前台用鼠标确认**，已沉淀 `pitfalls/010`。
+- **文档**：CONTEXT（使用指南左栏 1–3 重排、右栏重编号为 4–10、getter/方法表、页面骨架、关键流程、核心链路 ⑰）已同步；新增 `pitfalls/010`（st-menu 自测陷阱）并登记索引；顺手把 AGENTS.md 引用了但仓库里缺失的 `pitfalls/009`（n-icon 在 st-icon-button 里的尺寸规则）补成真实文件。
+- **发现并纠正的文档/代码漂移**：本回合读文件时发现页面里的行内按钮已被改成 `n-icon`（`mdi:pencil`）而 MEMORY 里没记录（上一回合落盘后的后续改动），本次已一并核对并写进文档（图标统一用 `n-icon`、不要给它写 width/height）。
+
+### 2026-10-08 · （已被同日上一条取代：行内按钮后来换成了 ⋯ 菜单）分组行右侧加 ✏️ 编辑按钮，底部只留「删除分组」
 
 - **改了什么**：`pages/home.html`——`o-fill` 的分组行结构改为 `.gname` + `.gcount` + **`st-icon-button.gedit`（✏️）**；**分组行的 `on:click` 从整行 `.gitem` 移到 `.gname` 上**（「全部任务」行同样处理），这样点 ✏️ 不会顺带切分组（不依赖 `stopPropagation`）；底部 `.side-actions` 删掉「改名」按钮，只留「删除分组」；新增 proto 方法 `renameGroupTitle(name)` 给 ✏️ 提供 `title`（图标按钮必须有无障碍名称）；CSS：`.gitem` 改 `padding: 4px 4px 4px 10px` + 不再整行 `cursor: pointer`（改由 `.gname` 承担），新增 `.gitem .gedit { flex: none; font-size: 12px }`（em 尺寸等比缩到 34px）。
 - **为什么**：用户要求“在左侧 item 上，右侧地方添加一个 edit button，点击后 dialog 修改分组名”。
