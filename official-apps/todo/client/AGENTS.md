@@ -15,6 +15,7 @@
 - **页面模块的 `:host` 必须是滚动容器**（`height:100%; overflow-y:auto`）——`o-router fix-body` 给自身 shadow 写死了 `overflow:hidden`，删掉这条整页无法滚动。
 - 颜色只用 M3 变量 `--md-sys-color-*`；canvas 里绘制的色值属于图片内容，不受此约束。
 - **关键路径埋 console 定位点**：开发代码时给重要位置写日志，供排查时用 preview 工具（action=console）快速定位——至少覆盖：入口初始化、关键数据流转、外部回调（文件 / 事件响应）、catch 错误分支（`console.error` 连同 err 一起打）。格式带统一模块标签（如 `console.log("[init]", ...)`），与预览通道的 `[bridge-link]` 噪声天然可区分；定位点**常驻保留**，临时性 debug 日志用完即删、不刷屏。
+- **改 `pages/*.html` 里 `proto` 的方法名 / 删方法后，必须全文件核对模板引用并在推送后读控制台**：模板的 `on:click="xxx"` / `{{$host.xxx(...)}}` / `attr:xxx="$host.xxx(...)"` 都是运行时按名字找方法的，对不上只会抛 `Event binding error: function "xxx" not found`——页面照常渲染、只有那个交互失效，肉眼极难发现（见 `pitfalls/003-template-callback-must-exist.md`）。所以「按钮点了没反应」先查控制台，不要先怀疑组件。
 - **豁免规则（硬性约定与用户指令冲突时）**：用户明确要求的做法与某条硬性约定冲突时，**既不死守也不悄悄违反**——先向用户说明该约定存在的原因与违反的后果，用户仍坚持则按用户的决定执行，并**在 MEMORY.md 里记录这次豁免**（哪条约定、为什么豁免），防止后续会话的 AI 把它当成违规「修正」回去。
 
 ## 记忆体规则（MEMORY.md）

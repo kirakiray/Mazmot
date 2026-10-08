@@ -4,6 +4,15 @@
 
 ## 记录
 
+### 2026-10-08 · 新增垃圾桶（倒计时删除 + 还原 + 二次确认彻底删除）
+
+- **改了什么**：`pages/home.html` 新增垃圾桶功能——数据字段 `pendingDeleteAt`（倒计时中）/ `deletedAt`（已在垃圾桶）；点 ✕ 开始 5 秒倒计时（常量 `TRASH_DELAY_MS=5000`、轮询 `TICK_MS=200`），期间条目变错误容器色、副标题逐秒倒计时、图标变 ↩（再点即撤销），到点自动进垃圾桶；筛选栏新增「🗑 垃圾桶」视图（带数量），内可「还原」或 🗑 彻底删除，底部「清空垃圾桶」；彻底删除与清空均走 `st-dialog` 二次确认（`purgeTarget` = 条目 id 或 `"ALL"`，只有 `confirmPurge()` 才真删）；统计（未完成/共 N 项）只算非垃圾桶条目；`clearDone` 改为不误删垃圾桶与倒计时中的条目；新增 `formatTime/timeMeta/isPending/pendingSeconds/deleteButtonIcon/deleteButtonTitle` 等方法。
+- **为什么**：用户要求“添加一个垃圾桶，删除后倒计时 5 秒进入，可还原、可在垃圾桶彻底删除（需二次提醒）”。
+- **设计决策**：同一条目用 `pendingDeleteAt`/`deletedAt` 两个时间戳表达生命周期，不另建垃圾桶数组（清空/还原都是改字段）；倒计时**不跨刷新恢复**（`loadTodos` 一律置 `null`），避免隔天打开被“补刀”删掉；轮询用自终止的 `setTimeout` 链，没有倒计时条目时不再调度，不留常驻定时器。
+- **验证结论**（预览实测）：倒计时精确（带时间戳测量：0.98s→5 秒、1.98s→4…4.98s→1、5.98s 时已入垃圾桶）；撤销后条目保留且不再倒计时；还原后落盘正确；彻底删除先弹框（取消不删、确认才删）；清空垃圾桶弹框带条数、空时按钮禁用；垃圾桶里条目不计入计数（显示「2 项未完成 · 共 2 项」）；进垃圾桶后硬刷新仍在（`deletedAt` 持久化）；清除已完成不误删倒计时中的条目（实测保留）；40 条长列表滚到底（`scrollHeight 3052`、`scrollTop` 到 2247，末条与底栏在视口内）；控制台无 error。
+- **踩到的坑（已沉淀 `pitfalls/003`）**：重构时把 `deleteTodo`/`clearDone` 一起改写，忘了补回 `clearDone`，模板 `on:click="clearDone"` 报 `function "clearDone" not found`——页面渲染正常、只有该按钮失效；已补回并重测。改 `proto` 方法后必须读控制台确认。
+- **数据说明**：测试期间曾把存储临时改成 40 条测试数据，已恢复为用户的 2 条（`22222` `createdAt=1791446821823`、`111111` `createdAt=1791446819849`，均未完成、不在垃圾桶），字段值与原数据一致。
+
 ### 2026-10-08 · 新增创建时间 / 状态变更时间的记录与展示
 
 - **改了什么**：`pages/home.html`：数据模型每条任务新增 `createdAt`（添加时写入）与 `statusChangedAt`（`toggleTodo` 每次切换完成态刷新）两个毫秒时间戳；`loadTodos` 规范化时为缺失字段补 `null`；新增 proto 方法 `formatTime(ts)`（`MM-DD HH:mm`，跨年补年份，非法值返回「未知」）与 `timeMeta(todo)`（`创建于 …` + 有状态变更时追加 ` · 完成于 …` / ` · 恢复于 …`）；模板在每条任务文字下方加 `.meta` 副标题行（12px、`--md-sys-color-on-surface-variant`），`.item .text` 包进新的 `.body` 纵向容器。
