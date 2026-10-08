@@ -4,6 +4,14 @@
 
 ## 记录
 
+### 2026-10-08 · 分组行右侧加 ✏️ 编辑按钮（用户要求），底部只留「删除分组」
+
+- **改了什么**：`pages/home.html`——`o-fill` 的分组行结构改为 `.gname` + `.gcount` + **`st-icon-button.gedit`（✏️）**；**分组行的 `on:click` 从整行 `.gitem` 移到 `.gname` 上**（「全部任务」行同样处理），这样点 ✏️ 不会顺带切分组（不依赖 `stopPropagation`）；底部 `.side-actions` 删掉「改名」按钮，只留「删除分组」；新增 proto 方法 `renameGroupTitle(name)` 给 ✏️ 提供 `title`（图标按钮必须有无障碍名称）；CSS：`.gitem` 改 `padding: 4px 4px 4px 10px` + 不再整行 `cursor: pointer`（改由 `.gname` 承担），新增 `.gitem .gedit { flex: none; font-size: 12px }`（em 尺寸等比缩到 34px）。
+- **为什么**：用户要求“在左侧 item 上，右侧地方添加一个 edit button，点击后 dialog 修改分组名”。
+- **设计决策**：只给真实分组加 ✏️（「全部任务」是虚拟项，无名字可改）；改名弹窗/方法完全复用上一轮的 `openRenameGroup(id)` + `groupDialogOpen`，没有新增表单逻辑；把点击目标下沉到 `.gname` 是**为了避开“行内按钮也会触发行点击”**（不用 stopPropagation，理由见踩坑 006 同类问题）。
+- **验证结论**（预览实测）：每行 ✏️ 为 34×34、右边缘 202（未超出侧栏 206）；点 ✏️（内层 button）→ 弹窗标题「改名分组：「默认」」、输入框预填「默认」、按钮「取消 / 保存」，且**点击前后 active 分组未变（仍为「全部任务」）** → 确认不会误切分组；改名保存后侧栏同步，**测试后已把分组名改回「默认」**；点 `.gname` 切分组正常（active 切到「默认」），此时底部出现「删除分组(禁用)」（默认分组不可删）→ 与规则一致；新建「临时组」→ 行内也有 ✏️，选中后「删除分组」可用 → 二次确认「删除分组「临时组」？」→ 确认后分组消失、回到「全部任务」。**测试数据已全部清理**（只剩「默认」分组 + 用户原任务 `111111`），硬刷新后一致，控制台无应用报错。
+- **数据保护**：本轮唯一改动过用户现有数据的地方是「默认」分组临时改名，测试完已改回原名并核对通过。
+
 ### 2026-10-08 · 新建 / 改名分组改为「列表下方 ＋ 按钮 + 弹窗」（用户反馈侧栏顶部输入框难用）
 
 - **改了什么**：`pages/home.html`——删掉侧栏顶部的常驻 `st-input` + 「新建/取消」按钮 + 「正在改名」提示（连同 `.new-actions` 样式与 `editingGroupName` getter）；分组列表 `.glist` **下方**新增「＋ 新建分组」按钮 `.add-group-btn`；新增第四个 `st-dialog`（`sync:open="groupDialogOpen"`、`auto-close`）承载**新建与改名**两种模式：标题 `{{groupDialogTitle}}`（「新建分组」/「改名分组：「xxx」」）、输入框 `.dialog-input`（`sync:value="groupDraft"` + `on:change="submitGroup"` 回车提交）、按钮「取消」/`{{groupSubmitLabel}}`（「创建」/「保存」，空输入时禁用）。方法：`startEditGroup` / `cancelEditGroup` 删除，改为 `openAddGroup` / `openRenameGroup(id)` / `closeGroupDialog`；`submitGroup` 成功分支追加关弹窗与清 `editingGroupId`（返回值仍为无，直接读 `groupDraft`）；`.side-actions` 的「改名」改调 `openRenameGroup(groupFilter)`。data 新增 `groupDialogOpen`。

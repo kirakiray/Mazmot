@@ -56,20 +56,29 @@
     .gitem {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
+      gap: 4px;
+      padding: 4px 4px 4px 10px;
       border-radius: 10px;
       font-size: 14px;
-      cursor: pointer;
     }
     .gitem:hover { background: var(--md-sys-color-surface-variant); }
     .gitem.active {
       background: var(--md-sys-color-primary-container);
       color: var(--md-sys-color-on-primary-container);
     }
-    .gitem .gname { flex: 1; min-width: 0; word-break: break-word; }
+    /* 分组名区域承担「切换分组」的点击：右侧的编辑按钮在它之外，
+       因此点编辑不会顺带切分组（不依赖 stopPropagation，见踩坑 006 的同类坑） */
+    .gitem .gname {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+      cursor: pointer;
+      padding: 4px 0;
+    }
     .gitem .gcount { flex: none; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
     .gitem.active .gcount { color: var(--md-sys-color-on-primary-container); }
+    /* item 右侧的「重命名」图标按钮：改 font-size 等比缩小到约 34px */
+    .gitem .gedit { flex: none; font-size: 12px; }
     .side-actions {
       display: flex;
       gap: 4px;
@@ -205,14 +214,19 @@
 
       <div class="glist">
         <!-- 根级绑定用裸方法名（$host 只在 o-fill 等子作用域里可用，见踩坑 006） -->
-        <div class="gitem" class:active="isGroupActive('all')" on:click="setGroup('all')">
-          <span class="gname">全部任务</span>
+        <div class="gitem" class:active="isGroupActive('all')">
+          <span class="gname" on:click="setGroup('all')">全部任务</span>
           <span class="gcount">{{allCountText}}</span>
         </div>
         <o-fill :value="groups" fill-key="id">
-          <div class="gitem" class:active="$host.isGroupActive($data.id)" on:click="$host.setGroup($data.id)">
-            <span class="gname">{{$data.name}}</span>
+          <div class="gitem" class:active="$host.isGroupActive($data.id)">
+            <span class="gname" on:click="$host.setGroup($data.id)">{{$data.name}}</span>
             <span class="gcount">{{$host.groupCountText($data.id)}}</span>
+            <st-icon-button
+              class="gedit"
+              attr:title="$host.renameGroupTitle($data.name)"
+              on:click="$host.openRenameGroup($data.id)"
+            >✏️</st-icon-button>
           </div>
         </o-fill>
       </div>
@@ -220,15 +234,15 @@
       <!-- 分组列表下方的新增入口：点击后在弹窗里输入（不再用常驻输入框） -->
       <st-button variant="text" class="add-group-btn" on:click="openAddGroup">＋ 新建分组</st-button>
 
+      <!-- 改名已移到每个分组行右侧的 ✏️，这里只保留当前分组的删除 -->
       <o-if :value="canModifyGroup">
         <div class="side-actions">
-          <st-button variant="text" on:click="openRenameGroup(groupFilter)">改名</st-button>
           <st-button
             variant="text"
             color="error"
             attr:disabled="groupFilter === 'default'"
             on:click="requestDeleteGroup(groupFilter)"
-          >删除</st-button>
+          >删除分组</st-button>
         </div>
       </o-if>
     </aside>
@@ -937,6 +951,11 @@
             this.groupDraft = "";
             this.groupDialogOpen = true;
             console.log("[group] 打开新建分组弹窗");
+          },
+
+          // 分组行右侧编辑按钮的 title（图标按钮无文字，必须给无障碍名称）
+          renameGroupTitle(name) {
+            return "重命名分组「" + name + "」";
           },
 
           // 打开「改名」弹窗（预填原名）
