@@ -4,6 +4,13 @@
 
 ## 记录
 
+### 2026-10-08 · 新增创建时间 / 状态变更时间的记录与展示
+
+- **改了什么**：`pages/home.html`：数据模型每条任务新增 `createdAt`（添加时写入）与 `statusChangedAt`（`toggleTodo` 每次切换完成态刷新）两个毫秒时间戳；`loadTodos` 规范化时为缺失字段补 `null`；新增 proto 方法 `formatTime(ts)`（`MM-DD HH:mm`，跨年补年份，非法值返回「未知」）与 `timeMeta(todo)`（`创建于 …` + 有状态变更时追加 ` · 完成于 …` / ` · 恢复于 …`）；模板在每条任务文字下方加 `.meta` 副标题行（12px、`--md-sys-color-on-surface-variant`），`.item .text` 包进新的 `.body` 纵向容器。
+- **为什么**：用户要求“添加任务时显示创建时间，修改状态时记录修改时间”。
+- **设计决策**：只存时间戳不存格式化文本（显示格式随时可改）；不另存操作类型，用 `done` 推断“完成/恢复”字样；**历史数据不伪造时间**，缺字段显示「创建时间未知」。
+- **验证结论**（预览实测）：添加后副标题为「创建于 10-08 16:03」；勾选后实时变为「创建于 … · 完成于 …」，取消勾选变为「创建于 … · 恢复于 …」（`o-fill` 内 `{{$host.timeMeta($data)}}` 的响应式正常）；已完成筛选视图下时间同样正确；存储里确实带有两个时间戳字段；旧数据（无字段）显示「创建时间未知」且未报错；控制台无应用报错；DOM 量到 meta 行 12px、灰色。测试新增的条目已删除，存储已恢复为用户原有 3 条（`22222`、`1111`、`写周报`，`createdAt`/`statusChangedAt` 均为 `null`）。
+
 ### 2026-10-08 · 修复滚动容器 + 补关键路径埋点 + 补齐文档体系
 
 - **改了什么**：`pages/home.html` 的 `:host` 由 `min-height: 100vh`（`overflow: visible`）改成 `height: 100%; overflow-y: auto`；工厂函数补 `[init]` 埋点（含 `window.__todoInitCount` 计数侧信道），`loadTodos` / `persistTodos` 补 `[storage]` 日志并统一用 `console.error` 打失败分支，`addTodo`/`toggleTodo`/`deleteTodo`/`clearDone`/`setView` 各补 `[todo]` 日志；按实际代码填充 CONTEXT.md、MEMORY.md，新建 `pitfalls/001`、`pitfalls/002` 并登记索引。

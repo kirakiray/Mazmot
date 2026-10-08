@@ -32,7 +32,19 @@
       border-radius: 14px;
       background: var(--md-sys-color-surface-variant);
     }
-    .item .text { flex: 1; word-break: break-word; line-height: 1.4; }
+    .item .body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .item .text { word-break: break-word; line-height: 1.4; }
+    .item .meta {
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--md-sys-color-on-surface-variant);
+    }
     .item.done .text {
       text-decoration: line-through;
       color: var(--md-sys-color-on-surface-variant);
@@ -84,7 +96,10 @@
       <o-fill :value="visibleTodos" fill-key="id">
         <div class="item" class:done="$data.done">
           <st-checkbox attr:checked="$data.done" on:change="$host.toggleTodo($data.id)"></st-checkbox>
-          <span class="text">{{$data.text}}</span>
+          <div class="body">
+            <span class="text">{{$data.text}}</span>
+            <span class="meta">{{$host.timeMeta($data)}}</span>
+          </div>
           <st-icon-button title="删除" on:click="$host.deleteTodo($data.id)">✕</st-icon-button>
         </div>
       </o-fill>
@@ -155,6 +170,10 @@
                   id: String(t.id),
                   text: String(t.text || ""),
                   done: !!t.done,
+                  // 旧数据没有时间字段，保留 null（界面显示“时间未知”），不伪造时间
+                  createdAt: typeof t.createdAt === "number" ? t.createdAt : null,
+                  statusChangedAt:
+                    typeof t.statusChangedAt === "number" ? t.statusChangedAt : null,
                 }));
               }
               console.log("[storage] 已读取待办，共", this.todos.length, "项");
@@ -176,19 +195,54 @@
             const text = (this.draft || "").trim();
             if (!text) return;
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-            this.todos = [{ id, text, done: false }, ...this.todos];
+            this.todos = [
+              { id, text, done: false, createdAt: Date.now(), statusChangedAt: null },
+              ...this.todos,
+            ];
             this.draft = "";
             console.log("[todo] 新增", id, text);
             this.persistTodos();
           },
 
           toggleTodo(id) {
+            const now = Date.now();
             this.todos = this.todos.map((t) =>
-              t.id === id ? { ...t, done: !t.done } : t
+              t.id === id ? { ...t, done: !t.done, statusChangedAt: now } : t
             );
             const cur = this.todos.find((t) => t.id === id);
             console.log("[todo] 切换完成态", id, "→", cur ? cur.done : "已不存在");
             this.persistTodos();
+          },
+
+          // 时间戳格式化：今年内只显示 月-日 时:分，跨年补上年份
+          formatTime(ts) {
+            if (typeof ts !== "number") return "未知";
+            const d = new Date(ts);
+            if (Number.isNaN(d.getTime())) return "未知";
+            const p = (n) => String(n).padStart(2, "0");
+            const md = p(d.getMonth() + 1) + "-" + p(d.getDate());
+            const hm = p(d.getHours()) + ":" + p(d.getMinutes());
+            const date =
+              d.getFullYear() === new Date().getFullYear()
+                ? md
+                : d.getFullYear() + "-" + md;
+            return date + " " + hm;
+          },
+
+          // 列表项副标题：创建时间 + （若有）最近一次状态变更时间
+          timeMeta(todo) {
+            const parts = [
+              todo.createdAt
+                ? "创建于 " + this.formatTime(todo.createdAt)
+                : "创建时间未知",
+            ];
+            if (todo.statusChangedAt) {
+              parts.push(
+                (todo.done ? "完成于 " : "恢复于 ") +
+                  this.formatTime(todo.statusChangedAt)
+              );
+            }
+            return parts.join(" · ");
           },
 
           deleteTodo(id) {

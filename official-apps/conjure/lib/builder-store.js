@@ -107,9 +107,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     publishMatch: null,
     publishShareUrl: "", // 已发布副本的 P2P 分享链接（?u=&h=，空 = 尚未生成）
     // 隔离预览（bridge 跨域推送）：previewBusy 防重入，previewStatus 为过程提示，
+    // previewProgress 为结构化进度 {done, total}（顶栏小块进度条数据源，null = 无），
     // previewOnline 为预览窗口（应用页代理）在线状态（预览按钮亮标）
     previewBusy: false,
     previewStatus: "",
+    previewProgress: null,
     previewOnline: false,
     // 多窗口预览（最多 10 个，含手机扫码设备）：窗口注册表快照 + 跨设备扫码
     // 入口（bridge 引导页 ?u=&app=；本机多窗口走「新开窗口」按钮，无需单独地址）
@@ -1358,8 +1360,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 收集指定应用的全部文件（VFS 渠道读 ai-apps/<name>/client/，
-  // 本地渠道恢复句柄后复用 app-runner 的 readAppFiles，优先 client/ 子目录）
-  async function collectAppFiles(name, mode) {
+  // 本地渠道恢复句柄后复用 app-runner 的 readAppFiles，优先 client/ 子目录）；
+  // onFile({done, total, path}) 逐文件进度回调（本地渠道为整包读，仅结束时报一次）
+  async function collectAppFiles(name, mode, onFile = null) {
+    const report = (done, total, path) => {
+      try {
+        onFile?.({ done, total, path });
+      } catch (_) {}
+    };
     if (mode === "local") {
       let handle = localRootHandle;
       if (!handle) {
@@ -1374,13 +1382,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       if (!granted) throw new Error("本地目录权限未授予，无法读取应用文件");
       const { readAppFiles } = await load("/mz/app-runner.js");
       const raw = await readAppFiles(handle);
-      return raw.map((f) => ({ path: f.path, text: f.content }));
+      const list = raw.map((f) => ({ path: f.path, text: f.content }));
+      report(list.length, list.length, "");
+      return list;
     }
     const paths = await listAppFiles(fs, name);
     const files = [];
+    let i = 0;
     for (const p of paths) {
       const text = await readAppFile(fs, name, p);
+      i++;
       if (text != null) files.push({ path: p, text });
+      report(i, paths.length, p);
     }
     return files;
   }
@@ -1395,9 +1408,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (state.previewBusy) throw new Error("预览推送进行中，请稍候再试");
     set("previewBusy", true);
     set("previewStatus", "准备推送...");
+    set("previewProgress", null);
     try {
       const mod = await ensurePreviewMod();
-      const files = await collectAppFiles(name, mode);
+      const files = await collectAppFiles(name, mode, (p) => {
+        set("previewStatus", `读取文件 ${p.done}/${p.total}：${p.path}`);
+        set("previewProgress", p);
+      });
       if (!files.length) throw new Error("应用目录为空，请先生成应用文件");
       const done = await mod.openRemotePreview({
         load,
@@ -1405,6 +1422,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         files,
         selfStore,
         onStatus: (text) => set("previewStatus", text),
+        onProgress: (p) => set("previewProgress", p),
       });
       // 其余在线窗口一并同步（排除刚推完的主窗口对端）；失败逐个吞掉不阻断
       try {
@@ -1421,6 +1439,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
             files,
             peerIds,
             onStatus: (text) => set("previewStatus", text),
+            onProgress: (p) => set("previewProgress", p),
           });
         }
       } catch (err) {
@@ -1435,6 +1454,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } finally {
       set("previewBusy", false);
       set("previewStatus", "");
+      set("previewProgress", null);
     }
   }
 
@@ -1481,11 +1501,24 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       const mode = hit
         ? hit.mode
         : state.apps.find((a) => a.name === name)?.mode || state.currentAppMode;
-      const files = await collectAppFiles(name, mode);
+      const files = await collectAppFiles(name, mode, (p) => {
+        set("previewStatus", `读取文件 ${p.done}/${p.total}：${p.path}`);
+        set("previewProgress", p);
+      });
       if (!files.length) return;
-      await mod.syncPreviewPeers({ load, appName: name, files, peerIds: [peerId] });
+      await mod.syncPreviewPeers({
+        load,
+        appName: name,
+        files,
+        peerIds: [peerId],
+        onStatus: (text) => set("previewStatus", text),
+        onProgress: (p) => set("previewProgress", p),
+      });
     } catch (err) {
       console.warn("[preview] 新窗口自动推送失败：", err);
+    } finally {
+      set("previewStatus", "");
+      set("previewProgress", null);
     }
   }
 

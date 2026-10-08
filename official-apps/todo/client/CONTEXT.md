@@ -4,16 +4,17 @@
 
 ## 一句话定位
 
-一个单页的轻量待办清单：添加、勾选完成、删除、按状态筛选、一键清除已完成，数据保存在本机（NoneOS 存储），关掉再回来还在。
+一个单页的轻量待办清单：添加、勾选完成、删除、按状态筛选、一键清除已完成；每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
 
 ## 使用指南
 
 页面自上而下四个区块，对应四条操作路径：
 
-1. **添加**：顶部输入框输入内容 → 回车或点「添加」按钮（输入为空时按钮禁用）。新事项插入列表顶部，输入框自动清空。
+1. **添加**：顶部输入框输入内容 → 回车或点「添加」按钮（输入为空时按钮禁用）。新事项插入列表顶部，输入框自动清空，并带上创建时间。
 2. **筛选**：`全部 / 未完成 / 已完成` 按钮组切换视图，当前选中项为 `filled` 样式，其余为 `text` 样式。空视图时显示对应提示文案（`emptyText` 随筛选切换）。
 3. **勾选 / 删除**：每行左侧 `st-checkbox` 勾选完成（文字加删除线并变灰），右侧 `✕` 图标按钮删除该条。
-4. **底部栏**：显示「N 项未完成 · 共 M 项」；右侧「清除已完成」按钮在无已完成项时禁用。
+4. **时间信息**：每条任务文字下方一行灰色小字，格式 `创建于 MM-DD 时:分`（跨年带年份）；切换过完成态后追加 ` · 完成于 …` / ` · 恢复于 …`（按当前 `done` 状态取词），随勾选实时更新。历史数据无时间记录时显示「创建时间未知」。
+5. **底部栏**：显示「N 项未完成 · 共 M 项」；右侧「清除已完成」按钮在无已完成项时禁用。
 
 ## 目录结构
 
@@ -33,9 +34,11 @@ client/
 ### 持久化（NoneOS 存储）
 
 - 存储空间：`getStorage("conjure-todo-app")`；键：`"todos"`。
-- 值：`Array<{ id: string, text: string, done: boolean }>`，新增项置于数组首位。
+- 值：`Array<Todo>`，`Todo = { id: string, text: string, done: boolean, createdAt: number|null, statusChangedAt: number|null }`，新增项置于数组首位。
 - `id` 生成：`Date.now().toString(36) + Math.random().toString(36).slice(2, 6)`。
-- 读取时做一次规范化（`String(id)` / `String(text || "")` / `!!done`），非数组或读取异常时保持空列表并 `console.error`。
+- `createdAt`：创建时刻的 `Date.now()` 毫秒时间戳，添加时写入，之后不再变。
+- `statusChangedAt`：最近一次切换完成态的时刻；未切换过为 `null`；勾选与取消勾选都会刷新（是否为「完成」由 `done` 推断，不另存操作类型）。
+- 读取时做一次规范化（`String(id)` / `String(text || "")` / `!!done`，两个时间字段非 number 时一律置 `null`）；**旧数据没有时间字段，显示为「创建时间未知」而不伪造时间**。非数组或读取异常时保持空列表并 `console.error`。
 
 ### 页面状态（data）
 
@@ -55,13 +58,24 @@ client/
 | `doneCount` | 已完成数量（同时决定「清除已完成」是否禁用） |
 | `isListEmpty` | `visibleTodos.length === 0`，控制 `o-if` 空状态 |
 
+### 时间显示（proto 方法）
+
+| 方法 | 作用 |
+| ---- | ---- |
+| `formatTime(ts)` | 时间戳 → `MM-DD HH:mm`；跨年补为 `YYYY-MM-DD HH:mm`；非 number / 非法值返回「未知」 |
+| `timeMeta(todo)` | 列表项副标题：`创建于 …`（缺失时为「创建时间未知」），有 `statusChangedAt` 时追加 ` · 完成于 …`（`done` 为 false 时写「恢复于 …」） |
+
+模板在 `o-fill` 项内以 `{{$host.timeMeta($data)}}` 调用，勾选/取消勾选后会随 `todos` 变化实时重算（实测正常）。
+
 ## 关键流程
 
 - **启动**：`index.html` 加载 ofa.js / router / st-boot → `o-app` 按 `app-config.js` 载入 `pages/home.html` → 页面工厂里 `load("/nos/storage/main.js")`、`getStorage("conjure-todo-app")` → `ready()` 调 `loadTodos()` 读存储并渲染 `o-fill`。
 - **改动数据**：`addTodo` / `toggleTodo` / `deleteTodo` / `clearDone` 都会重建 `this.todos` 后调 `persistTodos()` 写回存储；模板由 ofa 响应式更新。
 - **筛选**：`setView(value)` 只改 `view` 与 `emptyText`，`visibleTodos` 随之重算，不动数据。
 
-**核心链路（实测清单，功能演进时同步扩充）**：① 打开应用渲染列表与计数；② 输入后添加（含按钮禁用态、输入框清空）；③ 勾选/取消勾选（删除线 + 计数变化）；④ 三个筛选视图切换与空状态文案；⑤ 单条删除；⑥ 清除已完成（含无已完成项时的禁用态）；⑦ 重开后数据仍在（持久化）；⑧ 长列表可滚到底。
+- **时间记录**：`addTodo` 写入 `createdAt`；`toggleTodo` 每次切换写入 `statusChangedAt`；两者都随 `persistTodos()` 落盘。
+
+**核心链路（实测清单，功能演进时同步扩充）**：① 打开应用渲染列表与计数；② 输入后添加（含按钮禁用态、输入框清空）；③ 勾选/取消勾选（删除线 + 计数变化 + 副标题出现「完成于/恢复于 …」）；④ 三个筛选视图切换与空状态文案；⑤ 单条删除；⑥ 清除已完成（含无已完成项时的禁用态）；⑦ 重开后数据仍在（持久化）；⑧ 长列表可滚到底；⑨ 每条任务显示创建时间，状态变更后时间实时更新，旧数据显示「创建时间未知」。
 
 ## 踩坑索引
 

@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=5" />
+  <link rel="stylesheet" href="./home.css?v=6" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -78,7 +78,19 @@
       <div class="topbar-actions">
         <o-if :value="currentAppName !== ''">
           <o-if :value="previewStatus">
-            <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
+            <div class="preview-status-box">
+              <span class="preview-status" attr:title="previewStatus"
+                >{{previewStatus}}</span
+              >
+              <o-if :value="previewProgress">
+                <div class="preview-bar">
+                  <div
+                    class="preview-bar-fill"
+                    :style.width="previewBarPct() + '%'"
+                  ></div>
+                </div>
+              </o-if>
+            </div>
           </o-if>
           <div class="preview-wrap">
             <st-icon-button
@@ -1879,6 +1891,7 @@
           publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
+          previewProgress: null, // 隔离预览结构化进度 {done, total}（迷你进度条）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           previewWindows: [], // 预览窗口注册表快照（多窗口下拉气泡）
           previewThumbs: {}, // 窗口缩略图缓存（winId → dataURL，空串 = 占位图）
@@ -3301,6 +3314,13 @@
             const online = this.previewWindows.filter((w) => w.online).length;
             if (!total) return "未打开";
             return `${online}/${total} 在线`;
+          },
+
+          // 隔离预览推送进度百分比（进度条用；无结构化进度时 0）
+          previewBarPct() {
+            const p = this.previewProgress;
+            if (!p || !(p.total > 0)) return 0;
+            return Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
           },
 
           async deleteSession(event, sid) {

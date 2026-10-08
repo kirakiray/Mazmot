@@ -624,6 +624,8 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
  * @param {Array<{path: string, text: string}>} opts.files 应用全部文件
  * @param {Object} [opts.selfStore] 自存储空间（持久化 bridge 侧 userId）
  * @param {(text: string) => void} [opts.onStatus] 状态回调（推送中/完成/失败前的过程提示）
+ * @param {({done: number, total: number}) => void} [opts.onProgress] 结构化进度
+ *   （清单比对 / 文件推送的 done/total，供 UI 画进度条；阶段文本走 onStatus）
  */
 export async function openRemotePreview({
   load,
@@ -631,11 +633,17 @@ export async function openRemotePreview({
   files,
   selfStore = null,
   onStatus = () => {},
+  onProgress = () => {},
   bridgeOrigin = BRIDGE_ORIGIN,
 }) {
   const status = (text) => {
     try {
       onStatus(text);
+    } catch (_) {}
+  };
+  const report = (done, total) => {
+    try {
+      onProgress({ done, total });
     } catch (_) {}
   };
 
@@ -674,6 +682,7 @@ export async function openRemotePreview({
       return false;
     }
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    report(0, toSend.length);
     await link.send({
       type: "app-begin",
       appName,
@@ -687,6 +696,7 @@ export async function openRemotePreview({
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+      report(sent, toSend.length);
     }
     await link.send({ type: "app-end", appName });
     return true;
@@ -720,7 +730,7 @@ export async function openRemotePreview({
         status(label);
         peerService = SERVICE_ID_AGENT;
         remote = await ensureAgentRemote(user, storedId);
-        const manifest = await buildManifest(files);
+        const manifest = await buildManifest(files, (d, t) => report(d, t));
         // 不 await 发送：代理离线时 link 重试耗尽前先由超时触发回退
         link.send({ type: "sync-check", appName, manifest }).catch(() => {});
         return withTimeout(waiters.diff, ms, "代理无响应");
@@ -821,7 +831,10 @@ export async function openRemotePreview({
   let diff;
   try {
     status("对比文件差异...");
-    const manifest = await buildManifest(files);
+    // 阶段通知：bridge 引导页在 sync-check 到达前只能干等，先告知「正在
+    // 比对」让它的等待态动起来（引导页 best-effort 展示，失败不影响推送）
+    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
   } catch (err) {
@@ -881,10 +894,15 @@ const enqueuePush = (fn) => {
 
 // 推送一轮文件到指定对端：先按常驻代理试探（已开窗口，增量 + 自动刷新），
 // 无响应再按 bridge 引导页流程（新窗口 / 扫码设备）。返回 done（含运行 url）
-async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) {
+async function pushRound(user, peerId, { appName, files, onStatus = () => {}, onProgress = () => {} }) {
   const status = (text) => {
     try {
       onStatus(text);
+    } catch (_) {}
+  };
+  const report = (done, total) => {
+    try {
+      onProgress({ done, total });
     } catch (_) {}
   };
   let remote = null;
@@ -905,6 +923,7 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
     const wipe = toSend.length === files.length;
     if (!toSend.length) return false;
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    report(0, toSend.length);
     await link.send({ type: "app-begin", appName, fileCount: toSend.length, wipe });
     let sent = 0;
     for (const file of toSend) {
@@ -913,6 +932,7 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+      report(sent, toSend.length);
     }
     await link.send({ type: "app-end", appName });
     return true;
@@ -927,7 +947,7 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
     remote = await withTimeout(user.connectUser(peerId), 8_000, "连接超时");
     agentRemotes.set(peerId, remote);
     lastAgentRemoteId = peerId;
-    const manifest = await buildManifest(files);
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     link.send({ type: "sync-check", appName, manifest }).catch(() => {});
     const diff = await withTimeout(waiters.diff, AGENT_PROBE_TIMEOUT, "代理无响应");
     const pushed = await pushFiles(diff);
@@ -960,7 +980,10 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
   let diff;
   try {
     status("对比文件差异...");
-    const manifest = await buildManifest(files);
+    // 阶段通知：新窗口 / 扫码设备的引导页在此阶段只能干等，先告知「正在
+    // 比对」让它的等待态动起来（best-effort，失败不影响推送）
+    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
   } catch (_) {
@@ -983,6 +1006,7 @@ export async function syncPreviewPeers({
   files,
   peerIds,
   onStatus = () => {},
+  onProgress = () => {},
 }) {
   if (!Array.isArray(peerIds) || !peerIds.length) return [];
   return enqueuePush(async () => {
@@ -994,7 +1018,12 @@ export async function syncPreviewPeers({
     const results = [];
     for (const peerId of peerIds) {
       try {
-        const done = await pushRound(user, peerId, { appName, files, onStatus });
+        const done = await pushRound(user, peerId, {
+          appName,
+          files,
+          onStatus,
+          onProgress,
+        });
         results.push({ peerId, ok: true, url: done?.url || "" });
       } catch (err) {
         results.push({ peerId, ok: false, error: err.message });

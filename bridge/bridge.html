@@ -50,6 +50,20 @@
       background: var(--md-sys-color-primary);
       transition: width 0.2s;
     }
+    /* 等待对端（清单比对 / 差异计算，无法给出确定百分比）：满宽呼吸动画
+       表达「进行中」，避免定值进度条停在 70% 像卡死 */
+    .fill.indet {
+      animation: bar-indet 1.4s ease-in-out infinite;
+    }
+    @keyframes bar-indet {
+      0%,
+      100% {
+        opacity: 0.35;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
     .status {
       margin-top: 12px;
       font-size: 13px;
@@ -93,7 +107,11 @@
 
       <o-if :value="step !== 'error'">
         <div class="bar">
-          <div class="fill" :style.width="progress + '%'"></div>
+          <div
+            class="fill"
+            :style.width="indeterminate ? '100%' : progress + '%'"
+            class:indet="indeterminate"
+          ></div>
         </div>
         <div class="status">{{statusText}}</div>
       </o-if>
@@ -161,6 +179,7 @@
           subtitleText: "校验运行环境",
           statusText: "正在检测 NoneOS Core...",
           progress: 0,
+          indeterminate: false, // true = 等待对端阶段（呼吸动画，无确定百分比）
           errorText: "",
           statusDetail: "",
           _conjureUserId: "", // URL ?u= 带来的 conjure 侧 userId
@@ -267,6 +286,9 @@
               this._link = link;
 
               this.setProgress(CORE_END + 30, "等待妙造发送应用文件...");
+              // 对端在回复前要做读取/哈希清单等准备工作（无法给确定进度），
+              // 进度条转呼吸动画表达「进行中」，直到文件写入阶段恢复定值
+              this.indeterminate = true;
               // hello 带上期望应用名（?app=）：conjure 收到后自动推送对应应用；
               // 窗口数达上限时 conjure 回 preview-full（见 handlePayload）
               await link.send({
@@ -299,6 +321,7 @@
               onProgress: (total, done, path) => {
                 if (path == null) {
                   this.step = "receiving";
+                  this.indeterminate = false; // 文件写入开始，恢复定值进度
                   this.titleText = `接收应用`;
                   this.subtitleText = "正在写入隔离虚拟系统";
                   this.setProgress(CORE_END + 35, "准备目录...");
@@ -337,6 +360,16 @@
               );
               return;
             }
+            // 推送阶段通知（不进 receiver）：对端正在哈希清单/比对差异，
+            // 让等待态有「进行中」反馈，文件写入开始后由 onProgress 接管
+            if (payload.type === "push-stage") {
+              this.step = "receiving";
+              this.indeterminate = true;
+              this.titleText = "接收应用";
+              this.subtitleText = "正在写入隔离虚拟系统";
+              this.setProgress(CORE_END + 32, "妙造正在比对应用文件差异...");
+              return;
+            }
             try {
               const result = await this._receiver.handle(payload);
               if (payload.type === "sync-check" && result && result.reply) {
@@ -354,6 +387,7 @@
           },
 
           async launchApp({ appName, url }) {
+            this.indeterminate = false; // 零差异直启不经过写文件阶段，手动复位
             this.setProgress(98, "等待运行环境就绪...");
             // 首次安装 Core 后 SW 激活存在窗口期，立即跳转 /$namespace/...
             // 会漏到静态服务器返回 404——先轮询确认 URL 可访问再跳
