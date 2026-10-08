@@ -764,8 +764,9 @@
             </div>
           </o-fill>
 
-          <o-if :value="sending">
-            <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新） -->
+          <o-if :value="sending && turnInView">
+            <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新）；文案随回合
+                 活动切换（思考中 / 正在执行 xx / 生成中），且只在回合视图显示 -->
             <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
         </div>
@@ -821,7 +822,7 @@
           sync:value="input"
           rows="1"
           attr:placeholder="inputPlaceholder"
-          attr:disabled="sending"
+          attr:disabled="sending && turnInView"
           on:keydown="handleKeydown($event)"
           on:paste="handlePaste($event)"
         ></textarea>
@@ -985,11 +986,11 @@
               </st-menu>
             </st-menu-item>
           </st-menu>
-          <o-if :value="!sending">
+          <o-if :value="!sending || !turnInView">
             <st-button
               class="send-btn"
-              attr:disabled="!canSend()"
-              attr:title="'发送（Enter）'"
+              attr:disabled="sending || !canSend()"
+              attr:title="sending ? '另一会话生成中' : '发送（Enter）'"
               on:click="handleSend"
             >
               <svg
@@ -1005,7 +1006,7 @@
               </svg>
             </st-button>
           </o-if>
-          <o-if :value="sending">
+          <o-if :value="sending && turnInView">
             <st-button
               class="send-btn stop"
               color="error"
@@ -1874,6 +1875,8 @@
         data: {
           messages: [],
           hiddenOldCount: 0,
+          turningKey: "", // 进行中回合的 chatKey（仓库镜像）
+          turnInView: false, // 当前视图就是正在生成的会话（状态行/停止按钮只在此时显示）
           input: "",
           pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
@@ -2121,6 +2124,15 @@
                 this.syncTabName();
                 announce(this.currentAppName);
               }
+              // 生成中状态行/停止按钮只属于正在生成的会话：视图、回合归属
+              // 或发送态任一变化都重算
+              if (
+                ["turningKey", "currentAppName", "currentSessionId", "sending"].some(
+                  (k) => k in evt.data,
+                )
+              ) {
+                this.syncTurnInView();
+              }
               return;
             }
             if (evt.type === "messages") {
@@ -2262,9 +2274,11 @@
           syncCtx() {
             // 上下文占用按全量会话算（渲染窗口只含最近一段）
             const info = contextInfo(this._win.all);
-            // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）
+            // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）；
+            // live 快照属于回合会话——视图不是回合会话时不覆盖（否则别的
+            // 会话的上下文进度会显示成生成中那个会话的占用）
             const liveUsed =
-              this.sending && this.liveTurnStats
+              this.sending && this.turnInView && this.liveTurnStats
                 ? this.liveTurnStats.usage?.context_tokens || 0
                 : 0;
             this.ctxUsed = liveUsed > 0 ? liveUsed : info.used;
@@ -3105,6 +3119,17 @@
             }
             return text;
           },
+          // 当前视图是否为正在生成的会话（状态行/停止按钮只在回合视图显示；
+          // 切到别的会话不再误显示全局「生成中」）
+          syncTurnInView() {
+            const vk =
+              this.currentAppName === ""
+                ? "chat:draft"
+                : `chat:${this.currentAppName}:${this.currentSessionId}`;
+            this.turnInView =
+              !!this.sending && (this.turningKey || "") === vk;
+          },
+
           // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖。
           // 表单挂起期间计时暂停：累计挂起时长并在恢复后扣除
           turnLiveText() {
@@ -3135,12 +3160,32 @@
             );
           },
 
-          // 回合状态文案：表单挂起 = 等待提交（倒计时暂停）；否则生成中 + 用时
+          // 回合状态文案：随回合最新活动实时切换（写死的「生成中…」反映不了
+          // 工具循环里正在发生什么）——表单挂起 > 执行工具 / 下一轮思考 >
+          // 思考中 > 流式输出。活动从视图消息流末条推导（tool 消息带 pending
+          // 标记；assistant 气泡先出 reasoning 后出 content）
           turnStatusText() {
+            const live = " " + this.turnLiveText();
             if (this.formWaiting()) {
               return "⏸ 已展示表单，等待你提交后继续（计时已暂停）";
             }
-            return "生成中… " + this.turnLiveText();
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              const m = all[i];
+              if (m.role === "user") continue;
+              if (m.role === "tool") {
+                return m.pending
+                  ? `正在执行 ${m.name}…${live}`
+                  : `思考中…${live}`;
+              }
+              if (m.role === "assistant") {
+                return !m.content && m.reasoning
+                  ? `思考中…${live}`
+                  : `生成中…${live}`;
+              }
+              break;
+            }
+            return "生成中…" + live;
           },
 
           // ---- 视觉交互表单卡片（show-form 包组件的宿主接线） ----
@@ -3978,7 +4023,21 @@
           },
 
           async handleSend() {
-            if (this.sending || !this.canSend()) return;
+            if (this.sending) {
+              // 状态行/停止按钮已限定回合视图：在这里发送说明用户在别的
+              // 会话里触发，给出可读提示而不是静默吞掉
+              if (!this.turnInView) {
+                const { default: toast } = await load(
+                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                );
+                toast({
+                  message: "另一个会话正在生成中，可回到该会话查看或停止",
+                  color: "warning",
+                });
+              }
+              return;
+            }
+            if (!this.canSend()) return;
             const text = this.input.trim();
             const images = this.pendingImages.map((p) => p.src);
             this.input = "";

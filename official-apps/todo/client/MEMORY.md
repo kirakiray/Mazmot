@@ -4,6 +4,15 @@
 
 ## 记录
 
+### 2026-10-08 · 新建 / 改名分组改为「列表下方 ＋ 按钮 + 弹窗」（用户反馈侧栏顶部输入框难用）
+
+- **改了什么**：`pages/home.html`——删掉侧栏顶部的常驻 `st-input` + 「新建/取消」按钮 + 「正在改名」提示（连同 `.new-actions` 样式与 `editingGroupName` getter）；分组列表 `.glist` **下方**新增「＋ 新建分组」按钮 `.add-group-btn`；新增第四个 `st-dialog`（`sync:open="groupDialogOpen"`、`auto-close`）承载**新建与改名**两种模式：标题 `{{groupDialogTitle}}`（「新建分组」/「改名分组：「xxx」」）、输入框 `.dialog-input`（`sync:value="groupDraft"` + `on:change="submitGroup"` 回车提交）、按钮「取消」/`{{groupSubmitLabel}}`（「创建」/「保存」，空输入时禁用）。方法：`startEditGroup` / `cancelEditGroup` 删除，改为 `openAddGroup` / `openRenameGroup(id)` / `closeGroupDialog`；`submitGroup` 成功分支追加关弹窗与清 `editingGroupId`（返回值仍为无，直接读 `groupDraft`）；`.side-actions` 的「改名」改调 `openRenameGroup(groupFilter)`。data 新增 `groupDialogOpen`。
+- **为什么**：用户反馈“左侧的新建分组太难用了，应该在 item 的下方添加一个加号按钮，点击后 dialog 中新建分组”。
+- **设计决策**：新建与改名**复用同一个弹窗**（只靠 `editingGroupId` 区分），避免两套表单；弹窗内只用 data 字段（不调 `$host.xxx()`，见踩坑 005）；侧栏不再有常驻输入框，CSS 里的 `st-input` 选择器改挂到 `.dialog-input`（只给 `width`，不碰 `display`，见踩坑 004）。
+- **验证结论**（预览实测）：侧栏 `st-input` 数量 = **0**、按钮仅「＋ 新建分组」且位于分组行下方（y=139 > glist bottom）；点它（内层 button）→ 弹窗 headline「新建分组」、placeholder 正常、输入框 440px（内部原生 410px）、按钮「取消 / 创建(禁用)」；输入后「创建」启用 → 提交 → 弹窗关闭、侧栏出现「临时测试组 0 项」；选中该组 → 「改名」→ 弹窗标题「改名分组：「临时测试组」」且输入框预填，**取消**后名字未变、**保存**后变「临时改名后」；再改名时直接派发 `change`（等价回车）→ 弹窗关闭且名字变「回车改名」；「删除」→ 二次确认弹窗（标题/文案/条数正确）→ 确认后分组消失、列表回到「全部任务」。**测试数据已全部清理**（末尾只剩「默认」分组，用户原有任务 `111111` 完好），硬刷新后侧栏仍为「全部任务 1 项 / 默认 1 项」、无报错；控制台 `errors: 0`（仅 `[bridge-link]` 噪声）。居中布局未受影响（`.main` 中心 = 视口中心）。
+- **踩到的坑（已沉淀 `pitfalls/008`）**：`preview action=click` 点 `.add-group-btn` 与程序 `host.click()` 都不触发 `on:click`，一度以为绑定写错——实际必须点到 `st-button` **内部的原生 button**（`btn.shadowRoot.querySelector('button').click()`）；同理测 `st-input` 要在内部 input 上设值并派发 `input`/`change`。
+- **截图说明**：本次 `screenshot` 因屏幕授权被取消而未生成，效果以 `dom` / `eval` 实测数据为准。
+
 ### 2026-10-08 · 布局定为三列网格：侧栏贴左 + 任务区居中（用户反馈：中间的得居中）
 
 - **改了什么**：`pages/home.html` 样式——`.shell` 由 flex 行改为 **grid 三列** `190px minmax(0,1fr) 190px`（左列侧栏 / 中列任务区 / 右列等宽留白，靠右侧留白把中列推到视口正中）；`.side` 去掉 `flex: none`，加 `grid-column: 1` 与 `max-height: calc(100vh - 56px); overflow-y: auto`（分组多了自身可滚）；`.main` 改 `grid-column: 2; width: 100%; max-width: 880px; margin: 0 auto`；媒体查询新增 `≤1100px` 去掉右侧留白列、`≤620px` 改单列（`.side` 取消 sticky / 限高 / overflow）。

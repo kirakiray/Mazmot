@@ -67,6 +67,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 消息与发送
     messages: [],
     sending: false,
+    turningKey: "", // 进行中回合所属的 chatKey（响应式镜像；"" = 无进行中回合）
     stopRequested: false, // 用户点了停止、回合尚未收尾（按钮显示「停止中」并禁用）
     liveTurnStats: null, // 进行中回合的实时快照 { usage, stats, breakdown }（usage 事件写入，收尾清零）
     nextId: 1,
@@ -154,6 +155,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   const sessionBuckets = new Map();
   // 进行中回合所属的 chatKey；null = 无进行中回合（消息操作落在当前视图桶）
   let turnKey = null;
+  // 响应式镜像（state.turningKey）：页面据此判断「当前视图是否为正在生成的
+  // 会话」——生成中状态行与停止按钮只在回合视图显示，切到别的会话不再误
+  // 显示全局状态。所有 turnKey 赋值一律走这里
+  const setTurnKey = (v) => {
+    turnKey = v;
+    set("turningKey", v || "");
+  };
   // 当前回合开始时刻（毫秒时间戳）：用于会话对话时长统计与列表实时计时
   let turnStartAt = 0;
 
@@ -722,7 +730,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       projectBucket(key);
     } else {
       const saved = (await selfStore.getItem(key)) || [];
-      replaceMessages(saved, key);
+      // await 期间视图可能已被其他流程接管（回合收尾迁移草稿 / 自动切换
+      // 应用）：目标已不是当前视图则放弃替换，避免过期 key 覆盖新视图
+      if (key === viewKey()) {
+        replaceMessages(saved, key);
+      }
     }
     invalidateAgent(); // 会话切换后重建 Agent（threadId 变化）
   }
@@ -2532,18 +2544,28 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       });
     }
 
-    const plain = bucketFor(chatKey).map((m) => ({ ...m }));
-
-    // 本轮创建了新应用：草稿会话迁移为该应用的第一个会话
+    // 本轮创建了新应用：草稿回合把草稿会话迁移为该应用的第一个会话；
+    // 既有会话里 AI 另建新应用（create_app）时只登记 + 在本会话出预览卡片
+    // ——不迁移会话（会搬走用户当前正查看的对话）、不强制切视图（会把用户
+    // 刚切换到的视图拽走：回合进行中切走再切回，表象即「对话消失 / 会话
+    // 被顶替」）。卡片入桶后不 return，落入下方正常落盘与会话收尾
     if (pendingNewApp) {
       const info = pendingNewApp;
       pendingNewApp = null;
-      await adoptNewApp(info, firstUserText, chatKey, elapsedMs);
-      await syncLocalProjectChats(info.appName);
-      return;
+      if (chatKey === "chat:draft") {
+        await adoptNewApp(info, firstUserText, chatKey, elapsedMs);
+        await syncLocalProjectChats(info.appName);
+        return;
+      }
+      await adoptNewApp(info, firstUserText, chatKey, elapsedMs, {
+        migrate: false,
+      });
     }
 
-    await selfStore.setItem(chatKey, plain);
+    await selfStore.setItem(
+      chatKey,
+      bucketFor(chatKey).map((m) => ({ ...m })),
+    );
 
     // 更新会话标题与时间（应用/会话取自回合的 threadId，不受当前视图影响）
     const [appName, sid] = threadId === "draft" ? ["", ""] : threadId.split(":");
@@ -2720,7 +2742,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   // 新应用落地：注册（mazmot apps[] + 本应用 registry）、迁移草稿会话、出预览卡片
   // draftKey：本轮回合所属的草稿 chatKey，消息从其实时桶迁移（不读盘）
-  async function adoptNewApp(info, firstUserText, draftKey, elapsedMs = 0) {
+  async function adoptNewApp(
+    info,
+    firstUserText,
+    draftKey,
+    elapsedMs = 0,
+    { migrate = true } = {},
+  ) {
     const isLocal = info.mode === "local" && !!localRootHandle;
     const check = await validateApp(
       fs,
@@ -2741,6 +2769,36 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       } catch (err) {
         console.warn("登记应用记录失败：", err);
       }
+    }
+
+    if (!migrate) {
+      // 既有会话里另建的新应用：登记进项目列表即可（无会话），预览卡片出在
+      // 产生它的当前会话里（pushMessage 落回合桶）；不迁移消息、不切视图
+      const reg = await loadRegistry();
+      if (!reg.find((a) => a.name === info.appName)) {
+        reg.push({
+          name: info.appName,
+          displayName: info.displayName,
+          icon: info.icon,
+          mode: isLocal ? "local" : "vfs",
+          createdAt: Date.now(),
+          sessions: [],
+        });
+        await saveRegistry(reg);
+      }
+      await reloadApps();
+      pushMessage({
+        id: state.nextId++,
+        role: "app",
+        appName: info.appName,
+        displayName: info.displayName,
+        icon: info.icon,
+        mode: isLocal ? "local" : "vfs",
+        ready: check.ready,
+        missing: check.missing,
+        newGroup: false,
+      });
+      return;
     }
 
     // registry + 第一个会话；草稿消息与 Agent 记忆迁移过去
@@ -2786,7 +2844,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     set("currentSessionId", sid);
     syncSessionTitle(reg);
     // 回合指向新会话：预览卡片写入新桶并镜像到当前视图
-    if (turnKey === draftKey) turnKey = `chat:${info.appName}:${sid}`;
+    if (turnKey === draftKey) setTurnKey(`chat:${info.appName}:${sid}`);
 
     pushMessage({
       id: state.nextId++,
@@ -2853,7 +2911,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
     // 本回合固定写自己的会话桶：此后无论用户切到哪个会话/项目，
     // 流式消息、落盘、收尾都以该 key 为准，不再随当前视图漂移
-    turnKey = threadId === "draft" ? "chat:draft" : `chat:${threadId}`;
+    setTurnKey(threadId === "draft" ? "chat:draft" : `chat:${threadId}`);
     if (!sessionBuckets.has(turnKey)) {
       sessionBuckets.set(turnKey, [...state.messages]);
     }
@@ -2883,7 +2941,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     try {
       await ensureAgent();
     } catch {
-      turnKey = null; // 回合未真正开始，回退到视图内联模式
+      setTurnKey(null); // 回合未真正开始，回退到视图内联模式
       turnStartAt = 0;
       markBusy(null);
       setMany({
@@ -3054,7 +3112,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
-      turnKey = null;
+      setTurnKey(null);
       turnStartAt = 0;
       setMany({ turnStartTs: 0 });
     }
@@ -3148,7 +3206,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
     const threadId =
       viewKeyNow === "chat:draft" ? "draft" : viewKeyNow.slice("chat:".length);
-    turnKey = viewKeyNow;
+    setTurnKey(viewKeyNow);
     if (!sessionBuckets.has(turnKey)) {
       sessionBuckets.set(turnKey, [...state.messages]);
     }
@@ -3159,7 +3217,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     try {
       await ensureAgent();
     } catch {
-      turnKey = null;
+      setTurnKey(null);
       turnStartAt = 0;
       markBusy(null);
       setMany({
@@ -3212,7 +3270,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       await selfStore.setItem(threadKey, [...history, ...wire]);
       await driveTurn(threadId, firstUserText, []);
     } catch (err) {
-      turnKey = null;
+      setTurnKey(null);
       turnStartAt = 0;
       markBusy(null);
       setMany({

@@ -45,9 +45,14 @@
       gap: 8px;
     }
     .side-title { margin: 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
-    .side st-input { width: 100%; min-width: 0; }
-    .new-actions { display: flex; gap: 4px; align-items: center; }
+    /* 弹窗里的单行输入框：只给宽度，不要覆盖 st-input 的 display（见踩坑 004） */
+    .dialog-input { width: 100%; min-width: 0; }
     .glist { display: flex; flex-direction: column; gap: 4px; }
+    /* 分组列表下方的「＋ 新建分组」：样式贴近分组行，不再占用侧栏顶部的常驻输入框 */
+    .add-group-btn {
+      justify-content: flex-start;
+      color: var(--md-sys-color-primary);
+    }
     .gitem {
       display: flex;
       align-items: center;
@@ -197,12 +202,6 @@
     <!-- 左侧固定侧栏：选分组 / 新建分组 / 改名删除 -->
     <aside class="side">
       <p class="side-title">分组</p>
-      <st-input sync:value="groupDraft" placeholder="新分组名" on:change="submitGroup"></st-input>
-      <div class="new-actions">
-        <st-button on:click="submitGroup" attr:disabled="!groupDraft.trim()">{{groupSubmitLabel}}</st-button>
-        <st-button variant="text" class:hidden="!editingGroupId" on:click="cancelEditGroup">取消</st-button>
-      </div>
-      <p class="manage-title" class:hidden="!editingGroupId">正在改名：{{editingGroupName}}</p>
 
       <div class="glist">
         <!-- 根级绑定用裸方法名（$host 只在 o-fill 等子作用域里可用，见踩坑 006） -->
@@ -218,9 +217,12 @@
         </o-fill>
       </div>
 
+      <!-- 分组列表下方的新增入口：点击后在弹窗里输入（不再用常驻输入框） -->
+      <st-button variant="text" class="add-group-btn" on:click="openAddGroup">＋ 新建分组</st-button>
+
       <o-if :value="canModifyGroup">
         <div class="side-actions">
-          <st-button variant="text" on:click="startEditGroup(groupFilter)">改名</st-button>
+          <st-button variant="text" on:click="openRenameGroup(groupFilter)">改名</st-button>
           <st-button
             variant="text"
             color="error"
@@ -331,6 +333,21 @@
       </div>
     </st-dialog>
 
+    <!-- 新建 / 改名分组：同一个弹窗，由 editingGroupId 决定标题与按钮文案 -->
+    <st-dialog sync:open="groupDialogOpen" auto-close>
+      <span slot="headline">{{groupDialogTitle}}</span>
+      <st-input
+        class="dialog-input"
+        sync:value="groupDraft"
+        placeholder="输入分组名，例如「公司」「私人」"
+        on:change="submitGroup"
+      ></st-input>
+      <div slot="actions">
+        <st-button variant="text" on:click="closeGroupDialog">取消</st-button>
+        <st-button on:click="submitGroup" attr:disabled="!groupDraft.trim()">{{groupSubmitLabel}}</st-button>
+      </div>
+    </st-dialog>
+
     <!-- 任务详情（只读：底部只有「关闭」）：注意 st-dialog 内不能调 $host.xxx()
          （弹窗内部 $host 不指向页面），所以展示用的文案都在 openDetail 里预计算好 -->
     <st-dialog sync:open="detailOpen" auto-close>
@@ -388,6 +405,8 @@
           groupFilter: "all",
           groupDraft: "",
           editingGroupId: null,
+          // 新建 / 改名分组的弹窗
+          groupDialogOpen: false,
           // 添加弹窗里提示“这条会加进哪个分组”
           addGroupHint: "",
           // 倒计时刷新用：每次 tick 写入当前时间，驱动界面重算剩余秒数
@@ -482,13 +501,14 @@
             return this.groupFilter !== "all";
           },
 
-          get editingGroupName() {
-            if (!this.editingGroupId) return "";
-            return this.groupName(this.editingGroupId);
+          // 弹窗标题：改名时带上原名，方便确认改的是哪一个
+          get groupDialogTitle() {
+            if (!this.editingGroupId) return "新建分组";
+            return "改名分组：「" + this.groupName(this.editingGroupId) + "」";
           },
 
           get groupSubmitLabel() {
-            return this.editingGroupId ? "保存" : "新建";
+            return this.editingGroupId ? "保存" : "创建";
           },
 
           get isListEmpty() {
@@ -911,7 +931,32 @@
             this.updateEmptyText();
           },
 
-          // 新建 / 保存改名（同一个入口：编辑模式时是改名）
+          // 打开「新建分组」弹窗
+          openAddGroup() {
+            this.editingGroupId = null;
+            this.groupDraft = "";
+            this.groupDialogOpen = true;
+            console.log("[group] 打开新建分组弹窗");
+          },
+
+          // 打开「改名」弹窗（预填原名）
+          openRenameGroup(id) {
+            const g = this.groups.find((x) => x.id === id);
+            if (!g) return;
+            this.editingGroupId = id;
+            this.groupDraft = g.name;
+            this.groupDialogOpen = true;
+            console.log("[group] 打开改名弹窗", id, g.name);
+          },
+
+          closeGroupDialog() {
+            this.groupDialogOpen = false;
+            this.editingGroupId = null;
+            this.groupDraft = "";
+            console.log("[group] 关闭分组弹窗（未保存）");
+          },
+
+          // 新建 / 保存改名（同一个入口：编辑模式时是改名），成功后关闭弹窗
           submitGroup() {
             const raw = (this.groupDraft || "").trim();
             if (!raw) return;
@@ -936,21 +981,9 @@
               console.log("[group] 新建分组", id, name);
             }
             this.groupDraft = "";
-            this.persistGroups();
-          },
-
-          startEditGroup(id) {
-            const g = this.groups.find((x) => x.id === id);
-            if (!g) return;
-            this.editingGroupId = id;
-            this.groupDraft = g.name;
-            console.log("[group] 进入改名模式", id, g.name);
-          },
-
-          cancelEditGroup() {
             this.editingGroupId = null;
-            this.groupDraft = "";
-            console.log("[group] 取消改名");
+            this.groupDialogOpen = false;
+            this.persistGroups();
           },
 
           // 删除分组：默认分组不可删，其余先二次确认
@@ -985,6 +1018,7 @@
             if (this.editingGroupId === id) {
               this.editingGroupId = null;
               this.groupDraft = "";
+              this.groupDialogOpen = false;
             }
             console.log("[group] 已删除分组", id, "，移入默认分组的任务", moved, "项");
             this.persistGroups();
