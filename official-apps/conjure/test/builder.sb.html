@@ -681,6 +681,69 @@
       </template>
     </sb-test>
 
+    <sb-test name="listAppFiles 只收 client/ 子树（本地渠道同层运行时目录不混入）">
+      <template>
+        <script type="module">
+          import { listAppFiles } from "../lib/builder.js";
+          import {
+            createVirtualDir,
+            seedVirtualFiles,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const root = createVirtualDir();
+              await seedVirtualFiles(root, {
+                "client/index.html": "<html></html>",
+                "client/app.json": "{}",
+                "client/pages/home.html": "page",
+                // 与 client/ 同层的 conjure 运行时目录 / 散落文件
+                "conjure-chats/index.json": "{}",
+                "conjure-chats/abc123.json": "{}",
+                "backup/backup-20261008-120000-abcd1234/index.html": "old",
+                "snaps/snap-20261008-120000-abcd1234/index.html": "snap",
+                "notes.md": "散落文件",
+              });
+              // 模拟真实挂载句柄：item.path 带 $mount-directory-<ts>><项目名>
+              // 前缀（本地渠道实测形态，toRel 剥不掉时原样返回）
+              const prefix = "$mount-directory-1791443440107>todo";
+              const patch = (dir, pfx) => {
+                dir.path = pfx;
+                for (const [name, child] of dir.children) {
+                  if (child.kind === "dir") patch(child, `${pfx}/${name}`);
+                  else child.path = `${pfx}/${name}`;
+                }
+              };
+              patch(root, prefix);
+
+              const list = await listAppFiles({}, "todo", root);
+              const checks = {
+                clientFilesListed:
+                  list.includes("index.html") &&
+                  list.includes("app.json") &&
+                  list.includes("pages/home.html"),
+                // 回归：conjure-chats/backup/snaps 混进清单 → 市场安装拉
+                // gitignore 文件 404（todo/client 实测踩坑）
+                runtimeDirsExcluded: list.every(
+                  (f) =>
+                    !f.includes("conjure-chats") &&
+                    !f.includes("backup/") &&
+                    !f.includes("snaps/") &&
+                    !f.startsWith("$") &&
+                    f !== "notes.md",
+                ),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, list },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="readSkillFile 未安装技能回报可用清单（不抛底层异常）">
       <template>
         <script type="module">
@@ -895,11 +958,12 @@
         </script>
       </template>
     </sb-test>
-    <sb-test name="回合变更卡与自动快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
+    <sb-test name="回合变更卡与回合快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
       <template>
         <script type="module">
           import {
             listAppBackups,
+            listAppSnaps,
             readAppFile,
           } from "../lib/builder.js";
           import { createBuilderStore } from "../lib/builder-store.js";
@@ -990,7 +1054,7 @@
               const idx1 = (ai1?.changes || []).find((c) => c.path === "index.html");
               const appJsonChg = (ai1?.changes || []).find((c) => c.path === "app.json");
               const backups1 = await listAppBackups(fsFake, st.currentAppName);
-              const autoBk1 = backups1.find((b) => b.auto);
+              const snaps1 = await listAppSnaps(fsFake, st.currentAppName);
 
               // 轮 2：edit_file 差量修改 index.html
               await store.send("把 v1 改成 v2");
@@ -1042,7 +1106,11 @@
                 // 宿主 createAppDir 预写的 app.json 不经 onFileWrite，不应计入变更
                 hostSeededNotTracked: !appJsonChg,
                 turn1Snapshot: typeof ai1?.snapshotId === "string" && ai1.snapshotId.length > 0,
-                autoBackupMarked: !!autoBk1 && autoBk1.id === ai1.snapshotId,
+                // 快照与备份分离：snap- id 落 snaps/，不进备份管理清单
+                snapOutOfBackups:
+                  ai1?.snapshotId?.startsWith("snap-") === true &&
+                  snaps1.some((b) => b.id === ai1.snapshotId) &&
+                  !backups1.some((b) => b.id === ai1.snapshotId),
                 turn2Edit: idx2?.op === "edit" && idx2.adds === 1 && idx2.dels === 1,
                 diffHunks:
                   !diffRes.same &&

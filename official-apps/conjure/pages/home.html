@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=8" />
+  <link rel="stylesheet" href="./home.css?v=12" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -251,8 +251,18 @@
               </div>
             </o-if>
           </div>
-          <st-icon-button title="备份管理" on:click="openBackupDrawer">
+          <st-icon-button
+            title="备份管理"
+            on:click="openBackupDrawer"
+          >
             <n-icon icon="mdi:backup-restore"></n-icon>
+          </st-icon-button>
+          <st-icon-button
+            class="test-entry"
+            attr:title="测试管理（client/test/ 场景用例）"
+            on:click="openTestDrawer"
+          >
+            <n-icon icon="mdi:flask-outline"></n-icon>
           </st-icon-button>
         </o-if>
         <st-icon-button title="工具 / 技能" on:click="openPanel">
@@ -499,6 +509,15 @@
                           <span class="tc-adds">+{{$host.turnAdds($data)}}</span>
                           <span class="tc-dels">−{{$host.turnDels($data)}}</span>
                         </span>
+                        <!-- 场景测试状态（仅最后一个带改动的回合展示）：
+                             回合收尾自动跑 + 手动跑共用的上次全量结果 -->
+                        <o-if :value="$host.showTestChip($data)">
+                          <span
+                            class="tc-test"
+                            class:bad="!$host.testLastRun.ok"
+                            attr:title="$host.testChipTitle()"
+                          >测试 {{$host.testChipText()}}</span>
+                        </o-if>
                         <n-icon class="tc-chev" icon="mdi:chevron-down"></n-icon>
                       </button>
                       <div class="tc-collapse">
@@ -792,6 +811,14 @@
                   </o-if>
                 </div>
               </o-if>
+
+              <o-if :value="$data.role === 'error'">
+                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI） -->
+                <div class="local-error-card">
+                  <n-icon icon="mdi:alert-outline"></n-icon>
+                  <div class="local-error-text">{{$data.text}}</div>
+                </div>
+              </o-if>
             </div>
           </o-fill>
 
@@ -845,6 +872,9 @@
               🔑 授权目录
             </st-button>
           </o-if>
+          <st-icon-button title="关闭（下次出错会再提示）" on:click="dismissKeyError">
+            <n-icon icon="mdi:close"></n-icon>
+          </st-icon-button>
         </div>
       </o-if>
       <div class="composer">
@@ -1401,6 +1431,76 @@
       </div>
     </aside>
 
+    <!-- 测试管理抽屉（右）：client/test/ 场景用例的清单与一键执行 -->
+    <div class="panel-mask" class:show="testDrawerOpen" on:click="closeTestDrawer"></div>
+    <aside class="backup-drawer test-drawer" class:show="testDrawerOpen">
+      <div class="panel-head">
+        <span>测试管理</span>
+        <st-icon-button title="关闭" on:click="closeTestDrawer">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <div class="backup-sub">
+        {{currentAppDisplay || currentAppName}} · 用例存于应用目录的 client/test/ 下
+      </div>
+      <div class="backup-actions">
+        <st-button
+          variant="filled"
+          attr:disabled="testBusy || tests.length === 0"
+          on:click="handleRunAllTests"
+        >
+          <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
+          <o-if :value="!testRunning">▶ 跑全部</o-if>
+        </st-button>
+      </div>
+      <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
+      <div class="panel-body">
+        <o-if :value="tests.length === 0">
+          <div class="panel-empty">还没有场景用例。让 AI 实现重要功能时会自动在 client/test/ 下创建 .test.json 用例</div>
+        </o-if>
+        <o-if :value="tests.length > 0 && Object.keys(testResults).length === 0">
+          <div class="panel-empty">用例还没有跑过，点上方「▶ 跑全部」</div>
+        </o-if>
+        <o-fill :value="tests" fill-key="file">
+          <div class="test-item">
+            <n-icon
+              class="test-tone"
+              attr:icon="$host.testTone($data)"
+            ></n-icon>
+            <div class="test-item-main">
+              <div class="test-item-name">
+                {{$data.name}}
+                <span class="test-steps">{{$data.stepCount}} 步</span>
+              </div>
+              <div class="test-item-file">{{$data.desc || $data.file}}</div>
+              <o-if :value="$host.testFailText($data)">
+                <div class="test-item-fail">{{$host.testFailText($data)}}</div>
+              </o-if>
+            </div>
+            <st-button
+              variant="text"
+              class="test-run-one"
+              attr:disabled="$host.testBusy"
+              attr:title="'只跑这一条'"
+              on:click="$host.handleRunOne($data.file)"
+            >
+              <n-icon icon="mdi:play-outline"></n-icon>
+            </st-button>
+          </div>
+        </o-fill>
+      </div>
+    </aside>
+
     <!-- 工具 / 技能面板（右） -->
     <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
     <aside class="panel" class:show="panelOpen">
@@ -1924,7 +2024,14 @@
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
           backupDrawerOpen: false, // 右侧备份管理抽屉
+          testDrawerOpen: false, // 右侧测试管理抽屉
+          tests: [], // 场景用例清单（client/test/*.test.json）
+          testResults: {}, // 每用例上次结果（file → {ok, ms, error, steps}）
+          testLastRun: null, // 上次全量摘要 {at, ok, pass, fail}
+          testRunning: null, // 执行进度 {done, total, current}
+          testBusy: false,
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
+          currentHash: "", // 当前 client/ 内容指纹（已回滚派生态用）
           backupBusy: false, // 正在打包备份
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           publishBusy: false, // 发布到首页应用列表进行中
@@ -2925,6 +3032,23 @@
             return false;
           },
 
+          // 变更卡上的场景测试 chip：仅最后一个带改动的回合 + 存在测试结果
+          showTestChip(msg) {
+            return this.turnActionsAvailable(msg) && !!this.testLastRun;
+          },
+
+          testChipText() {
+            const lr = this.testLastRun;
+            if (!lr) return "";
+            return lr.ok ? "全绿 ✓" : `${lr.fail} ✗`;
+          },
+
+          testChipTitle() {
+            const lr = this.testLastRun;
+            if (!lr) return "";
+            return `上次场景测试：${lr.pass} 通过 / ${lr.fail} 失败`;
+          },
+
           diffEmpty(path) {
             return (
               this.fileDiffPath === path &&
@@ -2976,10 +3100,10 @@
           },
 
           turnReverted(msg) {
-            if (!msg?.snapshotId) return false;
-            return this.backups.some(
-              (b) => b.id === msg.snapshotId && b.current,
-            );
+            // 已回滚 = 当前内容与该回合快照一致（快照 id 尾部即内容指纹，
+            // 与备份「与当前一致」标记同源；快照存 snaps/，不在 backups 里）
+            if (!msg?.snapshotId || !this.currentHash) return false;
+            return msg.snapshotId.endsWith(`-${this.currentHash}`);
           },
 
           rollbackBtnText(msg) {
@@ -3025,6 +3149,11 @@
           // 忽略自动检测到的预览错误（本次不再带给 AI）
           dismissAutoErrors() {
             store.dismissAutoErrors?.();
+          },
+
+          // 关闭错误横幅（store 清 keyError）
+          dismissKeyError() {
+            store.dismissError?.();
           },
 
           // ---- 变更卡「备份代码」：当前内容是否已有备份（backups 的 current
@@ -3580,6 +3709,68 @@
 
           closeBackupDrawer() {
             this.backupDrawerOpen = false;
+          },
+
+          // ---- 测试管理抽屉 ----
+          openTestDrawer() {
+            store.refreshTests?.();
+            this.testDrawerOpen = true;
+          },
+
+          closeTestDrawer() {
+            this.testDrawerOpen = false;
+          },
+
+          async handleRunAllTests() {
+            if (this.testBusy) return;
+            await store.runTests?.();
+          },
+
+          async handleRunOne(file) {
+            if (this.testBusy) return;
+            await store.runTests?.([file]);
+          },
+
+          // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）
+          testTone(t) {
+            if (t.broken) return "mdi:alert-circle-outline";
+            const r = this.testResults[t.file];
+            if (!r) return "mdi:flask-outline";
+            return r.ok ? "mdi:check-circle-outline" : "mdi:close-circle-outline";
+          },
+
+          // 用例失败详情一行（只说原因——用例名上一行已经有了，不重复）
+          testFailText(t) {
+            const r = this.testResults[t.file];
+            if (!r || r.ok) return "";
+            const bad = (r.steps || []).filter((s) => !s.ok).pop();
+            return bad ? bad.error : r.error || "执行失败";
+          },
+
+          // 抽屉按钮下方的元信息行：跑测中显示当前用例，否则显示上次全量摘要
+          testLastText() {
+            if (this.testRunning) {
+              const cur = this.testRunning.current
+                ? ` · ${this.testRunning.current}`
+                : "";
+              return `正在跑 ${this.testRunning.done}/${this.testRunning.total}${cur}`;
+            }
+            if (!this.testLastRun) {
+              return this.tests.length
+                ? `共 ${this.tests.length} 个用例，尚未跑过`
+                : "还没有场景用例";
+            }
+            const t = new Date(this.testLastRun.at);
+            const hh = String(t.getHours()).padStart(2, "0");
+            const mm = String(t.getMinutes()).padStart(2, "0");
+            return this.testLastRun.ok
+              ? `上次全绿 · ${hh}:${mm}`
+              : `上次 ${this.testLastRun.pass}✓ ${this.testLastRun.fail}✗ · ${hh}:${mm}`;
+          },
+
+          testLastTip() {
+            if (!this.testLastRun) return "还没有跑过场景测试";
+            return `上次全量测试：${this.testLastRun.pass} 通过 / ${this.testLastRun.fail} 失败`;
           },
 
           async handleCreateBackup() {

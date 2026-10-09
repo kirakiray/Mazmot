@@ -255,7 +255,7 @@ schema 字段定义：
 - 每轮发给模型的是 `messages` 的**快照**（后续 push 不影响已发出的请求；fake / 录制场景可安全留存每轮现场）。
 - 模型感知工具的唯一来源是每轮请求体里的 `tools` 字段：agent 每轮把 `toolsToWire(currentTools)` 传给 `assistant.chat`，模型据此决定是否发起 tool call。
 - 找不到模型请求的工具时，错误文本作为 `tool` 消息回给模型自行纠正。
-- 记忆落盘时机：只有得到最终回答（无工具调用的轮次）才 `checkpointer.set`，中途异常 / 超步数不会写入；存入的历史从 `systemPrompt` 之后开始，避免把提示词固化进记忆。
+- 记忆落盘时机（增量）：本次输入写入后、每轮工具结果执行完、最终回答时各 `checkpointer.set` 一次——手动停止 / 异常中断 / 超步数时，本回合的用户请求与已完成的工具进度仍在记忆里，下次对话（如「继续」）能接着断点做；落盘断点都在 wire 结构合法处（末尾为 user 或齐平的 tool 结果）；存入的历史从 `systemPrompt` 之后开始，避免把提示词固化进记忆。
 
 ### MemorySaver（memory.js）
 

@@ -26,9 +26,13 @@ import {
   sanitizeAppName,
   listAppFiles,
   readAppFile,
+  writeAppFile,
+  withTestingRule,
   createAppDir,
   createAppBackup,
   listAppBackups,
+  sweepLegacyAutoBackups,
+  pruneAppSnaps,
   deleteAppBackup,
   renameAppBackup,
   setBackupNote,
@@ -48,6 +52,12 @@ import {
   syncAppManifest,
 } from "./builder.js";
 import { diffLines, diffStat, compactHunks } from "./diff.js";
+import {
+  listTestCases,
+  parseTestFile,
+  runTestCases,
+  summarizeResults,
+} from "./test-runner.js";
 import { createTools } from "./tools/index.js";
 import {
   syncSkills,
@@ -96,9 +106,20 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     permGrantNeeded: false,
     // 技能知识库索引
     skills: [],
-    // 数据备份（当前应用的 backup/ 目录清单；backupBusy 防创建重入）
+    // 数据备份（当前应用的 backup/ 目录清单——只含发布与用户主动备份；
+    // backupBusy 防创建重入）；currentHash 为当前 client/ 内容指纹
+    //（「已回滚」派生态：回合快照 id 尾部与之相等即内容一致）
     backups: [],
+    currentHash: "",
     backupBusy: false,
+    // 场景测试（client/test/*.test.json）：tests 用例清单 / testResults 每用例
+    // 上次结果（file → {ok, ms, consoleErrors, error, steps}）/ testLastRun
+    // 全量摘要 {at, ok, pass, fail} / testRunning 执行进度 / testBusy 防重入
+    tests: [],
+    testResults: {},
+    testLastRun: null,
+    testRunning: null,
+    testBusy: false,
     smartBackupBusy: false, // 智能备份：打包完成后的 AI 生成标题/备注阶段
     // 发布到首页应用列表：publishBusy 防重入；publishedInfo 为当前应用的
     // 发布态（null = 未发布；{ version, at } = 已发布，顶栏发布按钮提示用）；
@@ -225,6 +246,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       scheduleSave(key);
       if (key === viewKey()) msgEvent({ op: "splice", id });
     }
+  }
+  // 本地错误卡片：宿主在回合中发生的错误（如隔离预览失败）镜像进对话，
+  // 紧跟触发它的工具调用便于定位问题。仅展示用——AI 的记忆走 wire thread，
+  // 读不到这条消息（不传给 AI）
+  function pushLocalError(text) {
+    return pushMessage({
+      id: state.nextId++,
+      role: "error",
+      text: String(text).slice(0, 300),
+      newGroup: false,
+    });
   }
   // 整组替换某个会话桶并（若是当前视图）刷新镜像；nextId 全局单调递增，
   // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上。
@@ -480,6 +512,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         return mod.checkPopupAllowed();
       },
       onPreviewShot: pushPreviewShot,
+      // 场景测试（preview 工具 action=run-tests）：跑 client/test/ 下用例
+      runTests: (files) => runTests(files),
       // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),
       netSearch: (query, opts) => netModules.searchWeb(query, opts),
@@ -494,13 +528,18 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     let projectRules = "";
     if (!isFresh && state.currentAppName) {
       try {
+        const rulesHandle = useLocal ? localRootHandle : undefined;
+        const agentsRaw = await readAppFile(
+          fs,
+          state.currentAppName,
+          "AGENTS.md",
+          rulesHandle,
+        );
+        // 老项目迁移：AGENTS.md 缺「重要功能必须带场景测试」硬性约定时自动
+        // 补齐并写回（新项目由 agents-template 模板自带）；本回合注入的就是
+        // 补齐后的内容，失败则按原文注入不阻断
         projectRules =
-          (await readAppFile(
-            fs,
-            state.currentAppName,
-            "AGENTS.md",
-            useLocal ? localRootHandle : undefined,
-          )) || "";
+          (await migrateAgentsTestingRule(agentsRaw, rulesHandle)) || "";
       } catch {
         projectRules = "";
       }
@@ -692,6 +731,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       setMany({ localDirLabel: "", keyError: "" });
     }
     refreshPublishState(); // 发布态 + 与当前代码一致性（顶栏发布按钮 / 气泡用）
+    refreshTests(); // 场景用例清单（测试抽屉 / 回合自动跑的存在性判断）
+    restoreTestResults(); // 上次测试结果持久化还原
     invalidateAgent(); // 切换应用后重建 Agent（工具根目录随应用变化）
   }
 
@@ -1465,7 +1506,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       refreshPreviewInfo();
       return done;
     } catch (err) {
-      set("keyError", `隔离预览失败：${err.message}`);
+      // 回合中（preview 工具触发）：不弹横幅，错误卡片镜像进对话、紧跟
+      // 工具调用（AI 仍从工具结果文本得知失败）；非回合入口走可关闭横幅
+      if (state.sending) {
+        pushLocalError(`隔离预览失败：${err.message}`);
+      } else {
+        set("keyError", `隔离预览失败：${err.message}`);
+      }
       throw err;
     } finally {
       set("previewBusy", false);
@@ -1696,18 +1743,6 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     });
   }
 
-  // 自动快照清理：只保留最近 KEEP 个 auto 备份（手动备份不动），防每回合
-  // 快照把 backup/ 撑爆；id 含时间戳，字典序即时间序（list 新的在前）。
-  // 被 recent 之外回合的变更卡引用到的快照若被清理，其回滚按钮会随
-  // snapshotAvailable 失效（diff 内容已冻结进消息，不受影响）
-  async function pruneAutoBackups(appName, handle) {
-    const KEEP = 10;
-    const list = await listAppBackups(fs, appName, handle);
-    for (const b of list.filter((x) => x.auto).slice(KEEP)) {
-      await deleteAppBackup(fs, appName, b.id, handle);
-    }
-  }
-
   // 回合后自动错误检测：推送最新代码 → 等应用重载与首轮报错 → 读 console
   // 的 error 行挂 state.autoErrors（fire-and-forget，不阻塞回合收尾；重入
   // 保护防连发回合叠加）。仅在预览窗口已开时被调用，不自动开窗
@@ -1735,6 +1770,168 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 用户忽略自动检测到的错误：清空（下回合提示词不再注入；新错误会重新收集）
   function dismissAutoErrors() {
     set("autoErrors", []);
+  }
+
+  // 关闭错误横幅（keyError 仅提示用；关闭不代表问题已解决，下次出错会再弹）
+  function dismissError() {
+    set("keyError", "");
+  }
+
+  // 老项目 AGENTS.md 迁移（withTestingRule 判定与插入，这里只做 IO）：缺场景
+  // 测试硬性约定时补一条并写回，返回注入用内容；raw 为 null（尚无该文件）或
+  // 写入失败时原样返回，不阻断注入
+  async function migrateAgentsTestingRule(raw, rootHandle) {
+    if (raw == null) return raw;
+    const next = withTestingRule(raw);
+    if (next == null) return raw;
+    try {
+      await writeAppFile(
+        fs,
+        state.currentAppName,
+        "AGENTS.md",
+        next,
+        rootHandle,
+      );
+    } catch (err) {
+      console.warn("[builder] AGENTS.md 补测试约定失败：", err);
+      return raw;
+    }
+    return next;
+  }
+
+  /* ---------- 场景测试（client/test/*.test.json，经预览调试通道执行） ---------- */
+
+  const testResultsKey = (appName) => `test-results:${sanitizeAppName(appName)}`;
+
+  // 用例清单（测试抽屉 / 回合自动跑的存在性判断）
+  async function refreshTests() {
+    if (state.currentAppName === "" || !fs) return;
+    try {
+      const rootHandle = await backupRootHandle();
+      set("tests", await listTestCases(fs, state.currentAppName, rootHandle));
+    } catch (err) {
+      console.warn("读取测试用例失败：", err);
+    }
+  }
+
+  // 还原上次全量测试结果（随应用切换加载；草稿态清空）
+  async function restoreTestResults() {
+    if (state.currentAppName === "" || !selfStore) {
+      setMany({ testResults: {}, testLastRun: null });
+      return;
+    }
+    try {
+      const saved = await selfStore.getItem(testResultsKey(state.currentAppName));
+      set("testResults", saved?.results ? Object.fromEntries(saved.results.map((r) => [r.file, r])) : {});
+      set("testLastRun", saved ? { at: saved.at, ok: saved.ok, pass: saved.pass, fail: saved.fail } : null);
+    } catch {
+      /* 还原失败按无结果处理 */
+    }
+  }
+
+  // reload 步骤后等调试代理回线：轮询 status 直到可应答（应用页重载会打断
+  // dbg 链路，inject 重新挂载并心跳后恢复）
+  async function waitTestAgentOnline(timeoutMs = 30_000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+      try {
+        await previewDebug("status", {}, 5_000);
+        return true;
+      } catch {
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 跑场景用例（files 缺省 = 全部）：确保预览在线（离线先走推送流程，测的
+   * 永远是最新代码）→ 逐条执行 → 结果落 state.testResults / testLastRun 并
+   * 持久化（test-results:<app>）；失败行写 autoErrors 回流下回合修复
+   */
+  async function runTests(files) {
+    if (state.testBusy || state.currentAppName === "" || !fs) return null;
+    set("testBusy", true);
+    try {
+      await refreshTests();
+      const all = state.tests.filter((t) => !t.broken);
+      const picked = files?.length ? all.filter((t) => files.includes(t.file)) : all;
+      if (!picked.length) {
+        return { ok: true, noTests: true, summary: "没有测试用例", results: [] };
+      }
+      // 连接预检：previewOnline 可能是陈旧亮标（窗口已关 / 页面卡死），
+      // status 探活失败就重推最新代码再跑
+      try {
+        await previewDebug("status", {}, 8_000);
+      } catch {
+        await runRemotePreview(state.currentAppName, state.currentAppMode);
+      }
+      const rootHandle = await backupRootHandle();
+      const cases = [];
+      for (const t of picked) {
+        const raw = await readAppFile(fs, state.currentAppName, t.file, rootHandle);
+        const parsed = parseTestFile(raw, t.file);
+        cases.push({ file: t.file, name: parsed.name, steps: parsed.steps });
+      }
+      const results = await runTestCases({
+        cases,
+        previewDebug,
+        waitOnline: waitTestAgentOnline,
+        onProgress: (p) => set("testRunning", p),
+        // 用例中途连接失效的自愈：重推预览 + 等回线后重试该用例
+        recover: async () => {
+          await runRemotePreview(state.currentAppName, state.currentAppMode);
+          await waitTestAgentOnline();
+        },
+      });
+      const pass = results.filter((r) => r.ok).length;
+      const summary = {
+        at: Date.now(),
+        ok: pass === results.length,
+        pass,
+        fail: results.length - pass,
+      };
+      set("testResults", Object.fromEntries(results.map((r) => [r.file, r])));
+      set("testLastRun", summary);
+      set("testRunning", null);
+      try {
+        await selfStore.setItem(testResultsKey(state.currentAppName), {
+          at: summary.at,
+          ok: summary.ok,
+          pass,
+          fail: summary.fail,
+          results,
+        });
+      } catch {
+        /* 结果持久化失败不影响本次报告 */
+      }
+      // 失败回流：写 autoErrors（下回合提示词自动附带，UI 可忽略），AI 从
+      // 摘要行定位失败用例
+      const fails = results.filter((r) => !r.ok);
+      if (fails.length) {
+        set(
+          "autoErrors",
+          fails.map((r) => `[测试] ${r.name}：${r.error}`),
+        );
+        invalidateAgent();
+      }
+      return { ok: summary.ok, summary: summarizeResults(results), results };
+    } catch (err) {
+      set("keyError", `测试执行失败：${err.message}`);
+      return null;
+    } finally {
+      set("testBusy", false);
+      set("testRunning", null);
+    }
+  }
+
+  // 回合收尾自动跑（fire-and-forget，不阻塞收尾）：仅预览窗口已开时，与
+  // autoCheckPreview 同策略不自动开窗打扰
+  async function autoRunTests() {
+    if (state.testBusy) return;
+    await refreshTests();
+    if (!state.tests.length) return;
+    await runTests();
   }
 
   // 变更卡展开：快照（该回合开始前）vs 当前盘上指定文件的行级 diff。
@@ -1823,7 +2020,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  /* ---------- 数据备份管理（client/ 同层 backup/ 目录） ---------- */
+  /* ---------- 数据备份与回合快照（client/ 同层 backup/ 与 snaps/ 目录） ---------- */
 
   // 当前应用对应的备份根句柄：本地渠道恢复句柄（只读列出 / 写入用），虚拟渠道 null
   async function backupRootHandle() {
@@ -1910,6 +2107,13 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (state.currentAppName === "" || !fs) return;
     try {
       const rootHandle = await backupRootHandle();
+      // 历史版本把回合快照混进了 backup/：顺手清扫（纯快照删除，被发布
+      // 流程复用标注过的保留），备份管理从此只有发布与用户主动备份
+      try {
+        await sweepLegacyAutoBackups(fs, state.currentAppName, rootHandle);
+      } catch {
+        /* 清扫失败不影响清单读取 */
+      }
       // listAppBackups 返回 { id, label, note }；当前内容指纹与 id 尾部 hash
       // 一致的项标记 current（即「这份备份就是现在的内容」）；内容指纹命中
       // 发布记录 publishedVersions 的项带 publishedVersion（「已发布 vX.Y.Z」徽标）
@@ -1917,6 +2121,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       const list = await listAppBackups(fs, state.currentAppName, rootHandle);
       const publishedVersions =
         (await readPublishedMeta())?.publishedVersions || {};
+      set("currentHash", currentHash);
       set(
         "backups",
         list.map((b) => ({
@@ -1959,15 +2164,28 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
           state.currentAppName,
           rootHandle,
         );
-        const list = await listAppBackups(fs, state.currentAppName, rootHandle);
-        const hit = list.find((b) => b.id === backup.id);
-        if (!hit?.label) {
-          await renameAppBackup(
-            fs,
-            state.currentAppName,
-            backup.id,
-            `发布 v${res.version}`,
-          );
+        await refreshBackups(); // AI 标注的「上一版」对比要基于最新备份清单
+        // 发布备份走智能备份的 AI 标注（标题 + 备注）——裸日期看不出这版
+        // 发了什么；AI 失败 / 没产出标题 / 幂等重发时回退「发布 vX.Y.Z」标注
+        let labeled = "";
+        if (!backup.skipped) {
+          try {
+            labeled = (await applySmartBackupMeta(backup.id, rootHandle)).label;
+          } catch (err) {
+            console.warn("[publish] 发布备份 AI 标注失败：", err);
+          }
+        }
+        if (!labeled) {
+          const list = await listAppBackups(fs, state.currentAppName, rootHandle);
+          const hit = list.find((b) => b.id === backup.id);
+          if (!hit?.label) {
+            await renameAppBackup(
+              fs,
+              state.currentAppName,
+              backup.id,
+              `发布 v${res.version}`,
+            );
+          }
         }
       } catch (err) {
         // 备份标注失败不影响发布结果
@@ -2106,6 +2324,25 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     };
   }
 
+  // 智能备份的 AI 标注段（smartBackup 与发布备份共用）：对比上一版备份生成
+  // 标题与备注并写入 meta。返回 { label, note }（都可能为空串——AI 没产出时
+  // 由调用方兜底）。须先 refreshBackups：「上一版」取自最新备份清单
+  async function applySmartBackupMeta(id, rootHandle) {
+    const prev = state.backups.find((b) => b.id !== id);
+    const currentFiles = await currentAppFiles(fs, state.currentAppName, rootHandle);
+    const prevFiles = prev
+      ? await readBackupFiles(fs, state.currentAppName, prev.id, rootHandle)
+      : [];
+    const { label, note } = await generateBackupMeta(currentFiles, prevFiles);
+    if (label) {
+      await renameAppBackup(fs, state.currentAppName, id, label, rootHandle);
+    }
+    if (note) {
+      await setBackupNote(fs, state.currentAppName, id, note, rootHandle);
+    }
+    return { label, note };
+  }
+
   // 智能备份：打包当前版本后，用 AI 对比上一版生成标题与备注并写入备份 meta。
   // 返回 { id, label, note }；内容无变化时返回 { skipped: true }
   async function smartBackup() {
@@ -2117,19 +2354,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       const res = await createAppBackup(fs, state.currentAppName, rootHandle);
       await refreshBackups();
       if (res?.skipped) return { skipped: true };
-      // 上一版 = 备份列表（新的在前）里除新备份外的第一份；首个备份则无对比基准
-      const prev = state.backups.find((b) => b.id !== res.id);
-      const currentFiles = await currentAppFiles(fs, state.currentAppName, rootHandle);
-      const prevFiles = prev
-        ? await readBackupFiles(fs, state.currentAppName, prev.id, rootHandle)
-        : [];
-      const { label, note } = await generateBackupMeta(currentFiles, prevFiles);
-      if (label) {
-        await renameAppBackup(fs, state.currentAppName, res.id, label, rootHandle);
-      }
-      if (note) {
-        await setBackupNote(fs, state.currentAppName, res.id, note, rootHandle);
-      }
+      const { label, note } = await applySmartBackupMeta(res.id, rootHandle);
       await refreshBackups();
       return { id: res.id, label, note };
     } catch (err) {
@@ -3121,8 +3346,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       pendingRollback = null;
     }
-    // 回合开始快照：变更卡 diff 的旧侧 + 一键回滚目标。内容寻址幂等——
-    // 未改动的回合与既有备份同 id 零成本；草稿态（项目未建）跳过
+    // 回合开始快照（存应用目录 snaps/，不进备份管理清单）：变更卡 diff 的
+    // 旧侧 + 一键回滚目标。内容寻址幂等——未改动的回合与既有快照同 id 零
+    // 成本；草稿态（项目未建）跳过
     turnChanges = [];
     turnSnapshotId = "";
     if (state.currentAppName) {
@@ -3130,10 +3356,12 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         const snapHandle =
           state.currentAppMode === "local" ? localRootHandle : undefined;
         const snap = await createAppBackup(fs, state.currentAppName, snapHandle, {
-          auto: true,
+          snapshot: true,
         });
         turnSnapshotId = snap.id;
-        await pruneAutoBackups(state.currentAppName, snapHandle);
+        // 只保留最近 10 份快照（被更早回合变更卡引用到的会被清掉，回滚按钮
+        // 随 snapshotAvailable 失效；diff 内容已冻结进消息，不受影响）
+        await pruneAppSnaps(fs, state.currentAppName, snapHandle);
       } catch (err) {
         console.warn("回合快照失败：", err);
       }
@@ -3237,6 +3465,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         !abort.stopped
       ) {
         autoCheckPreview(changedApp);
+        // 场景测试自动跑：有文件改动且存在用例时执行，失败行回流 autoErrors
+        autoRunTests();
       }
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);
@@ -3603,6 +3833,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     getTurnDiff,
     rollbackTurn,
     dismissAutoErrors,
+    dismissError,
+    refreshTests,
+    runTests,
     refreshBackups,
     createBackup,
     smartBackup,

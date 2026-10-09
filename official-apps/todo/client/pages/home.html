@@ -12,26 +12,55 @@
       color: var(--md-sys-color-on-surface);
       font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
     }
-    /* 三列网格：左列 = 分组侧栏（贴屏幕左边缘），中列 = 任务区（在屏幕正中间），
-       右列 = 与左列等宽的留白，靠它把中列推到视口正中（两侧对称，而不是被侧栏挤偏）。 */
+    /* 两列网格：左列 = 分组侧栏（贴屏幕左边缘，宽度可拖拽），右列 = 任务区（用满剩余宽度）。
+       左列宽取 auto，实际宽度由 .side 自身的行内 width（data.sideWidth）决定，
+       这样拖拽手柄只需改一个 data 字段；任务区不再人为留左右空白（曾经为了让它在视口正中
+       加过一列等宽留白，侧栏变宽后会浪费右侧大片区域，已去掉）。 */
     .shell {
       width: 100%;
+      position: relative; /* 拖拽手柄的定位基准 */
       display: grid;
-      grid-template-columns: 190px minmax(0, 1fr) 190px;
+      grid-template-columns: auto minmax(0, 1fr);
       gap: 20px;
       align-items: start;
     }
     .main {
       grid-column: 2;
       width: 100%;
-      /* 任务区在中间列里居中，最大行宽限制避免超宽屏文案拉得过长 */
-      max-width: 880px;
+      /* 行宽上限：避免超宽屏上单行文案拉得过长；比侧栏宽得多，因此侧栏拖宽后依然能把空间用满 */
+      max-width: 1200px;
       margin: 0 auto;
       min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
+    /* 拖拽手柄：绝对定位在侧栏右边缘的间隙中间（不参与网格排版，也不受侧栏滚动裁剪影响） */
+    .resizer {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 20px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: col-resize;
+      touch-action: none; /* 触屏拖拽时不触发页面滚动 */
+      z-index: 2;
+    }
+    .resizer::before {
+      content: "";
+      width: 4px;
+      height: 44px;
+      border-radius: 2px;
+      background: var(--md-sys-color-outline-variant);
+      transition: background 0.15s ease;
+    }
+    .resizer:hover::before,
+    .shell.resizing .resizer::before { background: var(--md-sys-color-primary); }
+    /* 拖拽中：禁止选中文本，避免拖出蓝色选区 */
+    .shell.resizing { user-select: none; }
     /* 侧栏：分组列表 + 新建 / 改名。固定在最左列，滚动时 sticky 保持在左上 */
     .side {
       grid-column: 1;
@@ -57,7 +86,9 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      padding: 4px 4px 4px 10px;
+      /* 垂直内边距统一交给 .gname：行内没有自己的垂直 padding，
+         .gname 撑满行高后整行（上下留白也算）都是点击区 */
+      padding: 0 4px 0 10px;
       border-radius: 10px;
       font-size: 14px;
     }
@@ -71,11 +102,30 @@
     .gitem .gname {
       flex: 1;
       min-width: 0;
+      /* 撑满行高（align-self: stretch）+ 与 ⋯ 按钮等高，
+         这样文字上下方的留白也能点到，不再“中间能点、上下点不到” */
+      align-self: stretch;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
       word-break: break-word;
       cursor: pointer;
       padding: 4px 0;
     }
-    .gitem .gcount { flex: none; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    /* 计数也接受点击（它挨着行名，点数字也能切分组） */
+    .gitem .gcount {
+      flex: none;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+    }
+    /* 「全部任务」是虚拟项没有 ⋯ 菜单，用一个同宽的占位撑出一样的位置，
+       让它的计数与下面各行的计数右边缘对齐（否则会向右突出 38px） */
+    .gitem .gmenu-ghost {
+      flex: none;
+      width: 34px;
+      height: 34px;
+    }
     .gitem.active .gcount { color: var(--md-sys-color-on-primary-container); }
     /* item 右侧的「⋯ 更多」菜单（st-menu 的 trigger）：改 font-size 等比缩到约 34px；
        平时隐藏，鼠标悬停 / 当前选中 / 键盘聚焦该行时淡入（触屏无 hover，始终可见）。
@@ -90,11 +140,30 @@
       .gitem .gmenu { opacity: 1; }
     }
     .manage-title { margin: 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
-    /* 中等宽度：去掉右侧留白，任务区不再居中（否则中间列会被压得太窄） */
-    @media (max-width: 1100px) {
-      .shell { grid-template-columns: 190px minmax(0, 1fr); }
+    /* ===== AI 添加任务区（在添加弹窗内） ===== */
+    .ai-box {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--md-sys-color-outline-variant);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
-    /* 窄屏：侧栏转为顶部横向条，单列堆叠 */
+    .ai-head {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .ai-head n-icon { font-size: 1.1em; color: var(--md-sys-color-primary); }
+    /* AI 描述框：只给宽度与最小高度，不覆盖 st-textarea 的 display（见踩坑 004） */
+    .ai-field { width: 100%; min-height: 4.5em; }
+    .ai-actions { display: flex; justify-content: flex-end; }
+    .ai-note { margin: 0; font-size: 12px; color: var(--md-sys-color-primary); }
+    .ai-error { margin: 0; font-size: 12px; color: var(--md-sys-color-error); }
+    /* 窄屏：侧栏转为顶部横向条，单列堆叠；拖拽手柄隐藏，侧栏宽度固定为通栏 */
     @media (max-width: 620px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
       .main { grid-column: 1; margin: 0; }
@@ -103,8 +172,13 @@
         position: static;
         max-height: none;
         overflow: visible;
+        /* 行内 width 来自 data.sideWidth，窄屏要压过它才能通栏 */
+        width: auto !important;
       }
+      .resizer { display: none; }
       .glist { flex-direction: row; flex-wrap: wrap; }
+      /* 窄屏：标题栏放不下「归档已完成 + 添加任务」时换行，不把标题挤扁 */
+      .top { flex-wrap: wrap; }
     }
     h1 {
       display: flex;
@@ -127,11 +201,19 @@
       gap: 12px;
     }
     .top .add-btn { flex: none; }
+    /* 标题栏右侧的操作区：「归档已完成」+「添加任务」并排 */
+    .top-actions {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
     /* 注意：不要在这里覆盖 st-input / st-textarea 的 display（组件默认 inline-flex，内部原生控件靠 flex 撑满），
        只给宽度与最小高度即可，否则真实可输入区域会缩成组件默认宽度 */
     .dialog-field { width: 100%; min-height: 7.5em; }
     .list { display: flex; flex-direction: column; gap: 8px; }
     .item {
+      position: relative; /* 落点指示线（伪元素）的定位基准 */
       display: flex;
       align-items: center;
       gap: 12px;
@@ -139,6 +221,59 @@
       border-radius: 14px;
       background: var(--md-sys-color-surface-variant);
     }
+    /* 拖拽手柄：列表行最左侧，按住上下拖动可调整顺序。平时半透明、悬停行时变亮；
+       touch-action: none 是必须的——不然触屏上按住手柄移动会变成页面滚动 */
+    .item .drag-handle {
+      flex: none;
+      display: flex;
+      align-items: center;
+      padding: 4px 2px;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.45;
+      cursor: grab;
+      touch-action: none;
+      transition: opacity 0.15s ease;
+    }
+    .item:hover .drag-handle { opacity: 1; }
+    @media (hover: none) {
+      .item .drag-handle { opacity: 0.8; }
+    }
+    /* 被拖动的行：原地降明度做“源标记”（不移动位置，换位发生在松手时） */
+    .item.dragging {
+      opacity: 0.4;
+      box-shadow: inset 0 0 0 1px var(--md-sys-color-outline-variant);
+    }
+    .item.dragging .drag-handle { opacity: 1; cursor: grabbing; }
+    /* 拖动中禁止选中文本 */
+    .shell.dragging { user-select: none; }
+    /* 落点指示：不按坐标画浮层，而是直接画在目标行的边缘上（几何上永远对齐）：
+       .drop-before = 插到这行之前（线在该行上边），.drop-after = 插到下一行之前（线在该行下边）。
+       线用 ::after，左端的圆点用 ::before，都绝对定位在该行内 */
+    .item.drop-before::after,
+    .item.drop-after::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      right: 0;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--md-sys-color-primary);
+    }
+    .item.drop-before::before,
+    .item.drop-after::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--md-sys-color-primary);
+    }
+    .item.drop-before::after { top: -5px; }
+    .item.drop-before::before { top: -8.5px; }
+    .item.drop-after::after { bottom: -5px; }
+    .item.drop-after::before { bottom: -8.5px; }
     .item .body {
       flex: 1;
       min-width: 0;
@@ -165,6 +300,33 @@
       line-height: 1.3;
       color: var(--md-sys-color-on-surface-variant);
     }
+    /* 行尾操作区：编辑 + 删除两个图标按钮紧凑并排（尺寸统一缩到 34px，与侧栏分组行的 ⋯ 一致），
+       不再用两个 40px 按钮并排去占 92px 宽度 */
+    .item-actions {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .item-actions st-icon-button { font-size: 12px; }
+    /* 编辑按钮平时淡出（与侧栏分组行的 ⋯ 同一套做法）：鼠标悬停该行、键盘聚焦到它时才现形，
+       列表更干净；删除按钮保持常显（主操作，倒计时时还是撤销的唯一抓手）。
+       用 opacity 而不是 display，避免悬停时行内布局跳动；宽度始终占位，文字不会左右挪。 */
+    .item-actions .edit-btn {
+      opacity: 0;
+      transition: opacity 0.15s ease, color 0.15s ease;
+    }
+    .item:hover .edit-btn,
+    .item:focus-within .edit-btn { opacity: 0.75; }
+    .item-actions .edit-btn:hover,
+    .item-actions .edit-btn:focus-within {
+      opacity: 1;
+      color: var(--md-sys-color-primary);
+    }
+    /* 触屏等无 hover 设备：编辑按钮常显（略淡），否则永远看不出这行能编辑 */
+    @media (hover: none) {
+      .item-actions .edit-btn { opacity: 0.7; }
+    }
     .item.done .text {
       text-decoration: line-through;
       color: var(--md-sys-color-on-surface-variant);
@@ -175,8 +337,24 @@
       color: var(--md-sys-color-on-error-container);
     }
     .item.pending .meta { color: var(--md-sys-color-on-error-container); }
+    /* 倒计时（错误容器色）下操作按钮换成 on-error-container，图标在红底上才清晰；
+       这时的「撤销」是用户唯一抓手，编辑按钮也不再隐藏。
+       注意：必须直接命中 st-icon-button 宿主——它自带 color（on-surface-variant），
+       在父容器上写 color 只会被组件自己的声明盖掉（继承打不过自声明） */
+    .item.pending .item-actions st-icon-button { color: var(--md-sys-color-on-error-container); }
+    .item.pending .item-actions .edit-btn { opacity: 1; }
     .item.pending .desc { color: var(--md-sys-color-on-error-container); }
     .item.trash { background: var(--md-sys-color-surface); border: 1px dashed var(--md-sys-color-outline-variant); }
+    /* 归档项：与垃圾桶区分开——用实线边框 + 表面色，不做删除线（它只是被收起来了） */
+    .item.archived { background: var(--md-sys-color-surface); border: 1px solid var(--md-sys-color-outline-variant); }
+    /* 归档项左侧的归档图标（代替列表里的勾选框位） */
+    .item .arch {
+      flex: none;
+      display: flex;
+      align-items: center;
+      font-size: 20px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
     .trash-tip {
       margin: 0;
       font-size: 12px;
@@ -213,6 +391,10 @@
     }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
+    /* 详情弹窗的编辑区：标题单行 + 描述多行（只给尺寸，不覆盖组件 display，见踩坑 004） */
+    .detail-edit { display: flex; flex-direction: column; gap: 12px; }
+    .detail-edit .edit-title { width: 100%; min-width: 0; }
+    .detail-edit .edit-desc { width: 100%; min-height: 7.5em; }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
@@ -226,21 +408,22 @@
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
 
-  <div class="shell">
-    <!-- 左侧固定侧栏：选分组 / 新建分组 / 改名删除 -->
-    <aside class="side">
+  <div class="shell" class:resizing="resizing" class:dragging="!!draggingId">
+    <!-- 左侧固定侧栏：选分组 / 新建分组 / 改名删除；宽度可拖拽（150–300px） -->
+    <aside class="side" :style.width="sideWidth + 'px'">
       <p class="side-title">分组</p>
 
       <div class="glist">
         <!-- 根级绑定用裸方法名（$host 只在 o-fill 等子作用域里可用，见踩坑 006） -->
         <div class="gitem" class:active="isGroupActive('all')">
           <span class="gname" on:click="setGroup('all')">全部任务</span>
-          <span class="gcount">{{allCountText}}</span>
+          <span class="gcount" on:click="setGroup('all')">{{allCountText}}</span>
+          <span class="gmenu-ghost" aria-hidden="true"></span>
         </div>
         <o-fill :value="groups" fill-key="id">
           <div class="gitem" class:active="$host.isGroupActive($data.id)">
             <span class="gname" on:click="$host.setGroup($data.id)">{{$data.name}}</span>
-            <span class="gcount">{{$host.groupCountText($data.id)}}</span>
+            <span class="gcount" on:click="$host.setGroup($data.id)">{{$host.groupCountText($data.id)}}</span>
             <!-- 行右侧的「更多」菜单：重命名 / 删除（默认分组的删除置灰） -->
             <st-menu>
               <st-icon-button
@@ -267,6 +450,14 @@
 
     </aside>
 
+    <!-- 拖拽手柄：左右拖动改变分组栏宽度（跟随侧栏右边缘） -->
+    <div
+      class="resizer"
+      title="拖动调整分组栏宽度"
+      :style.left="sideWidth + 10 + 'px'"
+      on:pointerdown="startResize"
+    ></div>
+
     <!-- 右侧任务区 -->
     <div class="main">
       <div class="top">
@@ -274,36 +465,96 @@
         <h1><n-icon icon="mdi:check-circle-outline"></n-icon>待办清单</h1>
         <p class="sub">数据保存在本机，随时关掉再回来都还在。</p>
       </div>
-      <st-button class="add-btn" on:click="openAdd">
-        <n-icon slot="prefix" icon="mdi:plus"></n-icon>添加任务
-      </st-button>
+      <div class="top-actions">
+        <!-- 归档入口放在右上（原先在右下底栏）；作用范围是“当前分组范围”，与当前视图无关，
+             所以不随视图切换隐藏，无可归档项时置灰 -->
+        <st-button
+          variant="text"
+          title="把当前分组里已完成的任务收进归档（不会删除）"
+          on:click="archiveDone"
+          attr:disabled="doneCount === 0"
+        ><n-icon slot="prefix" icon="mdi:archive-arrow-down"></n-icon>归档已完成</st-button>
+        <st-button class="add-btn" on:click="openAdd">
+          <n-icon slot="prefix" icon="mdi:plus"></n-icon>添加任务
+        </st-button>
+      </div>
     </div>
 
     <st-button-group>
       <st-button attr:variant="view === 'all' ? 'filled' : 'text'" on:click="setView('all')">全部</st-button>
-      <st-button attr:variant="view === 'active' ? 'filled' : 'text'" on:click="setView('active')">未完成</st-button>
-      <st-button attr:variant="view === 'done' ? 'filled' : 'text'" on:click="setView('done')">已完成</st-button>
+      <st-button attr:variant="view === 'archived' ? 'filled' : 'text'" on:click="setView('archived')">
+        <n-icon slot="prefix" icon="mdi:archive-arrow-down"></n-icon>已归档{{archiveBadge}}
+      </st-button>
       <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">
         <n-icon slot="prefix" icon="mdi:delete-outline"></n-icon>垃圾桶{{trashBadge}}
       </st-button>
     </st-button-group>
 
 
-    <!-- 正常视图：勾选 / 倒计时删除 -->
-    <o-if :value="!inTrashView">
+    <!-- 列表视图（全部）：勾选 / 倒计时删除 -->
+    <o-if :value="inListView">
       <div class="list">
         <o-fill :value="visibleTodos" fill-key="id">
-          <div class="item" class:done="$data.done" class:pending="$host.isPending($data)">
+          <div
+            class="item"
+            attr:data-id="$data.id"
+            class:done="$data.done"
+            class:pending="$host.isPending($data)"
+            class:dragging="$host.isDragging($data.id)"
+            class:drop-before="$host.isDropBefore($data.id)"
+            class:drop-after="$host.isDropAfter($data.id)"
+          >
+            <span
+              class="drag-handle"
+              attr:title="$host.dragHandleTitle($data)"
+              on:pointerdown="$host.startDrag($event, $data.id)"
+            ><n-icon icon="mdi:drag-vertical"></n-icon></span>
             <st-checkbox attr:checked="$data.done" on:change="$host.toggleTodo($data.id)"></st-checkbox>
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
               <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
-            <st-icon-button
-              attr:title="$host.deleteButtonTitle($data)"
-              on:click="$host.handleDeleteClick($data.id)"
-            ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
+            <div class="item-actions">
+              <st-icon-button
+                class="edit-btn"
+                attr:title="$host.editButtonTitle($data)"
+                on:click="$host.openEditDetail($data.id)"
+              ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
+              <st-icon-button
+                attr:title="$host.deleteButtonTitle($data)"
+                on:click="$host.handleDeleteClick($data.id)"
+              ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
+            </div>
+          </div>
+        </o-fill>
+      </div>
+    </o-if>
+
+    <!-- 已归档视图：取消归档 / 倒计时删除（归档项不被勾选，用归档图标代替勾选框位） -->
+    <o-if :value="inArchiveView">
+      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。</p>
+      <div class="list">
+        <o-fill :value="archivedTodos" fill-key="id">
+          <div class="item archived" class:pending="$host.isPending($data)">
+            <span class="arch"><n-icon icon="mdi:archive-arrow-down"></n-icon></span>
+            <div class="body" on:click="$host.openDetail($data.id)">
+              <span class="text">{{$data.text}}</span>
+              <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+              <span class="meta">{{$host.timeMeta($data)}}</span>
+            </div>
+            <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
+            <div class="item-actions">
+              <st-icon-button
+                class="edit-btn"
+                attr:title="$host.editButtonTitle($data)"
+                on:click="$host.openEditDetail($data.id)"
+              ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
+              <st-icon-button
+                attr:title="$host.deleteButtonTitle($data)"
+                on:click="$host.handleDeleteClick($data.id)"
+              ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
+            </div>
           </div>
         </o-fill>
       </div>
@@ -346,15 +597,15 @@
       </div>
     </o-if>
 
-    <o-if :value="!inTrashView">
+    <o-if :value="inArchiveView">
+      <div class="footer">
+        <span class="count">已归档 {{archivedTodos.length}} 项</span>
+      </div>
+    </o-if>
+
+    <o-if :value="inListView">
       <div class="footer">
         <span class="count">{{remaining}} 项未完成 · 共 {{scopedActiveTodos.length}} 项</span>
-        <st-button
-          variant="text"
-          color="error"
-          on:click="clearDone"
-          attr:disabled="doneCount === 0"
-        >清除已完成</st-button>
       </div>
     </o-if>
 
@@ -368,6 +619,27 @@
         placeholder="第一行是标题，换行后写的都是描述…"
       ></st-textarea>
       <p class="manage-title">{{addGroupHint}}</p>
+
+      <!-- AI 添加：输入一句自然语言描述，AI 生成标题 + 描述回填到上面的输入框 -->
+      <div class="ai-box">
+        <p class="ai-head"><n-icon icon="mdi:auto-fix"></n-icon>AI 添加：说说你要做什么，自动生成标题和描述</p>
+        <st-textarea
+          class="ai-field"
+          rows="2"
+          sync:value="aiDraft"
+          placeholder="例如：明天下午三点和客户开会，记得先准备好报价单"
+        ></st-textarea>
+        <div class="ai-actions">
+          <st-button
+            variant="text"
+            on:click="generateWithAi"
+            attr:disabled="aiDisabled"
+          ><n-icon slot="prefix" icon="mdi:creation"></n-icon>{{aiButtonLabel}}</st-button>
+        </div>
+        <p class="ai-note" class:hidden="!aiNote">{{aiNote}}</p>
+        <p class="ai-error" class:hidden="!aiError">{{aiError}}</p>
+      </div>
+
       <div slot="actions">
         <st-button variant="text" on:click="closeAdd">取消</st-button>
         <st-button on:click="submitAdd" attr:disabled="!draft.trim()">添加</st-button>
@@ -389,20 +661,46 @@
       </div>
     </st-dialog>
 
-    <!-- 任务详情（只读：底部只有「关闭」）：注意 st-dialog 内不能调 $host.xxx()
-         （弹窗内部 $host 不指向页面），所以展示用的文案都在 openDetail 里预计算好 -->
+    <!-- 任务详情：默认只读，点「编辑」切成可编辑（标题 + 描述）。注意 st-dialog 内不能调
+         $host.xxx()（弹窗内部 $host 不指向页面），所以只读文案都在 openDetail 里预计算好 -->
     <st-dialog sync:open="detailOpen" auto-close>
-      <span slot="headline">{{detail.title}}</span>
-      <div class="detail">
+      <span slot="headline">{{detailEditing ? '编辑任务' : detail.title}}</span>
+
+      <!-- 只读视图 -->
+      <div class="detail" class:hidden="detailEditing">
         <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
         <div class="detail-row"><span class="k">分组</span><span>{{detail.groupText}}</span></div>
         <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
         <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
         <div class="detail-row"><span class="k">状态变更</span><span>{{detail.statusChangedText}}</span></div>
+        <div class="detail-row"><span class="k">归档时间</span><span>{{detail.archivedText}}</span></div>
         <div class="detail-row"><span class="k">删除时间</span><span>{{detail.deletedText}}</span></div>
       </div>
-      <div slot="actions">
+
+      <!-- 编辑视图：标题单行、描述可多行（回车换行，所以只能用「保存」提交） -->
+      <div class="detail-edit" class:hidden="!detailEditing">
+        <st-input
+          class="edit-title"
+          sync:value="editTitle"
+          placeholder="任务标题（不能为空）"
+        ></st-input>
+        <st-textarea
+          class="edit-desc"
+          rows="4"
+          sync:value="editDesc"
+          placeholder="描述（可留空，可多行）"
+        ></st-textarea>
+      </div>
+
+      <div slot="actions" class:hidden="detailEditing">
         <st-button variant="text" on:click="closeDetail">关闭</st-button>
+        <st-button on:click="startEditDetail">
+          <n-icon slot="prefix" icon="mdi:pencil"></n-icon>编辑
+        </st-button>
+      </div>
+      <div slot="actions" class:hidden="!detailEditing">
+        <st-button variant="text" on:click="cancelEditDetail">取消</st-button>
+        <st-button on:click="submitEditDetail" attr:disabled="!editTitle.trim()">保存</st-button>
       </div>
     </st-dialog>
 
@@ -425,9 +723,25 @@
     const GROUPS_KEY = "groups";
     const DEFAULT_GROUP_ID = "default";
     const DEFAULT_GROUP_NAME = "默认";
+    // 界面偏好（目前只有侧栏宽度）单独一个键存
+    const UI_KEY = "ui";
+    // 会话状态（当前筛选 + 选中分组）存在 sessionStorage：刷新后保持，关标签页 / 新开窗口则回到默认。
+    // 说明：项目约定数据一律进 /nos/storage，这里是经用户明确要求后的豁免（见 MEMORY.md 豁免记录）
+    const SESSION_KEY = "todo-ui-state";
+    // 侧栏（分组栏）宽度的拖拽范围
+    const SIDE_MIN_W = 150;
+    const SIDE_MAX_W = 300;
+    const SIDE_DEFAULT_W = 190;
     // 删除后的倒计时时长：到点后条目才真正进入垃圾桶
     const TRASH_DELAY_MS = 5000;
     const TICK_MS = 200;
+    // AI 生成任务标题 / 描述时给模型的系统提示：只要求返回严格 JSON，便于程序解析
+    const AI_SYSTEM_PROMPT =
+      "你是一个待办事项整理助手。用户会用一句话描述要做的事，" +
+      "请把它整理成任务标题与描述：title 是简明扼要的任务标题（不超过 20 个字，不要句末标点），" +
+      "desc 是补充说明（1-3 句、需要分点时用换行符分隔），信息不足时 desc 留空字符串。" +
+      "只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块，格式：" +
+      '{"title":"…","desc":"…"}';
 
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
@@ -446,10 +760,25 @@
           groupFilter: "all",
           groupDraft: "",
           editingGroupId: null,
+          // 侧栏（分组栏）宽度：可拖拽，150–300px；写入存储记忆
+          sideWidth: SIDE_DEFAULT_W,
+          // 是否正在拖拽（拖拽中禁止选中文本）
+          resizing: false,
+          // 正在拖拽的条目 id（null = 没有在拖）；驱动 .item.dragging 与 .shell.dragging
+          draggingId: null,
+          // 落点提示：插到该行之前（线画在该行上边）/ 插到该行之后（线画在该行下边）；至多一个非 null
+          dropBeforeId: null,
+          dropAfterId: null,
           // 新建 / 改名分组的弹窗
           groupDialogOpen: false,
           // 添加弹窗里提示“这条会加进哪个分组”
           addGroupHint: "",
+          // AI 添加：自然语言描述草稿 / 是否正在请求 / 结果或错误提示
+          //（弹窗内只能读 data 字段，不能调 $host.xxx()，见踩坑 005）
+          aiDraft: "",
+          aiLoading: false,
+          aiNote: "",
+          aiError: "",
           // 倒计时刷新用：每次 tick 写入当前时间，驱动界面重算剩余秒数
           nowTick: 0,
           // 彻底删除 / 删除分组的二次确认
@@ -466,6 +795,12 @@
           // 任务详情弹窗：打开时把展示文案全部预计算好
           // （st-dialog 内不能调 $host.xxx()，只能读 data 字段，见模板注释）
           detailOpen: false,
+          // 详情弹窗当前展示的任务 id（编辑保存时需要知道改哪一条）
+          detailId: null,
+          // 是否处于编辑模式；编辑草稿（标题 / 描述）
+          detailEditing: false,
+          editTitle: "",
+          editDesc: "",
           detail: {
             title: "",
             desc: "",
@@ -474,14 +809,18 @@
             groupText: "",
             createdText: "",
             statusChangedText: "",
+            archivedText: "",
             deletedText: "",
           },
         },
 
-        ready() {
-          // 先读分组（任务渲染时要靠它显示分组名），再读任务
-          this.loadGroups();
-          this.loadTodos();
+        async ready() {
+          // 先读界面偏好（侧栏宽度）与分组（任务渲染时要靠它显示分组名），再读任务，
+          // 最后恢复会话状态（选中分组的合法性校验依赖已读好的 groups）
+          await this.loadUi();
+          await this.loadGroups();
+          await this.loadTodos();
+          this.restoreSessionState();
         },
 
         proto: {
@@ -490,9 +829,23 @@
             return this.view === "trash";
           },
 
-          // 不在垃圾桶里的（含倒计时中的，它们还没真正删除）
+          get inArchiveView() {
+            return this.view === "archived";
+          },
+
+          // 「全部」视图（列表）；归档与垃圾桶各自一套渲染
+          get inListView() {
+            return this.view === "all";
+          },
+
+          // 列表里的条目：不在垃圾桶、也没被归档（含倒计时中的，它们还没真正删除）
           get activeTodos() {
-            return this.todos.filter((t) => !t.deletedAt);
+            return this.todos.filter((t) => !t.deletedAt && !t.archivedAt);
+          },
+
+          // 已归档的（不在列表也不算统计，但没删）
+          get archivedTodos() {
+            return this.todos.filter((t) => !t.deletedAt && !!t.archivedAt);
           },
 
           get trashTodos() {
@@ -503,7 +856,11 @@
             return this.trashTodos.length ? " " + this.trashTodos.length : "";
           },
 
-          // 当前分组范围内的列表条目（垃圾桶不计入）
+          get archiveBadge() {
+            return this.archivedTodos.length ? " " + this.archivedTodos.length : "";
+          },
+
+          // 当前分组范围内的列表条目（归档与垃圾桶都不计入）
           get scopedActiveTodos() {
             const list = this.activeTodos;
             if (this.groupFilter === "all") return list;
@@ -511,12 +868,10 @@
           },
 
           get visibleTodos() {
-            // 垃圾桶视图忽略分组过滤（显示所有分组的垃圾桶条目）
+            // 归档 / 垃圾桶视图都忽略分组过滤（显示所有分组的对应条目）
             if (this.inTrashView) return this.trashTodos;
-            const list = this.scopedActiveTodos;
-            if (this.view === "done") return list.filter((t) => t.done);
-            if (this.view === "active") return list.filter((t) => !t.done);
-            return list;
+            if (this.inArchiveView) return this.archivedTodos;
+            return this.scopedActiveTodos;
           },
 
           get remaining() {
@@ -549,6 +904,107 @@
 
           get isListEmpty() {
             return this.visibleTodos.length === 0;
+          },
+
+          // ===== 界面偏好（侧栏宽度） =====
+          // 把任意输入拉回合法区间，避免外部改数据 / 旧值越界
+          clampSideWidth(v) {
+            const n = Math.round(Number(v));
+            if (!Number.isFinite(n)) return SIDE_DEFAULT_W;
+            return Math.min(SIDE_MAX_W, Math.max(SIDE_MIN_W, n));
+          },
+
+          async loadUi() {
+            try {
+              const saved = await store.getItem(UI_KEY);
+              if (saved && typeof saved.sideWidth === "number") {
+                this.sideWidth = this.clampSideWidth(saved.sideWidth);
+              }
+              console.log("[ui] 已读取界面偏好，分组栏宽度 =", this.sideWidth, "px");
+            } catch (err) {
+              console.error("[ui] 读取界面偏好失败", err);
+            }
+          },
+
+          async saveUi() {
+            try {
+              await store.setItem(UI_KEY, { sideWidth: this.sideWidth });
+              console.log("[ui] 已保存界面偏好，分组栏宽度 =", this.sideWidth, "px");
+            } catch (err) {
+              console.error("[ui] 保存界面偏好失败", err);
+            }
+          },
+
+          // 拖拽调整侧栏宽度：从手柄 pointerdown 开始，移动与结束都挂在 window 上
+          //（指针移出手柄甚至移出窗口也能继续跟随）
+          startResize(ev) {
+            if (ev && ev.button !== undefined && ev.button !== 0) return;
+            if (ev && ev.preventDefault) ev.preventDefault();
+            const startX = ev.clientX;
+            const startW = this.sideWidth;
+            this.resizing = true;
+            console.log("[ui] 开始拖拽分组栏宽度，起始 =", startW, "px");
+
+            const onMove = (e) => {
+              this.sideWidth = this.clampSideWidth(startW + (e.clientX - startX));
+            };
+            const onEnd = () => {
+              window.removeEventListener("pointermove", onMove);
+              window.removeEventListener("pointerup", onEnd);
+              window.removeEventListener("pointercancel", onEnd);
+              this.resizing = false;
+              console.log("[ui] 分组栏宽度调整为", this.sideWidth, "px");
+              this.saveUi();
+            };
+
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onEnd);
+            window.addEventListener("pointercancel", onEnd);
+          },
+
+          // ===== 会话状态（刷新不丢当前筛选 / 选中分组） =====
+          // 按用户要求存在 sessionStorage：F5 / 刷新后保持，关闭标签页或新开窗口回到默认
+          sessionSnapshot() {
+            return { view: this.view, groupFilter: this.groupFilter };
+          },
+
+          saveSessionState() {
+            try {
+              sessionStorage.setItem(
+                SESSION_KEY,
+                JSON.stringify(this.sessionSnapshot())
+              );
+              console.log("[ui] 已保存会话状态", this.sessionSnapshot());
+            } catch (err) {
+              console.error("[ui] 保存会话状态失败", err);
+            }
+          },
+
+          restoreSessionState() {
+            let saved = null;
+            try {
+              saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+            } catch (err) {
+              console.error("[ui] 读取会话状态失败", err);
+            }
+            if (!saved || typeof saved !== "object") return;
+            if (["all", "archived", "trash"].includes(saved.view)) {
+              this.view = saved.view;
+            }
+            // 分组可能已被删除：只有仍然存在时才恢复，否则回「全部任务」
+            if (
+              saved.groupFilter === "all" ||
+              this.groups.some((g) => g.id === saved.groupFilter)
+            ) {
+              this.groupFilter = saved.groupFilter;
+            }
+            this.updateEmptyText();
+            console.log(
+              "[ui] 已恢复会话状态，筛选 =",
+              this.view,
+              "分组 =",
+              this.groupFilter
+            );
           },
 
           async loadGroups() {
@@ -598,6 +1054,8 @@
                   createdAt: typeof t.createdAt === "number" ? t.createdAt : null,
                   statusChangedAt:
                     typeof t.statusChangedAt === "number" ? t.statusChangedAt : null,
+                  // 归档：archivedAt 非空 = 已归档（不在列表也不计统计，但未删除）
+                  archivedAt: typeof t.archivedAt === "number" ? t.archivedAt : null,
                   // 删除相关：deletedAt 非空 = 已在垃圾桶；pendingDeleteAt 非空 = 正处于删除倒计时
                   deletedAt: typeof t.deletedAt === "number" ? t.deletedAt : null,
                   // 倒计时不跨刷新恢复：重新打开时把未完成的倒计时取消，避免“隔夜回来发现被删了”
@@ -624,6 +1082,10 @@
             this.draft = "";
             this.addGroupHint =
               "将加入分组：「" + this.groupName(this.draftGroupId) + "」";
+            // AI 区每次都从干净状态开始
+            this.aiDraft = "";
+            this.aiNote = "";
+            this.aiError = "";
             this.addOpen = true;
             console.log("[todo] 打开添加弹窗，目标分组 =", this.draftGroupId);
           },
@@ -631,7 +1093,94 @@
           closeAdd() {
             this.addOpen = false;
             this.draft = "";
+            this.aiDraft = "";
+            this.aiNote = "";
+            this.aiError = "";
             console.log("[todo] 关闭添加弹窗（未添加）");
+          },
+
+          // ===== AI 添加任务：一句话描述 → 标题 + 描述 =====
+          get aiDisabled() {
+            return this.aiLoading || !String(this.aiDraft || "").trim();
+          },
+
+          get aiButtonLabel() {
+            return this.aiLoading ? "AI 生成中…" : "AI 生成";
+          },
+
+          // AI 助手按需加载并缓存（预览环境里 /mz/ai/main.js 由能力桥替身接管）
+          async getAssistant() {
+            if (this._assistant) return this._assistant;
+            const mod = await load("/mz/ai/main.js");
+            this._assistant = mod.getAssistant();
+            return this._assistant;
+          },
+
+          // 把模型回复解析成 { title, desc }：优先按 JSON 解，失败则按多行文本回退
+          parseAiReply(content) {
+            const text = String(content || "").trim();
+            if (!text) return null;
+            // 容忍模型自作主张加上的 ```json 代码块围栏
+            const cleaned = text
+              .replace(/^```[a-zA-Z]*\s*/, "")
+              .replace(/```$/, "")
+              .trim();
+            const start = cleaned.indexOf("{");
+            const end = cleaned.lastIndexOf("}");
+            if (start !== -1 && end > start) {
+              try {
+                const obj = JSON.parse(cleaned.slice(start, end + 1));
+                const title = String(obj.title || obj.name || "").trim();
+                const desc = String(obj.desc || obj.description || "").trim();
+                if (title || desc) {
+                  return { title: title || desc.split("\n")[0], desc };
+                }
+              } catch (err) {
+                console.warn("[ai] 回复不是合法 JSON，回退到多行文本解析", err);
+              }
+            }
+            // 回退：就当模型直接给了多行文本（首行标题、其余描述）
+            return this.parseDraft(cleaned);
+          },
+
+          async generateWithAi() {
+            const raw = String(this.aiDraft || "").trim();
+            if (!raw || this.aiLoading) return;
+            this.aiLoading = true;
+            this.aiError = "";
+            this.aiNote = "AI 正在整理标题和描述…";
+            console.log("[ai] 请求生成任务", raw.slice(0, 40));
+            try {
+              const assistant = await this.getAssistant();
+              const res = await assistant.chat({
+                messages: [
+                  { role: "system", content: AI_SYSTEM_PROMPT },
+                  { role: "user", content: raw },
+                ],
+              });
+              const parsed = this.parseAiReply(res && res.content);
+              if (!parsed || !parsed.title) throw new Error("AI 返回内容无法解析");
+              // 回填到上方输入框：保持“第一行标题、其余为描述”的既有格式，用户可再改
+              this.draft = parsed.desc
+                ? parsed.title + "\n" + parsed.desc
+                : parsed.title;
+              this.aiNote = "AI 已生成，确认或改一改再点「添加」";
+              console.log(
+                "[ai] 生成完成，标题 =",
+                parsed.title,
+                "描述长度 =",
+                (parsed.desc || "").length,
+                "模型 =",
+                res && res.model
+              );
+            } catch (err) {
+              this.aiNote = "";
+              this.aiError =
+                "AI 生成失败：" + (err && err.message ? err.message : String(err));
+              console.error("[ai] 生成失败", err);
+            } finally {
+              this.aiLoading = false;
+            }
           },
 
           // 多行输入解析：第一个非空行 = 标题，其后所有行（含内部换行）= 描述
@@ -654,6 +1203,8 @@
           },
 
           // 备注：输入框是多行（回车 = 换行），因此只能点「添加」按钮提交，不用 on:change(失焦提交)。
+          // 归档 / 垃圾殲生命周期（同一条目上互斥）：列表 →（已完成 + 归档已完成）→ 归档
+          //   →（取消归档）→ 列表；列表 / 归档 →（删除倒计时）→ 垃圾桶 →（还原）→ 列表。
           addTodo() {
             const parsed = this.parseDraft(this.draft);
             if (!parsed) return false;
@@ -667,6 +1218,7 @@
                 done: false,
                 createdAt: Date.now(),
                 statusChangedAt: null,
+                archivedAt: null,
                 deletedAt: null,
                 pendingDeleteAt: null,
               },
@@ -680,6 +1232,145 @@
               parsed.desc ? "（含描述）" : "",
               "分组 =",
               this.draftGroupId
+            );
+            this.persistTodos();
+            return true;
+          },
+
+          // ===== 拖拽排序（仅「全部」列表视图）=====
+          // 交互模型：拖动过程中**不改变数据**，只显示落点指示线 + 目标行描边；
+          // 松手（pointerup）时才真正把条目插到落点并落盘——避免“边拖边跳”的突兀感
+          isDragging(id) {
+            return this.draggingId === id;
+          },
+
+          isDropBefore(id) {
+            return !!this.draggingId && this.dropBeforeId === id;
+          },
+
+          isDropAfter(id) {
+            return !!this.draggingId && this.dropAfterId === id;
+          },
+
+          dragHandleTitle(todo) {
+            return "按住拖动调整顺序：" + (todo.text || "（无标题）");
+          },
+
+          // pointerdown 起手：拖动与结束都挂在 window（指针离开手柄也能继续跟）
+          startDrag(ev, id) {
+            if (ev && ev.button !== undefined && ev.button !== 0) return;
+            if (ev && ev.preventDefault) ev.preventDefault();
+            const source = this.todos.find((t) => t.id === id);
+            if (!source) return;
+            const handleEl = ev && ev.target;
+            this.draggingId = id;
+            let moved = false;
+            // 落点（松手时用）：beforeId = 插到该行之前；afterId = 插到该行之后
+            let dropBeforeId = null;
+            let dropAfterId = null;
+            console.log("[drag] 开始拖拽", id, source.text);
+
+            const onMove = (e) => {
+              const pos = this.dragDropPosition(e.clientY, handleEl);
+              if (!pos) return;
+              moved = true;
+              this.dropBeforeId = pos.beforeId;
+              this.dropAfterId = pos.afterId;
+              dropBeforeId = pos.beforeId;
+              dropAfterId = pos.afterId;
+            };
+
+            const onEnd = () => {
+              window.removeEventListener("pointermove", onMove);
+              window.removeEventListener("pointerup", onEnd);
+              window.removeEventListener("pointercancel", onEnd);
+              this.draggingId = null;
+              this.dropBeforeId = null;
+              this.dropAfterId = null;
+              if (!moved) {
+                console.log("[drag] 未移动，顺序不变", id);
+                return;
+              }
+              this.commitDragDrop(id, dropBeforeId, dropAfterId);
+            };
+
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onEnd);
+            window.addEventListener("pointercancel", onEnd);
+          },
+
+          // 算出指针位置的落点：{ beforeId, afterId }（插到该行之前 / 之后）。
+          // 只比较行的几何位置，**不产生任何坐标**——指示线由目标行自己的伪元素画在行边缘上，
+          // 所以不存在“坐标系不一致导致线跑偏”的问题。
+          // 注意：不能用 elementFromPoint（从 document 出发穿不过页面 shadow），
+          // 也不能用 itemEl.parentElement 当列表容器——.item 的直接父节点是 <o-fill>（display: contents，rect 全为 0）
+          dragDropPosition(clientY, handleEl) {
+            const src = handleEl && handleEl.closest ? handleEl.closest(".item") : null;
+            const listEl = src && src.closest ? src.closest(".list") : null;
+            if (!listEl) return null;
+            const nodes = Array.prototype.slice.call(
+              listEl.querySelectorAll(".item")
+            );
+            const rows = [];
+            for (const node of nodes) {
+              const rid = node.getAttribute("data-id");
+              if (!rid) continue;
+              const r = node.getBoundingClientRect();
+              rows.push({ id: rid, bottom: r.bottom, mid: r.top + r.height / 2 });
+            }
+            if (!rows.length) return null;
+
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i];
+              // 指针在该行上半区 → 插到这行之前（线画在该行上边）
+              if (clientY < row.mid) {
+                return { beforeId: row.id, afterId: null };
+              }
+              // 指针在该行下半区 → 插到下一行之前（线画在下一行上边）
+              if (clientY <= row.bottom) {
+                const next = rows[i + 1];
+                if (next) return { beforeId: next.id, afterId: null };
+                // 已经是最后一行 → 追加到末尾（线画在该行下边）
+                return { beforeId: null, afterId: row.id };
+              }
+            }
+            // 指针在列表末尾下方 → 追加到末尾
+            return { beforeId: null, afterId: rows[rows.length - 1].id };
+          },
+
+          // 松手时提交：把条目从当前位置抽出来、插到落点（保证数组顺序 = 显示顺序）
+          commitDragDrop(id, beforeId, afterId) {
+            const from = this.todos.findIndex((t) => t.id === id);
+            if (from === -1) {
+              console.error("[drag] 找不到被拖条目", id);
+              return false;
+            }
+            const next = this.todos.slice();
+            const [moving] = next.splice(from, 1);
+            // 抽出自身后，原数组下标 > from 的都会左移一位
+            const remap = (origIdx) => (origIdx > from ? origIdx - 1 : origIdx);
+            let insertAt;
+            if (beforeId) {
+              const oi = this.todos.findIndex((t) => t.id === beforeId);
+              insertAt = oi === -1 ? next.length : oi === from ? from : remap(oi);
+            } else if (afterId) {
+              const oi = this.todos.findIndex((t) => t.id === afterId);
+              insertAt = oi === -1 ? next.length : oi === from ? from : remap(oi) + 1;
+            } else {
+              insertAt = next.length;
+            }
+            if (insertAt === from) {
+              console.log("[drag] 落点仍是原位，顺序不变", id);
+              return false;
+            }
+            next.splice(insertAt, 0, moving);
+            this.todos = next;
+            console.log(
+              "[drag] 已放下，",
+              id,
+              "移到第",
+              insertAt + 1,
+              "位"
             );
             this.persistTodos();
             return true;
@@ -726,6 +1417,17 @@
                 g +
                 " · 删除于 " +
                 this.formatTime(todo.deletedAt) +
+                " · " +
+                (todo.createdAt
+                  ? "创建于 " + this.formatTime(todo.createdAt)
+                  : "创建时间未知")
+              );
+            }
+            if (todo.archivedAt) {
+              return (
+                g +
+                " · 归档于 " +
+                this.formatTime(todo.archivedAt) +
                 " · " +
                 (todo.createdAt
                   ? "创建于 " + this.formatTime(todo.createdAt)
@@ -826,30 +1528,37 @@
             this._tickId = setTimeout(step, TICK_MS);
           },
 
-          // 清除已完成：只清当前分组范围内（「全部分组」下即全部列表）的已完成项；
-          // 垃圾桶里的、倒计时中的、其它分组的已完成项都不动
-          clearDone() {
+          // 归档已完成：把当前分组范围内（「全部任务」下即整个列表）的已完成项收进归档；
+          // 垃圾桶里的、倒计时中的、其它分组的、已归档的都不动
+          archiveDone() {
             const scope = this.groupFilter;
-            const removed = this.doneCount;
-            this.todos = this.todos.filter((t) => {
-              if (t.deletedAt || t.pendingDeleteAt) return true;
-              if (!t.done) return true;
-              if (scope !== "all" && t.groupId !== scope) return true;
-              return false;
+            const now = Date.now();
+            let n = 0;
+            this.todos = this.todos.map((t) => {
+              if (t.deletedAt || t.pendingDeleteAt || t.archivedAt || !t.done) return t;
+              if (scope !== "all" && t.groupId !== scope) return t;
+              n += 1;
+              return { ...t, archivedAt: now };
             });
-            console.log(
-              "[todo] 清除已完成，范围 =",
-              scope,
-              "，移除",
-              removed,
-              "项"
+            console.log("[archive] 归档已完成，范围 =", scope, "，归档", n, "项");
+            if (n) this.persistTodos();
+          },
+
+          // 取消归档：回到原分组 / 原完成状态（勾选状态保留）
+          unarchiveTodo(id) {
+            this.todos = this.todos.map((t) =>
+              t.id === id ? { ...t, archivedAt: null } : t
             );
+            console.log("[archive] 已取消归档", id);
             this.persistTodos();
           },
 
           restoreTodo(id) {
+            // 一并清掉 archivedAt：归档项被删进垃圾桶后还原，应当回到列表而不是回归档
             this.todos = this.todos.map((t) =>
-              t.id === id ? { ...t, deletedAt: null, pendingDeleteAt: null } : t
+              t.id === id
+                ? { ...t, deletedAt: null, pendingDeleteAt: null, archivedAt: null }
+                : t
             );
             console.log("[trash] 已还原", id);
             this.persistTodos();
@@ -924,11 +1633,14 @@
                 ? "待删除（倒计时中）"
                 : todo.deletedAt
                 ? "已在垃圾桶"
+                : todo.archivedAt
+                ? "已归档（已完成）"
                 : todo.done
                 ? "已完成"
                 : "未完成",
               createdText: timeOr(todo.createdAt),
               statusChangedText: timeOr(todo.statusChangedAt),
+              archivedText: timeOr(todo.archivedAt),
               deletedText: timeOr(todo.deletedAt),
             };
           },
@@ -937,13 +1649,83 @@
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) return;
             this.detail = this.buildDetail(todo);
+            this.detailId = id;
+            this.detailEditing = false;
             this.detailOpen = true;
             console.log("[detail] 打开详情", id, todo.text);
           },
 
+          // 列表行的铅笔按钮：直接打开详情并进入编辑模式
+          openEditDetail(id) {
+            this.openDetail(id);
+            this.startEditDetail();
+          },
+
           closeDetail() {
             this.detailOpen = false;
+            this.detailEditing = false;
+            this.editTitle = "";
+            this.editDesc = "";
             console.log("[detail] 关闭详情");
+          },
+
+          // 列表 / 归档行铅笔按钮的 title（图标按钮必须给无障碍名称）
+          editButtonTitle(todo) {
+            return "编辑：" + (todo.text || "（无标题）");
+          },
+
+          // ===== 编辑已有任务（详情弹窗内的「编辑」） =====
+          // 进入编辑：从待办里取原始 text / desc（不用 detail 快照，它把空标题换成了「（无标题）」）
+          startEditDetail() {
+            const todo = this.todos.find((t) => t.id === this.detailId);
+            if (!todo) {
+              console.error("[detail] 找不到待编辑的任务", this.detailId);
+              return;
+            }
+            this.editTitle = todo.text || "";
+            this.editDesc = todo.desc || "";
+            this.detailEditing = true;
+            console.log("[detail] 进入编辑模式", todo.id, todo.text);
+          },
+
+          cancelEditDetail() {
+            this.detailEditing = false;
+            this.editTitle = "";
+            this.editDesc = "";
+            // 回到只读视图：快照重算一次，保证展示与存储一致
+            const todo = this.todos.find((t) => t.id === this.detailId);
+            if (todo) this.detail = this.buildDetail(todo);
+            console.log("[detail] 取消编辑", this.detailId);
+          },
+
+          // 保存编辑：只改 text / desc（不改分组与各时间戳），成功后回只读视图
+          submitEditDetail() {
+            const id = this.detailId;
+            const title = String(this.editTitle || "").trim();
+            if (!title) return;
+            const desc = String(this.editDesc || "");
+            const todo = this.todos.find((t) => t.id === id);
+            if (!todo) {
+              console.error("[detail] 保存失败，任务已不存在", id);
+              return;
+            }
+            this.todos = this.todos.map((t) =>
+              t.id === id ? { ...t, text: title, desc } : t
+            );
+            const updated = this.todos.find((t) => t.id === id);
+            this.detail = this.buildDetail(updated);
+            this.detailEditing = false;
+            this.editTitle = "";
+            this.editDesc = "";
+            console.log(
+              "[detail] 已保存编辑",
+              id,
+              "标题 =",
+              title,
+              "描述长度 =",
+              desc.length
+            );
+            this.persistTodos();
           },
 
           // ===== 分组 =====
@@ -953,8 +1735,10 @@
           },
 
           groupCountText(id) {
-            // 只数列表里的任务（垃圾桶里的不计，与统计口径一致）
-            const n = this.todos.filter((t) => t.groupId === id && !t.deletedAt).length;
+            // 只数列表里的任务（归档与垃圾桶都不计，与统计口径一致）
+            const n = this.todos.filter(
+              (t) => t.groupId === id && !t.deletedAt && !t.archivedAt
+            ).length;
             return n + " 项";
           },
 
@@ -966,6 +1750,7 @@
             this.groupFilter = id;
             console.log("[group] 切换分组过滤 →", id, this.groupName(id));
             this.updateEmptyText();
+            this.saveSessionState();
           },
 
           // 打开「新建分组」弹窗
@@ -1037,7 +1822,9 @@
           requestDeleteGroup(id) {
             const g = this.groups.find((x) => x.id === id);
             if (!g || id === DEFAULT_GROUP_ID) return;
-            const n = this.todos.filter((t) => t.groupId === id && !t.deletedAt).length;
+            const n = this.todos.filter(
+              (t) => t.groupId === id && !t.deletedAt && !t.archivedAt
+            ).length;
             this.purgeTarget = null;
             this.confirmKind = "deleteGroup";
             this.confirmGroupId = id;
@@ -1062,6 +1849,7 @@
             );
             this.groups = this.groups.filter((x) => x.id !== id);
             if (this.groupFilter === id) this.groupFilter = "all";
+            this.saveSessionState();
             if (this.editingGroupId === id) {
               this.editingGroupId = null;
               this.groupDraft = "";
@@ -1079,26 +1867,24 @@
               this.emptyText = "垃圾桶是空的 🗑";
               return;
             }
-            if (this.groupFilter !== "all") {
-              const name = this.groupName(this.groupFilter);
-              if (this.view === "done") this.emptyText = "「" + name + "」里还没有完成的任务";
-              else if (this.view === "active")
-                this.emptyText = "「" + name + "」里没有未完成的任务 🎉";
-              else this.emptyText = "「" + name + "」里还没有任务，点右上角添加吧";
+            if (this.view === "archived") {
+              this.emptyText =
+                "归档箱是空的 📦 勾选完成的任务，再点右下角「归档已完成」就会收进这里";
               return;
             }
-            this.emptyText =
-              this.view === "done"
-                ? "还没有完成的任务"
-                : this.view === "active"
-                ? "太棒了，没有未完成的任务 🎉"
-                : "左侧选个分组，或者在「全部任务」里查看所有事项 🎉";
+            if (this.groupFilter !== "all") {
+              const name = this.groupName(this.groupFilter);
+              this.emptyText = "「" + name + "」里还没有任务，点右上角添加吧";
+              return;
+            }
+            this.emptyText = "左侧选个分组，或者在「全部任务」里查看所有事项 🎉";
           },
 
           setView(value) {
             console.log("[todo] 切换筛选", value);
             this.view = value;
             this.updateEmptyText();
+            this.saveSessionState();
           },
         },
       };

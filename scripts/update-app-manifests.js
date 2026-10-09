@@ -1,4 +1,6 @@
-// 同步 official-apps/*/__app.json 的 files 清单与磁盘实际文件。
+// 同步 official-apps 内官方应用的 __app.json files 清单与磁盘实际文件。
+// 应用 id 取自 official-apps/manifest.json（与市场一致，支持嵌套子目录——
+// conjure 本地项目布局的应用登记为 <project>/client，client/ 为应用根）。
 // files 数组此前纯手工维护，新增 lib 模块漏登时市场安装出来的应用就缺
 // 文件（conjure 曾因漏登 lib/agents-template.js / lib/diff.js 装完即白屏）。
 //
@@ -6,7 +8,9 @@
 //   - 清单已有条目且文件仍在磁盘 → 原样保留（含 replacements 等对象配置，
 //     也保留手工故意收录的例外文件，如 cloud-drive 的 lib/test/*.sb.html）
 //   - 磁盘有、清单没有 → 按收录规则追加：排除 __app.json、dotfiles、
-//     node_modules、test 目录、*.sb.html；app.json 自动带 CREATED_AT 替换
+//     node_modules、test 目录、*.sb.html、__meta.json、conjure 运行时目录
+//     （backup/ snaps/ conjure-chats/——gitignore 不同步，进清单安装必 404）；
+//     app.json 自动带 CREATED_AT 替换
 //   - 清单有、磁盘没有 → 移除并告警（文件已被删除）
 //   - 发生文件增删时，自动把该应用 app.json 的 version 末段 +1
 //     （安装端更新检查靠版本号比对；纯重排 / 格式归一不 bump）
@@ -24,6 +28,12 @@ const rootDir = join(import.meta.dirname, '..');
 const appsDir = join(rootDir, 'official-apps');
 const checkOnly = process.argv.includes('--check');
 
+// 应用 id 清单与市场（manifest.json）一致；磁盘上有 __app.json 但未登记的
+// 目录告警跳过（市场不收录的应用不维护清单）
+const manifestIds = JSON.parse(
+  readFileSync(join(appsDir, 'manifest.json'), 'utf-8'),
+).apps;
+
 // app.json 里的占位创建时间在安装时被替换为真实值（见 official-app-writer.js）
 const APP_JSON_REPLACEMENTS = [{ from: '1704067200000', to: 'CREATED_AT' }];
 
@@ -34,6 +44,11 @@ function shouldInclude(relPath) {
   if (parts.some((p) => p.startsWith('.') || p === 'node_modules')) return false;
   if (parts.includes('test')) return false;
   if (relPath.endsWith('.sb.html')) return false;
+  // conjure 运行时目录（同层漏进应用根时防扩散）：gitignore 不同步，市场安装必 404
+  if (parts.some((p) => p === 'backup' || p === 'snaps' || p === 'conjure-chats')) {
+    return false;
+  }
+  if (relPath === '__meta.json' || relPath.endsWith('/__meta.json')) return false;
   return true;
 }
 
@@ -83,9 +98,21 @@ function bumpAppVersion(id, actions) {
 
 let hasDrift = false;
 
-for (const id of readdirSync(appsDir).sort()) {
+// 磁盘上有 __app.json 但未登记 manifest.json 的目录：告警（登记缺失可见）
+const registered = new Set(manifestIds);
+for (const dir of readdirSync(appsDir).sort()) {
+  const mfPath = join(appsDir, dir, '__app.json');
+  if (existsSync(mfPath) && !registered.has(dir)) {
+    console.log(`⚠ ${dir}: 有 __app.json 但未登记 manifest.json（已跳过）`);
+  }
+}
+
+for (const id of [...manifestIds].sort()) {
   const mfPath = join(appsDir, id, '__app.json');
-  if (!existsSync(mfPath)) continue;
+  if (!existsSync(mfPath)) {
+    console.log(`! ${id}: manifest 已登记但无 __app.json，跳过`);
+    continue;
+  }
 
   const manifest = JSON.parse(readFileSync(mfPath, 'utf-8'));
   const disk = new Set(listFiles(join(appsDir, id), join(appsDir, id)));

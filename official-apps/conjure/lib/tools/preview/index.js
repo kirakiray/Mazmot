@@ -41,7 +41,7 @@ const ACTION_CMDS = {
   eval: "eval",
   screenshot: "shot",
 };
-const ACTIONS = ["app", "windows", "check-popup", ...Object.keys(ACTION_CMDS)];
+const ACTIONS = ["app", "windows", "check-popup", "run-tests", ...Object.keys(ACTION_CMDS)];
 
 // 弹窗被拦截时的统一行动指引（action=app 返回 code=POPUP_BLOCKED 的错误、
 // action=check-popup 探测未放行时共用）：给模型的必须是可执行的处理顺序——
@@ -67,6 +67,7 @@ const timeoutFor = (action, args) => {
   if (action === "screenshot") return 90_000;
   if (action === "wait") return Math.min(60_000, (args.timeoutMs || 10_000) + 15_000);
   if (action === "console" || action === "eval") return 30_000;
+  if (action === "run-tests") return 180_000; // 全量用例（内部逐步调试指令）
   return undefined; // 其余走 debugPreviewCommand 默认（25s）
 };
 
@@ -82,7 +83,8 @@ const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔�
 - type：向输入元素写入文本（聚焦 → 写值 → 派发 input/change）。args：selector、text。
 - wait：轮询等待条件成立（200ms 间隔），避免异步渲染未完成就断言。args：selector（元素出现；absent=true 改等消失）或 code（返回真值的 JS 表达式，支持 await）二选一、timeoutMs（默认 10000）。
 - eval：执行任意 JS 并返回序列化结果（支持 await；末句表达式自动成为返回值）。args：code。预置 $ / $$、$deep / $$deep（穿 shadow DOM 深度查询）、$wait、$rect。读应用内部状态、调其方法做深度诊断。
-- screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。手机等远程设备上需对方现场点授权。`;
+- screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。手机等远程设备上需对方现场点授权。
+- run-tests：跑应用 client/test/ 下的 .test.json 场景用例（宿主逐步驱动应用页执行 click/type/断言，自动重载/清场按用例步骤来）。args：files（可选，文件路径数组，缺省跑全部）。返回逐用例 ✓/✗ 报告，失败含失败步骤与期望/实际。新增或修改重要功能后必须跑到全绿再收尾；用例本身也要随功能同步新增与更新。`;
 
 export default {
   key: "preview",
@@ -93,6 +95,11 @@ export default {
     action: {
       type: "string",
       description: `操作类型，取值：${ACTIONS.join(" / ")}`,
+    },
+    files: {
+      type: "array",
+      optional: true,
+      description: "action=run-tests 时可选：只跑指定用例文件（client/test/ 下相对路径），缺省跑全部",
     },
     appName: {
       type: "string",
@@ -147,6 +154,31 @@ export default {
           ? "弹窗探测通过：本站已允许自动打开新窗口，可以 action=app 推送应用继续调试。"
           : POPUP_GUIDE;
       });
+    }
+
+    // 场景测试：跑 client/test/*.test.json（宿主经调试通道逐步驱动应用页）。
+    // 结果为结构化报告——失败含用例名 / 失败步骤 / 期望与实际，模型据此修复
+    if (action === "run-tests") {
+      if (typeof ctx.runTests !== "function") return unavailable();
+      const res = await ctx.runTests(args.files);
+      if (!res) return "测试执行失败（见错误横幅），请检查预览窗口状态后重试。";
+      if (res.noTests) {
+        return "当前应用还没有测试用例。重要功能请在 client/test/ 下编写 .test.json 场景用例（格式见系统提示词「场景测试」节），再跑 run-tests。";
+      }
+      const lines = res.results.map((r) => {
+        const head = `${r.ok ? "✓" : "✗"} ${r.name}（${(r.ms / 1000).toFixed(1)}s${r.consoleErrors ? `，控制台错误 ${r.consoleErrors}` : ""}）`;
+        if (r.ok) return head;
+        const bad = (r.steps || []).filter((s) => !s.ok).pop();
+        const detail = bad
+          ? `失败步骤「${bad.desc}」：${bad.error}`
+          : r.error || "未知失败";
+        return `${head}\n  └ ${detail}`;
+      });
+      return `测试完成：${res.summary}\n${lines.join("\n")}${
+        res.summary.includes("失败")
+          ? "\n请根据失败详情修复应用代码或用例，修完再跑 run-tests 直到全绿，再向用户汇报。"
+          : "\n全部通过。"
+      }`;
     }
 
     // 多窗口清单：先列窗口再定调试目标

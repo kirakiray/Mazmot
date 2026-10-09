@@ -152,7 +152,7 @@
       </template>
     </sb-test>
 
-    <sb-test name="createAppBackup opts.auto 标记与 listAppBackups 透出">
+    <sb-test name="回合快照与备份分离：snaps/ 不进备份清单 + 遗留 auto 清扫 + prune">
       <template>
         <script type="module">
           import {
@@ -160,7 +160,10 @@
             writeAppFile,
             createAppBackup,
             listAppBackups,
-            renameAppBackup,
+            listAppSnaps,
+            readBackupFiles,
+            pruneAppSnaps,
+            sweepLegacyAutoBackups,
           } from "../../../builder.js";
           import { createVirtualFs } from "../../../test-space/virtual-space.js";
           {
@@ -169,28 +172,84 @@
               await createAppDir(fs, { name: "demo", displayName: "Demo" });
               await writeAppFile(fs, "demo", "index.html", "<html></html>");
 
-              const auto = await createAppBackup(fs, "demo", undefined, { auto: true });
+              // 回合快照：snap- id，落 snaps/，不进备份管理清单；diff 可读；
+              // 内容相同再次快照与既有快照同 id 幂等跳过
+              const snap = await createAppBackup(fs, "demo", undefined, {
+                snapshot: true,
+              });
+              const snapDup = await createAppBackup(fs, "demo", undefined, {
+                snapshot: true,
+              });
               await writeAppFile(fs, "demo", "index.html", "<html>v2</html>");
               const manual = await createAppBackup(fs, "demo");
 
-              const list = await listAppBackups(fs, "demo");
-              const autoHit = list.find((b) => b.id === auto.id);
-              const manualHit = list.find((b) => b.id === manual.id);
+              const backups = await listAppBackups(fs, "demo");
+              const snaps = await listAppSnaps(fs, "demo");
+              // 快照含 createAppDir 预写的骨架文档，按路径取 index.html 断言
+              const snapFiles = await readBackupFiles(fs, "demo", snap.id);
+              const snapHtml = snapFiles.find((f) => f.path === "index.html");
 
-              // 自动快照照常可更名（meta 合并保留 auto 标记）
-              await renameAppBackup(fs, "demo", auto.id, "回合前");
-              const list2 = await listAppBackups(fs, "demo");
-              const renamed = list2.find((b) => b.id === auto.id);
+              // 遗留清扫：历史版本混进 backup/ 的纯快照（auto 标记、无名称
+              // 备注）被删除——给 manual 挂 auto meta 模拟遗留；被发布流程
+              // 复用并标注过的（有 label）保留
+              const root = await fs.init("ai-apps");
+              const metaFile = await root.get(
+                `demo/backup/${manual.id}/__meta.json`,
+                { create: "file" },
+              );
+              await metaFile.write(JSON.stringify({ auto: true }));
+              const removed = await sweepLegacyAutoBackups(fs, "demo");
+              const afterSweep = await listAppBackups(fs, "demo");
+
+              // 被发布流程复用标注过的 auto 备份（有 label）视为正式备份保留
+              await writeAppFile(fs, "demo", "index.html", "<html>pub</html>");
+              const pub = await createAppBackup(fs, "demo");
+              const pubMeta = await root.get(
+                `demo/backup/${pub.id}/__meta.json`,
+                { create: "file" },
+              );
+              await pubMeta.write(JSON.stringify({ auto: true, label: "发布 v0.2.0" }));
+              const removed2 = await sweepLegacyAutoBackups(fs, "demo");
+              const afterSweep2 = await listAppBackups(fs, "demo");
+
+              // prune：只保留最近 10 份快照（造 12 份不同内容，新的在前）
+              const ids = [];
+              for (let i = 0; i < 12; i++) {
+                await writeAppFile(fs, "demo", "index.html", `<html>v${i}</html>`);
+                const s = await createAppBackup(fs, "demo", undefined, {
+                  snapshot: true,
+                });
+                if (!ids.includes(s.id)) ids.push(s.id);
+              }
+              await pruneAppSnaps(fs, "demo");
+              const snapList = await listAppSnaps(fs, "demo");
 
               const checks = {
-                autoMarked: autoHit?.auto === true,
-                manualPlain: manualHit && !("auto" in manualHit),
-                bothListed: !!autoHit && !!manualHit,
-                labelKept: renamed.label === "回合前" && renamed.auto === true,
+                snapIdFormat: snap.id.startsWith("snap-"),
+                snapOutOfBackups:
+                  !backups.some((b) => b.id === snap.id) &&
+                  snaps.some((b) => b.id === snap.id),
+                manualInBackups:
+                  backups.some((b) => b.id === manual.id) &&
+                  !snaps.some((b) => b.id === manual.id),
+                snapReadable:
+                  snapFiles.length > 1 &&
+                  snapHtml?.path === "index.html" &&
+                  snapHtml.text === "<html></html>",
+                snapDedup: snapDup.skipped === true && snapDup.id === snap.id,
+                legacySwept: removed === 1 && afterSweep.length === 0,
+                labeledKept:
+                  removed2 === 0 &&
+                  afterSweep2.length === 1 &&
+                  afterSweep2[0].label === "发布 v0.2.0",
+                // 同秒创建的快照 id 只有 hash 尾可分先后，断言保留数量与
+                // 成员（不赌同秒内的排序）
+                prunedTo10: snapList.length === 10,
+                keptFromCreated: snapList.every((b) => ids.includes(b.id)),
               };
               return {
                 assert: Object.values(checks).every(Boolean),
-                content: { checks, list2 },
+                content: { checks, afterSweep, snapListLen: snapList.length },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };
