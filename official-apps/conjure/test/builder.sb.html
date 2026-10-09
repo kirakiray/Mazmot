@@ -322,8 +322,9 @@
               const checks = {
                 backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
                 // createAppDir 预写 4 份文档骨架（AGENTS/CONTEXT/MEMORY/
-                // pitfalls/README）+ app.json + 本用例写的 2 个文件 = 7
-                packed: res.files === 7 && res.bytes > 0,
+                // pitfalls/README）+ app.json + __app.json 安装清单
+                // + 本用例写的 2 个文件 = 8
+                packed: res.files === 8 && res.bytes > 0,
                 listed: list.length === 1 && list[0].id === res.id,
                 noNodeModules: !(
                   await listVirtualPaths(await root.get("demo/backup"))
@@ -363,12 +364,14 @@
               checks.curFilesSorted =
                 // collectClientFiles 按纯字典序排序（备份指纹要稳定即可，
                 // 无 app.json 优先规则）：大写开头的文档骨架（AGENTS/CONTEXT/
-                // MEMORY）排在 app.json 等小写路径前面，整体清单比对锁定
+                // MEMORY）在前，"__app.json"（"_" > 大写字母、< 小写字母）
+                // 排 app.json 之前，整体清单比对锁定
                 curFiles.map((f) => f.path).join("\n") ===
                 [
                   "AGENTS.md",
                   "CONTEXT.md",
                   "MEMORY.md",
+                  "__app.json",
                   "app.json",
                   "index.html",
                   "pages/home.html",
@@ -678,6 +681,69 @@
       </template>
     </sb-test>
 
+    <sb-test name="listAppFiles 只收 client/ 子树（本地渠道同层运行时目录不混入）">
+      <template>
+        <script type="module">
+          import { listAppFiles } from "../lib/builder.js";
+          import {
+            createVirtualDir,
+            seedVirtualFiles,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const root = createVirtualDir();
+              await seedVirtualFiles(root, {
+                "client/index.html": "<html></html>",
+                "client/app.json": "{}",
+                "client/pages/home.html": "page",
+                // 与 client/ 同层的 conjure 运行时目录 / 散落文件
+                "conjure-chats/index.json": "{}",
+                "conjure-chats/abc123.json": "{}",
+                "backup/backup-20261008-120000-abcd1234/index.html": "old",
+                "snaps/snap-20261008-120000-abcd1234/index.html": "snap",
+                "notes.md": "散落文件",
+              });
+              // 模拟真实挂载句柄：item.path 带 $mount-directory-<ts>><项目名>
+              // 前缀（本地渠道实测形态，toRel 剥不掉时原样返回）
+              const prefix = "$mount-directory-1791443440107>todo";
+              const patch = (dir, pfx) => {
+                dir.path = pfx;
+                for (const [name, child] of dir.children) {
+                  if (child.kind === "dir") patch(child, `${pfx}/${name}`);
+                  else child.path = `${pfx}/${name}`;
+                }
+              };
+              patch(root, prefix);
+
+              const list = await listAppFiles({}, "todo", root);
+              const checks = {
+                clientFilesListed:
+                  list.includes("index.html") &&
+                  list.includes("app.json") &&
+                  list.includes("pages/home.html"),
+                // 回归：conjure-chats/backup/snaps 混进清单 → 市场安装拉
+                // gitignore 文件 404（todo/client 实测踩坑）
+                runtimeDirsExcluded: list.every(
+                  (f) =>
+                    !f.includes("conjure-chats") &&
+                    !f.includes("backup/") &&
+                    !f.includes("snaps/") &&
+                    !f.startsWith("$") &&
+                    f !== "notes.md",
+                ),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, list },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="readSkillFile 未安装技能回报可用清单（不抛底层异常）">
       <template>
         <script type="module">
@@ -892,11 +958,12 @@
         </script>
       </template>
     </sb-test>
-    <sb-test name="回合变更卡与自动快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
+    <sb-test name="回合变更卡与回合快照：changes 统计 / snapshotId 落末条消息 / diff 与回滚">
       <template>
         <script type="module">
           import {
             listAppBackups,
+            listAppSnaps,
             readAppFile,
           } from "../lib/builder.js";
           import { createBuilderStore } from "../lib/builder-store.js";
@@ -987,7 +1054,7 @@
               const idx1 = (ai1?.changes || []).find((c) => c.path === "index.html");
               const appJsonChg = (ai1?.changes || []).find((c) => c.path === "app.json");
               const backups1 = await listAppBackups(fsFake, st.currentAppName);
-              const autoBk1 = backups1.find((b) => b.auto);
+              const snaps1 = await listAppSnaps(fsFake, st.currentAppName);
 
               // 轮 2：edit_file 差量修改 index.html
               await store.send("把 v1 改成 v2");
@@ -1039,7 +1106,11 @@
                 // 宿主 createAppDir 预写的 app.json 不经 onFileWrite，不应计入变更
                 hostSeededNotTracked: !appJsonChg,
                 turn1Snapshot: typeof ai1?.snapshotId === "string" && ai1.snapshotId.length > 0,
-                autoBackupMarked: !!autoBk1 && autoBk1.id === ai1.snapshotId,
+                // 快照与备份分离：snap- id 落 snaps/，不进备份管理清单
+                snapOutOfBackups:
+                  ai1?.snapshotId?.startsWith("snap-") === true &&
+                  snaps1.some((b) => b.id === ai1.snapshotId) &&
+                  !backups1.some((b) => b.id === ai1.snapshotId),
                 turn2Edit: idx2?.op === "edit" && idx2.adds === 1 && idx2.dels === 1,
                 diffHunks:
                   !diffRes.same &&
@@ -1091,6 +1162,7 @@
             createAppBackup,
             restoreAppBackup,
             listAppBackups,
+            syncAppManifest,
           } from "../lib/builder.js";
           import { createVirtualFs } from "../lib/test-space/virtual-space.js";
           {
@@ -1106,6 +1178,10 @@
                 "pages/home.html",
                 "<template page>v1</template>",
               );
+              // 真实流程里清单在回合收尾（finishTurn）同步、备份发生在其后；
+              // 测试照此收口，否则备份会封存过期清单，还原后的清单重对齐
+              // 会 bump 版本、破坏第二次还原的 unchanged 检测
+              await syncAppManifest(fsFake, "demo");
               const backup = await createAppBackup(fsFake, "demo");
 
               // 之后改动：新增文件 + 修改文件
@@ -1131,8 +1207,9 @@
               }
 
               const checks = {
-                // app.json + 预写的 4 份文档骨架 + index.html + pages/home.html = 7
-                restored: restored.restored && restored.files === 7,
+                // app.json + 预写 4 份文档骨架 + __app.json 清单
+                // + index.html + pages/home.html = 8
+                restored: restored.restored && restored.files === 8,
                 reverted: v1 === "<html>v1</html>",
                 extraRemoved: extraGone === null,
                 pageBack: page === "<template page>v1</template>",
@@ -1248,6 +1325,7 @@
             currentAppHash,
             currentAppFiles,
             readBackupFiles,
+            listAppSnaps,
           } from "../lib/builder.js";
           import { createBuilderStore } from "../lib/builder-store.js";
           import {
@@ -1302,18 +1380,18 @@
               });
               await store.init({});
 
-              // 轮 1：写 index.html；回合结束 driveTurn 异步刷新备份清单
-              //（fire-and-forget，轮询等待其完成——真实 UI 由 patch 驱动按钮）
+              // 轮 1：写 index.html。回合开始快照已迁 snaps/（不进备份清单，
+              // 备份管理只存发布与用户主动备份）→ 轮后清单应为空、snaps/ 里
+              // 恰有一条 snap- 快照（等一小段让 fire-and-forget 收尾跑完）
               await store.send("做个演示应用");
               const app = store.state.currentAppName;
               const st = store.state;
-              for (let i = 0; i < 100 && st.backups.length === 0; i++) {
-                await new Promise((r) => setTimeout(r, 20));
-              }
-              // 回合开始自动快照 = 回合前骨架态，当前内容（含 index.html）与它不同
-              // → 无任何备份的 current 标记 → 按钮应可点
+              await new Promise((r) => setTimeout(r, 300));
+              const snapsAfterTurn = await listAppSnaps(fsFake, st.currentAppName);
               const notBackedUp =
-                st.backups.length >= 1 && !st.backups.some((b) => b.current);
+                st.backups.length === 0 &&
+                snapsAfterTurn.length === 1 &&
+                snapsAfterTurn[0].id.startsWith("snap-");
 
               // 智能备份（打包 + AI 标题备注）→ 当前内容出现 current 项 → 已备份态
               const res = await store.smartBackup();
@@ -1325,7 +1403,7 @@
               const stillBacked = st.backups.some((b) => b.current);
 
               const checks = {
-                listRefreshedAfterTurn: notBackedUp,
+                turnSnapInSnapsOnly: notBackedUp,
                 smartBackupCreated: !!res && !res.skipped,
                 currentMarked: backedUp && labeled === "初始版本",
                 reskipped: !!res2?.skipped && stillBacked,
@@ -1537,7 +1615,11 @@
                 mazmotRegistered: ((await mazmotStore.getItem("apps")) || []).some(
                   (a) => a.name === "my-app" && a.source === "local",
                 ),
-                chatFileWritten: (await root.get("conjure-chats.json")) !== null,
+                // 目录化布局：index.json + 每会话一个 <sid>.json（0.7.9 起不再
+                // 写旧版单文件 conjure-chats.json）
+                chatFileWritten:
+                  (await root.get("conjure-chats/index.json")) !== null &&
+                  (await root.get("conjure-chats/a1.json")) !== null,
               };
               return {
                 assert: Object.values(checks).every(Boolean),
@@ -1849,6 +1931,7 @@
                   agentCalls.push({
                     systemPrompt: opts.systemPrompt || "",
                     tools: (opts.tools || []).map((t) => t.name),
+                    maxSteps: opts.maxSteps,
                   });
                   return { chat };
                 },
@@ -1891,6 +1974,7 @@
                 ),
                 freshPrompt: call1.systemPrompt.includes("空项目"),
                 createAppFiltered: !call1.tools.includes("create_app"),
+                maxStepsDefault: call1.maxSteps === 200, // 单轮步数默认 200
                 viewFollowsProject: store.state.messages.length > 0, // 用户消息已进新会话视图
               };
 
@@ -1917,6 +2001,8 @@
                   "# 项目规范\n- 本项目禁止使用 localStorage",
               });
               const nAgents = agentCalls.length;
+              // 调整单轮步数上限：下回合重建的 Agent 应带上新值
+              store.setMaxSteps(400);
               await store.send("继续");
               const reg2 = (await fakeStore.getItem("apps-registry")) || [];
               const hit2 = reg2.find((a) => a.name === appName);
@@ -1932,6 +2018,7 @@
                   !call2.systemPrompt.includes("空项目") &&
                   call2.systemPrompt.includes("已存在的应用"),
                 turn2HasCreateApp: call2.tools.includes("create_app"),
+                turn2MaxStepsApplied: call2.maxSteps === 400, // setMaxSteps 下回合生效
                 turn2RulesAutoLoaded:
                   call2.systemPrompt.includes("已自动加载，必须遵守") &&
                   call2.systemPrompt.includes("禁止使用 localStorage"),
@@ -2394,6 +2481,454 @@
               };
             } catch (error) {
               return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="预览能力桥 broker - ai.chat 流式 / ai.models / 未知能力拒绝">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const capStore = createVirtualStorage({ "apps-registry": [] });
+              const chatCalls = [];
+              const fakeAssistant = {
+                providerName: "Fake",
+                chat: async (opts) => {
+                  chatCalls.push(opts);
+                  opts.onStream?.({ delta: "你", deltaReasoning: "想" });
+                  opts.onStream?.({ delta: "好", deltaReasoning: "" });
+                  return {
+                    content: "你好",
+                    reasoningContent: "想",
+                    model: "fake-1",
+                    usage: { total_tokens: 5 },
+                  };
+                },
+                getModels: async () => ["m1", "m2"],
+              };
+              const aiFake = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => fakeAssistant,
+                onApiKeysChange: () => {},
+              };
+              const capHooks = {};
+              const previewFake = {
+                setPreviewHooks: (h) => Object.assign(capHooks, h),
+                watchPreviewAgent: () => {},
+              };
+              const store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: capStore,
+                load: async (path) => {
+                  const p = String(path);
+                  if (p.includes("/mz/ai/chain/main.js")) return { createAgent: () => ({ chat: async () => ({ content: "" }) }) };
+                  if (p.includes("remote-preview")) return previewFake;
+                  return aiFake;
+                },
+              });
+              await store.init({});
+              await new Promise((r) => setTimeout(r, 30)); // setPreviewHooks 为异步接线
+
+              const chunks = [];
+              const chatRes = await capHooks.onCapRequest({
+                cap: "ai.chat",
+                args: {
+                  messages: [{ role: "user", content: "hi" }],
+                  thinking: true,
+                  model: "guest-wanted", // guest 指定的模型必须被忽略（主容器决定）
+                },
+                onChunk: (c) => chunks.push(c),
+                signal: new AbortController().signal,
+              });
+              const chatOpts = chatCalls[0] || {};
+              const modelsRes = await capHooks.onCapRequest({
+                cap: "ai.models",
+                args: {},
+                onChunk: () => {},
+                signal: new AbortController().signal,
+              });
+              let unknownErr = "";
+              try {
+                await capHooks.onCapRequest({
+                  cap: "foo.bar",
+                  args: {},
+                  onChunk: () => {},
+                  signal: new AbortController().signal,
+                });
+              } catch (e) {
+                unknownErr = e.message;
+              }
+
+              const checks = {
+                hookWired: typeof capHooks.onCapRequest === "function",
+                // broker 逐帧透传 {delta, deltaReasoning}（增量语义，guest 侧自行累计）
+                chatStreams:
+                  chunks.length === 2 &&
+                  chunks[0].delta === "你" &&
+                  chunks[0].deltaReasoning === "想" &&
+                  chunks[1].delta === "好" &&
+                  chunks[1].deltaReasoning === "",
+                chatArgsOk: chatOpts.messages?.[0]?.content === "hi" && chatOpts.thinking === true,
+                // 模型由主容器决定（自动模式会静默拉清单），guest 指定值不透传
+                chatNoModel: chatOpts.model !== "guest-wanted",
+                chatResOk: chatRes.content === "你好" && chatRes.reasoningContent === "想" && chatRes.model === "fake-1",
+                modelsOk: modelsRes.models?.join() === "m1,m2",
+                unknownRejected: unknownErr.includes("未知能力"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, chunks, chatRes },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="预览能力桥 broker - net.fetch 截断 / fetchText / searchWeb">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const capStore2 = createVirtualStorage({ "apps-registry": [] });
+              const netCalls = [];
+              const netFake = {
+                fetch: async (url, init) => {
+                  netCalls.push({ kind: "fetch", url, init });
+                  const big = "x".repeat(500000);
+                  return {
+                    url,
+                    status: 200,
+                    ok: true,
+                    truncated: false,
+                    provider: "FakeNet",
+                    headers: { get: () => "text/html" },
+                    text: async () => big,
+                  };
+                },
+                fetchText: async (url, opts) => {
+                  netCalls.push({ kind: "fetchText", url, opts });
+                  return { url, status: 200, contentType: "text/html", text: "正文", truncated: false, provider: "FakeNet" };
+                },
+                searchWeb: async (query, opts) => {
+                  netCalls.push({ kind: "searchWeb", query, opts });
+                  return { query, engine: "duckduckgo", provider: "FakeNet", results: [{ title: "t", url: "u", content: "c" }] };
+                },
+              };
+              const aiFake2 = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake" }),
+                onApiKeysChange: () => {},
+              };
+              const capHooks2 = {};
+              const previewFake2 = {
+                setPreviewHooks: (h) => Object.assign(capHooks2, h),
+                watchPreviewAgent: () => {},
+              };
+              const store2 = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: capStore2,
+                load: async (path) => {
+                  const p = String(path);
+                  if (p.includes("/mz/ai/chain/main.js")) return { createAgent: () => ({ chat: async () => ({ content: "" }) }) };
+                  if (p.includes("remote-preview")) return previewFake2;
+                  if (p.includes("/mz/net/main.js")) return netFake;
+                  return aiFake2;
+                },
+              });
+              await store2.init({});
+              await new Promise((r) => setTimeout(r, 30));
+
+              const signal2 = new AbortController().signal;
+              const fetched = await capHooks2.onCapRequest({
+                cap: "net.fetch",
+                args: { url: "https://x.example/big" },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const textOut = await capHooks2.onCapRequest({
+                cap: "net.fetchText",
+                args: { url: "https://x.example/p", raw: true, noCache: true },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const searchOut = await capHooks2.onCapRequest({
+                cap: "net.searchWeb",
+                args: { query: "关键词", engine: "bing" },
+                onChunk: () => {},
+                signal: signal2,
+              });
+              const fetchCall = netCalls.find((c) => c.kind === "fetch") || {};
+              const textCall = netCalls.find((c) => c.kind === "fetchText") || {};
+              const searchCall = netCalls.find((c) => c.kind === "searchWeb") || {};
+
+              const checks = {
+                fetchRouted: fetchCall.url === "https://x.example/big",
+                fetchTruncated: fetched.truncated === true && fetched.text.length === 400000,
+                fetchFields: fetched.status === 200 && fetched.ok === true && fetched.provider === "FakeNet" && fetched.contentType === "text/html",
+                fetchTextOpts: textCall.opts?.raw === true && textCall.opts?.noCache === true,
+                fetchTextOut: textOut.text === "正文",
+                searchRouted: searchCall.query === "关键词" && searchCall.opts?.engine === "bing",
+                searchOut: searchOut.results?.length === 1,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, fetched: { truncated: fetched.truncated, len: fetched.text.length }, textOut, searchOut },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="__app.json 安装清单：初始生成 / 增删 bump / 排除规则">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            syncAppManifest,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const mfFs = createVirtualFs();
+              await createAppDir(mfFs, {
+                name: "mf-app",
+                displayName: "清单应用",
+                description: "测试描述",
+                icon: "🧪",
+              });
+              const raw1 = await readAppFile(mfFs, "mf-app", "__app.json");
+              const mf1 = JSON.parse(raw1);
+              const app1 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const metaOk =
+                mf1.name === "清单应用" &&
+                mf1.icon === "🧪" &&
+                mf1.desc === "测试描述";
+              const firstFilesOk =
+                mf1.files[0] === "app.json" &&
+                mf1.files.includes("AGENTS.md") &&
+                mf1.files.includes("CONTEXT.md") &&
+                !mf1.files.includes("__app.json");
+              const firstNoBump = app1.version === "0.1.0"; // 初始生成不 bump
+
+              // 新增两个文件 → 追加进清单 + version bump
+              await writeAppFile(mfFs, "mf-app", "pages/detail.html", "<template page></template>");
+              await writeAppFile(mfFs, "mf-app", "lib/util.js", "export const x = 1;");
+              const r2 = await syncAppManifest(mfFs, "mf-app");
+              const mf2 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const app2 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const addOk =
+                r2.added.length === 2 &&
+                mf2.files.includes("pages/detail.html") &&
+                mf2.files.includes("lib/util.js");
+              const bump1 = r2.version === "0.1.1" && app2.version === "0.1.1";
+
+              // 纯内容修改 → 清单不变、不 bump
+              await writeAppFile(mfFs, "mf-app", "lib/util.js", "export const x = 2;");
+              const r3 = await syncAppManifest(mfFs, "mf-app");
+              const app3 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const contentOnlyOk = r3.changed === false && app3.version === "0.1.1";
+
+              // 排除规则：dotfiles / node_modules / test / *.sb.html 不进清单
+              await writeAppFile(mfFs, "mf-app", "node_modules/x.js", "x");
+              await writeAppFile(mfFs, "mf-app", "test/x.sb.html", "x");
+              await writeAppFile(mfFs, "mf-app", ".hidden.js", "x");
+              const r4 = await syncAppManifest(mfFs, "mf-app");
+              const mf4 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const excludeOk =
+                !mf4.files.includes("node_modules/x.js") &&
+                !mf4.files.includes("test/x.sb.html") &&
+                !mf4.files.includes(".hidden.js") &&
+                !r4.added.includes(".hidden.js");
+
+              // 删除文件 → 清单移除 + 再 bump
+              const dir = await mfFs.init("ai-apps");
+              const appDir = await dir.get("mf-app");
+              const clientDir = await appDir.get("client");
+              const victim = await clientDir.get("lib/util.js");
+              await victim.remove();
+              const r5 = await syncAppManifest(mfFs, "mf-app");
+              const mf5 = JSON.parse(await readAppFile(mfFs, "mf-app", "__app.json"));
+              const app5 = JSON.parse(await readAppFile(mfFs, "mf-app", "app.json"));
+              const removeOk =
+                r5.removed.includes("lib/util.js") &&
+                !mf5.files.includes("lib/util.js") &&
+                r5.version === "0.1.2" &&
+                app5.version === "0.1.2";
+
+              const checks = {
+                metaOk, firstFilesOk, firstNoBump, addOk, bump1, contentOnlyOk, excludeOk, removeOk,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, files1: mf1.files, files5: mf5.files, r2, r5 },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="__app.json 清单：还原备份后重新对齐">
+      <template>
+        <script type="module">
+          import {
+            createAppDir,
+            writeAppFile,
+            createAppBackup,
+            restoreAppBackup,
+            syncAppManifest,
+            readAppFile,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const rbFs = createVirtualFs();
+              await createAppDir(rbFs, { name: "rb-app", displayName: "还原应用" });
+              await writeAppFile(rbFs, "rb-app", "pages/a.html", "<p>a</p>");
+              // 真实流程里清单在回合收尾同步；测试里手动收口
+              await syncAppManifest(rbFs, "rb-app");
+              // 备份时点：清单含 a.html
+              const snap = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const snapHasA = snap.files.includes("pages/a.html");
+              const bk = await createAppBackup(rbFs, "rb-app");
+              // 备份后再加一个文件（清单也跟进）
+              await writeAppFile(rbFs, "rb-app", "pages/b.html", "<p>b</p>");
+              await syncAppManifest(rbFs, "rb-app");
+              const mid = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const midHasB = mid.files.includes("pages/b.html");
+              // 还原到备份时点：b.html 消失，清单重新对齐（不含 b）
+              const res = await restoreAppBackup(rbFs, "rb-app", bk.id);
+              const after = JSON.parse(await readAppFile(rbFs, "rb-app", "__app.json"));
+              const appAfter = JSON.parse(await readAppFile(rbFs, "rb-app", "app.json"));
+              const checks = {
+                snapHasA,
+                midHasB,
+                restored: res.restored === true,
+                afterNoB: !after.files.includes("pages/b.html"),
+                afterHasA: after.files.includes("pages/a.html"),
+                // 新增 b +1 → 0.1.2；还原删 b 再 +1 → 0.1.3
+                versionBumped: appAfter.version === "0.1.3",
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, snapFiles: snap.files, afterFiles: after.files, version: appAfter.version },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+    <sb-test name="对话快照目录化：index + 每会话文件 / 孤儿清理 / onlySid 增量 / 旧格式兼容">
+      <template>
+        <script type="module">
+          import {
+            saveProjectChats,
+            loadProjectChats,
+          } from "../lib/builder.js";
+          import { createVirtualFs } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fs = createVirtualFs();
+              const root = await fs.init("chat-root");
+              const mk = (id, title) => ({ id, title, createdAt: 1, updatedAt: 2, duration: 0 });
+              const data = {
+                version: 1,
+                app: { name: "snap-app", displayName: "快照应用", icon: "🗂" },
+                sessionOrder: null,
+                sessions: [mk("s1", "会话一"), mk("s2", "会话二")],
+                messages: {
+                  s1: [{ id: 1, role: "user", content: "你好" }],
+                  s2: [{ id: 2, role: "user", content: "第二条" }],
+                },
+                threads: { s1: [{ role: "user", content: "你好" }], s2: [] },
+                savedAt: 123,
+              };
+              // 全量写：index + 每会话文件
+              await saveProjectChats(root, data);
+              const dir = await root.get("conjure-chats");
+              const files = [];
+              for await (const k of dir.keys()) files.push(k);
+              files.sort();
+              const layoutOk =
+                files.join(",") === "index.json,s1.json,s2.json";
+
+              // 聚合读回：结构与旧单文件同形
+              const back = await loadProjectChats(root);
+              const readOk =
+                back.sessions.length === 2 &&
+                back.messages.s1?.[0]?.content === "你好" &&
+                back.threads.s2?.length === 0 &&
+                back.app?.displayName === "快照应用";
+
+              // onlySid 增量：只重写 s1，s2 文件内容保持；且不清理其他会话
+              data.messages.s1 = [{ id: 3, role: "user", content: "改写后" }];
+              await saveProjectChats(root, { ...data, onlySid: "s1" });
+              const mid = await loadProjectChats(root);
+              const onlyOk =
+                mid.messages.s1?.[0]?.content === "改写后" &&
+                mid.messages.s2?.[0]?.content === "第二条";
+
+              // 全量写但会话列表只剩 s1：s2.json 孤儿被清理
+              data.sessions = [mk("s1", "会话一")];
+              delete data.messages.s2;
+              delete data.threads.s2;
+              await saveProjectChats(root, data);
+              const files2 = [];
+              for await (const k of dir.keys()) files2.push(k);
+              files2.sort();
+              const orphanOk = files2.join(",") === "index.json,s1.json";
+              const after = await loadProjectChats(root);
+              const afterOk = after.sessions.length === 1;
+
+              // 旧格式兼容：无 index.json 时回退读 conjure-chats.json
+              const root2 = await fs.init("chat-root-legacy");
+              const legacy = await root2.get("conjure-chats.json", { create: "file" });
+              await legacy.write(JSON.stringify({
+                version: 1,
+                sessions: [mk("old1", "旧会话")],
+                messages: { old1: [{ id: 9, role: "user", content: "旧数据" }] },
+                threads: {},
+              }));
+              const legacyBack = await loadProjectChats(root2);
+              const legacyOk =
+                legacyBack.sessions[0].id === "old1" &&
+                legacyBack.messages.old1?.[0]?.content === "旧数据";
+
+              const checks = {
+                layoutOk, readOk, onlyOk, orphanOk, afterOk, legacyOk,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, files, files2, back },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
             }
           }
         </script>

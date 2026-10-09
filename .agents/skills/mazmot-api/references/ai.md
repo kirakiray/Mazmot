@@ -14,6 +14,8 @@ const { content } = await assistant.chat({
 });
 ```
 
+> **妙造隔离预览**：预览容器没有 key 配置，receiver 注入的 import map 会把 `/mz/ai/main.js` 顶替为 `bridge/guest/mz-ai.js` 替身——`getAssistant()` 导出面同形（`providerName` 为 `"bridge"`），chat/getModels 经能力桥转发妙造主容器用自己的 key/模型执行（**model / 推理档位不开放预览应用指定**，统一用妙造主界面当前选中项）；key 管理 API 在预览域抛可读错误、`getApiKeys()` 返回空数组。应用代码零感知；改真模块应用侧用法时必须同步替身（见 `official-apps/conjure/CONTEXT.md`「预览能力桥」）。
+
 下面先讲应用侧常用的 Assistant API，再附上完整的 key 管理 API（给 AI Key 管理器或代理服务用）。
 
 > 需要在对话中让模型自动调用工具（Agent 循环）、会话记忆等，请查 [ai-chain.md](./ai-chain.md)（`/mz/ai/chain/`）。

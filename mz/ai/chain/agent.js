@@ -105,6 +105,17 @@ export const createAgent = ({
     const persistBase = messages.length;
     messages.push(...history, ...(inputMessages ?? []));
 
+    // 记忆增量落盘：输入写入后、每轮工具结果齐了、最终回答时各落一次——
+    // 手动停止 / 异常中断 / 超步数时，本回合的用户请求与已完成的工具进度
+    // 仍在记忆里，下次对话（如「继续」）能接着断点做而不是回到上个完整回合。
+    // 落盘断点都选在 wire 结构合法处（末尾为 user 或齐平的 tool 结果），
+    // assistant 的 tool_calls 永不悬空
+    const persist = () =>
+      threadId && checkpointer
+        ? checkpointer.set(threadId, messages.slice(persistBase))
+        : Promise.resolve();
+    await persist();
+
     // 整个循环累计的 token 用量（模型可能被调用多次）。
     // 缓存命中/未命中字段（DeepSeek 的 prompt_cache_hit_tokens /
     // prompt_cache_miss_tokens、OpenAI 风格的 prompt_tokens_details.cached_tokens）
@@ -286,9 +297,7 @@ export const createAgent = ({
 
       // 无工具调用 → 最终回答，落盘记忆后结束
       if (!res.toolCalls?.length) {
-        if (threadId && checkpointer) {
-          await checkpointer.set(threadId, messages.slice(persistBase));
-        }
+        await persist();
         const result = {
           content: res.content ?? "",
           reasoningContent: lastReasoning,
@@ -336,6 +345,9 @@ export const createAgent = ({
           result,
         });
       }
+      // 本轮工具结果已齐（wire 结构合法的断点），增量落盘后再插入收束提醒
+      // 等其他角色消息
+      await persist();
       // 本轮工具全部执行完（tool 消息齐了）才能插入其他角色消息，保持 wire 结构合法
       if (!loopNudged && isToolLoop(toolSignatures)) {
         loopNudged = true;

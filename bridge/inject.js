@@ -774,6 +774,71 @@ async function ensureServerConnectedSafe(user, info) {
   } catch (_) {}
 }
 
+/* ---------- 能力桥（guest 替身 ↔ 妙造主容器 broker） ----------
+ * receiver 注入的 import map 把 /mz/ai|net 顶替为 bridge/guest/ 替身模块；
+ * 替身经这里挂载的 window.__MZ_BRIDGE__.call(cap, args) 把调用转发给主容器
+ * （cap-req），主容器用自己的 key/联网通道执行后回 cap-chunk（流式分片）/
+ * cap-res（终态）。key 与通道配置永不过桥。只挂调用入口，不暴露凭据。
+ */
+const pendingCaps = new Map(); // cap id → { resolve, reject, onChunk, timer }
+let capSeq = 0;
+let capSend = null; // (payload) => Promise，可靠链路建好后赋值
+
+const abortError = () => {
+  const err = new Error("The operation was aborted.");
+  err.name = "AbortError";
+  return err;
+};
+
+const mountCapBridge = () => {
+  globalThis.__MZ_BRIDGE__ = {
+    /** 发起一次能力调用；resolve 为 cap-res 的 result 字段 */
+    call: (cap, args, { onChunk = null, signal = null, timeoutMs = 60_000 } = {}) =>
+      new Promise((resolve, reject) => {
+        if (typeof cap !== "string" || !cap) {
+          return reject(new Error("cap 不能为空"));
+        }
+        const id = `cap-${Date.now().toString(36)}-${++capSeq}`;
+        const entry = { resolve, reject, onChunk, timer: null };
+        entry.timer = setTimeout(() => {
+          pendingCaps.delete(id);
+          reject(new Error(`${cap} 超时（${Math.round(timeoutMs / 1000)}s 无响应）`));
+        }, timeoutMs);
+        pendingCaps.set(id, entry);
+        if (signal) {
+          if (signal.aborted) {
+            clearTimeout(entry.timer);
+            pendingCaps.delete(id);
+            return reject(abortError());
+          }
+          // 取消：本地立即收场（AbortError），并通知主容器中断底层请求
+          signal.addEventListener(
+            "abort",
+            () => {
+              capSend?.({ type: "cap-abort", id }).catch(() => {});
+              if (pendingCaps.delete(id)) {
+                clearTimeout(entry.timer);
+                reject(abortError());
+              }
+            },
+            { once: true },
+          );
+        }
+        if (!capSend) {
+          clearTimeout(entry.timer);
+          pendingCaps.delete(id);
+          return reject(new Error("预览能力桥未就绪（代理链路尚未建立）"));
+        }
+        capSend({ type: "cap-req", id, cap, args }).catch((err) => {
+          if (pendingCaps.delete(id)) {
+            clearTimeout(entry.timer);
+            reject(new Error("妙造连接中断，能力调用失败：" + (err?.message || err)));
+          }
+        });
+      }),
+  };
+};
+
 async function main() {
   // 控制台捕获要尽早装上（module defer 执行时，应用后续输出都能收进环形缓冲）
   const capture = installConsoleCapture();
@@ -788,6 +853,9 @@ async function main() {
     log("缺少 data-conjure-id，代理不启动");
     return;
   }
+  // 桥对象先于应用代码挂载（本模块先于应用脚本执行）；链路建好前调用
+  // 会在 call 内以「未就绪」收场——应用若在极早期调用属生成代码问题
+  mountCapBridge();
   try {
     const user = await getUser(USER_NAMESPACE);
     enableServerAutoReconnect(user); // 掉线自动重连（默认关闭）
@@ -802,6 +870,8 @@ async function main() {
       // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
       onOffline: (info) => ensureServerConnectedSafe(user, info),
     });
+    // 能力桥的发送通道就绪（call 内已挂载，等待器不受影响）
+    capSend = (payload) => link.send(payload);
 
     // 接收端：复用 receiver（含 index.html 代理脚本注入与增量比对），
     // 应用名取本页路径 /$conjure-apps/<name>/client/index.html 的 <name>
@@ -871,6 +941,23 @@ async function main() {
         if (!payload) return;
         if (payload.type === "dbg") {
           handleDbg(payload);
+          return;
+        }
+        // 能力桥回包：流式分片 / 终态结果，路由到等待中的调用（迟到的
+        // 分片对应已超时收场的调用，直接丢弃）
+        if (payload.type === "cap-chunk" || payload.type === "cap-res") {
+          const entry = pendingCaps.get(payload.id);
+          if (!entry) return;
+          if (payload.type === "cap-chunk") {
+            try {
+              entry.onChunk?.(payload);
+            } catch (_) {}
+            return;
+          }
+          pendingCaps.delete(payload.id);
+          clearTimeout(entry.timer);
+          if (payload.ok) entry.resolve(payload.result);
+          else entry.reject(new Error(payload.error || "能力调用失败"));
           return;
         }
         // 被 conjure 拒绝注册：预览窗口数已达上限（尽力投递的通知信封）

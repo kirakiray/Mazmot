@@ -630,7 +630,9 @@
             this.setProgress(5, gl({ cn: "首次运行，正在安装 NoneOS Core...", en: "First run, installing NoneOS Core..." }));
           },
           onCoreUpgradable(e) {
-            const d = e.detail || {};
+            // ofa.js 的 emit 把负载挂在原生 Event 的 data 上（detail 是 undefined），
+            // 保留 detail 读法兜底其他事件源
+            const d = (e && (e.data || e.detail)) || {};
             this.setProgress(
               5,
               gl(
@@ -643,7 +645,7 @@
             this.setProgress(6, gl({ cn: "NoneOS Core 安装准备中...", en: "Preparing NoneOS Core installation..." }));
           },
           onCoreInstallProgress(e) {
-            const d = e.detail || {};
+            const d = (e && (e.data || e.detail)) || {};
             const p = mapCoreInstallProgress(d.step, d.total, CORE_END);
             const desc = d.desc || gl({ cn: "安装中", en: "installing" });
             this.setProgress(p, gl({ cn: "NoneOS Core：{desc}", en: "NoneOS Core: {desc}" }, { desc }));
@@ -657,11 +659,12 @@
           onCoreError(event) {
             if (coreDone) return;
             coreDone = true;
-            const d = (event && event.detail) || {};
-            // nos-version 的 error detail 结构约定为 { message, phase }，
-            // 但实测有时 message 为空（组件把真实报错吞了），导致只显示"未知错误"。
-            // 这里尽量从 detail 里榨取更多线索，并把整个 detail 快照进诊断，
-            // 便于排查 Core 检测/安装阶段到底为什么失败。
+            // nos-version 的 error 负载结构约定为 { message, phase }，经 ofa.js 的
+            // emit 派发后挂在原生 Event 的 data 字段上（CustomEvent 的 detail 是
+            // undefined，直接读 detail 会永远拿到空对象，把真实报错显示成"未知错误"）。
+            // 这里保留 detail 读法兜底其他事件源，并尽量从负载里榨取线索，
+            // 把整个负载快照进诊断，便于排查 Core 检测/安装阶段到底为什么失败。
+            const d = (event && (event.data || event.detail)) || {};
             const rawErr = d.error || d.err || d.cause;
             const detailMsg =
               d.message ||

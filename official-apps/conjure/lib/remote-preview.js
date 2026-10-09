@@ -27,6 +27,12 @@
 // dbg-chunk/dbg-result 协议回传并在此结算；缺省投递给最近心跳的在线窗口，
 // 传 winId 可定向指定。文件推送与调试指令互不干扰。
 //
+// 能力桥（handleCapEnvelope）：应用页的 /mz/* 替身模块（bridge/guest/*，由
+// receiver 注入的 import map 顶替）发 cap-req 到本服务，本端校验窗口注册表 +
+// 并发闸后交 previewHooks.onCapRequest（builder-store 接线）用主容器自己的
+// key/模型与联网通道执行，cap-chunk/cap-res 经窗口专属链路回传——预览应用
+// 可间接使用 AI 与联网，key 与通道配置永不过桥。
+//
 // 通信协议与可靠投递实现见 /bridge/proto.js（双端共享）。
 
 import {
@@ -117,7 +123,8 @@ const winRegistry = new Map();
 // 本会话开过的预览窗口槽位（slot → Window 句柄），新开窗口时找空闲槽位
 const previewSlots = new Map();
 // 预览事件钩子（builder-store 接线）：onBridgeHello = 扫码/新窗口 hello 时自动推当前应用；
-// onWindowsChange = 注册表变化（下拉气泡刷新）
+// onWindowsChange = 注册表变化（下拉气泡刷新）；
+// onCapRequest({cap,args,onChunk,signal}) = 执行预览能力桥的 AI/联网调用（返回结果或抛错）
 const previewHooks = {};
 export const setPreviewHooks = (hooks) => Object.assign(previewHooks, hooks || {});
 
@@ -273,6 +280,98 @@ let dbgLink = null; // 常驻可靠链路（只承载 dbg 指令与其结果）
 const agentRemotes = new Map(); // userId → remoteUser（dbg 指令的投递目标，按对端缓存）
 let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
 const dbgWaiters = new Map(); // reqId -> { resolve, reject }
+
+/* ---------- 预览能力桥（guest 替身 ↔ 主容器 broker） ----------
+ * 应用页替身模块（bridge/guest/*，经 receiver 注入的 import map 顶替 /mz/*）
+ * 发 cap-req 到本服务；本端校验窗口注册表 + 并发闸后交给
+ * previewHooks.onCapRequest（builder-store 接线，用主容器自己的 key/模型
+ * 与联网通道执行），流式分片（cap-chunk）与终态（cap-res）经每窗口专属
+ * 可靠链路回传。key 与通道配置永不过桥；不经回合链路（activeLink 随回合
+ * 创建销毁，能力调用与回合无关）。
+ */
+const MAX_CAP_CONCURRENT = 2; // 同时在途的 cap-req 上限（防 AI 生成的代码失控烧额度）
+const CAP_RES_MAX_BYTES = 600_000; // 单次结果回传上限（超大小文本由 broker 侧先行截断）
+const capLinks = new Map(); // winKey(`userId|sessionId`) → 专属可靠链路
+const capControllers = new Map(); // `winKey|id` → AbortController
+let capCount = 0; // 在途 cap-req 计数（跨窗口共享并发闸）
+
+const capLinkFor = (ctx) => {
+  const key = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  let link = capLinks.get(key);
+  if (!link) {
+    link = createReliableLink({
+      sendTo: (env) =>
+        ctx.remoteUser.sendToService(SERVICE_ID_AGENT, env, {
+          sessionId: ctx.fromSessionId,
+        }),
+    });
+    capLinks.set(key, link);
+    if (capLinks.size > 12) capLinks.delete(capLinks.keys().next().value); // 上限同预览窗口数
+  }
+  return link;
+};
+
+const handleCapEnvelope = (data, ctx, reply) => {
+  const payload = capLinkFor(ctx).receive(data, reply);
+  if (!payload) return;
+  if (payload.type === "cap-abort") {
+    capControllers.get(`${ctx.fromUserId}|${ctx.fromSessionId}|${payload.id}`)?.abort();
+    return;
+  }
+  if (payload.type !== "cap-req") return;
+  const { id, cap } = payload;
+  const args = payload.args || {};
+  const winKey = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  const sendRes = (ok, result, error) => {
+    let body = { type: "cap-res", id, ok, result, error };
+    try {
+      if (JSON.stringify(body).length > CAP_RES_MAX_BYTES) {
+        body = { type: "cap-res", id, ok: false, result: null, error: "结果过大（>600KB），已拒绝回传" };
+      }
+    } catch (err) {
+      body = { type: "cap-res", id, ok: false, result: null, error: "结果不可序列化：" + (err?.message || err) };
+    }
+    capLinkFor(ctx).send(body).catch(() => {});
+  };
+  // 窗口校验：只服务注册表里的预览窗口（announce 心跳注册；应用页代理
+  // 连上即上报，正常调用永远晚于注册）。防同一用户体系的其他实例白嫖
+  if (!winRegistry.has(winKey)) {
+    sendRes(false, null, "预览窗口未注册（尚未收到该窗口的 announce），拒绝能力调用");
+    return;
+  }
+  if (typeof previewHooks.onCapRequest !== "function") {
+    sendRes(false, null, "妙造主容器未提供能力代理（版本过旧，请更新妙造后重试）");
+    return;
+  }
+  if (capCount >= MAX_CAP_CONCURRENT) {
+    sendRes(false, null, `预览能力并发已达上限（${MAX_CAP_CONCURRENT}），请稍后再试`);
+    return;
+  }
+  capCount++;
+  const abortCtl = new AbortController();
+  capControllers.set(`${winKey}|${id}`, abortCtl);
+  const started = Date.now();
+  Promise.resolve()
+    .then(() =>
+      previewHooks.onCapRequest({
+        cap,
+        args,
+        signal: abortCtl.signal,
+        onChunk: (chunk) =>
+          capLinkFor(ctx)
+            .send({ type: "cap-chunk", id, ...chunk })
+            .catch(() => {}),
+      }),
+    )
+    .then((result) => sendRes(true, result))
+    .catch((err) => sendRes(false, null, (err && err.message) || String(err)))
+    .finally(() => {
+      capCount--;
+      capControllers.delete(`${winKey}|${id}`);
+      // 用量观测：每次调用一行（谁、什么能力、耗时），不落盘
+      console.info(`[remote-preview] cap ${cap} ${Date.now() - started}ms (${winKey})`);
+    });
+};
 let dbgSeq = 0;
 // 定向调试：dbgLink.sendTo 构建信封时按 msgId 记下当时的投递目标（重发同目标）；
 // dbgNextTarget 由 debugPreviewCommand 在每次 send 前设置
@@ -344,9 +443,16 @@ function ensureService(user) {
       if (data && data.kind === "ack") {
         if (dbgLink) dbgLink.receive(data, reply);
         if (activeLink) activeLink.receive(data, reply);
+        // 能力桥回包的 ACK：msgId 各链路唯一，逐链路尝试结算（无命中即忽略）
+        for (const link of capLinks.values()) link.receive(data, reply);
         return;
       }
       const type = data?.payload?.type;
+      // 能力桥：guest 替身的调用请求 / 中断（不经回合链路，回包走窗口专属链路）
+      if (type === "cap-req" || type === "cap-abort") {
+        handleCapEnvelope(data, ctx, reply);
+        return;
+      }
       // 窗口注册表类控制消息：不依赖回合链路（扫码 hello / announce 心跳可能在
       // 任意时刻到达，activeLink 多为 null）。手动去重 + ACK；hello 触发
       // onBridgeHello 钩子（builder-store 据此自动推送当前应用给扫码设备）；
@@ -484,6 +590,30 @@ async function isAgentLikelyOnline(user, targetId, { probe = true } = {}) {
   if (probe) return await probeConnect(user, targetId);
   return false;
 }
+
+// 代理服务存在性探测（快路径 sync-check 前的门槛）：connectUser 只证明
+// 「对端用户可达」，证明不了「对端注册了 conjure-agent」——对端开着的可能
+// 是 bridge 引导页（只注册 conjure-bridge）。此前这种场景要等 sync-check
+// 无 ACK 烧满 AGENT_PROBE_TIMEOUT（每次尝试 no_receiver 3s + 重试间隔）才
+// 回退，预览固定慢 ~10s。直接 sendToService 一条 ping（ receiver 按未知
+// 类型忽略，无副作用），no_receiver 即代理不在，快速回退；reload 窗口代理
+// 重新注册需一两秒，给 2.5s 有界宽限
+const AGENT_SERVICE_PING_TIMEOUT = 2_500;
+const probeAgentService = async (remote) => {
+  const deadline = Date.now() + AGENT_SERVICE_PING_TIMEOUT;
+  for (;;) {
+    const res = await remote
+      .sendToService(
+        SERVICE_ID_AGENT,
+        { msgId: `ping-${Date.now()}`, kind: "data", payload: { type: "ping" } },
+        { waitForService: 1200 },
+      )
+      .catch(() => null);
+    if (res?.some?.((r) => r && r.status === "ok")) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+};
 
 const readStoredBridgeId = async (selfStore) => {
   if (!selfStore) return null;
@@ -624,6 +754,8 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
  * @param {Array<{path: string, text: string}>} opts.files 应用全部文件
  * @param {Object} [opts.selfStore] 自存储空间（持久化 bridge 侧 userId）
  * @param {(text: string) => void} [opts.onStatus] 状态回调（推送中/完成/失败前的过程提示）
+ * @param {({done: number, total: number}) => void} [opts.onProgress] 结构化进度
+ *   （清单比对 / 文件推送的 done/total，供 UI 画进度条；阶段文本走 onStatus）
  */
 export async function openRemotePreview({
   load,
@@ -631,11 +763,17 @@ export async function openRemotePreview({
   files,
   selfStore = null,
   onStatus = () => {},
+  onProgress = () => {},
   bridgeOrigin = BRIDGE_ORIGIN,
 }) {
   const status = (text) => {
     try {
       onStatus(text);
+    } catch (_) {}
+  };
+  const report = (done, total) => {
+    try {
+      onProgress({ done, total });
     } catch (_) {}
   };
 
@@ -674,6 +812,7 @@ export async function openRemotePreview({
       return false;
     }
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    report(0, toSend.length);
     await link.send({
       type: "app-begin",
       appName,
@@ -687,6 +826,7 @@ export async function openRemotePreview({
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+      report(sent, toSend.length);
     }
     await link.send({ type: "app-end", appName });
     return true;
@@ -714,13 +854,20 @@ export async function openRemotePreview({
       probedOnline = agentLikelyOnline;
     }
     if (agentLikelyOnline) {
-      // 一次探测 = 连接 + sync-check + 等 sync-diff；
+      // 一次探测 = 连接 + 服务存在性 ping + sync-check + 等 sync-diff；
       // 探测失败但刚见过对端信封（多半是应用页 reload 中）→ 再给一轮宽限
       const attemptAgent = async (ms, label) => {
         status(label);
         peerService = SERVICE_ID_AGENT;
         remote = await ensureAgentRemote(user, storedId);
-        const manifest = await buildManifest(files);
+        // 服务不在（no_receiver，对端是 bridge 引导页 / 应用页已关）立即
+        // 失败回退，别等 sync-check 烧满重试窗口
+        if (!(await probeAgentService(remote))) {
+          throw Object.assign(new Error("预览页代理服务不在线"), {
+            code: "AGENT_SERVICE_OFFLINE",
+          });
+        }
+        const manifest = await buildManifest(files, (d, t) => report(d, t));
         // 不 await 发送：代理离线时 link 重试耗尽前先由超时触发回退
         link.send({ type: "sync-check", appName, manifest }).catch(() => {});
         return withTimeout(waiters.diff, ms, "代理无响应");
@@ -732,8 +879,17 @@ export async function openRemotePreview({
         } catch (err) {
           // 宽限条件：近期见过对端信封（多半是应用页 reload 中），或本回合
           // 内连接探测刚成功过（新标签页里 lastPeerSeenAt 为 0，但代理几秒前
-          // 确实可达）——都值得换新等待器再等一轮；真离线才回退
-          if (Date.now() - lastPeerSeenAt > RELOAD_GRACE && !probedOnline) {
+          // 确实可达）——都值得换新等待器再等一轮；真离线才回退。
+          // 例外：服务 ping 的 no_receiver 是决定性失败（probeAgentService
+          // 内部已含 2.5s 宽限，且 announce 心跳只出自应用页代理）——仅当
+          // 近期见过代理信封（reload 中）才再试一轮；「连接可达」（probedOnline）
+          // 不算数，对端可能只是 bridge 引导页
+          const seenAgentRecently = Date.now() - lastPeerSeenAt <= RELOAD_GRACE;
+          const decisive = err?.code === "AGENT_SERVICE_OFFLINE";
+          const grace = decisive
+            ? seenAgentRecently
+            : seenAgentRecently || probedOnline;
+          if (!grace) {
             throw err;
           }
           resetWaiters(storedId);
@@ -821,7 +977,10 @@ export async function openRemotePreview({
   let diff;
   try {
     status("对比文件差异...");
-    const manifest = await buildManifest(files);
+    // 阶段通知：bridge 引导页在 sync-check 到达前只能干等，先告知「正在
+    // 比对」让它的等待态动起来（引导页 best-effort 展示，失败不影响推送）
+    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
   } catch (err) {
@@ -881,10 +1040,15 @@ const enqueuePush = (fn) => {
 
 // 推送一轮文件到指定对端：先按常驻代理试探（已开窗口，增量 + 自动刷新），
 // 无响应再按 bridge 引导页流程（新窗口 / 扫码设备）。返回 done（含运行 url）
-async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) {
+async function pushRound(user, peerId, { appName, files, onStatus = () => {}, onProgress = () => {} }) {
   const status = (text) => {
     try {
       onStatus(text);
+    } catch (_) {}
+  };
+  const report = (done, total) => {
+    try {
+      onProgress({ done, total });
     } catch (_) {}
   };
   let remote = null;
@@ -905,6 +1069,7 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
     const wipe = toSend.length === files.length;
     if (!toSend.length) return false;
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
+    report(0, toSend.length);
     await link.send({ type: "app-begin", appName, fileCount: toSend.length, wipe });
     let sent = 0;
     for (const file of toSend) {
@@ -913,6 +1078,7 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
+      report(sent, toSend.length);
     }
     await link.send({ type: "app-end", appName });
     return true;
@@ -927,7 +1093,12 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
     remote = await withTimeout(user.connectUser(peerId), 8_000, "连接超时");
     agentRemotes.set(peerId, remote);
     lastAgentRemoteId = peerId;
-    const manifest = await buildManifest(files);
+    // 服务存在性门槛：对端可达 ≠ 代理在（可能是 bridge 引导页），no_receiver
+    // 立即回退 bridge 流程，不等 sync-check 烧满重试窗口
+    if (!(await probeAgentService(remote))) {
+      throw new Error("预览页代理服务不在线");
+    }
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     link.send({ type: "sync-check", appName, manifest }).catch(() => {});
     const diff = await withTimeout(waiters.diff, AGENT_PROBE_TIMEOUT, "代理无响应");
     const pushed = await pushFiles(diff);
@@ -960,7 +1131,10 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {} }) 
   let diff;
   try {
     status("对比文件差异...");
-    const manifest = await buildManifest(files);
+    // 阶段通知：新窗口 / 扫码设备的引导页在此阶段只能干等，先告知「正在
+    // 比对」让它的等待态动起来（best-effort，失败不影响推送）
+    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
   } catch (_) {
@@ -983,6 +1157,7 @@ export async function syncPreviewPeers({
   files,
   peerIds,
   onStatus = () => {},
+  onProgress = () => {},
 }) {
   if (!Array.isArray(peerIds) || !peerIds.length) return [];
   return enqueuePush(async () => {
@@ -994,7 +1169,12 @@ export async function syncPreviewPeers({
     const results = [];
     for (const peerId of peerIds) {
       try {
-        const done = await pushRound(user, peerId, { appName, files, onStatus });
+        const done = await pushRound(user, peerId, {
+          appName,
+          files,
+          onStatus,
+          onProgress,
+        });
         results.push({ peerId, ok: true, url: done?.url || "" });
       } catch (err) {
         results.push({ peerId, ok: false, error: err.message });

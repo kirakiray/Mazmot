@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=5" />
+  <link rel="stylesheet" href="./home.css?v=12" />
   <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
@@ -78,7 +78,19 @@
       <div class="topbar-actions">
         <o-if :value="currentAppName !== ''">
           <o-if :value="previewStatus">
-            <span class="preview-status" attr:title="previewStatus">{{previewStatus}}</span>
+            <div class="preview-status-box">
+              <span class="preview-status" attr:title="previewStatus"
+                >{{previewStatus}}</span
+              >
+              <o-if :value="previewProgress">
+                <div class="preview-bar">
+                  <div
+                    class="preview-bar-fill"
+                    :style.width="previewBarPct() + '%'"
+                  ></div>
+                </div>
+              </o-if>
+            </div>
           </o-if>
           <div class="preview-wrap">
             <st-icon-button
@@ -239,8 +251,18 @@
               </div>
             </o-if>
           </div>
-          <st-icon-button title="备份管理" on:click="openBackupDrawer">
+          <st-icon-button
+            title="备份管理"
+            on:click="openBackupDrawer"
+          >
             <n-icon icon="mdi:backup-restore"></n-icon>
+          </st-icon-button>
+          <st-icon-button
+            class="test-entry"
+            title="测试管理（client/test/ 场景用例）"
+            on:click="openTestDrawer"
+          >
+            <n-icon icon="mdi:flask-outline"></n-icon>
           </st-icon-button>
         </o-if>
         <st-icon-button title="工具 / 技能" on:click="openPanel">
@@ -362,6 +384,11 @@
             </o-if>
           </o-if>
 
+          <!-- 反向瀑布流：上方更早消息被省略的提示（上滑自动按批补挂） -->
+          <o-if :value="hiddenOldCount > 0">
+            <div class="history-hint">已省略上方 {{hiddenOldCount}} 条更早消息 · 上滑加载</div>
+          </o-if>
+
           <o-fill :value="messages" fill-key="id">
             <div
               class="msg"
@@ -373,22 +400,53 @@
                 <span class="msg-ts" attr:data-role="$data.role">{{ $host.msgTs($data) }}</span>
               </o-if>
               <o-if :value="$data.role === 'user'">
-                <div class="user-bubble">
-                  <!-- 文本包一层单行 span：pre-wrap 在 span 上（保留用户手打
-                       换行），气泡自身的模板缩进空隙按普通空白折叠，不再被
-                       pre-wrap 渲染成撑高气泡的空行 -->
-                  <span class="user-text"><o-if :value="$data.content !== ''">{{$data.content}}</o-if></span>
-                  <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
-                  <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
-                    <o-fill :value="$host.msgImages($data)">
-                      <img
-                        class="user-img"
-                        attr:src="$data"
-                        on:click="$host.openImage($data)"
-                      />
-                    </o-fill>
+                <!-- 编辑态：末条用户消息就地改写后重发（仅停止后可进入） -->
+                <o-if :value="$host.editingMsgId === $data.id">
+                  <div class="user-edit">
+                    <!-- o-fill item 作用域内 sync 解析不到页面级 data：手动绑定
+                         （:value 单向 + input 表达式回写 $host.editDraft） -->
+                    <textarea
+                      class="edit-area"
+                      rows="3"
+                      :value="$host.editDraft"
+                      on:input="$host.editDraft = $event.target.value"
+                    ></textarea>
+                    <div class="edit-actions">
+                      <button class="edit-btn" on:click="$host.cancelMsgEdit()">取消</button>
+                      <button class="edit-btn primary" on:click="$host.saveMsgEdit()">重新发送</button>
+                    </div>
                   </div>
-                </div>
+                </o-if>
+                <o-if :value="$host.editingMsgId !== $data.id">
+                  <div class="user-row">
+                    <div class="user-bubble">
+                      <!-- 文本包一层单行 span：pre-wrap 在 span 上（保留用户手打
+                           换行），气泡自身的模板缩进空隙按普通空白折叠，不再被
+                           pre-wrap 渲染成撑高气泡的空行 -->
+                      <span class="user-text"><o-if :value="$data.content !== ''">{{$data.content}}</o-if></span>
+                      <!-- 多模态图片：缩略图展示，点击看大图（图片-only 消息文本留空） -->
+                      <div class="user-imgs" class:show="$host.msgImages($data).length > 0">
+                        <o-fill :value="$host.msgImages($data)">
+                          <img
+                            class="user-img"
+                            attr:src="$data"
+                            on:click="$host.openImage($data)"
+                          />
+                        </o-fill>
+                      </div>
+                    </div>
+                    <!-- 编辑并重发：仅当前会话末条用户消息、且停止/完成后显示 -->
+                    <o-if :value="$host.canEditMsg($data)">
+                      <button
+                        class="msg-edit-btn"
+                        attr:title="'编辑并重发'"
+                        on:click="$host.startMsgEdit($data.id)"
+                      >
+                        <n-icon icon="mdi:pencil-outline"></n-icon>
+                      </button>
+                    </o-if>
+                  </div>
+                </o-if>
               </o-if>
 
               <!-- 视觉交互表单卡片（show-form 包的组件，ready 预载） -->
@@ -451,6 +509,15 @@
                           <span class="tc-adds">+{{$host.turnAdds($data)}}</span>
                           <span class="tc-dels">−{{$host.turnDels($data)}}</span>
                         </span>
+                        <!-- 场景测试状态（仅最后一个带改动的回合展示）：
+                             回合收尾自动跑 + 手动跑共用的上次全量结果 -->
+                        <o-if :value="$host.showTestChip($data)">
+                          <span
+                            class="tc-test"
+                            class:bad="!$host.testLastRun.ok"
+                            attr:title="$host.testChipTitle()"
+                          >测试 {{$host.testChipText()}}</span>
+                        </o-if>
                         <n-icon class="tc-chev" icon="mdi:chevron-down"></n-icon>
                       </button>
                       <div class="tc-collapse">
@@ -744,11 +811,20 @@
                   </o-if>
                 </div>
               </o-if>
+
+              <o-if :value="$data.role === 'error'">
+                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI） -->
+                <div class="local-error-card">
+                  <n-icon icon="mdi:alert-outline"></n-icon>
+                  <div class="local-error-text">{{$data.text}}</div>
+                </div>
+              </o-if>
             </div>
           </o-fill>
 
-          <o-if :value="sending">
-            <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新） -->
+          <o-if :value="sending && turnInView">
+            <!-- 生成中：右侧实时用时（clock 每秒心跳驱动刷新）；文案随回合
+                 活动切换（思考中 / 正在执行 xx / 生成中），且只在回合视图显示 -->
             <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
         </div>
@@ -796,6 +872,9 @@
               🔑 授权目录
             </st-button>
           </o-if>
+          <st-icon-button title="关闭（下次出错会再提示）" on:click="dismissKeyError">
+            <n-icon icon="mdi:close"></n-icon>
+          </st-icon-button>
         </div>
       </o-if>
       <div class="composer">
@@ -804,7 +883,7 @@
           sync:value="input"
           rows="1"
           attr:placeholder="inputPlaceholder"
-          attr:disabled="sending"
+          attr:disabled="sending && turnInView"
           on:keydown="handleKeydown($event)"
           on:paste="handlePaste($event)"
         ></textarea>
@@ -870,7 +949,7 @@
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <!-- 模型 + 推理等级 + Key + 窗口：st-menu 钻入式选择菜单 -->
+          <!-- 模型 + 推理等级 + Key + 窗口 + 单轮步数：st-menu 钻入式选择菜单 -->
           <st-menu align="right">
             <button
               slot="trigger"
@@ -955,12 +1034,24 @@
                 </o-fill>
               </st-menu>
             </st-menu-item>
+            <st-menu-item>
+              单轮步数
+              <span slot="suffix" class="menu-value">{{maxStepsText}}</span>
+              <st-menu slot="sub-menu">
+                <o-fill :value="maxStepsOptions" fill-key="value">
+                  <st-menu-item on:click="$host.pickMaxSteps($data.value)">
+                    <span slot="prefix" class="menu-check">{{$host.maxStepsCheck($data.value)}}</span>
+                    {{$data.label}}
+                  </st-menu-item>
+                </o-fill>
+              </st-menu>
+            </st-menu-item>
           </st-menu>
-          <o-if :value="!sending">
+          <o-if :value="!sending || !turnInView">
             <st-button
               class="send-btn"
-              attr:disabled="!canSend()"
-              attr:title="'发送（Enter）'"
+              attr:disabled="sending || !canSend()"
+              attr:title="sending ? '另一会话生成中' : '发送（Enter）'"
               on:click="handleSend"
             >
               <svg
@@ -976,7 +1067,7 @@
               </svg>
             </st-button>
           </o-if>
-          <o-if :value="sending">
+          <o-if :value="sending && turnInView">
             <st-button
               class="send-btn stop"
               color="error"
@@ -1340,6 +1431,76 @@
       </div>
     </aside>
 
+    <!-- 测试管理抽屉（右）：client/test/ 场景用例的清单与一键执行 -->
+    <div class="panel-mask" class:show="testDrawerOpen" on:click="closeTestDrawer"></div>
+    <aside class="backup-drawer test-drawer" class:show="testDrawerOpen">
+      <div class="panel-head">
+        <span>测试管理</span>
+        <st-icon-button title="关闭" on:click="closeTestDrawer">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </st-icon-button>
+      </div>
+      <div class="backup-sub">
+        {{currentAppDisplay || currentAppName}} · 用例存于应用目录的 client/test/ 下
+      </div>
+      <div class="backup-actions">
+        <st-button
+          variant="filled"
+          attr:disabled="testBusy || tests.length === 0"
+          on:click="handleRunAllTests"
+        >
+          <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
+          <o-if :value="!testRunning">▶ 跑全部</o-if>
+        </st-button>
+      </div>
+      <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
+      <div class="panel-body">
+        <o-if :value="tests.length === 0">
+          <div class="panel-empty">还没有场景用例。让 AI 实现重要功能时会自动在 client/test/ 下创建 .test.json 用例</div>
+        </o-if>
+        <o-if :value="showTestEmptyHint()">
+          <div class="panel-empty">用例还没有跑过，点上方「▶ 跑全部」</div>
+        </o-if>
+        <o-fill :value="tests" fill-key="file">
+          <div class="test-item">
+            <n-icon
+              class="test-tone"
+              attr:icon="$host.testTone($data)"
+            ></n-icon>
+            <div class="test-item-main">
+              <div class="test-item-name">
+                {{$data.name}}
+                <span class="test-steps">{{$data.stepCount}} 步</span>
+              </div>
+              <div class="test-item-file">{{$data.desc || $data.file}}</div>
+              <o-if :value="$host.testFailText($data)">
+                <div class="test-item-fail">{{$host.testFailText($data)}}</div>
+              </o-if>
+            </div>
+            <st-button
+              variant="text"
+              class="test-run-one"
+              attr:disabled="$host.testBusy"
+              attr:title="'只跑这一条'"
+              on:click="$host.handleRunOne($data.file)"
+            >
+              <n-icon icon="mdi:play-outline"></n-icon>
+            </st-button>
+          </div>
+        </o-fill>
+      </div>
+    </aside>
+
     <!-- 工具 / 技能面板（右） -->
     <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
     <aside class="panel" class:show="panelOpen">
@@ -1589,6 +1750,7 @@
       const { renderMarkdown } = await load("../lib/markdown.js");
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
+      const { createMsgWindow } = await load("../lib/msg-window.js");
       const { contextInfo } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
@@ -1843,6 +2005,11 @@
       return {
         data: {
           messages: [],
+          hiddenOldCount: 0,
+          turningKey: "", // 进行中回合的 chatKey（仓库镜像）
+          turnInView: false, // 当前视图就是正在生成的会话（状态行/停止按钮只在此时显示）
+          editingMsgId: 0, // 就地编辑中的末条用户消息 id（0 = 无）；编辑仅限停止后
+          editDraft: "", // 编辑态草稿文本
           input: "",
           pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
@@ -1857,7 +2024,14 @@
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
           backupDrawerOpen: false, // 右侧备份管理抽屉
+          testDrawerOpen: false, // 右侧测试管理抽屉
+          tests: [], // 场景用例清单（client/test/*.test.json）
+          testResults: {}, // 每用例上次结果（file → {ok, ms, error, steps}）
+          testLastRun: null, // 上次全量摘要 {at, ok, pass, fail}
+          testRunning: null, // 执行进度 {done, total, current}
+          testBusy: false,
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
+          currentHash: "", // 当前 client/ 内容指纹（已回滚派生态用）
           backupBusy: false, // 正在打包备份
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           publishBusy: false, // 发布到首页应用列表进行中
@@ -1867,6 +2041,7 @@
           publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
           previewStatus: "", // 隔离预览过程提示（顶栏预览按钮旁）
+          previewProgress: null, // 隔离预览结构化进度 {done, total}（迷你进度条）
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           previewWindows: [], // 预览窗口注册表快照（多窗口下拉气泡）
           previewThumbs: {}, // 窗口缩略图缓存（winId → dataURL，空串 = 占位图）
@@ -1952,6 +2127,16 @@
           // 会话最大上下文窗口（token 数，select 切换，偏好持久化；默认 768k）
           ctxWindow: "786432",
           ctxWindowText: "768k",
+          // 单回合工具循环步数上限（「单轮步数」菜单切换，偏好持久化；
+          // 默认 200，经 store.setMaxSteps 注入 createAgent，下回合生效）
+          maxSteps: "200",
+          maxStepsText: "200",
+          maxStepsOptions: [
+            { value: "80", label: "80" },
+            { value: "200", label: "200" },
+            { value: "400", label: "400" },
+            { value: "800", label: "800" },
+          ],
           // 上下文压缩进行中（压缩按钮转圈提示）
           compacting: false,
           // 对话用 API Key（镜像自仓库，activeKeyId 为 "" 表示自动）
@@ -2038,8 +2223,23 @@
           } catch {
             /* 忽略 */
           }
+          // 恢复单轮步数偏好
+          try {
+            const ms = parseInt(await selfStore?.getItem("pref:max-steps"), 10);
+            if (ms > 0) {
+              this.maxSteps = String(ms);
+              this.maxStepsText = String(ms);
+            }
+          } catch {
+            /* 忽略 */
+          }
           store.setContextWindow(Number(this.ctxWindow));
+          store.setMaxSteps(Number(this.maxSteps));
           this.syncActiveKeyText();
+          // 反向瀑布流窗口：只渲染最近一段消息（长会话全量渲染 DOM 是卡顿
+          // 主因），上滑到顶再按批次补挂更早消息。必须先于 subscribe 就位
+          //（init 期间的 replace 事件即走窗口）
+          this._win = createMsgWindow(this.messages);
           // 订阅仓库事件，把状态同步到页面响应式数据
           store.subscribe((evt) => {
             if (evt.type === "patch") {
@@ -2063,6 +2263,15 @@
                 this.syncUrlParam();
                 this.syncTabName();
                 announce(this.currentAppName);
+              }
+              // 生成中状态行/停止按钮只属于正在生成的会话：视图、回合归属
+              // 或发送态任一变化都重算
+              if (
+                ["turningKey", "currentAppName", "currentSessionId", "sending"].some(
+                  (k) => k in evt.data,
+                )
+              ) {
+                this.syncTurnInView();
               }
               return;
             }
@@ -2088,6 +2297,13 @@
         watch: {
           input() {
             this.autoGrow();
+          },
+          // 生成开始 / 会话或项目切换：收起编辑态（编辑仅限停止后的末条消息）
+          sending() {
+            if (this.sending && this.editingMsgId) this.cancelMsgEdit();
+          },
+          currentSessionId() {
+            if (this.editingMsgId) this.cancelMsgEdit();
           },
           // 标签页标题跟随项目切换
           currentAppName() {
@@ -2174,18 +2390,13 @@
           // ---- 仓库事件 → 页面消息列表 ----
 
           applyMessageEvent(evt) {
-            const { op } = evt;
-            if (op === "replace") {
-              this.messages = evt.list.map((m) => ({ ...m }));
-            } else if (op === "push") {
-              this.messages.push({ ...evt.item });
-            } else if (op === "patch") {
-              const item = this.messages.find((m) => m.id === evt.id);
-              if (item) Object.assign(item, evt.patch);
-            } else if (op === "splice") {
-              const idx = this.messages.findIndex((m) => m.id === evt.id);
-              if (idx > -1) this.messages.splice(idx, 1);
-            }
+            const op = evt?.op;
+            // 会话整体切换（replace）：编辑态指向的消息可能已不存在，收起
+            if (op === "replace" && this.editingMsgId) this.cancelMsgEdit();
+            // 窗口模块统一处理：全量（_win.all）与渲染窗口（this.messages）
+            // 同步更新；push 只加尾不丢头，replace 重置为最近一段
+            this._win.apply(evt);
+            this.hiddenOldCount = this._win.hiddenCount;
             // usage 挂在回合末条 AI 消息上，done patch 时刷新进度条
             this.syncCtx();
             // 思考正文流式跟随：展开中的思考自动停在底部（rAF 节流）
@@ -2211,17 +2422,20 @@
 
           // 重算上下文占用进度（总量由窗口选择决定），并同步底部统计胶囊
           syncCtx() {
-            const info = contextInfo(this.messages);
-            // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）
+            // 上下文占用按全量会话算（渲染窗口只含最近一段）
+            const info = contextInfo(this._win.all);
+            // 进行中回合用 live 快照覆盖（消息上的终值要等 done/收尾才落）；
+            // live 快照属于回合会话——视图不是回合会话时不覆盖（否则别的
+            // 会话的上下文进度会显示成生成中那个会话的占用）
             const liveUsed =
-              this.sending && this.liveTurnStats
+              this.sending && this.turnInView && this.liveTurnStats
                 ? this.liveTurnStats.usage?.context_tokens || 0
                 : 0;
             this.ctxUsed = liveUsed > 0 ? liveUsed : info.used;
             if (this.ctxUsed <= 0) {
               // 会话有 AI 消息但拿不到任何 usage → 占用未知，胶囊降级显示
               // （点开面板说明缺数据）；完全空会话才隐藏
-              this.ctxUnknown = this.messages.some(
+              this.ctxUnknown = this._win.all.some(
                 (m) => m.role === "assistant",
               );
               this.ctxPct = 0;
@@ -2264,7 +2478,7 @@
             // 已收尾（有 turnMs）但没有 usage 的回合：异常收场或早期会话，
             // 用量胶囊降级提示而不是隐藏
             let missing = 0;
-            for (const m of this.messages) {
+            for (const m of this._win.all) {
               if (m.role === "user") turns++;
               if (
                 m.role === "assistant" &&
@@ -2432,6 +2646,10 @@
             return this.ctxWindow === value ? "✓" : "";
           },
 
+          maxStepsCheck(value) {
+            return this.maxSteps === value ? "✓" : "";
+          },
+
           pickModel(id) {
             this.activeModelId = id;
             store.selectModel(id);
@@ -2450,6 +2668,21 @@
 
           pickWindow(value) {
             this.applyCtxWindow(value);
+          },
+
+          // 切换单轮步数上限：立即注入仓库（agent 置失效，下回合生效）
+          // 并持久化偏好
+          pickMaxSteps(value) {
+            this.maxSteps = value;
+            this.maxStepsText = value;
+            store.setMaxSteps(Number(value));
+            if (selfStore) {
+              try {
+                selfStore.setItem("pref:max-steps", value);
+              } catch {
+                /* 存储失败不影响本次会话 */
+              }
+            }
           },
 
           // ---- 数字 / 时长格式化（统计胶囊与明细面板） ----
@@ -2787,13 +3020,39 @@
           // 仅当前会话内最后一个带改动的回合可操作；历史回合只读（diff 仍可看，
           // 冻结内容不受影响）
           turnActionsAvailable(msg) {
-            for (let i = this.messages.length - 1; i >= 0; i--) {
-              const m = this.messages[i];
+            // 按「当前会话全部消息」找最后一个带改动的回合（渲染窗口可能
+            // 不含它——窗口只渲染最近一段）
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              const m = all[i];
               if (Array.isArray(m.changes) && m.changes.length) {
                 return m.id === msg.id;
               }
             }
             return false;
+          },
+
+          // 变更卡上的场景测试 chip：仅最后一个带改动的回合 + 存在测试结果
+          showTestChip(msg) {
+            return this.turnActionsAvailable(msg) && !!this.testLastRun;
+          },
+
+          // 测试抽屉「有用例但没跑过」空态（模板表达式里禁 > / && / Object.*——
+          // 序列化后变实体残片，new Function 编译抛 SyntaxError，实测踩坑）
+          showTestEmptyHint() {
+            return this.tests.length > 0 && Object.keys(this.testResults || {}).length === 0;
+          },
+
+          testChipText() {
+            const lr = this.testLastRun;
+            if (!lr) return "";
+            return lr.ok ? "全绿 ✓" : `${lr.fail} ✗`;
+          },
+
+          testChipTitle() {
+            const lr = this.testLastRun;
+            if (!lr) return "";
+            return `上次场景测试：${lr.pass} 通过 / ${lr.fail} 失败`;
           },
 
           diffEmpty(path) {
@@ -2847,10 +3106,10 @@
           },
 
           turnReverted(msg) {
-            if (!msg?.snapshotId) return false;
-            return this.backups.some(
-              (b) => b.id === msg.snapshotId && b.current,
-            );
+            // 已回滚 = 当前内容与该回合快照一致（快照 id 尾部即内容指纹，
+            // 与备份「与当前一致」标记同源；快照存 snaps/，不在 backups 里）
+            if (!msg?.snapshotId || !this.currentHash) return false;
+            return msg.snapshotId.endsWith(`-${this.currentHash}`);
           },
 
           rollbackBtnText(msg) {
@@ -2865,7 +3124,8 @@
             );
             try {
               // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
-              const turnUser = [...this.messages]
+              // （按全量找：请求消息可能在渲染窗口之外）
+              const turnUser = [...this._win.all]
                 .reverse()
                 .find((m) => m.role === "user" && m.newGroup && m.id < msg.id);
               const res = await store.rollbackTurn(
@@ -2895,6 +3155,11 @@
           // 忽略自动检测到的预览错误（本次不再带给 AI）
           dismissAutoErrors() {
             store.dismissAutoErrors?.();
+          },
+
+          // 关闭错误横幅（store 清 keyError）
+          dismissKeyError() {
+            store.dismissError?.();
           },
 
           // ---- 变更卡「备份代码」：当前内容是否已有备份（backups 的 current
@@ -3032,6 +3297,65 @@
             }
             return text;
           },
+          // 当前视图是否为正在生成的会话（状态行/停止按钮只在回合视图显示；
+          // 切到别的会话不再误显示全局「生成中」）
+          syncTurnInView() {
+            const vk =
+              this.currentAppName === ""
+                ? "chat:draft"
+                : `chat:${this.currentAppName}:${this.currentSessionId}`;
+            this.turnInView =
+              !!this.sending && (this.turningKey || "") === vk;
+          },
+
+          // ---- 编辑并重发末条用户消息 ----
+
+          // 仅当前会话最后一条用户消息、且停止/完成后可编辑（UI 与仓库双层守卫）
+          canEditMsg(m) {
+            if (this.sending || m.role !== "user") return false;
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              if (all[i].role === "user") return all[i].id === m.id;
+            }
+            return false;
+          },
+
+          startMsgEdit(id) {
+            if (this.sending || this.editingMsgId) return;
+            const m = this._win.all.find((x) => x.id === id);
+            if (!m || m.role !== "user") return;
+            this.editDraft = m.content || "";
+            this.editingMsgId = id;
+            requestAnimationFrame(() => {
+              const area = this.shadow.$(".edit-area")?.ele;
+              if (area) {
+                area.focus();
+                area.selectionStart = area.selectionEnd = area.value.length;
+              }
+            });
+          },
+
+          cancelMsgEdit() {
+            this.editingMsgId = 0;
+            this.editDraft = "";
+          },
+
+          // 保存编辑：撤销末回合并以新内容重发（仓库 resendLastUser 负责
+          // 删除其后消息 + 记忆截断 + 重新驱动；图片附件保留不可改）
+          async saveMsgEdit() {
+            if (this.editingMsgId === 0) return;
+            const text = String(this.editDraft ?? "").trim();
+            const target = this._win.all.find((x) => x.id === this.editingMsgId);
+            const hasImgs =
+              target && Array.isArray(target.images) && target.images.length > 0;
+            if (!text && !hasImgs) return;
+            this.editingMsgId = 0;
+            this.editDraft = "";
+            this.atBottom = true;
+            await store.resendLastUser(text);
+            this.followScroll(true);
+          },
+
           // 「生成中…」右侧的实时用时；clock 参数仅用于建立模板响应式依赖。
           // 表单挂起期间计时暂停：累计挂起时长并在恢复后扣除
           turnLiveText() {
@@ -3054,7 +3378,7 @@
 
           // 本轮是否有挂起中的表单（等待用户提交）：是则状态栏不显示倒计时
           formWaiting() {
-            return this.messages.some(
+            return this._win.all.some(
               (m) =>
                 m.role === "assistant" &&
                 m.type === "form" &&
@@ -3062,12 +3386,32 @@
             );
           },
 
-          // 回合状态文案：表单挂起 = 等待提交（倒计时暂停）；否则生成中 + 用时
+          // 回合状态文案：随回合最新活动实时切换（写死的「生成中…」反映不了
+          // 工具循环里正在发生什么）——表单挂起 > 执行工具 / 下一轮思考 >
+          // 思考中 > 流式输出。活动从视图消息流末条推导（tool 消息带 pending
+          // 标记；assistant 气泡先出 reasoning 后出 content）
           turnStatusText() {
+            const live = " " + this.turnLiveText();
             if (this.formWaiting()) {
               return "⏸ 已展示表单，等待你提交后继续（计时已暂停）";
             }
-            return "生成中… " + this.turnLiveText();
+            const all = this._win.all;
+            for (let i = all.length - 1; i >= 0; i--) {
+              const m = all[i];
+              if (m.role === "user") continue;
+              if (m.role === "tool") {
+                return m.pending
+                  ? `正在执行 ${m.name}…${live}`
+                  : `思考中…${live}`;
+              }
+              if (m.role === "assistant") {
+                return !m.content && m.reasoning
+                  ? `思考中…${live}`
+                  : `生成中…${live}`;
+              }
+              break;
+            }
+            return "生成中…" + live;
           },
 
           // ---- 视觉交互表单卡片（show-form 包组件的宿主接线） ----
@@ -3122,9 +3466,11 @@
 
           // ---- 交互 → 仓库方法（薄代理） ----
 
-          loadSession(sid) {
+          async loadSession(sid) {
             this.confirmingDelSession = "";
-            store.loadSession(sid);
+            await store.loadSession(sid);
+            // 切会话 = 看最新对话：窗口重建（最近一段）后回到底部
+            this.followScroll(true);
           },
 
           newSessionFor(name) {
@@ -3251,6 +3597,13 @@
             return `${online}/${total} 在线`;
           },
 
+          // 隔离预览推送进度百分比（进度条用；无结构化进度时 0）
+          previewBarPct() {
+            const p = this.previewProgress;
+            if (!p || !(p.total > 0)) return 0;
+            return Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+          },
+
           async deleteSession(event, sid) {
             event?.stopPropagation?.();
             if (this.confirmingDelSession !== sid) {
@@ -3362,6 +3715,68 @@
 
           closeBackupDrawer() {
             this.backupDrawerOpen = false;
+          },
+
+          // ---- 测试管理抽屉 ----
+          openTestDrawer() {
+            store.refreshTests?.();
+            this.testDrawerOpen = true;
+          },
+
+          closeTestDrawer() {
+            this.testDrawerOpen = false;
+          },
+
+          async handleRunAllTests() {
+            if (this.testBusy) return;
+            await store.runTests?.();
+          },
+
+          async handleRunOne(file) {
+            if (this.testBusy) return;
+            await store.runTests?.([file]);
+          },
+
+          // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）
+          testTone(t) {
+            if (t.broken) return "mdi:alert-circle-outline";
+            const r = this.testResults[t.file];
+            if (!r) return "mdi:flask-outline";
+            return r.ok ? "mdi:check-circle-outline" : "mdi:close-circle-outline";
+          },
+
+          // 用例失败详情一行（只说原因——用例名上一行已经有了，不重复）
+          testFailText(t) {
+            const r = this.testResults[t.file];
+            if (!r || r.ok) return "";
+            const bad = (r.steps || []).filter((s) => !s.ok).pop();
+            return bad ? bad.error : r.error || "执行失败";
+          },
+
+          // 抽屉按钮下方的元信息行：跑测中显示当前用例，否则显示上次全量摘要
+          testLastText() {
+            if (this.testRunning) {
+              const cur = this.testRunning.current
+                ? ` · ${this.testRunning.current}`
+                : "";
+              return `正在跑 ${this.testRunning.done}/${this.testRunning.total}${cur}`;
+            }
+            if (!this.testLastRun) {
+              return this.tests.length
+                ? `共 ${this.tests.length} 个用例，尚未跑过`
+                : "还没有场景用例";
+            }
+            const t = new Date(this.testLastRun.at);
+            const hh = String(t.getHours()).padStart(2, "0");
+            const mm = String(t.getMinutes()).padStart(2, "0");
+            return this.testLastRun.ok
+              ? `上次全绿 · ${hh}:${mm}`
+              : `上次 ${this.testLastRun.pass}✓ ${this.testLastRun.fail}✗ · ${hh}:${mm}`;
+          },
+
+          testLastTip() {
+            if (!this.testLastRun) return "还没有跑过场景测试";
+            return `上次全量测试：${this.testLastRun.pass} 通过 / ${this.testLastRun.fail} 失败`;
           },
 
           async handleCreateBackup() {
@@ -3657,6 +4072,8 @@
             if (this.currentAppName === "" && !this.isTabOpen(name)) {
               await store.selectApp(name);
               this.projDrawerOpen = false;
+              // 原地切换项目：窗口重建后回到底部（新标签路径由新页面 ready 自滚）
+              this.followScroll(true);
               return;
             }
             this.focusOrOpenTab(this.projectUrl(name), `ai-builder-${name}`);
@@ -3894,7 +4311,21 @@
           },
 
           async handleSend() {
-            if (this.sending || !this.canSend()) return;
+            if (this.sending) {
+              // 状态行/停止按钮已限定回合视图：在这里发送说明用户在别的
+              // 会话里触发，给出可读提示而不是静默吞掉
+              if (!this.turnInView) {
+                const { default: toast } = await load(
+                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                );
+                toast({
+                  message: "另一个会话正在生成中，可回到该会话查看或停止",
+                  color: "warning",
+                });
+              }
+              return;
+            }
+            if (!this.canSend()) return;
             const text = this.input.trim();
             const images = this.pendingImages.map((p) => p.src);
             this.input = "";
@@ -3930,6 +4361,27 @@
             if (!el) return;
             const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
             this.atBottom = dist <= 24;
+            // 反向瀑布流：滚近顶部且上方还有被省略的消息 → 补挂一批，并
+            // 补偿 scrollTop 锚住原内容（头部插入会把视口内容往下推）。
+            // 双 rAF 等 o-fill 渲染完成；补挂后仍贴顶（一批不满一屏）递归
+            // 续挂，loadOlder 返回 0（全部挂完）自然终止
+            if (el.scrollTop <= 80 && this.hiddenOldCount > 0 && !this._loadingOlder) {
+              this._loadingOlder = true;
+              const prevHeight = el.scrollHeight;
+              const prevTop = el.scrollTop;
+              const loaded = this._win.loadOlder();
+              this.hiddenOldCount = this._win.hiddenCount;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  const el2 = this.shadow.$("#chatScroll")?.ele;
+                  if (el2 && loaded > 0) {
+                    el2.scrollTop = el2.scrollHeight - prevHeight + prevTop;
+                  }
+                  this._loadingOlder = false;
+                  this.onChatScroll();
+                });
+              });
+            }
           },
 
           toBottomNow() {

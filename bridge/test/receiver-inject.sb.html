@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bridge/receiver.js 注入块（guest importmap + 代理脚本）测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：不依赖 NoneOS Core SW，直接以静态路径导入被测模块 -->
+
+    <sb-test name="injectAgent - 注入 importmap + 代理脚本块（幂等）">
+      <template>
+        <script type="module">
+          import { injectAgent, stripAgent } from "../receiver.js";
+          {
+            const original =
+              '<!doctype html><html><head><title>t</title></head><body><o-app></o-app></body></html>';
+            const once = injectAgent(original, "u-conjure");
+
+            const hasMap = once.includes('type="importmap" data-conjure-guest');
+            const mapOk =
+              once.includes('"/mz/ai/main.js":"/bridge/guest/mz-ai.js"') &&
+              once.includes('"/mz/net/main.js":"/bridge/guest/mz-net.js"');
+            const hasAgent = once.includes("data-conjure-id=") && once.includes("/bridge/inject.js");
+            const beforeHead = once.indexOf('data-conjure-guest') < once.indexOf("</head>");
+            // 裸路径与完整 URL 两种键都在（ofa load 可能以任一形式 import）
+            const fullKeys =
+              once.includes('"/mz/ai/main.js"') && once.includes(location.origin + "/mz/ai/main.js");
+            // stripAgent 还原为原始内容（增量比对 hash 前提）
+            const stripped = stripAgent(once);
+            const idempotent = injectAgent(once, "u-conjure") === once;
+
+            return {
+              assert: hasMap && mapOk && hasAgent && beforeHead && fullKeys && stripped === original && idempotent,
+              content: {
+                checks: { hasMap, mapOk, hasAgent, beforeHead, fullKeys, strippedEq: stripped === original, idempotent },
+                once,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="injectAgent - 旧版裸代理标签迁移为完整块">
+      <template>
+        <script type="module">
+          import { injectAgent, stripAgent } from "../receiver.js";
+          {
+            // 旧版本只注入 <script src="/bridge/inject.js">（无 importmap）
+            const legacy =
+              '<html><head><title>t</title><script type="module" src="/bridge/inject.js" data-conjure-id="u-old"><\/script></head><body></body></html>';
+            const migrated = injectAgent(legacy, "u-new");
+
+            const hasMap = migrated.includes("data-conjure-guest");
+            const singleAgent = (migrated.match(/inject\.js/g) || []).length === 1;
+            const newId = migrated.includes("u-new") && !migrated.includes("u-old");
+            const stripped = stripAgent(migrated);
+            const legacyStripped = stripAgent(legacy); // 旧格式也要能剥干净
+
+            return {
+              assert: hasMap && singleAgent && newId && stripped.indexOf("inject.js") === -1 && legacyStripped.indexOf("inject.js") === -1,
+              content: {
+                checks: { hasMap, singleAgent, newId, migratedClean: stripped.indexOf("inject.js") === -1, legacyClean: legacyStripped.indexOf("inject.js") === -1 },
+                migrated,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="injectAgent - 应用自带 import map 时仅注入代理脚本">
+      <template>
+        <script type="module">
+          import { injectAgent, stripAgent } from "../receiver.js";
+          {
+            const ownMap =
+              '<html><head><script type="importmap">{"imports":{"x/y.js":"/x.js"}}<\/script><title>t</title></head><body></body></html>';
+            const out = injectAgent(ownMap, "u-c");
+
+            const guestMapAdded = out.includes("data-conjure-guest");
+            const ownMapKept = out.includes('"x/y.js"');
+            const singleImportMap = (out.match(/type="importmap"/g) || []).length === 1;
+            const hasAgent = out.includes("data-conjure-id=");
+            // strip 后还原（只剥代理脚本，不吞应用的 import map）
+            const stripped = stripAgent(out);
+
+            return {
+              assert: !guestMapAdded && ownMapKept && singleImportMap && hasAgent && stripped === ownMap,
+              content: {
+                checks: { guestMapAdded, ownMapKept, singleImportMap, hasAgent, strippedEq: stripped === ownMap },
+                out,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

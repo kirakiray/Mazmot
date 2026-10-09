@@ -375,6 +375,8 @@ export async function createAppDir(
       await doc.write(content);
     }
   }
+  // 初始安装清单（client/__app.json）：目录落成即与磁盘对齐
+  await syncAppManifest(fs, clean, rootHandle);
   return { name: clean, displayName: displayName || clean, dir: base };
 }
 
@@ -511,13 +513,49 @@ export async function listAppFiles(fs, appName, rootHandle) {
     return path;
   };
   const out = [];
-  const walk = async (dir) => {
-    if (typeof dir.flat === "function") {
-      for (const f of await dir.flat()) {
-        out.push(toRel(f.path));
+  // 子树外路径一律丢弃。本地渠道 base 是项目根，client/ 与 backup/ snaps/
+  // conjure-chats/ 同层，挂载句柄的 item.path 还带 `$mount-directory-…>` 前
+  // 缀（toRel 剥不掉时原样返回）——这些一旦混进清单，市场安装会去拉运行时
+  // 文件（gitignore 未部署即 404，实测踩坑）
+  const isOutside = (raw, relPath) =>
+    relPath.startsWith("/") ||
+    relPath.startsWith("$") ||
+    relPath.includes("../") ||
+    relPath.startsWith("ai-apps/") ||
+    relPath.includes("/backup/") ||
+    relPath.startsWith("backup/") ||
+    relPath.includes("/snaps/") ||
+    relPath.startsWith("snaps/") ||
+    relPath.includes("/conjure-chats") ||
+    relPath.startsWith("conjure-chats") ||
+    (raw !== relPath && relPath.includes("/client/"));
+  if (typeof base.keys === "function") {
+    // 只走 client/ 子树：从 base（项目根 / 命名空间根）出发会把同层运行时
+    // 目录 / 其他应用一起遍历，全靠 isOutside 兜底不可靠
+    const startDir = await base.get(rel.replace(/\/+$/, "")).catch(() => null);
+    if (!startDir || startDir.kind !== "dir") return [];
+    const walk = async (dir) => {
+      for await (const key of dir.keys()) {
+        const item = await dir.get(key);
+        if (!item) continue;
+        if (item.kind === "dir") await walk(item);
+        else {
+          const r = toRel(item.path);
+          if (!isOutside(item.path, r)) out.push(r);
+        }
       }
-      return;
+    };
+    await walk(startDir);
+    return out.sort();
+  }
+  if (typeof base.flat === "function") {
+    for (const f of await base.flat()) {
+      const r = toRel(f.path);
+      if (!isOutside(f.path, r)) out.push(r);
     }
+    return out.sort();
+  }
+  const walk = async (dir) => {
     for await (const key of dir.keys()) {
       const item = await dir.get(key);
       if (!item) continue;
@@ -530,12 +568,135 @@ export async function listAppFiles(fs, appName, rootHandle) {
 }
 
 /**
+ * 同步应用的 client/__app.json（安装清单）与磁盘实际文件，生成应用与官方
+ * 应用同构（结构对齐 official-apps 下各应用的 __app.json）。宿主自动维护、
+ * AI 无须感知（SYSTEM_PROMPT 已声明禁止模型增删改它）：
+ *   - 清单已有条目且文件仍在磁盘 → 原样保留；
+ *   - 磁盘新增文件 → 追加（排除 __app.json 自身 / dotfiles / node_modules /
+ *     test 目录 / *.sb.html / __meta.json / conjure 运行时目录），app.json 固定居首；
+ *   - 文件增删 → 自动把 app.json 的 version 末段 +1（对齐 npm run update:apps
+ *     语义；首次生成不 bump，纯内容修改清单不变也不 bump）；
+ *   - 元数据（name/icon/desc）始终取自 app.json（app.json 是应用的唯一配置源）。
+ * 调用时机：createAppDir（初始生成）/ finishTurn（回合收尾，有文件写入时）/
+ * restoreAppBackup（覆盖还原后）/ adoptNewApp 非迁移分支（另建的新应用）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @param {Object} [opts] 覆盖项（restoreAppBackup 专用：还原会清空重写 client/，
+ *   磁盘上的 __app.json 已被备份内旧清单顶掉，须以还原前状态为对比基线）
+ * @param {string|null} [opts.prevRaw] 还原前的 __app.json 原文（缺省读磁盘）
+ * @param {string} [opts.prevVersion] 还原前的 app.json 版本（bump 基线取
+ *   还原前/还原写回两侧较高的一个——已装副本见过更高版本时版本号不许回退）
+ * @returns {Promise<{changed: boolean, added: string[], removed: string[], version?: string}>}
+ *          version 为本次 bump 后的 app.json 版本（未 bump 时缺省）
+ */
+export async function syncAppManifest(fs, appName, rootHandle, opts = {}) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const include = (p) =>
+    p !== "__app.json" &&
+    p !== "__meta.json" &&
+    !p.endsWith(".sb.html") &&
+    !p
+      .split("/")
+      .some(
+        (seg) =>
+          seg.startsWith(".") ||
+          seg === "node_modules" ||
+          seg === "test" ||
+          seg === "backup" ||
+          seg === "snaps" ||
+          seg === "conjure-chats",
+      );
+  const disk = new Set(
+    (await listAppFiles(fs, clean, rootHandle)).filter(include),
+  );
+
+  const prevRaw =
+    opts.prevRaw !== undefined
+      ? opts.prevRaw
+      : await readAppFile(fs, clean, "__app.json", rootHandle);
+  const isFirst = prevRaw === null;
+  let prevFiles = [];
+  try {
+    const parsed = prevRaw ? JSON.parse(prevRaw) : null;
+    if (Array.isArray(parsed?.files)) prevFiles = parsed.files;
+  } catch {}
+
+  const entryPath = (e) => (typeof e === "string" ? e : e?.path);
+  const kept = [];
+  const listed = new Set();
+  const added = [];
+  const removed = [];
+  for (const e of prevFiles) {
+    const p = entryPath(e);
+    if (!p) continue;
+    if (disk.has(p)) {
+      listed.add(p);
+      kept.push(e);
+    } else {
+      removed.push(p);
+    }
+  }
+  for (const p of [...disk].filter((x) => !listed.has(x)).sort()) {
+    kept.push(p);
+    added.push(p);
+  }
+  kept.sort((a, b) => {
+    const pa = entryPath(a);
+    const pb = entryPath(b);
+    if (pa === "app.json") return -1;
+    if (pb === "app.json") return 1;
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
+  });
+  // 首次生成不 bump：0.1.0 就是应用的初始版本，建目录不算「更新」
+  const changed = !isFirst && (added.length > 0 || removed.length > 0);
+
+  const appRaw = await readAppFile(fs, clean, "app.json", rootHandle);
+  let meta = null;
+  try {
+    meta = appRaw ? JSON.parse(appRaw) : null;
+  } catch {}
+  let version;
+  if (changed && meta && typeof meta.version === "string") {
+    // 版本号只进不退：还原写回的 app.json 可能落后于还原前（已装副本拉到过
+    // 更高版本），从较高一侧起 bump 才能让副本感知到还原造成的文件变化
+    let base = meta.version;
+    if (
+      typeof opts.prevVersion === "string" &&
+      cmpVersion(opts.prevVersion, base) > 0
+    ) {
+      base = opts.prevVersion;
+    }
+    const next = bumpPatchVersion(base);
+    if (next) {
+      meta.version = next;
+      version = next;
+      const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+      const f = await base.get(rel + "app.json");
+      await f.write(JSON.stringify(meta, null, 2));
+    }
+  }
+
+  const manifest = {
+    name: meta?.displayName || meta?.name || clean,
+    icon: meta?.icon || "📦",
+    desc: meta?.description || "",
+    files: kept,
+  };
+  const output = JSON.stringify(manifest, null, 2) + "\n";
+  if (output !== (prevRaw ?? "")) {
+    const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
+    const f = await base.get(rel + "__app.json", { create: "file" });
+    await f.write(output);
+  }
+  return { changed, added, removed, ...(version ? { version } : {}) };
+}
+
+/**
  * 校验应用是否具备可运行的最小文件集。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ ready: boolean, missing: string[], files: string[] }>}
  */
-export async function validateApp(fs, appName, rootHandle) {
-  const files = await listAppFiles(fs, appName, rootHandle);
+export async function validateApp(fs, appName, rootHandle) {  const files = await listAppFiles(fs, appName, rootHandle);
   const missing = REQUIRED_FILES.filter(
     (f) => !files.some((p) => p === f || p.endsWith("/" + f)),
   );
@@ -612,6 +773,22 @@ export async function deleteVfsApp(fs, appName) {
 
 // 发布副本落点的常规应用命名空间（与安装 / 分享应用共用）
 export const PUBLISH_NAMESPACE = "mazmot-apps";
+
+/**
+ * 版本号比较（x.y.z 逐段数值比）：a>b 返回 1，a<b 返回 -1，相等返回 0。
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function cmpVersion(a, b) {
+  const pa = String(a || "").split(".").map(Number);
+  const pb = String(b || "").split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
 
 /**
  * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
@@ -812,9 +989,45 @@ export async function publishAppToHome(fs, mazmotStore, appName, rootHandle, opt
   return { version, hash, bumped: !unchanged, publishName };
 }
 
+/* ---------- 项目 AGENTS.md 的场景测试约定迁移 ----------
+ * agents-template 只在新项目写入「重要功能必须带场景测试」硬性约定；存量项目
+ * 的 AGENTS.md 是旧版，宿主在读取注入（ensureAgent → projectRules）前经
+ * withTestingRule 检测补齐——返回 null 表示无需变更，返回字符串为更新后全文。
+ */
+
+export const TESTING_RULE_MARK = "重要功能必须带场景测试";
+
+const TESTING_RULE_LINE =
+  '- **重要功能必须带场景测试**：新增或修改交互流程 / 数据存取 / 核心逻辑时，在 `client/test/` 下同步写或更新 .test.json 场景用例（步骤格式见宿主系统提示词「场景测试」节），并用 preview 工具 action=run-tests 跑到全绿才算完成；纯样式微调可豁免。后续需求迭代时这些用例会反复重跑，是防止改错文件的主要防线。';
+
+export function withTestingRule(raw) {
+  if (!raw || raw.includes(TESTING_RULE_MARK) || !raw.includes("## 硬性约定")) {
+    return null;
+  }
+  const lines = raw.split("\n");
+  // 插到「硬性约定」节末尾（下一个二级标题之前；找不到节尾就追加到文件末尾）
+  let insertAt = lines.length;
+  let inSection = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (!inSection && lines[i].startsWith("## 硬性约定")) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && lines[i].startsWith("## ")) {
+      insertAt = i;
+      break;
+    }
+  }
+  const gap = insertAt > 0 && lines[insertAt - 1].trim() !== "" ? "\n" : "";
+  lines.splice(insertAt, 0, gap + TESTING_RULE_LINE);
+  return lines.join("\n");
+}
+
 /* ---------- 数据备份管理 ----------
  * 备份落点：client/ 同层的 backup/<id>/ 目录（id 形如 backup-20260908-153012），
  * 把当前 client/ 全部文本文件按原相对路径复制进去；node_modules 等目录整体忽略。
+ * 只存发布与用户主动备份。回合快照与之同构但落在 snaps/<id>/（id 前缀 snap-），
+ * 服务变更卡 diff 与一键回滚，不进备份管理清单。
  */
 
 // 打包备份时忽略的目录名（路径任一层级命中即整段跳过）
@@ -827,6 +1040,15 @@ const backupId = (hash8) => {
 };
 // 备份 id = 时间戳 + 内容 hash 前 8 位（内容相同 → hash 相同 → 判重跳过）
 const isBackupId = (id) => /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(id);
+
+// 回合快照 id（snap- 前缀）：与备份同构，落 snaps/ 目录、不进备份管理清单
+const snapId = (hash8) => {
+  const d = new Date();
+  return `snap-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${hash8}`;
+};
+const isSnapId = (id) => /^snap-\d{8}-\d{6}-[0-9a-f]{8}$/.test(id);
+// 备份 / 快照通用的存储 id 校验（diff 与回滚按 id 前缀分流落点）
+const isStoredId = (id) => isBackupId(id) || isSnapId(id);
 
 // 扁平化文件清单（排序后 路径+内容 拼接）的 SHA-256 前 8 位 hex
 const backupHash = async (files) => {
@@ -852,13 +1074,15 @@ const concatBytes = (list) => {
   return out;
 };
 
-// 备份根目录定位：本地渠道为所选目录下的 backup/，虚拟渠道为 ai-apps/<name>/backup/
-const resolveBackupBase = async (fs, appName, rootHandle) => {
+// 备份 / 快照根目录定位：本地渠道为所选目录下的 backup/（快照 snaps/），
+// 虚拟渠道为 ai-apps/<name>/backup/（快照 .../snaps/）
+const resolveBackupBase = async (fs, appName, rootHandle, kind = "backup") => {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
-  if (rootHandle) return { base: rootHandle, prefix: "backup/" };
+  const dirName = kind === "snap" ? "snaps" : "backup";
+  if (rootHandle) return { base: rootHandle, prefix: `${dirName}/` };
   const rootDir = await ensureAppRoot(fs);
-  return { base: rootDir, prefix: `${clean}/backup/` };
+  return { base: rootDir, prefix: `${clean}/${dirName}/` };
 };
 
 // 递归收集 client/ 下全部文件（返回 { path: 相对 client/ 路径, item }），忽略 IGNORE 目录
@@ -912,14 +1136,20 @@ export async function currentAppFiles(fs, appName, rootHandle) {
 }
 
 /**
- * 读取一份备份目录内的全部文件（忽略 __meta.json，排序后的 { path, text } 清单）。
+ * 读取一份备份或回合快照目录内的全部文件（忽略 __meta.json，排序后的
+ * { path, text } 清单）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  */
 export async function readBackupFiles(fs, appName, backupId, rootHandle) {
-  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  if (!isStoredId(backupId)) throw new Error("备份 id 不合法");
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
-  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const { base, prefix } = await resolveBackupBase(
+    fs,
+    clean,
+    rootHandle,
+    isSnapId(backupId) ? "snap" : "backup",
+  );
   const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
   if (!dir || dir.kind !== "dir") throw new Error("备份不存在");
   const out = [];
@@ -937,38 +1167,43 @@ export async function readBackupFiles(fs, appName, backupId, rootHandle) {
 }
 
 /**
- * 创建备份：把当前 client/ 打包复制到同层 backup/<id>/ 目录。
- * id 含内容 hash（对排序后的 路径+内容 清单算 SHA-256）；已存在相同内容
- * 的备份时跳过写入（幂等，无改动反复点备份不会产生重复备份）。
+ * 创建备份 / 回合快照：把当前 client/ 打包复制到同层 backup/<id>/（快照为
+ * snaps/<id>/）目录。id 含内容 hash（对排序后的 路径+内容 清单算 SHA-256）；
+ * 同存储下已存在相同内容的条目时跳过写入（幂等，无改动反复点备份不会产生
+ * 重复备份）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @param {Object} [opts] { snapshot: true } 创建回合快照（snap- id，落 snaps/，
+ *   不进备份管理清单）
  * @returns {Promise<{ id: string, files: number, bytes: number, skipped: boolean }>}
  */
 export async function createAppBackup(fs, appName, rootHandle, opts = {}) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
+  const isSnap = opts.snapshot === true;
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
   const collected = await collectClientFiles(base, rel);
   // 先读出内容参与 hash：路径 + 内容 扁平化排序后指纹
   const files = [];
   for (const f of collected) files.push({ path: f.path, text: await f.item.text() });
   const hash8 = await backupHash(files);
-  const { base: bBase, prefix } = await resolveBackupBase(fs, clean, rootHandle);
-  const existing = await listAppBackups(fs, clean, rootHandle);
+  const { base: bBase, prefix } = await resolveBackupBase(
+    fs,
+    clean,
+    rootHandle,
+    isSnap ? "snap" : "backup",
+  );
+  const existing = isSnap
+    ? await listAppSnaps(fs, clean, rootHandle)
+    : await listAppBackups(fs, clean, rootHandle);
   const hit = existing.find((b) => b.id.endsWith(`-${hash8}`));
   if (hit) return { id: hit.id, files: files.length, bytes: 0, skipped: true };
 
-  const id = backupId(hash8);
+  const id = isSnap ? snapId(hash8) : backupId(hash8);
   let bytes = 0;
   for (const f of files) {
     const dest = await bBase.get(`${prefix}${id}/${f.path}`, { create: "file" });
     await dest.write(f.text);
     bytes += new Blob([f.text]).size;
-  }
-  // 回合自动快照：__meta.json 标记 auto（备份列表展示「自动」徽标用；
-  // 后续 rename / setNote 照常合并写入，标记保留）
-  if (opts.auto) {
-    const metaFile = await bBase.get(`${prefix}${id}/__meta.json`, { create: "file" });
-    await metaFile.write(JSON.stringify({ auto: true }));
   }
   return { id, files: files.length, bytes, skipped: false };
 }
@@ -987,7 +1222,7 @@ const readBackupMeta = async (dir) => {
 /**
  * 列出已有备份（backup/ 下的目录，新的在前）。
  * 每项带 label（自定义名称）与 note（备注），均存目录内 __meta.json；
- * auto 标记回合自动快照（UI「自动」徽标）。
+ * auto 标记历史版本遗留的回合自动快照（供 sweepLegacyAutoBackups 清扫）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ id: string, label: string, note: string, auto?: boolean }[]>}
  */
@@ -1010,6 +1245,41 @@ export async function listAppBackups(fs, appName, rootHandle) {
     });
   }
   return out.sort((a, b) => (a.id < b.id ? 1 : -1));
+}
+
+/**
+ * 列出回合快照（snaps/ 下的目录，新的在前；不进备份管理清单）。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<{ id: string }[]>}
+ */
+export async function listAppSnaps(fs, appName, rootHandle) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) return [];
+  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle, "snap");
+  const dir = await base.get(prefix.replace(/\/+$/, "")).catch(() => null);
+  if (!dir || dir.kind !== "dir") return [];
+  const out = [];
+  for await (const key of dir.keys()) {
+    const item = await dir.get(key);
+    if (item?.kind === "dir" && isSnapId(key)) out.push({ id: key });
+  }
+  return out.sort((a, b) => (a.id < b.id ? 1 : -1));
+}
+
+/**
+ * 回合快照清理：只保留最近 keep 个（id 含时间戳，字典序即时间序，list 新的
+ * 在前）。供仓库每回合快照后调用，防 snaps/ 无限膨胀。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<number>} 清理掉的快照数
+ */
+export async function pruneAppSnaps(fs, appName, rootHandle, keep = 10) {
+  const list = await listAppSnaps(fs, appName, rootHandle);
+  let removed = 0;
+  for (const b of list.slice(keep)) {
+    await deleteAppBackup(fs, appName, b.id, rootHandle);
+    removed++;
+  }
+  return removed;
 }
 
 // 写备份 meta 的单个字段（保留其它字段）；校验备份 id 与存在性
@@ -1056,13 +1326,14 @@ export async function setBackupNote(fs, appName, backupId, note, rootHandle) {
 }
 
 /**
- * 还原备份：把 backup/<id>/ 的内容写回 client/（先清空 client/，__meta.json 不参与还原）。
+ * 还原备份 / 回合快照（一键回滚用）：把 backup/<id>/（或 snaps/<id>/）的
+ * 内容写回 client/（先清空 client/，__meta.json 不参与还原）。
  * 当前 client/ 内容与该备份一致（hash 相同）时不做任何写入，返回 unchanged。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  * @returns {Promise<{ restored: boolean, reason?: "unchanged", files: number, bytes?: number }>}
  */
 export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
-  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  if (!isStoredId(backupId)) throw new Error("备份 id 不合法");
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   const { base, rel } = await resolveBaseDir(fs, clean, rootHandle);
@@ -1075,7 +1346,22 @@ export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
     return { restored: false, reason: "unchanged", files: current.length };
   }
 
-  const { base: bBase, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  // 还原前基线：下面会清空重写 client/，之后清单重对齐必须以「还原前」的
+  // 清单与版本为基线——拿备份内的旧清单对比，会让「还原删了文件」永远
+  // 不 bump，已安装副本感知不到还原造成的文件变化
+  const prevManifestRaw = await readAppFile(fs, clean, "__app.json", rootHandle);
+  const prevAppRaw = await readAppFile(fs, clean, "app.json", rootHandle);
+  let prevVersion = null;
+  try {
+    prevVersion = JSON.parse(prevAppRaw)?.version ?? null;
+  } catch {}
+
+  const { base: bBase, prefix } = await resolveBackupBase(
+    fs,
+    clean,
+    rootHandle,
+    isSnapId(backupId) ? "snap" : "backup",
+  );
   const bDir = await bBase.get(`${prefix}${backupId}`).catch(() => null);
   if (!bDir || bDir.kind !== "dir") throw new Error("备份不存在");
 
@@ -1101,20 +1387,55 @@ export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
     }
   };
   await walk(bDir, "");
+  // 覆盖还原后文件集可能变化（旧备份无 __app.json / 文件集不同步）：
+  // 以还原前的清单与版本为基线重新对齐安装清单（version 增删即 bump，
+  // 与回合收尾同语义）
+  try {
+    await syncAppManifest(fs, clean, rootHandle, {
+      prevRaw: prevManifestRaw,
+      ...(typeof prevVersion === "string" ? { prevVersion } : {}),
+    });
+  } catch (err) {
+    console.warn("[builder] 还原后同步 __app.json 失败：", err);
+  }
   return { restored: true, files, bytes };
 }
 
 /**
- * 删除一份备份（递归删除 backup/<id>/ 目录）。
+ * 删除一份备份或回合快照（递归删除 backup/<id>/ 或 snaps/<id>/ 目录）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
  */
 export async function deleteAppBackup(fs, appName, backupId, rootHandle) {
-  if (!isBackupId(backupId)) throw new Error("备份 id 不合法");
+  if (!isStoredId(backupId)) throw new Error("备份 id 不合法");
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
-  const { base, prefix } = await resolveBackupBase(fs, clean, rootHandle);
+  const { base, prefix } = await resolveBackupBase(
+    fs,
+    clean,
+    rootHandle,
+    isSnapId(backupId) ? "snap" : "backup",
+  );
   const dir = await base.get(`${prefix}${backupId}`).catch(() => null);
   if (dir && dir.kind === "dir") await dir.remove();
+}
+
+/**
+ * 清扫历史版本混进 backup/ 的回合自动快照（__meta.json 带 auto 标记且未被
+ * 命名 / 加备注；被发布流程复用并标注过的视为正式备份保留）。现行版本的回合
+ * 快照存 snaps/ 目录，backup/ 只保留发布与用户主动备份。
+ * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @returns {Promise<number>} 清扫掉的目录数
+ */
+export async function sweepLegacyAutoBackups(fs, appName, rootHandle) {
+  const list = await listAppBackups(fs, appName, rootHandle);
+  let removed = 0;
+  for (const b of list) {
+    if (b.auto && !b.label && !b.note) {
+      await deleteAppBackup(fs, appName, b.id, rootHandle);
+      removed++;
+    }
+  }
+  return removed;
 }
 
 /* ---------- 本地项目导入与对话快照 ----------
@@ -1124,6 +1445,15 @@ export async function deleteAppBackup(fs, appName, backupId, rootHandle) {
  */
 
 export const PROJECT_CHAT_FILE = "conjure-chats.json";
+
+/** 对话快照目录（新版布局：index.json 会话列表 + 每会话一个 <sid>.json） */
+export const PROJECT_CHAT_DIR = "conjure-chats";
+
+/** sid → 快照文件名（sid 中的非法字符过滤掉） */
+const chatSidFile = (sid) => {
+  const safe = String(sid || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return safe ? `${safe}.json` : null;
+};
 
 /** 探测目录是否为既有项目：存在 client/app.json 即是，返回其元数据（否则 null） */
 export async function detectLocalProject(rootHandle) {
@@ -1137,14 +1467,96 @@ export async function detectLocalProject(rootHandle) {
   }
 }
 
-/** 把对话快照写入项目目录（JSON 文本，放 client/ 同层） */
+/**
+ * 把对话快照写入项目目录（client/ 同层的 conjure-chats/，目录化布局）：
+ *   conjure-chats/index.json     会话列表元数据（不含消息，体量恒定）
+ *   conjure-chats/<sid>.json     每会话一个文件（messages + thread）
+ * data.onlySid 提供时只重写该会话的文件（回合收尾的增量场景，其余会话
+ * 文件不动、也不做孤儿清理——它们不在本次写入集合内）；缺省为全量模式，
+ * 会按 index 的会话列表清理已删除会话的孤儿文件。
+ */
 export async function saveProjectChats(rootHandle, data) {
-  const f = await rootHandle.get(PROJECT_CHAT_FILE, { create: "file" });
-  await f.write(JSON.stringify(data, null, 2));
+  const dir = await rootHandle.get(PROJECT_CHAT_DIR, { create: "dir" });
+  const index = {
+    version: 2,
+    app: data.app,
+    sessionOrder: data.sessionOrder ?? null,
+    sessions: data.sessions || [],
+    savedAt: Date.now(),
+  };
+  const idxFile = await dir.get("index.json", { create: "file" });
+  await idxFile.write(JSON.stringify(index, null, 2));
+
+  const onlySid = data.onlySid || null;
+  const targets = onlySid
+    ? (data.sessions || []).filter((s) => s.id === onlySid)
+    : data.sessions || [];
+  const alive = new Set();
+  for (const s of targets) {
+    const fname = chatSidFile(s.id);
+    if (!fname) continue;
+    alive.add(fname);
+    const payload = {
+      id: s.id,
+      messages: data.messages?.[s.id] || [],
+      thread: data.threads?.[s.id] || [],
+    };
+    const f = await dir.get(fname, { create: "file" });
+    await f.write(JSON.stringify(payload, null, 2));
+  }
+  if (!onlySid) {
+    // 全量模式：按会话列表清理已删除会话的孤儿文件
+    const keys = [];
+    for await (const key of dir.keys()) keys.push(key);
+    for (const key of keys) {
+      if (key === "index.json" || alive.has(key)) continue;
+      const f = await dir.get(key).catch(() => null);
+      if (f && f.kind === "file") await f.remove();
+    }
+  }
 }
 
-/** 读取项目目录的对话快照，缺失 / 损坏返回 null */
+/**
+ * 读取项目目录的对话快照，缺失 / 损坏返回 null。
+ * 目录格式优先；index.json 不存在时回退旧版单文件 conjure-chats.json
+ * （存量项目只读兼容——导入后首次回合收尾即写入新目录，旧文件可手动删除）。
+ * 返回聚合结构 { sessions, messages, threads, sessionOrder, app, savedAt }，
+ * 与旧版单文件结构同形，调用方无感。
+ */
 export async function loadProjectChats(rootHandle) {
+  try {
+    const dir = await rootHandle.get(PROJECT_CHAT_DIR);
+    if (dir && dir.kind === "dir") {
+      const idxFile = await dir.get("index.json");
+      if (idxFile && idxFile.kind === "file") {
+        const index = JSON.parse(await idxFile.text());
+        const sessions = index.sessions || [];
+        const messages = {};
+        const threads = {};
+        for (const s of sessions) {
+          const fname = chatSidFile(s.id);
+          if (!fname) continue;
+          try {
+            const f = await dir.get(fname);
+            if (f && f.kind === "file") {
+              const one = JSON.parse(await f.text());
+              messages[s.id] = Array.isArray(one.messages) ? one.messages : [];
+              threads[s.id] = Array.isArray(one.thread) ? one.thread : [];
+            }
+          } catch {}
+        }
+        return {
+          version: 2,
+          app: index.app,
+          sessionOrder: index.sessionOrder ?? null,
+          sessions,
+          messages,
+          threads,
+          savedAt: index.savedAt,
+        };
+      }
+    }
+  } catch {}
   try {
     const f = await rootHandle.get(PROJECT_CHAT_FILE);
     if (!f || f.kind !== "file") return null;
@@ -1165,6 +1577,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
    - pages/home.html —— 首页页面模块
+   - client/ 下的 __app.json 由宿主自动维护（应用元数据与文件清单，版本随文件增删自动递增）——**禁止创建、修改或删除它**，list_files/read_file 看到它时跳过即可。
 3. 开发调试闭环（必须，不能只凭代码推断「应该没问题」）：
    - 尽早首跑：写完入口骨架（index.html / app-config.js / 首个页面）就先用 preview 工具（action=app，appName 必填）跑一次，确认应用能打开、骨架无报错，再继续写功能——不要全部写完才第一次运行，越早看到真实运行越早暴露问题；
    - 每完成一层功能（一个页面 / 一块交互 / 一组数据逻辑）都 write_file 后用 preview action=app 刷新实际运行验证，小步推进；
@@ -1181,7 +1594,25 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，格式见 \`pitfalls/README.md\`），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件；
    - **AGENTS.md** —— 已预写通用规范，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动；
    - 骨架里的 \`<!-- skeleton\` 首行注释标记与「待填」「暂无记录」占位必须全部被真实内容替换，不能留着占位交差。
-6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）；④ 场景测试全绿（见下方「场景测试」节：新增或修改了重要功能就必须有对应用例并跑到通过）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+
+## 场景测试（client/test/*.test.json，防迭代回归）
+重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，完成前用 preview 的 action=run-tests 跑到全绿（无测试的应用第一次加重要功能时就建立 test/ 目录）。用例是 JSON 文件：
+\`\`\`json
+{ "name": "新增任务", "desc": "多行输入解析标题/描述、空输入禁用、刷新持久化", "steps": [
+  { "eval": "T.wipe = async () => { /* 清空自身存储 */ }; await T.wipe();" },
+  { "reload": true },
+  { "click": ".add-btn" },
+  { "type": { "selector": ".task-input", "value": "学英语" } },
+  { "press": "Enter" },
+  { "wait": { "selector": ".task-item" } },
+  { "expect": { "text": ".task-item", "contains": "学英语" } },
+  { "expect": { "count": ".task-item", "equals": 1 } },
+  { "expect": { "consoleErrors": 0 } }
+] }
+\`\`\`
+步骤动作：click（选择器）/ type（{selector,value}）/ press（键名，发给当前焦点元素）/ wait（毫秒数，或 {selector} / {code} 轮询等条件成立——异步渲染优先用它而不是定值睡眠）/ eval（异步函数体：抛错或 return false 即失败）/ reload（重载应用页）/ expect（{text+contains|equals}、{count+equals}、{consoleErrors: 最大新增错误数}）。
+写用例要点：**name 用 ≤12 字的短功能名**（如「新增任务」），细节说明放 desc 字段；一个文件一条主流程，文件名即功能名（client/test/add-task.test.json）；开头先用 eval 清空自身存储再 reload，保证可重复执行（应用自己的存储键你清楚）；选择器以真实代码为准，拿不准先 action=dom 取证。**eval 步骤共享上下文 T**：代码作为异步函数体执行，辅助函数与中间状态挂在 T 上（如 \`T.clickText = (t) => {...}\`），同一用例内后续步骤直接用、**不要重复定义**（reload 后 T 随页面重置）；需要断言值显式 return；选择器可用 $ / $$（穿 shadow DOM）。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）

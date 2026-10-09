@@ -606,9 +606,17 @@
           const injected = injectAgent(html, "user-abc");
           const injectedTwice = injectAgent(injected, "user-abc");
           const stripped = stripAgent(injected);
-          const headInjected = /inject\.js[^>]*><\/script><\/head>/.test(injected);
+          // 注入块 = guest importmap + 代理脚本两段（能力桥起），落在 </head> 前
+          const injectIdx = injected.indexOf("inject.js");
+          const headInjected =
+            injectIdx > -1 &&
+            injectIdx < injected.indexOf("</head>") &&
+            /<script[^>]*type="importmap"[^>]*data-conjure-guest/.test(injected) &&
+            /<script[^>]*src="[^"]*inject\.js[^"]*"[^>]*data-conjure-id="user-abc"/.test(injected);
           const noHead = injectAgent("<html><body>x</body></html>", "u1");
-          const bodyInjected = /inject\.js[^>]*><\/script><\/body>/.test(noHead);
+          const noHeadIdx = noHead.indexOf("inject.js");
+          const bodyInjected =
+            noHeadIdx > -1 && noHeadIdx < noHead.indexOf("</body>");
           const hashAligned =
             (await sha256Hex(stripped)) === (await sha256Hex(html));
           const hasModuleType = /type="module"/.test(injected);

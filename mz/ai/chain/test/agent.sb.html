@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mz/ai/chain 记忆落盘测试</title>
+    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!--
+      测试 mz/ai/chain/agent.js 的记忆增量落盘：
+      - 中断（异常抛出）后记忆保留本回合用户请求 + 已完成的工具轮
+        （此前只在最终回答时落盘，中断即全部丢失——「继续」会回到上个完整回合）
+      - 「继续」新开 agent 能从 checkpointer 加载断点上下文
+      - 正常收尾与无 threadId 路径
+    -->
+
+    <sb-test name="中断不丢记忆：用户请求与已完成工具轮都在">
+      <template>
+        <script type="module">
+          const { createAgent } = await import("/mz/ai/chain/agent.js");
+          const { tool } = await import("/mz/ai/chain/tools.js");
+          {
+            try {
+              const memory = new Map();
+              const setCalls = [];
+              const checkpointer = {
+                get: async (id) =>
+                  (memory.get(id) ?? []).map((m) => structuredClone(m)),
+                set: async (id, msgs) => {
+                  setCalls.push(id);
+                  memory.set(id, structuredClone(msgs));
+                },
+              };
+              // 助手桩：第 1 步发起工具调用，第 2 步抛错（模拟手动停止 / 中断）
+              let call = 0;
+              const abortingAssistant = {
+                async chat() {
+                  call++;
+                  if (call === 1) {
+                    return {
+                      content: "",
+                      toolCalls: [
+                        {
+                          id: "c1",
+                          function: { name: "echo", arguments: '{"x":1}' },
+                        },
+                      ],
+                    };
+                  }
+                  throw new Error("已停止生成");
+                },
+              };
+              const echoTool = tool(async () => "ok", {
+                name: "echo",
+                description: "回声",
+              });
+              const agent = createAgent({
+                assistant: abortingAssistant,
+                tools: [echoTool],
+                checkpointer,
+              });
+              let aborted = false;
+              try {
+                await agent.chat({
+                  messages: [{ role: "user", content: "待办事项允许拖拽" }],
+                  threadId: "t-abort",
+                });
+              } catch {
+                aborted = true;
+              }
+              const saved = memory.get("t-abort") ?? [];
+              const roles = saved.map((m) => m.role);
+              const checks = {
+                aborted,
+                requestKept: saved.some(
+                  (m) =>
+                    m.role === "user" && m.content === "待办事项允许拖拽",
+                ),
+                toolRoundKept:
+                  roles.includes("assistant") &&
+                  saved.find((m) => m.role === "assistant")?.tool_calls
+                    ?.length === 1 &&
+                  roles.includes("tool"),
+                // 落盘断点合法：末尾是齐平的 tool 结果（input + 工具轮各一次）
+                persistedTwice: setCalls.length === 2,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, roles },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="继续接断点：新 agent 从 checkpointer 加载中断回合">
+      <template>
+        <script type="module">
+          const { createAgent } = await import("/mz/ai/chain/agent.js");
+          const { tool } = await import("/mz/ai/chain/tools.js");
+          {
+            try {
+              const memory = new Map();
+              const checkpointer = {
+                get: async (id) =>
+                  (memory.get(id) ?? []).map((m) => structuredClone(m)),
+                set: async (id, msgs) => memory.set(id, structuredClone(msgs)),
+              };
+              const echoTool = tool(async () => "ok", {
+                name: "echo",
+                description: "回声",
+              });
+              // 回合 1：工具轮后中断
+              let call = 0;
+              const abortingAssistant = {
+                async chat() {
+                  call++;
+                  if (call === 1) {
+                    return {
+                      content: "",
+                      toolCalls: [
+                        {
+                          id: "c1",
+                          function: { name: "echo", arguments: '{"x":1}' },
+                        },
+                      ],
+                    };
+                  }
+                  throw new Error("已停止生成");
+                },
+              };
+              const agent1 = createAgent({
+                assistant: abortingAssistant,
+                tools: [echoTool],
+                checkpointer,
+              });
+              try {
+                await agent1.chat({
+                  messages: [{ role: "user", content: "待办事项允许拖拽" }],
+                  threadId: "t-resume",
+                });
+              } catch {}
+
+              // 回合 2：「继续」——捕获模型实际看到的上下文
+              let sawMessages = [];
+              const resumeAssistant = {
+                async chat({ messages }) {
+                  sawMessages = messages;
+                  return { content: "接着做拖拽" };
+                },
+              };
+              const agent2 = createAgent({
+                assistant: resumeAssistant,
+                tools: [echoTool],
+                checkpointer,
+              });
+              await agent2.chat({
+                messages: [{ role: "user", content: "继续" }],
+                threadId: "t-resume",
+              });
+              const saved = memory.get("t-resume") ?? [];
+              const checks = {
+                breakpointVisible: sawMessages.some(
+                  (m) =>
+                    m.role === "user" && m.content === "待办事项允许拖拽",
+                ),
+                toolResultVisible: sawMessages.some((m) => m.role === "tool"),
+                // 完整记忆：中断回合 + 继续 + 最终回答，wire 结构合法
+                finalShape:
+                  JSON.stringify(saved.map((m) => m.role)) ===
+                  JSON.stringify([
+                    "user",
+                    "assistant",
+                    "tool",
+                    "user",
+                    "assistant",
+                  ]),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, saw: sawMessages.map((m) => m.role) },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="正常收尾与无 threadId：落盘次数符合预期">
+      <template>
+        <script type="module">
+          const { createAgent } = await import("/mz/ai/chain/agent.js");
+          {
+            try {
+              const memory = new Map();
+              let setCalls = 0;
+              const checkpointer = {
+                get: async (id) => memory.get(id) ?? [],
+                set: async (id, msgs) => {
+                  setCalls++;
+                  memory.set(id, msgs);
+                },
+              };
+              // 无工具直接回答：输入落盘 + 最终落盘 = 2 次
+              const plain = createAgent({
+                assistant: {
+                  chat: async () => ({ content: "hi" }),
+                },
+                checkpointer,
+              });
+              await plain.chat({
+                messages: [{ role: "user", content: "你好" }],
+                threadId: "t-plain",
+              });
+              const saved = memory.get("t-plain") ?? [];
+
+              // 无 threadId：完全不落盘
+              let bareSets = 0;
+              const bareCheckpointer = {
+                get: async () => [],
+                set: async () => {
+                  bareSets++;
+                },
+              };
+              const bare = createAgent({
+                assistant: { chat: async () => ({ content: "ok" }) },
+                checkpointer: bareCheckpointer,
+              });
+              await bare.chat({ messages: [{ role: "user", content: "嗨" }] });
+
+              const checks = {
+                plainShape:
+                  JSON.stringify(saved.map((m) => m.role)) ===
+                  JSON.stringify(["user", "assistant"]),
+                plainSetTwice: setCalls === 2,
+                bareNoPersist: bareSets === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

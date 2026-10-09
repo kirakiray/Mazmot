@@ -180,11 +180,19 @@ export async function sha256Hex(text) {
  * 构造文件清单（path + sha256），供增量同步比对。
  * 清单本身远小于文件内容（每条约 80 字节），可单条发送。
  * @param {Array<{path: string, text: string}>} files
+ * @param {((done: number, total: number) => void)} [onProgress] 逐文件完成回调
  * @returns {Promise<Array<{path: string, hash: string}>>}
  */
-export async function buildManifest(files) {
+export async function buildManifest(files, onProgress) {
+  let done = 0;
+  const total = files.length;
   return Promise.all(
-    files.map(async (f) => ({ path: f.path, hash: await sha256Hex(f.text) })),
+    files.map(async (f) => {
+      const hash = await sha256Hex(f.text);
+      done++;
+      onProgress?.(done, total);
+      return { path: f.path, hash };
+    }),
   );
 }
 
@@ -436,9 +444,12 @@ export function createReliableLink({
     const prev = sendQueues.get(queueKey) ?? Promise.resolve();
     const next = prev.then(task, task);
     sendQueues.set(queueKey, next);
+    // 清理链必须自吞 rejection：next 被 dispose / ACK 超时拒绝时，finally 的
+    // 派生 promise 会透传 rejection 且无人接（业务侧接的是 next 本身，不是
+    // 这条清理链）→ Uncaught (in promise)
     next.finally(() => {
       if (sendQueues.get(queueKey) === next) sendQueues.delete(queueKey);
-    });
+    }).catch(() => {});
     return next;
   };
 
