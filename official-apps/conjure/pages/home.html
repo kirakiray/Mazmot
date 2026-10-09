@@ -259,7 +259,7 @@
           </st-icon-button>
           <st-icon-button
             class="test-entry"
-            attr:title="测试管理（client/test/ 场景用例）"
+            title="测试管理（client/test/ 场景用例）"
             on:click="openTestDrawer"
           >
             <n-icon icon="mdi:flask-outline"></n-icon>
@@ -1468,7 +1468,7 @@
         <o-if :value="tests.length === 0">
           <div class="panel-empty">还没有场景用例。让 AI 实现重要功能时会自动在 client/test/ 下创建 .test.json 用例</div>
         </o-if>
-        <o-if :value="tests.length > 0 && Object.keys(testResults).length === 0">
+        <o-if :value="showTestEmptyHint()">
           <div class="panel-empty">用例还没有跑过，点上方「▶ 跑全部」</div>
         </o-if>
         <o-fill :value="tests" fill-key="file">
@@ -3035,6 +3035,12 @@
           // 变更卡上的场景测试 chip：仅最后一个带改动的回合 + 存在测试结果
           showTestChip(msg) {
             return this.turnActionsAvailable(msg) && !!this.testLastRun;
+          },
+
+          // 测试抽屉「有用例但没跑过」空态（模板表达式里禁 > / && / Object.*——
+          // 序列化后变实体残片，new Function 编译抛 SyntaxError，实测踩坑）
+          showTestEmptyHint() {
+            return this.tests.length > 0 && Object.keys(this.testResults || {}).length === 0;
           },
 
           testChipText() {

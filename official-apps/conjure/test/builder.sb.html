@@ -1325,6 +1325,7 @@
             currentAppHash,
             currentAppFiles,
             readBackupFiles,
+            listAppSnaps,
           } from "../lib/builder.js";
           import { createBuilderStore } from "../lib/builder-store.js";
           import {
@@ -1379,18 +1380,18 @@
               });
               await store.init({});
 
-              // 轮 1：写 index.html；回合结束 driveTurn 异步刷新备份清单
-              //（fire-and-forget，轮询等待其完成——真实 UI 由 patch 驱动按钮）
+              // 轮 1：写 index.html。回合开始快照已迁 snaps/（不进备份清单，
+              // 备份管理只存发布与用户主动备份）→ 轮后清单应为空、snaps/ 里
+              // 恰有一条 snap- 快照（等一小段让 fire-and-forget 收尾跑完）
               await store.send("做个演示应用");
               const app = store.state.currentAppName;
               const st = store.state;
-              for (let i = 0; i < 100 && st.backups.length === 0; i++) {
-                await new Promise((r) => setTimeout(r, 20));
-              }
-              // 回合开始自动快照 = 回合前骨架态，当前内容（含 index.html）与它不同
-              // → 无任何备份的 current 标记 → 按钮应可点
+              await new Promise((r) => setTimeout(r, 300));
+              const snapsAfterTurn = await listAppSnaps(fsFake, st.currentAppName);
               const notBackedUp =
-                st.backups.length >= 1 && !st.backups.some((b) => b.current);
+                st.backups.length === 0 &&
+                snapsAfterTurn.length === 1 &&
+                snapsAfterTurn[0].id.startsWith("snap-");
 
               // 智能备份（打包 + AI 标题备注）→ 当前内容出现 current 项 → 已备份态
               const res = await store.smartBackup();
@@ -1402,7 +1403,7 @@
               const stillBacked = st.backups.some((b) => b.current);
 
               const checks = {
-                listRefreshedAfterTurn: notBackedUp,
+                turnSnapInSnapsOnly: notBackedUp,
                 smartBackupCreated: !!res && !res.skipped,
                 currentMarked: backedUp && labeled === "初始版本",
                 reskipped: !!res2?.skipped && stillBacked,

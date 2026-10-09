@@ -212,14 +212,16 @@
               const removed2 = await sweepLegacyAutoBackups(fs, "demo");
               const afterSweep2 = await listAppBackups(fs, "demo");
 
-              // prune：只保留最近 10 份快照（造 12 份不同内容，新的在前）
-              const ids = [];
+              // prune：只保留最近 10 份快照（造 12 份不同内容，新的在前）。
+              // case 开头的 snap 也在 snaps/ 里——成员断言按全期创建集合比对
+              //（同秒创建的 id 只有 hash 尾可分先后，不赌被 prune 留下的是谁）
+              const ids = new Set([snap.id]);
               for (let i = 0; i < 12; i++) {
                 await writeAppFile(fs, "demo", "index.html", `<html>v${i}</html>`);
                 const s = await createAppBackup(fs, "demo", undefined, {
                   snapshot: true,
                 });
-                if (!ids.includes(s.id)) ids.push(s.id);
+                ids.add(s.id);
               }
               await pruneAppSnaps(fs, "demo");
               const snapList = await listAppSnaps(fs, "demo");
@@ -245,7 +247,7 @@
                 // 同秒创建的快照 id 只有 hash 尾可分先后，断言保留数量与
                 // 成员（不赌同秒内的排序）
                 prunedTo10: snapList.length === 10,
-                keptFromCreated: snapList.every((b) => ids.includes(b.id)),
+                keptFromCreated: snapList.every((b) => ids.has(b.id)),
               };
               return {
                 assert: Object.values(checks).every(Boolean),
