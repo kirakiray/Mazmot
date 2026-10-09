@@ -322,8 +322,9 @@
               const checks = {
                 backupId: /^backup-\d{8}-\d{6}-[0-9a-f]{8}$/.test(res.id),
                 // createAppDir 预写 4 份文档骨架（AGENTS/CONTEXT/MEMORY/
-                // pitfalls/README）+ app.json + 本用例写的 2 个文件 = 7
-                packed: res.files === 7 && res.bytes > 0,
+                // pitfalls/README）+ app.json + __app.json 安装清单
+                // + 本用例写的 2 个文件 = 8
+                packed: res.files === 8 && res.bytes > 0,
                 listed: list.length === 1 && list[0].id === res.id,
                 noNodeModules: !(
                   await listVirtualPaths(await root.get("demo/backup"))
@@ -363,12 +364,14 @@
               checks.curFilesSorted =
                 // collectClientFiles 按纯字典序排序（备份指纹要稳定即可，
                 // 无 app.json 优先规则）：大写开头的文档骨架（AGENTS/CONTEXT/
-                // MEMORY）排在 app.json 等小写路径前面，整体清单比对锁定
+                // MEMORY）在前，"__app.json"（"_" > 大写字母、< 小写字母）
+                // 排 app.json 之前，整体清单比对锁定
                 curFiles.map((f) => f.path).join("\n") ===
                 [
                   "AGENTS.md",
                   "CONTEXT.md",
                   "MEMORY.md",
+                  "__app.json",
                   "app.json",
                   "index.html",
                   "pages/home.html",
@@ -1091,6 +1094,7 @@
             createAppBackup,
             restoreAppBackup,
             listAppBackups,
+            syncAppManifest,
           } from "../lib/builder.js";
           import { createVirtualFs } from "../lib/test-space/virtual-space.js";
           {
@@ -1106,6 +1110,10 @@
                 "pages/home.html",
                 "<template page>v1</template>",
               );
+              // 真实流程里清单在回合收尾（finishTurn）同步、备份发生在其后；
+              // 测试照此收口，否则备份会封存过期清单，还原后的清单重对齐
+              // 会 bump 版本、破坏第二次还原的 unchanged 检测
+              await syncAppManifest(fsFake, "demo");
               const backup = await createAppBackup(fsFake, "demo");
 
               // 之后改动：新增文件 + 修改文件
@@ -1131,8 +1139,9 @@
               }
 
               const checks = {
-                // app.json + 预写的 4 份文档骨架 + index.html + pages/home.html = 7
-                restored: restored.restored && restored.files === 7,
+                // app.json + 预写 4 份文档骨架 + __app.json 清单
+                // + index.html + pages/home.html = 8
+                restored: restored.restored && restored.files === 8,
                 reverted: v1 === "<html>v1</html>",
                 extraRemoved: extraGone === null,
                 pageBack: page === "<template page>v1</template>",
@@ -1537,7 +1546,11 @@
                 mazmotRegistered: ((await mazmotStore.getItem("apps")) || []).some(
                   (a) => a.name === "my-app" && a.source === "local",
                 ),
-                chatFileWritten: (await root.get("conjure-chats.json")) !== null,
+                // 目录化布局：index.json + 每会话一个 <sid>.json（0.7.9 起不再
+                // 写旧版单文件 conjure-chats.json）
+                chatFileWritten:
+                  (await root.get("conjure-chats/index.json")) !== null &&
+                  (await root.get("conjure-chats/a1.json")) !== null,
               };
               return {
                 assert: Object.values(checks).every(Boolean),
@@ -2459,7 +2472,11 @@
               const chunks = [];
               const chatRes = await capHooks.onCapRequest({
                 cap: "ai.chat",
-                args: { messages: [{ role: "user", content: "hi" }], thinking: true },
+                args: {
+                  messages: [{ role: "user", content: "hi" }],
+                  thinking: true,
+                  model: "guest-wanted", // guest 指定的模型必须被忽略（主容器决定）
+                },
                 onChunk: (c) => chunks.push(c),
                 signal: new AbortController().signal,
               });
@@ -2484,9 +2501,16 @@
 
               const checks = {
                 hookWired: typeof capHooks.onCapRequest === "function",
-                chatStreams: chunks.length === 2 && chunks[0].delta === "你" && chunks[1].deltaReasoning === "想",
+                // broker 逐帧透传 {delta, deltaReasoning}（增量语义，guest 侧自行累计）
+                chatStreams:
+                  chunks.length === 2 &&
+                  chunks[0].delta === "你" &&
+                  chunks[0].deltaReasoning === "想" &&
+                  chunks[1].delta === "好" &&
+                  chunks[1].deltaReasoning === "",
                 chatArgsOk: chatOpts.messages?.[0]?.content === "hi" && chatOpts.thinking === true,
-                chatNoModel: !("model" in chatOpts), // 模型不开放 guest 指定，pickAssistant 无选中时不传
+                // 模型由主容器决定（自动模式会静默拉清单），guest 指定值不透传
+                chatNoModel: chatOpts.model !== "guest-wanted",
                 chatResOk: chatRes.content === "你好" && chatRes.reasoningContent === "想" && chatRes.model === "fake-1",
                 modelsOk: modelsRes.models?.join() === "m1,m2",
                 unknownRejected: unknownErr.includes("未知能力"),

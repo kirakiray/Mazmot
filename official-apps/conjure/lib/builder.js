@@ -570,10 +570,15 @@ export async function listAppFiles(fs, appName, rootHandle) {
  * 调用时机：createAppDir（初始生成）/ finishTurn（回合收尾，有文件写入时）/
  * restoreAppBackup（覆盖还原后）/ adoptNewApp 非迁移分支（另建的新应用）。
  * @param {Object} [rootHandle] 本地目录渠道的项目根目录句柄（可选）
+ * @param {Object} [opts] 覆盖项（restoreAppBackup 专用：还原会清空重写 client/，
+ *   磁盘上的 __app.json 已被备份内旧清单顶掉，须以还原前状态为对比基线）
+ * @param {string|null} [opts.prevRaw] 还原前的 __app.json 原文（缺省读磁盘）
+ * @param {string} [opts.prevVersion] 还原前的 app.json 版本（bump 基线取
+ *   还原前/还原写回两侧较高的一个——已装副本见过更高版本时版本号不许回退）
  * @returns {Promise<{changed: boolean, added: string[], removed: string[], version?: string}>}
  *          version 为本次 bump 后的 app.json 版本（未 bump 时缺省）
  */
-export async function syncAppManifest(fs, appName, rootHandle) {
+export async function syncAppManifest(fs, appName, rootHandle, opts = {}) {
   const clean = sanitizeAppName(appName);
   if (!clean) throw new Error("应用名不合法");
   const include = (p) =>
@@ -587,7 +592,10 @@ export async function syncAppManifest(fs, appName, rootHandle) {
     (await listAppFiles(fs, clean, rootHandle)).filter(include),
   );
 
-  const prevRaw = await readAppFile(fs, clean, "__app.json", rootHandle);
+  const prevRaw =
+    opts.prevRaw !== undefined
+      ? opts.prevRaw
+      : await readAppFile(fs, clean, "__app.json", rootHandle);
   const isFirst = prevRaw === null;
   let prevFiles = [];
   try {
@@ -631,7 +639,16 @@ export async function syncAppManifest(fs, appName, rootHandle) {
   } catch {}
   let version;
   if (changed && meta && typeof meta.version === "string") {
-    const next = bumpPatchVersion(meta.version);
+    // 版本号只进不退：还原写回的 app.json 可能落后于还原前（已装副本拉到过
+    // 更高版本），从较高一侧起 bump 才能让副本感知到还原造成的文件变化
+    let base = meta.version;
+    if (
+      typeof opts.prevVersion === "string" &&
+      cmpVersion(opts.prevVersion, base) > 0
+    ) {
+      base = opts.prevVersion;
+    }
+    const next = bumpPatchVersion(base);
     if (next) {
       meta.version = next;
       version = next;
@@ -738,6 +755,22 @@ export async function deleteVfsApp(fs, appName) {
 
 // 发布副本落点的常规应用命名空间（与安装 / 分享应用共用）
 export const PUBLISH_NAMESPACE = "mazmot-apps";
+
+/**
+ * 版本号比较（x.y.z 逐段数值比）：a>b 返回 1，a<b 返回 -1，相等返回 0。
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function cmpVersion(a, b) {
+  const pa = String(a || "").split(".").map(Number);
+  const pb = String(b || "").split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
 
 /**
  * 版本号 patch 段 +1（"0.1.0" → "0.1.1"；非法/缺失回退 "0.1.1"）。
@@ -1201,6 +1234,16 @@ export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
     return { restored: false, reason: "unchanged", files: current.length };
   }
 
+  // 还原前基线：下面会清空重写 client/，之后清单重对齐必须以「还原前」的
+  // 清单与版本为基线——拿备份内的旧清单对比，会让「还原删了文件」永远
+  // 不 bump，已安装副本感知不到还原造成的文件变化
+  const prevManifestRaw = await readAppFile(fs, clean, "__app.json", rootHandle);
+  const prevAppRaw = await readAppFile(fs, clean, "app.json", rootHandle);
+  let prevVersion = null;
+  try {
+    prevVersion = JSON.parse(prevAppRaw)?.version ?? null;
+  } catch {}
+
   const { base: bBase, prefix } = await resolveBackupBase(fs, clean, rootHandle);
   const bDir = await bBase.get(`${prefix}${backupId}`).catch(() => null);
   if (!bDir || bDir.kind !== "dir") throw new Error("备份不存在");
@@ -1228,9 +1271,13 @@ export async function restoreAppBackup(fs, appName, backupId, rootHandle) {
   };
   await walk(bDir, "");
   // 覆盖还原后文件集可能变化（旧备份无 __app.json / 文件集不同步）：
-  // 重新对齐安装清单（version 增删即 bump，与回合收尾同语义）
+  // 以还原前的清单与版本为基线重新对齐安装清单（version 增删即 bump，
+  // 与回合收尾同语义）
   try {
-    await syncAppManifest(fs, clean, rootHandle);
+    await syncAppManifest(fs, clean, rootHandle, {
+      prevRaw: prevManifestRaw,
+      ...(typeof prevVersion === "string" ? { prevVersion } : {}),
+    });
   } catch (err) {
     console.warn("[builder] 还原后同步 __app.json 失败：", err);
   }

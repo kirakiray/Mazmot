@@ -75,7 +75,7 @@ b.remove();                                                       // 该用例�
 ## virtual-space 关键行为（对齐 NoneOS Core / lib/builder.js 的真实用法）
 
 - `dir.get(path, opts)` 支持**多段路径一次取**；缺失且无 `create` 返回 `null`；`{ create: "file" }` 只作用于最后一段，**中间目录隐式创建**（`writeAppFile` 依赖此行为）；`{ create: "dir" }` 作用于最后一段。
-- 目录有 `keys()` / `values()` 异步迭代器、`flat()`（全量后代文件，builder 优先用它列举）、`remove()`（递归删自己；根目录则清空子项）；文件有 `text()` / `write(content)`。
+- 目录有 `keys()` / `values()` 异步迭代器、`flat()`（全量后代文件，builder 优先用它列举）、`remove()`（递归删自己；根目录则清空子项）；文件有 `text()` / `write(content)` / `remove()`（删除自己，对齐真 fs API）。
 - 句柄 `path` 从所属根目录算起（如 `todo-app/client/index.html`），与 Core「flat()/path 可能带命名空间前缀」一致——builder 的 `toRel` 剥前缀逻辑在 fake 上同样成立。
 - `createVirtualDir()` 可直接当本地渠道的 `rootHandle`（`ctx.rootHandle`）或测试里 `fs.open()` 的替身。
 

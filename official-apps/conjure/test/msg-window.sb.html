@@ -106,6 +106,7 @@
             win.apply({ op: "replace", list: Array.from({ length: 13 }, (_, i) => ({ id: i + 1 })) });
             // 删除窗口内的尾条 → 窗口起点钳制不越界
             win.apply({ op: "splice", id: 13 });
+            const lenAfterSplice = target.length; // 窗口内剩 4 条（9..12）
 
             const first = win.loadOlder();
             const second = win.loadOlder();
@@ -115,7 +116,7 @@
 
             return {
               assert:
-                target.length === 4 &&
+                lenAfterSplice === 4 &&
                 first === 4 &&
                 second === 4 &&
                 third === 0 && // 没有更早的了：返回 0 终止
@@ -123,7 +124,7 @@
                 allShown &&
                 orderOk,
               content: {
-                checks: { lenAfterSplice: target.length, first, second, third, allShown, orderOk },
+                checks: { lenAfterSplice, first, second, third, allShown, orderOk },
                 ids: target.map((m) => m.id),
               },
             };
