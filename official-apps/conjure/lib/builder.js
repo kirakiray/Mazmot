@@ -1467,6 +1467,85 @@ export async function detectLocalProject(rootHandle) {
   }
 }
 
+/* ---------- 会话任务清单（task_list 工具 / 对话右侧面板） ----------
+ * 模型开发前拆解任务、随做随勾（业界 coding agent 的 todo/plan 模式）：
+ * 全量提交（TodoWrite 语义），清单按会话持久化（tasks:<app>:<sid>），
+ * 跨暂停 / 刷新续作；预览自动检测的运行错误由宿主自动同步为修复任务。
+ * 本节为纯逻辑（builder-store 持状态），供单测。 */
+
+// 清单条数上限（防模型提交超长清单撑爆面板）与文本长度上限
+export const TASK_LIST_MAX = 24;
+export const TASK_TEXT_MAX = 120;
+export const TASK_STATUS = ["pending", "in_progress", "done"];
+
+/**
+ * 全量清单规整：截断条数、清洗文本、非法 status 回落 pending。
+ * @param {Array<{text: string, status?: string}>} tasks
+ * @returns {Array|null} 规整后的清单（带生成 id）；无有效条目返回 null
+ */
+export function normalizeTaskList(tasks) {
+  if (!Array.isArray(tasks)) return null;
+  const list = tasks
+    .slice(0, TASK_LIST_MAX)
+    .map((t, i) => ({
+      id: `t${Date.now().toString(36)}-${i}`,
+      text: String(t?.text || "").trim().slice(0, TASK_TEXT_MAX),
+      status: TASK_STATUS.includes(t?.status) ? t.status : "pending",
+    }))
+    .filter((t) => t.text);
+  return list.length ? list : null;
+}
+
+/** 错误行 → 任务配对键（原样截断，同一行报错跨回合稳定命中同一任务） */
+export function errorTaskDigest(line) {
+  return String(line || "").trim().slice(0, 160);
+}
+
+/** 错误行 → 任务展示文本（剥 [error] 前缀、截 80 字） */
+export function errorTaskText(line) {
+  const s = String(line || "")
+    .replace(/^\[error\]\s*/i, "")
+    .trim();
+  return `修复运行错误：${(s.length > 80 ? s.slice(0, 80) + "…" : s) || "未知"}`;
+}
+
+/**
+ * 预览运行错误 ↔ 修复任务同步（纯函数）：
+ * - 未完成的错误任务，其 errKey 已不在最新检测结果里 → 勾 done（修完了）；
+ * - 最新结果里出现新错误（无对应任务）→ 追加 pending 修复任务。
+ * @param {Array<Object>} list 当前任务清单
+ * @param {Array<string>} errLines 最新一轮自动检测的错误行
+ * @returns {Array} 新清单；无变化时原样返回入参引用（调用方据此跳过落盘）
+ */
+export function mergeErrorTasks(list, errLines) {
+  const errKeys = (Array.isArray(errLines) ? errLines : []).map(errorTaskDigest);
+  let changed = false;
+  const next = (Array.isArray(list) ? list : []).map((t) => {
+    if (t?.source !== "error" || t.status === "done") return t;
+    if (errKeys.includes(t.errKey)) return t;
+    changed = true;
+    return { ...t, status: "done" };
+  });
+  const have = new Set(
+    next
+      .filter((t) => t.source === "error" && t.status !== "done")
+      .map((t) => t.errKey),
+  );
+  for (const key of errKeys) {
+    if (have.has(key)) continue;
+    have.add(key);
+    changed = true;
+    next.push({
+      id: `t${Date.now().toString(36)}-e${next.length}`,
+      text: errorTaskText(key),
+      status: "pending",
+      source: "error",
+      errKey: key,
+    });
+  }
+  return changed ? next : Array.isArray(list) ? list : [];
+}
+
 /**
  * 把对话快照写入项目目录（client/ 同层的 conjure-chats/，目录化布局）：
  *   conjure-chats/index.json     会话列表元数据（不含消息，体量恒定）
@@ -1569,10 +1648,10 @@ export async function loadProjectChats(rootHandle) {
 /**
  * 系统提示词：教模型 Mazmot/ofa.js 应用结构与平台约束。
  */
-export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。生成出的应用也运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），因此应用既能使用 Mazmot 平台 API（/mz/*），也能使用 NoneOS Core 系统 API（/nos/*），详见「平台能力」一节。你可调用的工具（write_file / edit_file / read_file / list_files / create_app / preview / show_form / read_skill / web_fetch / web_search）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
+export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（conjure）应用里：用户正在妙造的对话界面中与你交流，你通过对话为用户生成可直接运行的 ofa.js 网页应用。生成出的应用也运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），因此应用既能使用 Mazmot 平台 API（/mz/*），也能使用 NoneOS Core 系统 API（/nos/*），详见「平台能力」一节。你可调用的工具（write_file / edit_file / read_file / list_files / create_app / preview / show_form / read_skill / web_fetch / web_search / task_list）均由妙造提供；其中 preview 工具把应用推送到隔离预览窗口实际运行，是你实测调试的唯一通道。应用文件写入虚拟文件系统或用户所选本地目录的 client/ 子目录。
 
 ## 工作流程
-1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。
+1. 先计划再动手：新项目写第一个文件之前，先用几行文字向用户给出实现计划（功能点、拟建的文件清单、推进顺序），让用户在动手前就能纠正方向；已有应用的小改动不必单独计划，开头说清楚要改什么即可。需求含糊且影响方向时（比如只说「做个工具」没说功能范围）先简短澄清再动手。**非平凡需求按下方「任务清单」节先用 task_list 拆解任务**，然后按清单顺序开发、随做随勾。
 2. 依次用 write_file 写入下列文件（路径相对 client/ 目录，本地目录渠道与虚拟渠道一致）：
    - index.html —— 入口 HTML
    - app-config.js —— 导出 home 等页面路由
@@ -1594,7 +1673,16 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，格式见 \`pitfalls/README.md\`），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件；
    - **AGENTS.md** —— 已预写通用规范，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动；
    - 骨架里的 \`<!-- skeleton\` 首行注释标记与「待填」「暂无记录」占位必须全部被真实内容替换，不能留着占位交差。
-6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）；④ 场景测试全绿（见下方「场景测试」节：新增或修改了重要功能就必须有对应用例并跑到通过）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）；④ 场景测试全绿（见下方「场景测试」节：新增或修改了重要功能就必须有对应用例并跑到通过）；⑤ 任务清单全部 done（见下方「任务清单」节）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+
+## 任务清单（task_list 工具，对话右侧面板实时展示）
+非平凡需求（新功能 / 多文件改动 / 排查修复链路）**动手写代码前**，先用 task_list 把工作拆解成任务清单：每条是一个可独立验证的具体单元（3~8 条为宜，按执行顺序排列），用户在右侧面板实时看到进度。规则：
+- **全量提交**：每次调用都传完整清单 \`tasks: [{ text, status }]\`（status = pending / in_progress / done），不是增量——清单会被整体替换；
+- **随做随更**：开始一条前置 in_progress（同时只允许一条），完成并实测验证后置 done；不要等全部做完一次性补勾——面板要能反映当前进度；
+- **收尾核对**：回合结束前检查清单，未 done 的要么继续做完，要么明确告诉用户原因（等待确认 / 被阻塞），不允许静默留尾；
+- **需求变化**：用户提出的新需求与现有清单明显不同（改方向而非延续）时，先用 task_list 重写清单（仍有效的条目保留、已完成的不重复列），再继续开发；
+- **运行错误**：预览自动检测报告里的错误，宿主已自动登记为「修复运行错误」任务并会在验证通过后自动勾掉，这几条你无需手动增删；若一个错误需要多步排查，可另拆子任务跟踪。
+单点小改（一行修复 / 文案调整 / 纯问答）不必拆解。清单按会话保存：暂停或刷新后继续时，先核对清单现状再接着做。
 
 ## 场景测试（client/test/*.test.json，防迭代回归）
 重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，完成前用 preview 的 action=run-tests 跑到全绿（无测试的应用第一次加重要功能时就建立 test/ 目录）。用例是 JSON 文件：
@@ -1790,6 +1878,20 @@ ${lines}
 ## 可用知识库（read_skill 工具）
 当前没有已安装的知识库（同步可能失败或仍在进行），不要调用 read_skill，直接按下方技术规范编写。`;
   }
+  // 会话任务清单（模型经 task_list 维护、按会话持久化）：每回合注入——
+  // 跨回合 / 跨刷新续作时上下文里未必还有清单内容，必须由宿主喂回
+  const taskList = Array.isArray(ctx.sessionTasks) ? ctx.sessionTasks : [];
+  if (taskList.length) {
+    const statusText = { pending: "未开始", in_progress: "进行中", done: "已完成" };
+    prompt += `
+
+## 当前任务清单（宿主提供，右侧面板同步展示）
+${taskList
+  .map((t, i) => `${i + 1}. [${statusText[t?.status] || t?.status}] ${t?.text}`)
+  .join("\n")}
+
+这是本会话的任务清单，继续照它推进：从第一条未完成任务做起，每条做完并实测验证后用 task_list 提交更新后的完整清单（把完成的置 done、下一条置 in_progress）；本回合用户请求让清单整体过时（完全不同的新需求）时，先用 task_list 重写清单再动手；清单已全部 done 且本回合无新需求时不必调用。`;
+  }
   // 宿主自动检测的预览运行错误（上回合结束后推送预览、读 console 收集）：
   // 注入本回合提示词——修复它们是默认优先项（除非用户本回合另有明确指示）
   const autoErrs = Array.isArray(ctx.autoErrors) ? ctx.autoErrors.filter(Boolean) : [];
@@ -1801,7 +1903,7 @@ ${lines}
 宿主在上一回合结束后自动推送了最新代码并检查了预览窗口的控制台，发现 ${autoErrs.length} 条运行错误（用户已看到同样信息）：
 ${clippedErrs}
 
-除非用户本条消息另有明确指示，修复这些错误是本回合的最高优先级：先用 read_file 查看相关文件定位原因，edit_file 修复后用 preview（action=app 推送，再 console 确认错误消失）验证。`;
+除非用户本条消息另有明确指示，修复这些错误是本回合的最高优先级：先用 read_file 查看相关文件定位原因，edit_file 修复后用 preview（action=app 推送，再 console 确认错误消失）验证。这些错误宿主已自动登记进右侧任务清单（「修复运行错误」条目），推送验证通过后会被自动勾掉；若需要多步排查，用 task_list 另拆子任务跟踪。`;
   }
   // 回滚通知（宿主注入，一次性）：rollback.sentiment 区分中性还原与负反馈。
   // 事实 + 约束，不下指令——用户下一轮想改方向或在旧方案上修都自由

@@ -347,6 +347,21 @@
     .item.trash { background: var(--md-sys-color-surface); border: 1px dashed var(--md-sys-color-outline-variant); }
     /* 归档项：与垃圾桶区分开——用实线边框 + 表面色，不做删除线（它只是被收起来了） */
     .item.archived { background: var(--md-sys-color-surface); border: 1px solid var(--md-sys-color-outline-variant); }
+    /* ===== 已归档视图的子标签（全部归档 / 按日期 / 按周）与日期分组 ===== */
+    .archive-tabs { align-self: flex-start; }
+    .agroups { display: flex; flex-direction: column; gap: 18px; }
+    .agroup { display: flex; flex-direction: column; gap: 8px; }
+    /* 日期组头：左侧是日期（按周时是「第 N 周 · 起止」），右侧是该组条数 */
+    .agroup-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 0 2px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .agroup-head .agroup-count { font-size: 12px; font-weight: 400; }
     /* 归档项左侧的归档图标（代替列表里的勾选框位） */
     .item .arch {
       flex: none;
@@ -531,29 +546,58 @@
       </div>
     </o-if>
 
-    <!-- 已归档视图：取消归档 / 倒计时删除（归档项不被勾选，用归档图标代替勾选框位） -->
+    <!-- 已归档视图：取消归档 / 倒计时删除（归档项不被勾选，用归档图标代替勾选框位）。
+         视图内可切「全部归档 / 按日期 / 按周」看归档（默认全部归档）；
+         两者共用同一个 o-fill——「全部归档」时 archiveGroups 只有一组且 showHead=false（组头隐藏），
+         按日期 / 按周时每组一条数据，这样不必维护两套一模一样的条目模板 -->
     <o-if :value="inArchiveView">
-      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。</p>
-      <div class="list">
-        <o-fill :value="archivedTodos" fill-key="id">
-          <div class="item archived" class:pending="$host.isPending($data)">
-            <span class="arch"><n-icon icon="mdi:archive-arrow-down"></n-icon></span>
-            <div class="body" on:click="$host.openDetail($data.id)">
-              <span class="text">{{$data.text}}</span>
-              <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
-              <span class="meta">{{$host.timeMeta($data)}}</span>
+      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。</p>
+
+      <st-button-group class="archive-tabs">
+        <st-button
+          attr:variant="archiveGroupMode === 'all' ? 'filled' : 'text'"
+          on:click="setArchiveGroupMode('all')"
+        >全部归档</st-button>
+        <st-button
+          attr:variant="archiveGroupMode === 'day' ? 'filled' : 'text'"
+          on:click="setArchiveGroupMode('day')"
+        >按日期</st-button>
+        <st-button
+          attr:variant="archiveGroupMode === 'week' ? 'filled' : 'text'"
+          on:click="setArchiveGroupMode('week')"
+        >按周</st-button>
+      </st-button-group>
+
+      <div class="agroups">
+        <o-fill :value="archiveGroups" fill-key="key">
+          <div class="agroup">
+            <div class="agroup-head" class:hidden="!$data.showHead">
+              <span class="agroup-label">{{$data.label}}</span>
+              <span class="agroup-count">{{$data.countText}}</span>
             </div>
-            <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
-            <div class="item-actions">
-              <st-icon-button
-                class="edit-btn"
-                attr:title="$host.editButtonTitle($data)"
-                on:click="$host.openEditDetail($data.id)"
-              ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
-              <st-icon-button
-                attr:title="$host.deleteButtonTitle($data)"
-                on:click="$host.handleDeleteClick($data.id)"
-              ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
+            <div class="list">
+              <o-fill :value="$data.todos" fill-key="id">
+                <div class="item archived" attr:data-id="$data.id" class:pending="$host.isPending($data)">
+                  <span class="arch"><n-icon icon="mdi:archive-arrow-down"></n-icon></span>
+                  <div class="body" on:click="$host.openDetail($data.id)">
+                    <span class="text">{{$data.text}}</span>
+                    <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+                    <span class="meta">{{$host.timeMeta($data)}}</span>
+                  </div>
+                  <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
+                  <div class="item-actions">
+                    <st-icon-button
+                      class="edit-btn"
+                      attr:title="$host.editButtonTitle($data)"
+                      on:click="$host.openEditDetail($data.id)"
+                    ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
+                    <st-icon-button
+                      attr:title="$host.deleteButtonTitle($data)"
+                      on:click="$host.handleDeleteClick($data.id)"
+                    ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
+                  </div>
+                </div>
+              </o-fill>
             </div>
           </div>
         </o-fill>
@@ -562,9 +606,9 @@
 
     <!-- 垃圾桶视图：还原 / 彻底删除 -->
     <o-if :value="inTrashView">
-      <p class="trash-tip">垃圾桶显示所有分组的条目，不再计入统计；可随时还原，或彻底删除（彻底删除会二次确认）。</p>
+      <p class="trash-tip">垃圾桶里的条目不再计入统计；可随时「还原」，或彻底删除（彻底删除会二次确认）。左栏选中某个分组时，这里只显示该分组的条目（选「全部任务」即全部）。</p>
       <div class="list">
-        <o-fill :value="trashTodos" fill-key="id">
+        <o-fill :value="scopedTrashTodos" fill-key="id">
           <div class="item trash">
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
@@ -587,19 +631,19 @@
 
     <o-if :value="inTrashView">
       <div class="footer">
-        <span class="count">垃圾桶 {{trashTodos.length}} 项</span>
+        <span class="count">垃圾桶 {{scopedTrashTodos.length}} 项</span>
         <st-button
           variant="text"
           color="error"
           on:click="emptyTrash"
-          attr:disabled="trashTodos.length === 0"
+          attr:disabled="scopedTrashTodos.length === 0"
         >清空垃圾桶</st-button>
       </div>
     </o-if>
 
     <o-if :value="inArchiveView">
       <div class="footer">
-        <span class="count">已归档 {{archivedTodos.length}} 项</span>
+        <span class="count">已归档 {{scopedArchivedTodos.length}} 项</span>
       </div>
     </o-if>
 
@@ -762,6 +806,8 @@
           editingGroupId: null,
           // 侧栏（分组栏）宽度：可拖拽，150–300px；写入存储记忆
           sideWidth: SIDE_DEFAULT_W,
+          // 已归档视图的查看方式："all"（全部归档，默认） | "day"（按归档日期） | "week"（按周）
+          archiveGroupMode: "all",
           // 是否正在拖拽（拖拽中禁止选中文本）
           resizing: false,
           // 正在拖拽的条目 id（null = 没有在拖）；驱动 .item.dragging 与 .shell.dragging
@@ -852,25 +898,77 @@
             return this.todos.filter((t) => t.deletedAt);
           },
 
-          get trashBadge() {
-            return this.trashTodos.length ? " " + this.trashTodos.length : "";
-          },
-
-          get archiveBadge() {
-            return this.archivedTodos.length ? " " + this.archivedTodos.length : "";
-          },
-
-          // 当前分组范围内的列表条目（归档与垃圾桶都不计入）
-          get scopedActiveTodos() {
-            const list = this.activeTodos;
+          // 按当前选中分组过滤（groupFilter === "all" 时原样返回）。
+          // 归档 / 垃圾桶视图同样跟随左栏分组——三个视图口径一致，
+          // 不再出现“左栏选了「个人」，右侧却列出所有分组的归档 / 垃圾桶条目”
+          scopeByGroup(list) {
             if (this.groupFilter === "all") return list;
             return list.filter((t) => t.groupId === this.groupFilter);
           },
 
+          get scopedArchivedTodos() {
+            return this.scopeByGroup(this.archivedTodos);
+          },
+
+          get scopedTrashTodos() {
+            return this.scopeByGroup(this.trashTodos);
+          },
+
+          // 视图标签上的数量跟着分组走，与视图里实际显示的条数保持一致
+          get trashBadge() {
+            return this.scopedTrashTodos.length
+              ? " " + this.scopedTrashTodos.length
+              : "";
+          },
+
+          get archiveBadge() {
+            return this.scopedArchivedTodos.length
+              ? " " + this.scopedArchivedTodos.length
+              : "";
+          },
+
+          // 已归档视图的分组展示：「全部归档」（all）只有一组、组头隐藏（等价于原来的平铺列表）；
+          // 「按日期」（day）/「按周」（week）按归档时刻分组，最新的一组排最前。
+          // 两种模式共用同一个 o-fill，避免维护两套条目模板
+          get archiveGroups() {
+            if (this.archiveGroupMode === "all") {
+              return [
+                {
+                  key: "all",
+                  label: "",
+                  showHead: false,
+                  countText: "",
+                  todos: this.scopedArchivedTodos,
+                },
+              ];
+            }
+            const buckets = new Map();
+            for (const t of this.scopedArchivedTodos) {
+              const b = this.archiveBucket(t.archivedAt);
+              let g = buckets.get(b.key);
+              if (!g) {
+                g = { key: b.key, label: b.label, showHead: true, countText: "", todos: [] };
+                buckets.set(b.key, g);
+              }
+              g.todos.push(t);
+            }
+            // key 前缀 d / w 后面都是 YYYY-MM-DD，字典序即时间序；倒序 => 最新的组排最前
+            const list = Array.from(buckets.values()).sort((a, b) =>
+              a.key < b.key ? 1 : a.key > b.key ? -1 : 0
+            );
+            for (const g of list) g.countText = g.todos.length + " 项";
+            return list;
+          },
+
+          // 当前分组范围内的列表条目（归档与垃圾桶都不计入）
+          get scopedActiveTodos() {
+            return this.scopeByGroup(this.activeTodos);
+          },
+
           get visibleTodos() {
-            // 归档 / 垃圾桶视图都忽略分组过滤（显示所有分组的对应条目）
-            if (this.inTrashView) return this.trashTodos;
-            if (this.inArchiveView) return this.archivedTodos;
+            // 三个视图都跟随左栏分组（选「全部任务」时即全部）
+            if (this.inTrashView) return this.scopedTrashTodos;
+            if (this.inArchiveView) return this.scopedArchivedTodos;
             return this.scopedActiveTodos;
           },
 
@@ -965,7 +1063,12 @@
           // ===== 会话状态（刷新不丢当前筛选 / 选中分组） =====
           // 按用户要求存在 sessionStorage：F5 / 刷新后保持，关闭标签页或新开窗口回到默认
           sessionSnapshot() {
-            return { view: this.view, groupFilter: this.groupFilter };
+            return {
+              view: this.view,
+              groupFilter: this.groupFilter,
+              // 归档视图的查看方式（全部归档 / 按日期 / 按周）也随会话记忆
+              archiveGroup: this.archiveGroupMode,
+            };
           },
 
           saveSessionState() {
@@ -998,12 +1101,17 @@
             ) {
               this.groupFilter = saved.groupFilter;
             }
+            if (["all", "day", "week"].includes(saved.archiveGroup)) {
+              this.archiveGroupMode = saved.archiveGroup;
+            }
             this.updateEmptyText();
             console.log(
               "[ui] 已恢复会话状态，筛选 =",
               this.view,
               "分组 =",
-              this.groupFilter
+              this.groupFilter,
+              "归档查看 =",
+              this.archiveGroupMode
             );
           },
 
@@ -1528,6 +1636,80 @@
             this._tickId = setTimeout(step, TICK_MS);
           },
 
+          // ===== 已归档视图的分组（全部归档 / 按日期 / 按周） =====
+          setArchiveGroupMode(mode) {
+            if (!["all", "day", "week"].includes(mode)) return;
+            this.archiveGroupMode = mode;
+            console.log("[archive] 归档查看方式 →", mode);
+            this.saveSessionState();
+          },
+
+          // 本地日期 key：YYYY-MM-DD（按本机时区切分，不用 UTC，避免凌晨归档被算到前一天）
+          dateKey(ts) {
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, "0");
+            return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+          },
+
+          monthDayText(d) {
+            const p = (n) => String(n).padStart(2, "0");
+            return p(d.getMonth() + 1) + "-" + p(d.getDate());
+          },
+
+          // 一个归档时刻属于哪个分组：返回 { key, label }
+          //   day  → key = "dYYYY-MM-DD"，label 形如「10-09 周四」
+          //   week → key = "wYYYY-MM-DD"（该周周一），label 形如「2026 年第 41 周 · 10-05 ~ 10-11」
+          archiveBucket(ts) {
+            if (typeof ts !== "number" || Number.isNaN(new Date(ts).getTime())) {
+              // 旧数据没有归档时间：单独兜底一组，key 以 0 开头（字典序最小）所以排在最后
+              return { key: "0-unknown", label: "归档时间未知" };
+            }
+            const d = new Date(ts);
+            if (this.archiveGroupMode === "week") {
+              const dow = (d.getDay() + 6) % 7; // 周一 = 0
+              const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow);
+              const end = new Date(
+                start.getFullYear(),
+                start.getMonth(),
+                start.getDate() + 6
+              );
+              const iso = this.isoWeek(start.getTime());
+              return {
+                key: "w" + this.dateKey(start.getTime()),
+                label:
+                  iso.year +
+                  " 年第 " +
+                  iso.week +
+                  " 周 · " +
+                  this.monthDayText(start) +
+                  " ~ " +
+                  this.monthDayText(end),
+              };
+            }
+            const weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
+              d.getDay() === 0 ? 6 : d.getDay() - 1
+            ];
+            const yearText =
+              d.getFullYear() === new Date().getFullYear() ? "" : d.getFullYear() + "-";
+            return {
+              key: "d" + this.dateKey(ts),
+              label: yearText + this.monthDayText(d) + " " + weekday,
+            };
+          },
+
+          // ISO 周序号：取该周周四所在的年份 + 周数（跨年周不至于算错）
+          isoWeek(ts) {
+            const d = new Date(ts);
+            const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            const dayNum = date.getUTCDay() || 7;
+            date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+            const week = Math.ceil(
+              ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+            );
+            return { year: date.getUTCFullYear(), week };
+          },
+
           // 归档已完成：把当前分组范围内（「全部任务」下即整个列表）的已完成项收进归档；
           // 垃圾桶里的、倒计时中的、其它分组的、已归档的都不动
           archiveDone() {
@@ -1578,20 +1760,33 @@
           },
 
           emptyTrash() {
-            const n = this.trashTodos.length;
+            // 只清「当前分组范围」里看得见的那些：与底栏「垃圾桶 N 项」口径一致，
+            // 不会出现“底栏说 0 项、按钮却清掉了别的分组条目”的意外
+            const scope = this.groupFilter;
+            const n = this.scopedTrashTodos.length;
             if (!n) return;
+            this._purgeScope = scope;
             this.purgeTarget = "ALL";
             this.confirmKind = "purge";
-            this.confirmTitle = "清空垃圾桶？";
-            this.confirmText = "垃圾桶里的 " + n + " 项将被永久删除，无法还原。";
+            this.confirmTitle =
+              scope === "all"
+                ? "清空垃圾桶？"
+                : "清空「" + this.groupName(scope) + "」的垃圾桶？";
+            this.confirmText =
+              (scope === "all"
+                ? "垃圾桶里的 "
+                : "「" + this.groupName(scope) + "」垃圾桶里的 ") +
+              n +
+              " 项将被永久删除，无法还原。";
             this.confirmOpen = true;
-            console.log("[trash] 请求清空垃圾桶（待确认），共", n, "项");
+            console.log("[trash] 请求清空垃圾桶（待确认），范围 =", scope, "，共", n, "项");
           },
 
           closeConfirm() {
             this.confirmOpen = false;
             this.purgeTarget = null;
             this.confirmGroupId = null;
+            this._purgeScope = null;
           },
 
           // 确认弹窗的统一入口：按 confirmKind 分发（彻底删除 / 删除分组）
@@ -1611,7 +1806,12 @@
             if (!target) return;
             const before = this.todos.length;
             if (target === "ALL") {
-              this.todos = this.todos.filter((t) => !t.deletedAt);
+              // 范围在 emptyTrash() 打开确认框时就固定下来（用户可能在弹窗期间切分组）
+              const scope = this._purgeScope || "all";
+              this._purgeScope = null;
+              this.todos = this.todos.filter(
+                (t) => !(t.deletedAt && (scope === "all" || t.groupId === scope))
+              );
             } else {
               this.todos = this.todos.filter((t) => t.id !== target);
             }
@@ -1863,13 +2063,20 @@
 
           // 空状态文案：按当前筛选 + 分组生成
           updateEmptyText() {
+            // 归档 / 垃圾桶视图也跟随分组，空状态文案要带上分组名，
+            // 否则用户会以为“归档全丢了”，其实是当前分组里没有
+            const gName = this.groupFilter === "all" ? "" : "「" + this.groupName(this.groupFilter) + "」的";
             if (this.view === "trash") {
-              this.emptyText = "垃圾桶是空的 🗑";
+              this.emptyText =
+                gName + "垃圾桶是空的 🗑" +
+                (this.groupFilter === "all" ? "" : "，切到「全部任务」可以看到所有分组的条目");
               return;
             }
             if (this.view === "archived") {
               this.emptyText =
-                "归档箱是空的 📦 勾选完成的任务，再点右下角「归档已完成」就会收进这里";
+                gName +
+                "归档箱是空的 📦 勾选已完成的任务，再点右上角「归档已完成」就会收进这里" +
+                (this.groupFilter === "all" ? "" : "；左栏选「全部任务」可查看所有分组的归档");
               return;
             }
             if (this.groupFilter !== "all") {

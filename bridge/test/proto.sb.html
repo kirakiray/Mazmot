@@ -448,5 +448,70 @@
         </script>
       </template>
     </sb-test>
+
+    <sb-test name="createDiagCollector - 环形封顶 / 字段规整 / dump 拷贝" parallel>
+      <template>
+        <script type="module">
+          import { createDiagCollector } from "../proto.js";
+          const collector = createDiagCollector({ max: 5 });
+          for (let i = 0; i < 8; i++) {
+            collector.push({
+              phase: "attempt",
+              msgId: `m-${i}`,
+              tries: i,
+              // 超长字符串（如 sendTo 的 statuses JSON）截断防撑爆对话 JSON
+              statuses: "x".repeat(500),
+              absent: null,
+              skip: undefined,
+            });
+          }
+          const dump3 = collector.dump(3);
+          const row = dump3[0];
+          return {
+            assert:
+              collector.size() === 5 && // 只留最近 5 条
+              dump3.length === 3 &&
+              row.msgId === "m-5" && // dump 取最新的段，时间正序
+              dump3[2].msgId === "m-7" &&
+              row.statuses.length === 201 &&
+              row.statuses.endsWith("…") &&
+              !("absent" in row) &&
+              !("skip" in row) &&
+              typeof row.t === "number" &&
+              dump3[0] !== collector.dump(3)[0], // 浅拷贝，外部改动不进缓冲
+            content: { size: collector.size(), dump3: dump3.map((e) => e.msgId) },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="createReliableLink - onEvent 钩子收到 attempt/ack 事件" parallel>
+      <template>
+        <script type="module">
+          import { createReliableLink } from "../proto.js";
+          const events = [];
+          const link = createReliableLink({
+            // 假传输层：立即回 ACK（经 receive 结算），模拟一次健康投递
+            sendTo: async (env) => {
+              queueMicrotask(() =>
+                link.receive({ msgId: env.msgId, kind: "ack" }, null),
+              );
+              return [{ status: "ok" }];
+            },
+            onEvent: (e) => events.push(e),
+          });
+          await link.send({ type: "hello" });
+          const phases = events.map((e) => e.phase);
+          return {
+            assert:
+              phases.includes("attempt") &&
+              phases.includes("sent") &&
+              phases.includes("ack") &&
+              events.every((e) => e.msgId),
+            content: { phases },
+          };
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

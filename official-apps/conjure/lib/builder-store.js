@@ -24,6 +24,9 @@ import {
   publishAppToHome,
   PUBLISH_NAMESPACE,
   sanitizeAppName,
+  normalizeTaskList,
+  mergeErrorTasks,
+  errorTaskDigest,
   listAppFiles,
   readAppFile,
   writeAppFile,
@@ -145,6 +148,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 宿主自动检测收集的预览运行错误（回合结束推送预览后读 console 的
     // error 行；下回合自动注入提示词，用户提示条可见）
     autoErrors: [],
+    // 当前会话的任务清单（task_list 工具拆解 / 勾选，对话右侧面板渲染源；
+    // 持久化在 tasks:<app>:<sid>，跨暂停 / 刷新续作；错误修复任务由
+    // autoCheckPreview 自动同步加减）
+    sessionTasks: [],
     // 对话用 API Key（镜像自 /mz/ai 的已启用 key；activeKeyId 为 "" 表示自动负载均衡）
     apiKeys: [],
     activeKeyId: "",
@@ -249,14 +256,40 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
   // 本地错误卡片：宿主在回合中发生的错误（如隔离预览失败）镜像进对话，
   // 紧跟触发它的工具调用便于定位问题。仅展示用——AI 的记忆走 wire thread，
-  // 读不到这条消息（不传给 AI）
-  function pushLocalError(text) {
-    return pushMessage({
+  // 读不到这条消息（不传给 AI）。diag 可选：排查用诊断附件（链路事件等），
+  // 只随消息落盘进对话 JSON，展示层忽略未知字段
+  function pushLocalError(text, diag = null) {
+    const item = {
       id: state.nextId++,
       role: "error",
       text: String(text).slice(0, 300),
       newGroup: false,
-    });
+    };
+    if (diag) item.diag = diag;
+    return pushMessage(item);
+  }
+  // 预览诊断落档：把错误对象携带的 diag（链路事件段 + 推送上下文，见
+  // remote-preview 的 attachDiag）写进对话 JSON——优先附在触发的 preview
+  // 工具消息上（排查时紧跟现场），没有在途工具消息则补记到最近一条。
+  // 仅持久化供人读：AI 上下文走 wire thread（工具返回值），不读消息桶
+  function recordPreviewDiag(err) {
+    const diag = err && err.diag;
+    if (!diag) return;
+    try {
+      const bucket = bucketFor(activeKey());
+      let target = null;
+      for (let i = bucket.length - 1; i >= 0; i--) {
+        const m = bucket[i];
+        if (m.role !== "tool" || m.name !== "preview") continue;
+        if (m.pending) {
+          target = m;
+          break;
+        }
+        if (!target) target = m;
+      }
+      if (target) patchMessage(target.id, { diag });
+    } catch (_) {}
+    console.warn("[preview][diag]", err?.message, diag);
   }
   // 整组替换某个会话桶并（若是当前视图）刷新镜像；nextId 全局单调递增，
   // 避免多桶并存时 id 撞车导致补丁打到别的会话消息上。
@@ -514,6 +547,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       onPreviewShot: pushPreviewShot,
       // 场景测试（preview 工具 action=run-tests）：跑 client/test/ 下用例
       runTests: (files) => runTests(files),
+      // 会话任务清单（task_list 工具）：拆解任务 / 随做随勾，右侧面板展示
+      setSessionTasks: (tasks) => setSessionTasks(tasks),
       // web_fetch / web_search 工具：平台联网能力（mz/net 负责通道调度与结果规整）
       netFetch: (url, opts) => netModules.fetchText(url, opts),
       netSearch: (query, opts) => netModules.searchWeb(query, opts),
@@ -576,6 +611,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         // 上回合宿主自动检测收集的预览错误（预览窗口开着时才收集）：
         // 注入本回合提示词让模型优先修复；driveTurn 开始时取走清空
         autoErrors: state.autoErrors.length ? [...state.autoErrors] : undefined,
+        // 当前会话任务清单（task_list 工具维护，按会话持久化）：每回合注入，
+        // 模型跨回合 / 跨刷新续作清单（上下文压缩后记忆里未必还有它）
+        sessionTasks: state.sessionTasks.length
+          ? state.sessionTasks.map((t) => ({ ...t }))
+          : undefined,
         // 待消费的回滚通知（中性 / 不满意）
         rollback:
           pendingRollback &&
@@ -766,6 +806,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const key = `chat:${state.currentAppName}:${sid}`;
     set("currentSessionId", sid);
     syncSessionTitle(reg);
+    // 任务清单随会话切换加载：读盘 await 期间可能已切到别的会话，
+    // 加载完成后核对目标仍是当前会话再应用（防过期清单覆盖新视图）
+    const tasksKey = `tasks:${state.currentAppName}:${sid}`;
+    const tasks = await loadSessionTasks(state.currentAppName, sid);
+    if (sessionTasksKey() === tasksKey) set("sessionTasks", tasks);
     if (key === turnKey) {
       // 切回正在进行流式回合的会话：直接投影内存实时桶，
       // 不能读盘覆盖（盘上是上一回合的旧内容，读盘会顶掉进行中的消息）
@@ -793,6 +838,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       currentAppSessions: [],
       currentSessionId: "",
       currentSessionTitle: "",
+      sessionTasks: [], // 草稿没有会话实体，清单不可用
       permGrantNeeded: false,
       keyError: "", // 离开本地应用上下文，旧提示随之清除
       publishedInfo: null, // 回到草稿：发布态随应用上下文清空
@@ -816,14 +862,63 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 在当前应用下新建会话
+  // 在当前应用下新建会话：立即登记一条「新对话」空会话，左侧马上出现标签；
+  // 已存在未使用的空会话（点过 ＋ 还没发过消息）时只聚焦它，不重复建标签。
+  // 占位标题在首条消息发出时由 prepareContext 换成首句摘要（回合收尾兜底）
+  let creatingSession = false;
   async function newSessionFor(name) {
-    if (state.currentAppName !== name) {
-      await selectApp(name);
+    if (creatingSession) return; // 连点防抖：登记是异步的，并发会建出多条空会话
+    creatingSession = true;
+    try {
+      if (state.currentAppName !== name) {
+        await selectApp(name);
+      }
+      const appName = state.currentAppName;
+      if (!appName) return;
+      // 未使用 = 无任何消息且不在对话中；内存桶优先，未加载的读盘确认
+      for (const s of state.currentAppSessions) {
+        if (s.busy) continue;
+        const key = `chat:${appName}:${s.id}`;
+        let empty;
+        const bucket = sessionBuckets.get(key);
+        if (bucket) {
+          empty = bucket.length === 0;
+        } else if (selfStore) {
+          try {
+            const saved = await selfStore.getItem(key);
+            empty = !Array.isArray(saved) || saved.length === 0;
+          } catch {
+            empty = false; // 读盘失败按已使用处理：宁可多建标签，不误聚焦
+          }
+        } else {
+          empty = true;
+        }
+        if (empty) {
+          await loadSessionById(s.id);
+          return;
+        }
+      }
+      const reg = await loadRegistry();
+      const hit = reg.find((a) => a.name === appName);
+      if (!hit) return;
+      const sid = `s${Date.now().toString(36)}`;
+      hit.sessions = hit.sessions || [];
+      hit.sessions.push({
+        id: sid,
+        title: "新对话",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      await saveRegistry(reg);
+      await reloadApps();
+      set("currentSessionId", sid);
+      syncSessionTitle(reg);
+      set("sessionTasks", []); // 新会话从空清单开始
+      replaceMessages([]);
+      invalidateAgent();
+    } finally {
+      creatingSession = false;
     }
-    setMany({ currentSessionId: "", currentSessionTitle: "" });
-    replaceMessages([]);
-    invalidateAgent();
   }
 
   // 拖拽排序：把 fromId 的会话移到 toId 当前位置；顺序持久化到
@@ -1076,7 +1171,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       if (latest) {
         await loadSessionById(latest.id);
       } else {
-        setMany({ currentSessionId: "", currentSessionTitle: "" });
+        setMany({ currentSessionId: "", currentSessionTitle: "", sessionTasks: [] });
         replaceMessages([]);
       }
     }
@@ -1116,6 +1211,15 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       `thread:${name}:${sid}`,
       truncateThread(srcThread, userTurns),
     );
+    // 任务清单随 fork 复制（fork 延续的是同一份工作，清单照抄）
+
+    const srcTasks = await selfStore.getItem(`tasks:${name}:${srcSid}`);
+    if (Array.isArray(srcTasks) && srcTasks.length) {
+      await selfStore.setItem(
+        `tasks:${name}:${sid}`,
+        srcTasks.map((t) => ({ ...t })),
+      );
+    }
 
     await reloadApps();
     await loadSessionById(sid, state.apps);
@@ -1506,10 +1610,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       refreshPreviewInfo();
       return done;
     } catch (err) {
+      recordPreviewDiag(err);
       // 回合中（preview 工具触发）：不弹横幅，错误卡片镜像进对话、紧跟
       // 工具调用（AI 仍从工具结果文本得知失败）；非回合入口走可关闭横幅
       if (state.sending) {
-        pushLocalError(`隔离预览失败：${err.message}`);
+        pushLocalError(`隔离预览失败：${err.message}`, err?.diag || null);
       } else {
         set("keyError", `隔离预览失败：${err.message}`);
       }
@@ -1730,17 +1835,89 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   }
 
   // 调试指令通道（preview 工具）：转发到 remote-preview 的 dbg 链路；
-  // winId 缺省投递给最近心跳的在线窗口
+  // winId 缺省投递给最近心跳的在线窗口。失败同样落诊断（dbg 超时/投递
+  // 失败没有错误卡，diag 只能附在工具消息上）
   async function previewDebug(cmd, args = {}, timeoutMs, winId) {
     const mod = await ensurePreviewMod();
-    return mod.debugPreviewCommand({
-      load,
-      selfStore,
-      cmd,
-      args,
-      timeoutMs,
-      winId: winId || null,
-    });
+    try {
+      return await mod.debugPreviewCommand({
+        load,
+        selfStore,
+        cmd,
+        args,
+        timeoutMs,
+        winId: winId || null,
+      });
+    } catch (err) {
+      recordPreviewDiag(err);
+      throw err;
+    }
+  }
+
+  /* ---------- 会话任务清单（task_list 工具 / 对话右侧面板） ----------
+   * 模型开发前拆解任务、随做随勾；清单按会话持久化（tasks:<app>:<sid>），
+   * 暂停 / 刷新后继续开发时原样恢复。预览自动检测的运行错误由
+   * syncErrorTasks 自动登记为修复任务、验证通过后自动勾掉（不依赖模型）。
+   * 纯逻辑（规整 / 错误合并）在 builder.js，供单测。 */
+
+  // 当前会话的任务清单存储键；草稿（发送即建项目）与无会话态没有清单
+  const sessionTasksKey = () =>
+    state.currentAppName === "" || state.currentSessionId === ""
+      ? null
+      : `tasks:${state.currentAppName}:${state.currentSessionId}`;
+
+  // 写状态镜像 + 落盘（小数据直接写，不防抖）
+  function applySessionTasks(list) {
+    set("sessionTasks", list);
+    const key = sessionTasksKey();
+    if (key && selfStore) {
+      selfStore.setItem(key, list.map((m) => ({ ...m }))).catch(() => {});
+    }
+  }
+
+  // 读取某会话的任务清单（无记录 = 空清单）
+  async function loadSessionTasks(appName, sid) {
+    if (!selfStore || !appName || !sid) return [];
+    try {
+      const saved = await selfStore.getItem(`tasks:${appName}:${sid}`);
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // task_list 工具入口：全量替换清单（TodoWrite 语义）。返回给模型的
+  // 结果文本带最新进度，模型据此汇报
+  function setSessionTasks(tasks) {
+    const key = sessionTasksKey();
+    if (!key) {
+      return "任务清单不可用：当前没有活动会话（发送首条消息建立会话后再用）";
+    }
+    const list = normalizeTaskList(tasks);
+    if (!list) {
+      return "tasks 无效：需要非空数组 [{ text: 任务描述, status: pending|in_progress|done }]，text 必填（≤120 字）";
+    }
+    applySessionTasks(list);
+    // 模型重写清单（需求变化）时，当前仍检测在案的运行错误自动补回，
+    // 防「错误修完前清单被整体替换导致修复任务丢失」
+    if (state.autoErrors?.length) syncErrorTasks(state.autoErrors);
+    // 清单进了系统提示词（「当前任务清单」节）：作废缓存的 Agent，下一
+    // 回合重建即带上最新清单（运行中回合持有自身引用，不受影响）
+    invalidateAgent();
+    const done = state.sessionTasks.filter((t) => t.status === "done").length;
+    return `任务清单已更新（${done}/${state.sessionTasks.length} 完成）：${state.sessionTasks
+      .map((t, i) => `${i + 1}.[${t.status}]${t.text}`)
+      .join("；")}`;
+  }
+
+  // 预览运行错误 ↔ 修复任务同步：新错误自动登记、消失的错误自动勾完成。
+  // 由 autoCheckPreview（每回合收尾后的自动检测）与 setSessionTasks（模型
+  // 重写清单）共同调用，保证「检测在案的错误必然有对应任务」
+  function syncErrorTasks(lines) {
+    const key = sessionTasksKey();
+    if (!key) return;
+    const merged = mergeErrorTasks(state.sessionTasks, lines);
+    if (merged !== state.sessionTasks) applySessionTasks(merged);
   }
 
   // 回合后自动错误检测：推送最新代码 → 等应用重载与首轮报错 → 读 console
@@ -1759,6 +1936,9 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         .filter((l) => l.includes("[error]"))
         .slice(-6);
       set("autoErrors", lines);
+      // 错误 ↔ 任务同步：新错误进清单（用户在面板看到「要修什么」），
+      // 已消失的错误勾完成（修完自动打钩，不依赖模型记得）
+      syncErrorTasks(lines);
       if (lines.length) invalidateAgent(); // 下回合重建提示词带上错误
     } catch (err) {
       console.warn("[autoCheck] 预览自动检测失败：", err);
@@ -2707,6 +2887,21 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       await reloadApps();
       set("currentSessionId", sid);
       syncSessionTitle();
+      set("sessionTasks", []); // 新会话从空清单开始
+    } else {
+      // 「＋ 新对话」预建的空会话：首条消息发出即把占位标题换成首句摘要
+      //（不等回合收尾，左侧标签与顶栏立刻跟随）；fork/导入等带真实标题的
+      // 会话不动
+      const reg = await loadRegistry();
+      const hit = reg.find((a) => a.name === state.currentAppName);
+      const ses = hit?.sessions?.find((s) => s.id === state.currentSessionId);
+      if (ses && (!ses.title || ses.title === "新对话")) {
+        ses.title = text.slice(0, 24) || "新对话";
+        ses.updatedAt = Date.now();
+        await saveRegistry(reg);
+        await reloadApps();
+        set("currentSessionTitle", ses.title);
+      }
     }
     // 本地渠道句柄可能因切换应用 / 刷新丢失，从记录恢复；
     // 句柄还在时先尝试补授权（requestPermission），失败才回退重选目录
@@ -3807,6 +4002,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     selectApp,
     startDraft,
     newSessionFor,
+    setSessionTasks,
     reorderSessions,
     loadSession: loadSessionById,
     deleteApp,

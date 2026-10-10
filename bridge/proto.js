@@ -512,6 +512,43 @@ export function createReliableLink({
 }
 
 /**
+ * 链路事件诊断收集器（conjure 侧接线用）。createReliableLink 的 onEvent
+ * 默认只打 console.debug——事后排查「ACK timeout 到底卡在哪个阶段」时
+ * 没有任何凭据（对话记录里只剩一条裸错误消息）。消费方建一个收集器
+ * 传给所有链路的 onEvent，失败时经 dump() 把最近事件段随错误带出，
+ * 落到对话 JSON 供人排查（不进 AI 上下文）。纯逻辑，便于单测。
+ *
+ * @param {Object} [opts]
+ * @param {number} [opts.max=240] 环形缓冲上限（条）
+ * @returns {{ push(evt: Object): void, dump(limit?: number): Array<Object>, size(): number }}
+ */
+export function createDiagCollector({ max = 240 } = {}) {
+  const events = [];
+  const TEXT_MAX = 200; // 单字段字符串截断（statuses 等字段可能较长）
+  return {
+    push(evt) {
+      const row = { t: Date.now() };
+      for (const [k, v] of Object.entries(evt || {})) {
+        if (v === undefined || v === null) continue;
+        row[k] =
+          typeof v === "string" && v.length > TEXT_MAX
+            ? v.slice(0, TEXT_MAX) + "…"
+            : v;
+      }
+      events.push(row);
+      if (events.length > max) events.splice(0, events.length - max);
+    },
+    /** 最近 limit 条（时间正序），浅拷贝防外部改动环形缓冲 */
+    dump(limit = 120) {
+      return events.slice(-limit).map((e) => ({ ...e }));
+    },
+    size() {
+      return events.length;
+    },
+  };
+}
+
+/**
  * 文件拼装器（bridge 接收端）：按 path 聚合分片，收齐返回完整文本。
  * 纯逻辑，便于单测。
  */

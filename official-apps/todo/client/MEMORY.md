@@ -4,6 +4,24 @@
 
 ## 记录
 
+### 2026-10-10 · 「已归档」「垃圾桶」两个视图改为跟随左栏分组（用户反馈）
+
+- **用户需求**：「为什么已归档那里，没有按照我左边的分组进行显示？垃圾桶和已归档，都应该按照左侧的分组来」。
+- **改了什么**（`pages/home.html`）：① 新增 proto 方法 `scopeByGroup(list)`（`groupFilter === 'all'` 时原样返回，否则按 `groupId` 过滤）与两个 getter `scopedArchivedTodos` / `scopedTrashTodos`；② `scopedActiveTodos` 改用 `scopeByGroup`，与归档 / 垃圾桶三个视图**同一口径**；③ `visibleTodos` 两个分支、`archiveGroups`（`all` 模式的 todos 与 `day` / `week` 的分组循环）均改为 scoped 数据；④ `trashBadge` / `archiveBadge` / 两个底栏计数 / 垃圾桶列表的 `o-fill` 全部改读 scoped 数据；⑤ `updateEmptyText()` 在选中分组时给出带分组名的空状态（「「工作」的垃圾桶是空的…」）并提示可切到「全部任务」看全部；⑥ `emptyTrash()` 改为**只清当前分组范围**（条数取 `scopedTrashTodos.length`，范围记在非响应式字段 `this._purgeScope`，`confirmAction()` 按它过滤；`closeConfirm()` 清空），确认框标题 / 文案在选中分组时带分组名；⑦ 两处视图说明文案（`.trash-tip`）写明“左栏选中某个分组时只显示该分组的条目”。
+- **设计决策**：① **三个视图口径统一**：左栏分组是全局的“作用范围”，不分“归档 / 垃圾桶忽略分组”（旧行为是前者与后者不一致，正是用户困惑的来源）；② 筛选**只改显示**——`scopeByGroup` 是纯 filter，不动数据、不影响 `groupId` 与任何时间戳；③ **“清空垃圾桶”跟着缩到当前分组**：否则底栏写「垃圾桶 0 项」、旁边按钮却能一键清掉其它分组的条目，属硬伤；确认框文案带分组名作提示；④ 视图标签数量也跟着分组走，保证“标签数 = 里面能看到的条数”。
+- **验证结论**（预览实测 + `action=run-tests`）：手工实测——选「个人」后垃圾桶显示 0 条、空状态「「个人」的垃圾桶是空的 🗑，切到「全部任务」可以看到所有分组的条目」、标签徒标消失、「清空垃圾桶」置灰；切「全部任务」后恢复 1 条 / 标签「垃圾桶 1」/ 按钮可用。**新增用例 `client/test/group-scope-views.test.json`（name「归档桶跟随分组」）跑到通过**；全套 10 个用例 `action=run-tests` **10 通过**；`action=status` 的 `errors: 0`；跑完核对 `__todo_test_dirty` 已清、用户数据与偏好均完好（3 条待办：`22222` 在垃圾桶 / `111111` / `222222`，`groups` = 默认 + 个人，`ui.sideWidth 239`，`sessionStorage` 已清）。
+- **本回合踩的坑（已沉淀 `pitfalls/022`）**：改完 getter 后**只改了底栏 / 徒标 / 空状态，忘了垃圾桶列表的 `o-fill` 绑的是未过滤的 `trashTodos`** → 用例直接报「「工作」下的垃圾桶不应出现其它分组的条目，实际 默认项」，同一屏上“底栏 0 项”与“列表 1 条”并存。教训：改数据范围时先把模板里所有 `:value=` 扫一遍。
+- **环境备注**：`action=app` 推送报 `ACK timeout` 但**推送已生效**（用 eval 读页面里的新说明文案佐证，见 `pitfalls/020`）；`action=run-tests` 本会话可用（不认 `files` 参数，会跑全套）；跑全套时「删除倒计时」出现过一次瞬时失败（`找不到任务：任务B`，重跑即绿，已确认非本次改动引入——该用例全流程在 `groupFilter = all` 下跑，与 scoped getter 行为等价）。
+
+### 2026-10-10 · 已归档视图加子标签「全部归档 / 按日期 / 按周」（用户需求）
+
+- **用户需求**：「已归档那里，下面再添加几个 tab，默认查看所有归档，可以按归档日期查看归档，按周查看归档（按周的话，归档也要简单的加一下日期分组）」。
+- **改了什么**（`pages/home.html`）：① data 新增 `archiveGroupMode`（`"all"` 默认 / `"day"` / `"week"`）；② 新增 getter **`archiveGroups`**（`all` → 一组 `{key:"all", showHead:false, todos: archivedTodos}`；`day`/`week` → 按 `archiveBucket()` 分组、**最新一组在前**、每组带 `label` / `countText` / `showHead:true`）与方法 `setArchiveGroupMode` / `dateKey` / `monthDayText` / `archiveBucket` / `isoWeek`；③ 模板：归档视图说明行下方加子标签 `st-button-group.archive-tabs`，`archivedTodos` 的平铺列表改为 **`.agroups` → 外层 `o-fill :value="archiveGroups" fill-key="key"`（`.agroup` = `.agroup-head` + `.list` → 内层 `o-fill :value="$data.todos" fill-key="id"`）**，`showHead` 控制组头显隐；④ 样式新增 `.archive-tabs` / `.agroups`（组间 18px）/ `.agroup` / `.agroup-head`（13px 半粗 + 12px 条数）；⑤ 会话状态快照加 `archiveGroup`（`sessionSnapshot` / `restoreSessionState` 校验）。
+- **设计决策**：① **不给「全部归档」另写一套平铺模板**——它在 `archiveGroups` 里就是「一组 + 组头隐藏」，与分组模式共用同一个 `o-fill` 与同一份行模板（以后改行结构只改一处）；② 分组只改**怎么显示**、不筛数据不改数据，`archiveBucket()` 只读 `archivedAt`（取消归档 / 删除后条数自动重算）；② key 一律「`d`/`w` + `YYYY-MM-DD`」→ **字典序即时间序**，排序简单且天然把「归档时间未知」的兜底组（`0-unknown`）排到最后；③ 按**本地时区**切日期（不用 UTC，避免凌晨归档被算到前一天），按周用 **ISO 周**（周一为一周起点、取该周周四所在年份与周序号，跨年周不错位）；④ 查看方式随会话记忆（写 `sessionStorage`，与「刷新保留、关标签页重置」的既有语义一致）。
+- **验证结论**（预览实测）：**新写 `client/test/archive-group.test.json`（用 crafted `archivedAt`：今天两条 / 昨天一条 / 9 天前一条）+ 本地驱动分片回放全绿**——默认「全部归档」：`variant=filled`、4 条平铺、`.agroup-head` 计算值 `display:none`；「按日期」：3 组（`10-10 周六`+`10-09 周五`+`09-30 周三`，各带条数、组头 19px 单行、组前后 y 247/374）、各组条数 `2,1,1`、组内顺序不变、总条数仍 4；「按周」：同周两条合成一组、组头「2026 年第 41 周 · 10-05 ~ 10-11 2 项」、总条数不变、`sessionStorage.archiveGroup="week"`；**硬刷新后仍停在「按周」且周分组照旧**。**回归**：`toggle-archive`（归档视图结构改了，全链路 20 步全绿）与 `session-state`（快照加了字段，19 步含 4 次 reload 全绿）分片回放通过；控制台 `errors: 0`；跑完核对 `__todo_test_dirty` 已清、用户数据（3 条待办 / 2 个分组 / `ui.sideWidth 239`）与列表渲染（111111 / 222222、「1 项未完成 · 共 2 项」、垃圾桶徒标）均已回来。
+- **环境限制**：本会话 `action=run-tests` 与 `action=windows` 都报「宿主未注入预览通道」（`status` / `eval` / `console` / `dom` 正常），测试仍走 `test/_driver.js` 分片回放；`action=app` 两次报 ACK timeout 但**推送其实已生效**（用 `eval` 查页面模板里的中文文案佐证），见 `pitfalls/020`。
+- **本回合踩的坑（已沉淀两个文件并登记索引）**：`pitfalls/020`（`action=app` ACK timeout ≠ 推送失败）、`pitfalls/021`——**临时改预览数据时的备份挂在了 `window` 上，reload 后变 `undefined`，`setItem('todos', undefined)` 直接把用户 3 条待办抹掉**；已立即用 `localStorage.__todo_test_backup_v1` 完整还原（标题 / done / deletedAt / groups / sideWidth 全部核对一致）。教训：跨 reload 的临时状态一律存 `localStorage`，且还原前先判空。
+
 ### 2026-10-10 · 修「宿主跑测试报 ACK timeout / wait 超时」——reload 窗口与就绪锚点两个时序坑（用例重构引入）
 
 - **症状**：宿主自动跑 `client/test/` 时报 6–7 条错误，名字正是上一回合重构后的短功能名：`添加任务 / 拖拽排序 / 分组管理 / 会话状态：调试指令投递失败（预览页无响应）：ACK timeout after 4 retries`；`删除倒计时 / 编辑任务：调试指令 wait 等待结果超时（25000ms）`。而同一套步骤在页面里手动回放（本地驱动）当时是全绿的 → 应用行为无问题，是**步骤与页面的时序**问题。

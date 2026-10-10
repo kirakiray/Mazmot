@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>tools/index.js createTools ctx 接线测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯逻辑测试：createTools 用桩 tool 工厂包装插件定义，
+         经 preview 工具的实际 exec 探测 ctx 是否注入完整 -->
+    <sb-test name="createTools - preview 工具 ctx 注入 listPreviewWindows / checkPopup / runTests">
+      <template>
+        <script type="module">
+          import { createTools } from "../tools/index.js";
+          {
+            const UNAVAILABLE = "宿主未注入预览通道";
+            // 桩通道：可辨认的返回值，能区分「ctx 已注入且被调用」与「不可用兜底」
+            const stubs = {
+              listPreviewWindows: async () => [
+                { id: "u|s", app: "todo", device: "macOS", online: true, lastSeen: Date.now() },
+              ],
+              checkPopup: async () => ({ allowed: true }),
+              runTests: async () => ({ noTests: true }),
+              openPreview: async () => ({ url: "http://x", agentOnline: true }),
+              previewDebug: async () => ({ result: "stub", meta: {} }),
+            };
+            const tools = createTools({
+              tool: (exec, meta) => ({ exec, meta }),
+              fs: {},
+              ...stubs,
+            });
+            const preview = tools.preview;
+            const windowsRes = await preview.exec({ action: "windows" });
+            const popupRes = await preview.exec({ action: "check-popup" });
+            const testsRes = await preview.exec({ action: "run-tests" });
+            const checks = {
+              windows: windowsRes.includes("共 1 个预览窗口"),
+              popup: popupRes.includes("弹窗探测通过"),
+              tests: testsRes.includes("还没有测试用例"),
+              noneUnavailable:
+                !windowsRes.includes(UNAVAILABLE) &&
+                !popupRes.includes(UNAVAILABLE) &&
+                !testsRes.includes(UNAVAILABLE),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: {
+                checks,
+                windowsRes: windowsRes.slice(0, 60),
+                popupRes: popupRes.slice(0, 40),
+                testsRes: testsRes.slice(0, 40),
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

@@ -43,6 +43,7 @@ import {
   buildFileMessages,
   buildManifest,
   createDbgCollector,
+  createDiagCollector,
   createReliableLink,
   enableServerAutoReconnect,
   ensureServerConnected as ensureSignaling,
@@ -281,6 +282,31 @@ const agentRemotes = new Map(); // userId → remoteUser（dbg 指令的投递�
 let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
 const dbgWaiters = new Map(); // reqId -> { resolve, reject }
 
+/* ---------- 链路诊断（失败排查用，不进 AI 上下文） ----------
+ * 所有链路（回合 / 调试 / 能力桥）的事件统一进一个环形缓冲；推送或调试
+ * 失败时经 attachDiag 把最近事件段 + 推送上下文挂上错误对象，由
+ * builder-store 落到对话 JSON（工具消息 / 错误卡的 diag 字段）。此前
+ * ACK timeout 只有裸错误消息，卡在哪个阶段、投递状态如何全凭猜测
+ *（实测：慢路径被 agent-online 冒领后对着未就绪的引导页连烧 5 次重试，
+ * 报错与真因相距一整个引导页加载期，无诊断无法定位） */
+const linkDiag = createDiagCollector();
+const recordLinkEvent = (e) => linkDiag.push(e);
+
+const attachDiag = (err, stage) => {
+  try {
+    if (err && !err.diag) {
+      err.diag = {
+        stage,
+        peerService,
+        at: Date.now(),
+        windows: listPreviewWindows(),
+        linkEvents: linkDiag.dump(120),
+      };
+    }
+  } catch (_) {}
+  return err;
+};
+
 /* ---------- 预览能力桥（guest 替身 ↔ 主容器 broker） ----------
  * 应用页替身模块（bridge/guest/*，经 receiver 注入的 import map 顶替 /mz/*）
  * 发 cap-req 到本服务；本端校验窗口注册表 + 并发闸后交给
@@ -304,6 +330,7 @@ const capLinkFor = (ctx) => {
         ctx.remoteUser.sendToService(SERVICE_ID_AGENT, env, {
           sessionId: ctx.fromSessionId,
         }),
+      onEvent: recordLinkEvent,
     });
     capLinks.set(key, link);
     if (capLinks.size > 12) capLinks.delete(capLinks.keys().next().value); // 上限同预览窗口数
@@ -378,7 +405,7 @@ let dbgSeq = 0;
 let dbgNextTarget = null; // { userId, sessionId } | null（null = 广播到对端全部窗口）
 const dbgMsgTargets = new Map(); // msgId -> target
 
-const resetWaiters = (expectedPeer = null) => {
+const resetWaiters = (expectedPeer = null, { expectBridge = false } = {}) => {
   let helloResolve, diffResolve, doneResolve;
   const hello = new Promise((r) => {
     helloResolve = r;
@@ -392,7 +419,20 @@ const resetWaiters = (expectedPeer = null) => {
   // expectedPeer：本轮等待的对端 userId。多窗口下 hello/agent-online 可能来自
   // 任何窗口（扫码设备反连、其他窗口 reload 回线），只有匹配对端才结算，
   // 防止别的窗口「冒领」本轮等待（sync-diff/done 由串行推送保证不串台）
-  waiters = { hello, diff, done, helloResolve, diffResolve, doneResolve, expectedPeer };
+  // expectBridge：hello 只认 bridge 引导页的真 hello。agent-online 与 hello
+  // 共用 helloResolve——慢路径（等引导页就绪）若被应用页的 agent-online
+  // 冒领，推送会在引导页尚未注册 conjure-bridge 时开跑，消息全部
+  // not-delivered 烧尽重试后报 ACK timeout（实测踩坑，见 attachDiag 注释）
+  waiters = {
+    hello,
+    diff,
+    done,
+    helloResolve,
+    diffResolve,
+    doneResolve,
+    expectedPeer,
+    expectBridge,
+  };
 };
 
 // 服务只注册一次；handler 经共享变量路由到「当前回合」的链路与等待器
@@ -425,6 +465,7 @@ function ensureService(user) {
     },
     // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
     onOffline: (info) => ensureServerConnected(user, info),
+    onEvent: recordLinkEvent,
   });
   user.registerService(SERVICE_ID_CONJURE, {
     onMessage: (data, ctx) => {
@@ -474,7 +515,8 @@ function ensureService(user) {
             waiters &&
             fromPeer &&
             (type === "hello" || type === "agent-online") &&
-            (!waiters.expectedPeer || waiters.expectedPeer === fromPeer)
+            (!waiters.expectedPeer || waiters.expectedPeer === fromPeer) &&
+            (!waiters.expectBridge || type === "hello")
           ) {
             waiters.helloResolve({ userId: fromPeer, agent: type === "agent-online" });
           }
@@ -756,8 +798,20 @@ export function watchPreviewAgent({ load, selfStore, onChange }) {
  * @param {(text: string) => void} [opts.onStatus] 状态回调（推送中/完成/失败前的过程提示）
  * @param {({done: number, total: number}) => void} [opts.onProgress] 结构化进度
  *   （清单比对 / 文件推送的 done/total，供 UI 画进度条；阶段文本走 onStatus）
+ *
+ * 失败时错误对象带 diag 字段（链路事件段 + 推送上下文，见 attachDiag），
+ * 由调用方落档排查；弹窗拦截（确定性交互问题）不附。
  */
-export async function openRemotePreview({
+export async function openRemotePreview(opts) {
+  try {
+    return await openRemotePreviewImpl(opts);
+  } catch (err) {
+    if (err?.code !== POPUP_BLOCKED) attachDiag(err, "preview");
+    throw err;
+  }
+}
+
+async function openRemotePreviewImpl({
   load,
   appName,
   files,
@@ -797,11 +851,16 @@ export async function openRemotePreview({
         : Promise.resolve([{ status: "error" }]),
     // 中继通道掉线（offline）时主动重连，别让重试窗口干等耗尽
     onOffline: (info) => ensureServerConnected(user, info),
+    onEvent: recordLinkEvent,
   });
   activeLink = link;
-  resetWaiters();
+  // expectBridge：本等待器在快路径跳过时延续给慢路径的 hello 等待，只认
+  // 引导页真 hello（应用页代理的 agent-online 不得冒领，否则推送会对着
+  // 尚未注册服务的引导页开跑）；快路径自身等到 diff/done，不用 hello
+  resetWaiters(null, { expectBridge: true });
   // 推送差异文件到当前对端（bridge 页 / 应用页代理共用协议）；
-  // 返回是否实际推送了文件（false = 零差异，对端页面不会刷新）
+  // 返回是否实际推送了文件（false = 零差异，对端页面不会刷新）。
+  // 各阶段失败带上阶段标签：裸的「ACK timeout: m-xxx」无法定位卡在哪一步
   const pushFiles = async (diff) => {
     const missing = new Set(Array.isArray(diff.missing) ? diff.missing : []);
     const toSend = files.filter((f) => missing.has(f.path));
@@ -813,7 +872,14 @@ export async function openRemotePreview({
     }
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
     report(0, toSend.length);
-    await link.send({
+    const sendStage = async (label, payload) => {
+      try {
+        await link.send(payload);
+      } catch (err) {
+        throw attachDiag(new Error(`${label}：${err.message}`), label);
+      }
+    };
+    await sendStage(`推送中断于 app-begin（${toSend.length} 个文件）`, {
       type: "app-begin",
       appName,
       fileCount: toSend.length,
@@ -822,13 +888,16 @@ export async function openRemotePreview({
     let sent = 0;
     for (const file of toSend) {
       for (const msg of buildFileMessages(appName, file.path, file.text)) {
-        await link.send(msg);
+        await sendStage(
+          `文件 ${file.path} 分片 ${msg.seq + 1}/${msg.total} 推送失败`,
+          msg,
+        );
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
       report(sent, toSend.length);
     }
-    await link.send({ type: "app-end", appName });
+    await sendStage(`推送中断于 app-end`, { type: "app-end", appName });
     return true;
   };
 
@@ -944,9 +1013,10 @@ export async function openRemotePreview({
               ? remote.sendToService(peerService, env, { waitForService: 3000 })
               : Promise.resolve([{ status: "error" }]),
           onOffline: (info) => ensureServerConnected(user, info),
+          onEvent: recordLinkEvent,
         });
         activeLink = link;
-        resetWaiters();
+        resetWaiters(null, { expectBridge: true });
       }
     }
   }
@@ -1060,9 +1130,11 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {}, on
           ? remote.sendToService(peerService, env, { waitForService: 3000 })
           : Promise.resolve([{ status: "error" }]),
       onOffline: (info) => ensureServerConnected(user, info),
+      onEvent: recordLinkEvent,
     });
     activeLink = link;
   };
+  // 阶段标签同 openRemotePreview.pushFiles：失败要能定位卡在哪个文件哪一片
   const pushFiles = async (diff) => {
     const missing = new Set(Array.isArray(diff.missing) ? diff.missing : []);
     const toSend = files.filter((f) => missing.has(f.path));
@@ -1070,17 +1142,32 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {}, on
     if (!toSend.length) return false;
     status(`推送应用文件（${toSend.length}/${files.length} 个有差异）...`);
     report(0, toSend.length);
-    await link.send({ type: "app-begin", appName, fileCount: toSend.length, wipe });
+    const sendStage = async (label, payload) => {
+      try {
+        await link.send(payload);
+      } catch (err) {
+        throw attachDiag(new Error(`${label}：${err.message}`), label);
+      }
+    };
+    await sendStage(`推送中断于 app-begin（${toSend.length} 个文件）`, {
+      type: "app-begin",
+      appName,
+      fileCount: toSend.length,
+      wipe,
+    });
     let sent = 0;
     for (const file of toSend) {
       for (const msg of buildFileMessages(appName, file.path, file.text)) {
-        await link.send(msg);
+        await sendStage(
+          `文件 ${file.path} 分片 ${msg.seq + 1}/${msg.total} 推送失败`,
+          msg,
+        );
       }
       sent++;
       status(`推送文件 ${sent}/${toSend.length}：${file.path}`);
       report(sent, toSend.length);
     }
-    await link.send({ type: "app-end", appName });
+    await sendStage(`推送中断于 app-end`, { type: "app-end", appName });
     return true;
   };
 
@@ -1311,7 +1398,10 @@ export async function debugPreviewCommand({
   } catch (err) {
     dbgNextTarget = null;
     dbgWaiters.delete(reqId);
-    throw new Error(`调试指令投递失败（预览页无响应）：${err.message}`);
+    throw attachDiag(
+      new Error(`调试指令投递失败（预览页无响应）：${err.message}`),
+      `dbg:${cmd}`,
+    );
   } finally {
     dbgNextTarget = null;
   }
@@ -1322,7 +1412,8 @@ export async function debugPreviewCommand({
     outcome = await withTimeout(promise, ms, `调试指令 ${cmd} 等待结果超时（${ms}ms）`);
   } catch (err) {
     dbgWaiters.delete(reqId);
-    throw err;
+    // 等待超时同样附诊断：投递成功但结果没回来，排查方向完全不同
+    throw attachDiag(err, `dbg-wait:${cmd}`);
   }
   if (!outcome.ok) {
     throw new Error(String(outcome.error || `调试指令 ${cmd} 执行失败`));

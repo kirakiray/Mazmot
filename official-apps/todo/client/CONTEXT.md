@@ -4,7 +4,7 @@
 
 ## 一句话定位
 
-一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除，宽度可拖拽 150–300px，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述；也能让 **AI 根据一句自然语言描述自动生成标题与描述**）、勾选完成、**编辑已有任务的标题与描述**、**拖拽调整顺序**、删除（5 秒倒计时后才进垃圾桶）、点任务看详情、按视图筛选（**全部 / 已归档 / 垃圾桶**）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱。每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
+一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除，宽度可拖拽 150–300px，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述；也能让 **AI 根据一句自然语言描述自动生成标题与描述**）、勾选完成、**编辑已有任务的标题与描述**、**拖拽调整顺序**、删除（5 秒倒计时后才进垃圾桶）、点任务看详情、按视图筛选（**全部 / 已归档 / 垃圾桶**，三个视图都跟随左栏选中分组）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱——归档箱内还能按「**全部归档 / 按日期 / 按周**」切换查看方式（按日期按归档日期分组、按周按 ISO 周分组）。每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
 
 ## 使用指南
 
@@ -32,8 +32,14 @@
    - **AI 添加（同一个弹窗的下半部分）**：用一句自然语言描述要做的事（如「明天下午三点和客户开会，记得先准备报价单」）→ 点「AI 生成」（前置 `mdi:creation` 图标）→ 调平台 AI（`/mz/ai/main.js`）让模型输出 `{title, desc}`，**自动回填到上面的多行输入框**（标题首行 + 描述在后），用户改一改再点「添加」；描述框为空时按钮禁用，请求中按钮变「AI 生成中…」并禁用，成功后提示「AI 已生成，确认或改一改再点「添加」」，失败则在弹窗内红字显示原因且输入内容不丢。
 6. **视图筛选**：`全部 / 已归档 / 垃圾桶` 按钮组（已归档前置 `mdi:archive-arrow-down`、垃圾桶前置 `mdi:delete-outline` 图标，后两个标签带数量），与左栏分组叠加生效。
    - **全部**：列表（未归档、未删除的条目，含已完成与未完成两种）。
-   - **已归档**：任务在这个视图里「收起来」——**不在列表显示、不计入统计与侧栏分组计数**，但数据没被删。每条可「取消归档」（回到原分组，勾选状态保留，由 `unarchiveTodo()`）或删除（走列表同款的 5 秒倒计时 → 垃圾桶）。归档视图显示所有分组的归档条目（忽略分组），顶部有一行说明。
-   - **垃圾桶**：显示所有分组的垃圾桶条目（忽略分组）。
+   - **已归档**：任务在这个视图里「收起来」——**不在列表显示、不计入统计与侧栏分组计数**，但数据没被删。每条可「取消归档」（回到原分组，勾选状态保留，由 `unarchiveTodo()`）或删除（走列表同款的 5 秒倒计时 → 垃圾桶）。**归档视图跟随左栏分组**（与列表视图同一口径）：左栏选中某分组时只显示该分组的归档，选「全部任务」时才是所有分组的归档；顶部有一行说明。
+   - **归档视图内的查看方式（子标签）**：说明行下方是 `全部归档 / 按日期 / 按周` 三个子标签，**默认「全部归档」**（平铺、无日期组头，等价于原来的样子）。
+     - **按日期**：按归档时刻（`archivedAt`）的**本地日期**分组（用本机时区切分，不用 UTC），**最新的一组排最前**；组头形如「**10-10 周六**」+ 右侧「N 项」（跨年时补 `YYYY-` 前缀）。
+     - **按周**：按 **ISO 周**分组（周一为一周起点、取该周周四所在年份与周序号，跨年周不会算错），组头形如「**2026 年第 41 周 · 10-05 ~ 10-11**」+ 右侧「N 项」，同样最新的一组排最前。
+     - 两种分组模式下**不带日期组头的那一档仍保持原顺序**（组内顺序 = `archivedTodos` 顺序，即 `todos` 里的顺序）；老数据没有 `archivedAt` 时单独兜底一组「归档时间未知」，因为 key 前缀最小而**排在最后**。
+     - 选中哪个子标签会写进 `sessionStorage` 会话状态（键 `archiveGroup`），刷新后仍停在原查看方式；关标签页 / 新窗口回落到「全部归档」。
+     - 子标签切换**不筛数据、不改数据**，只改渲染方式（与筛选视图的「已归档」是两级：先选视图，再选组内呈现）。
+   - **垃圾桶**：**同样跟随左栏分组**——左栏选中某分组时只显示该分组的垃圾桶条目，选「全部任务」时是全部；底部「清空垃圾桶」也只在当前分组范围内生效（确认框标题与文案都会写明分组名，不会误清其它分组）。
    - **当前筛选与选中分组会被记住**：切换分组 / 筛选时写入 `sessionStorage`，**刷新（F5）后仍停在原来的分组与视图**；关闭标签页或新开窗口则回到默认（「全部任务」+「全部」）。如果记住的分组已被删除，启动时自动回落到「全部任务」。
 7. **拖拽排序**：每条任务最左侧有一个拖拽手柄（`mdi:drag-vertical` 图标，平时半透明 opacity 0.45、鼠标悬停到该行时变亮，`title` 为「按住拖动调整顺序：xxx」）。
    - **拖动过程只给引导，不改位**：按住手柄开始拖后，被拖的行原地变淡（`opacity 0.4` + 细描边，作为“源”标记），指针所在位置用**目标行的边缘线**提示落点——`class:drop-before`（插到这行之前，主题色 2px 线画在该行**上边**）+ `class:drop-after`（插到下一行之前 / 末尾，线画在该行**下边**），线左端带一个 9px 圆点；**松手时条目才真正插到指示线位置**并写入存储。按下后未移动就松手、或落点就是原位置时**不动数据也不写盘**。
@@ -60,7 +66,7 @@ client/
 ├── app.json         # 应用元信息（name=todo、displayName=待办清单、icon=✅）
 ├── pages/
 │   └── home.html    # 唯一页面模块：样式 + 模板 + 脚本（全部逻辑在此）
-└── test/            # 场景测试（防迭代回归）：8 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
+└── test/            # 场景测试（防迭代回归）：10 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
 ```
 
 （`pitfalls/` 为踩坑库，`backup/` 为系统自动备份目录，均不属于运行时资源。）
@@ -71,7 +77,7 @@ client/
 
 - 存储空间：`getStorage("conjure-todo-app")`；键三个：`"todos"`（任务）、`"groups"`（分组）、`"ui"`（界面偏好）。
 
-> 另有**会话状态**（当前筛选 + 选中分组）不进 NoneOS 存储，而是存在浏览器的 `sessionStorage` 键 `"todo-ui-state"`（值 `{ view, groupFilter }`）。这是经用户明确要求的**豁免**（项目约定数据一律进 `/nos/storage`）：`sessionStorage` 的会话语义正好是「刷新保留、关标签页重置」。详见 MEMORY.md 的豁免记录，**不要把它「修正」回 `/nos/storage`**——那会变成关掉再打开也留在旧分组（超出用户预期）。
+> 另有**会话状态**（当前筛选 + 选中分组）不进 NoneOS 存储，而是存在浏览器的 `sessionStorage` 键 `"todo-ui-state"`（值 `{ view, groupFilter, archiveGroup }`，其中 `archiveGroup` 是归档视图的查看方式，见 `archiveGroupMode`）。这是经用户明确要求的**豁免**（项目约定数据一律进 `/nos/storage`）：`sessionStorage` 的会话语义正好是「刷新保留、关标签页重置」。详见 MEMORY.md 的豁免记录，**不要把它「修正」回 `/nos/storage`**——那会变成关掉再打开也留在旧分组（超出用户预期）。
 - `ui` 值：`{ sideWidth: number }` —— 分组侧栏宽度（px）。读取时用 `clampSideWidth()` 收敛到 150–300（非法 / 缺失回默认 190）；常量 `SIDE_MIN_W = 150` / `SIDE_MAX_W = 300` / `SIDE_DEFAULT_W = 190`。
 - `groups` 值：`Array<{ id: string, name: string }>`，**首项固定为默认分组** `{ id: "default", name: "默认" }`；常量 `DEFAULT_GROUP_ID = "default"` / `DEFAULT_GROUP_NAME = "默认"`。新分组 id 为 `"g" + Date.now().toString(36) + random`。读取时过滤掉非法项；若不含 `default` 则自动在头部补上（旧数据没有 `groups` 键时也走这条，于是开局就有一个「默认」分组）。
 - `todos` 值：`Array<Todo>`，`Todo = { id, text, desc, groupId, done, createdAt, statusChangedAt, archivedAt, deletedAt, pendingDeleteAt }`（时间字段均为 `number|null`），新增项置于数组首位。
@@ -91,6 +97,7 @@ client/
 | ---- | ---- | ------ |
 | `draft` | 输入框草稿（`sync:value` 双向绑定） | `""` |
 | `view` | 当前视图：`all` / `archived` / `trash` | `"all"` |
+| `archiveGroupMode` | 「已归档」视图内的查看方式：`all`（全部归档，平铺）/ `day`（按归档日期分组）/ `week`（按 ISO 周分组） | `"all"` |
 | `todos` | 全量待办数组（含垃圾桶里的） | `[]` |
 | `groups` | 分组表 `Array<{ id, name }>`（首项固定为默认分组） | `[{id:"default",name:"默认"}]` |
 | `groupFilter` | 分组过滤：`"all"` 或某分组 id（侧栏选中项） | `"all"` |
@@ -132,9 +139,11 @@ client/
 | `activeTodos` | `todos` 中 `!deletedAt && !archivedAt` 的（含倒计时中的），统计、分组计数与「全部」视图都基于它 |
 | `archivedTodos` | `!deletedAt && !!archivedAt` 的，即已归档条目 |
 | `trashTodos` | `todos` 中 `deletedAt` 非空的 |
-| `trashBadge` / `archiveBadge` | 垃圾桶 / 已归档标签上的数量后缀（0 时为空串） |
+| `scopedArchivedTodos` / `scopedTrashTodos` | 归档 / 垃圾桶条目按当前选中分组过滤后的结果（`groupFilter = "all"` 时等于 `archivedTodos` / `trashTodos`），两个视图的列表、底栏计数、标签数量都基于它们 |
+| `trashBadge` / `archiveBadge` | 垃圾桶 / 已归档标签上的数量后缀（取 `scopedTrashTodos` / `scopedArchivedTodos` 的长度，0 时为空串，因此**跟着分组变**） |
+| `archiveGroups` | 「已归档」视图的渲染数据：`all` 模式返回**一组** `{ key:"all", showHead:false, todos: scopedArchivedTodos }`（组头隐藏 → 等价平铺）；`day` / `week` 模式按 `archiveBucket()` 分组、**最新一组在前**，每组 `{ key, label, showHead:true, countText:"N 项", todos }`。两种模式共用同一个 `o-fill`，不必维护两套条目模板 |
 | `scopedActiveTodos` | 当前分组范围内的列表条目（`groupFilter = "all"` 时等于 `activeTodos`），列表 / 统计 / **归档已完成**都基于它 |
-| `visibleTodos` | 当前视图要渲染的列表：`trash` → `trashTodos`、`archived` → `archivedTodos`（两者都忽略分组）、其余 → `scopedActiveTodos` |
+| `visibleTodos` | 当前视图要渲染的列表：`trash` → `scopedTrashTodos`、`archived` → `scopedArchivedTodos`、其余 → `scopedActiveTodos`（**三个视图统一跟随分组**） |
 | `remaining` | `scopedActiveTodos` 中未完成数量 |
 | `doneCount` | `scopedActiveTodos` 中已完成数量（同时决定「归档已完成」是否禁用） |
 | `draftGroupId` | 新任务将归入的分组：浏览某分组时即该分组，否则默认分组 |
@@ -169,7 +178,9 @@ client/
 - `.dialog-field { width: 100%; }`：弹窗内输入框只改宽度，**不覆盖 `st-input` 的 `display`**（原因见踩坑 004）。
 - **右上操作区 `.top-actions`**：`display: flex; align-items: center; gap: 8px; flex: none`，内容依次是「归档已完成」（`variant="text"`，与主按钮「添加任务」区分主次）与「添加任务」。实测任务区右边缘贴齐视口（归档按钮 x=898 / 添加按钮 x=1042、右边缘 1164 = 视口 1180 - 16 padding）。窄屏（≤620px）在媒体查询里给 `.top` 加 `flex-wrap: wrap`，放不下时按钮组整块换行，不把标题挤扁。
 - **行尾操作区 `.item-actions`**：`flex: none; display: flex; gap: 2px`，里面并排「编辑」`st-icon-button.edit-btn`（常态 `opacity: 0.7`，`hover` / `focus-within` 变 `opacity: 1` + 主题色）与「删除」`st-icon-button`。**两个按钮统一 34px**（给 `st-icon-button` 设 `font-size: 12px`，em 等比缩放，图标 18.9px；不要给 `n-icon` 写尺寸，见踩坑 009）——曾经是默认 40px、两个并排占 92px，显得笨重（用户反馈“太丑”），现为 70.6px。倒计时（`.item.pending`，错误容器底色）下两个按钮的**宿主** color 换成 `on-error-container`（实测 255,180,171），编辑按钮也取消降透明度。注意必须直接命中 `st-icon-button` 宿主：它自带 `color: on-surface-variant`，父容器上写 `color` 会被组件自声明盖掉。
-- **三个视图的模板结构**：`全部`（`.item`：拖拽手柄 `.drag-handle` + `st-checkbox` + `.body` + `.item-actions`（编辑 / 删除））、`已归档`（`.item.archived`：用 `.arch` 包一个 `n-icon icon="mdi:archive-arrow-down"` 占住勾选框位置（行高与其它视图一致）+ `.body` + 「取消归档」`st-button` + `.item-actions`）、`垃圾桶`（`.item.trash`：`.body` + 「还原」+ 彻底删除）。**三套列表各自一个 `o-fill`**（`visibleTodos` 与 `trashTodos` / `archivedTodos` 都有用），共用 `.list` / `.item` 基础样式；空状态 `isListEmpty` 与 `{{emptyText}}` 在三套之外只写一次（数组成空就显一个，不会重叠）。
+- **「已归档」视图内是两层容器 + 嵌套 `o-fill`**：说明行 → 子标签 `st-button-group.archive-tabs`（`全部归档 / 按日期 / 按周`）→ `.agroups` → `o-fill :value="archiveGroups" fill-key="key"`（每组一个 `.agroup`，组内是 `.agroup-head`（`label` + `countText`）+ `.list` → 内层 `o-fill :value="$data.todos" fill-key="id"` 渲染条目）。**嵌套 `o-fill` 里的 `$data` 分别指向两层数据**（外层是组、内层是任务），内层条目上的回调仍旧用 `$host.xxx($data.id)`；`fill-key` 两层都要给（外层 `key`、内层 `id`）。
+- **「全部归档」不用单独一套模板**：`archiveGroups` 在 `all` 模式下返回「一组 + `showHead:false`」，组头用 `class:hidden="!$data.showHead"` 隐藏，条目模板与分组模式完全共用（少维护一套一模一样的行结构）。
+- **三个视图的模板结构**：`全部`（`.item`：拖拽手柄 `.drag-handle` + `st-checkbox` + `.body` + `.item-actions`（编辑 / 删除））、`已归档`（`.item.archived`：用 `.arch` 包一个 `n-icon icon="mdi:archive-arrow-down"` 占住勾选框位置（行高与其它视图一致）+ `.body` + 「取消归档」`st-button` + `.item-actions`）、`垃圾桶`（`.item.trash`：`.body` + 「还原」+ 彻底删除）。**三套列表各自一个 `o-fill`**，且**都绑过滤后的 getter**：列表视图 `visibleTodos`、归档视图 `archiveGroups`（内部用 `scopedArchivedTodos`）、垃圾桶视图 `scopedTrashTodos`。改数据范围时要三处一起看——本项目就漏过垃圾桶那一处（底栏计数已过滤、列表还是全量，见踩坑 022）。共用 `.list` / `.item` 基础样式；空状态 `isListEmpty` 与 `{{emptyText}}` 在三套之外只写一次（数组成空就显一个，不会重叠）。
 
 ### 时间显示（proto 方法）
 
@@ -204,13 +215,19 @@ client/
 | `submitGroup()` | 分组弹窗提交入口（回车与按钮都走它）：按 `editingGroupId` 分支新建或保存改名，**成功才关弹窗**并落盘 |
 | `archiveDone()` | 「归档已完成」入口：把当前分组范围内**未归档、未删、未在倒计时**的已完成项打上 `archivedAt = now`（一条条改字段，不删数据）；无变化时不写盘 |
 | `unarchiveTodo(id)` | 取消归档（`archivedAt = null`），条目回列表与原分组，`done` 与各时间戳保留 |
+| `setArchiveGroupMode(mode)` | 切换归档查看方式（只接受 `all` / `day` / `week`，非法值忽略），写会话状态 |
+| `dateKey(ts)` / `monthDayText(d)` | 本地日期 key（`YYYY-MM-DD`）/ `MM-DD` 文案；分组 key 一律用它们拼（key 前缀 `d` / `w` 后跟 `YYYY-MM-DD`，**字典序即时间序**，倒序排序即最新在前） |
+| `archiveBucket(ts)` | 一个归档时刻归到哪个分组 → `{ key, label }`：`day` 模式 `key="dYYYY-MM-DD"`、label「10-10 周六」；`week` 模式 `key="wYYYY-MM-DD"`（该周周一）、label「2026 年第 41 周 · 10-05 ~ 10-11」；`archivedAt` 非数字时返回 `{ key:"0-unknown", label:"归档时间未知" }`（排在最后） |
+| `isoWeek(ts)` | ISO 周序号：取该周**周四**所在的年份 + `Math.ceil` 出的周数（跨年周不至于算错） |
 | `requestDeleteGroup(id)` / `deleteGroup(id)` | 删除分组：前者弹二次确认，后者真正执行（任务移入默认分组并落盘） |
 | `updateEmptyText()` | 按当前 `view` + `groupFilter` 生成空状态文案 |
-| `confirmAction()` | 确认弹窗统一入口：按 `confirmKind` 分发「彻底删除」与「删除分组」 |
+| `scopeByGroup(list)` | 按当前选中分组过滤一个条目数组（`groupFilter = "all"` 时原样返回）；`scopedActiveTodos` / `scopedArchivedTodos` / `scopedTrashTodos` 三个 getter 都走它，保证三个视图口径一致 |
+| `confirmAction()` | 确认弹窗统一入口：按 `confirmKind` 分发「彻底删除」与「删除分组」；`target === "ALL"`（清空垃圾桶）时按 `emptyTrash()` 当时记下的 `_purgeScope` 只清该分组范围 |
 | `restoreTodo(id)` | 从垃圾桶还原：清 `deletedAt` / `pendingDeleteAt`，**并清 `archivedAt`**（归档项被删后又还原，应回列表而非回归档箱） |
+| `emptyTrash()` | 请求清空垃圾桶：**只针对当前分组范围**（条数取 `scopedTrashTodos.length`，范围记在 `_purgeScope` 里）；选「全部任务」时才是清空全部。选中分组时确认框标题 / 文案都带分组名 |
 | `clampSideWidth(v)` / `loadUi()` / `saveUi()` | 侧栏宽度边界收敛（150–300，非法值回默认）/ 启动读取 / 拖动结束保存 `ui` 键 |
-| `sessionSnapshot()` / `saveSessionState()` | 当前会话状态快照 `{ view, groupFilter }` / 写入 `sessionStorage`（切分组、切筛选、删除分组后调） |
-| `restoreSessionState()` | 启动时恢复会话状态：校验 `view` 属于 `all` / `archived` / `trash` 三个合法值、`groupFilter` 为 `"all"` 或仍存在的分组（否则回落），完成后 `updateEmptyText()` |
+| `sessionSnapshot()` / `saveSessionState()` | 当前会话状态快照 `{ view, groupFilter, archiveGroup }` / 写入 `sessionStorage`（切分组、切筛选、切归档查看方式、删除分组后调） |
+| `restoreSessionState()` | 启动时恢复会话状态：校验 `view` 属于 `all` / `archived` / `trash` 三个合法值、`groupFilter` 为 `"all"` 或仍存在的分组、`archiveGroup` 属于 `all` / `day` / `week`（均非法则回落），完成后 `updateEmptyText()` |
 | `startResize(ev)` | 拖拽手柄 `pointerdown` 入口：记下起点与起始宽度后，把 `pointermove` / `pointerup` / `pointercancel` 监听到 `window` 上（指针移出手柄甚至移出窗口也能继续跟随），结束时移除监听并 `saveUi()` |
 
 模板在 `o-fill` 项内以 `{{$host.timeMeta($data)}}` / `attr:title="$host.deleteButtonTitle($data)"` 调用；`timeMeta` 读了 `this.nowTick`，因此倒计时数字能随 tick 重渲染（实测 5→1 秒逐秒更新）。
@@ -221,22 +238,23 @@ client/
 - **添加**：页面上的「＋ 添加任务」→ `openAdd()`（清空 `draft` 与 AI 区、`addOpen = true`）→ 弹窗内 `st-textarea` 输入 → 「添加」按钮调 `submitAdd()` → `parseDraft()` 把多行文本拆成标题 / 描述 → `addTodo()` 返回布尔，**只在成功时**由 `submitAdd()` 关闭弹窗；`addTodo()` 往 `todos` 头部插入带 `createdAt` 的新条目并 `persistTodos()`。
 - **查看详情 / 编辑任务**：点任务 `.body` → `openDetail(id)` 用 `buildDetail(todo)` 生成展示快照并打开弹窗（弹窗内展示文案均预计算，见踩坑 005）；点「编辑」（或行内铅笔按钮走 `openEditDetail(id)`）→ `startEditDetail()` 用原始 `text` / `desc` 预填编辑框 → 「保存」走 `submitEditDetail()` 写回并落盘、回只读；「取消」走 `cancelEditDetail()`；关闭走 `closeDetail()`。
 - **启动**：`index.html` 加载 ofa.js / router / st-boot → `o-app` 按 `app-config.js` 载入 `pages/home.html` → 页面工厂里 `load("/nos/storage/main.js")`、`getStorage("conjure-todo-app")` → **`ready()` 是 async，依次 `await loadUi()` / `await loadGroups()` / `await loadTodos()`**（界面偏好与分组都要先就位，列表渲染时才能按宽度排版、显示分组名），最后 `restoreSessionState()` 恢复上次的筛选与分组（它要校验分组是否存在，所以必须排在 `loadGroups()` 之后）→ 渲染 `o-fill`。
-- **会话状态**：`setGroup()` / `setView()` / `deleteGroup()` 末尾调 `saveSessionState()` 写 `sessionStorage`；启动时 `restoreSessionState()` 读回并校验（`view` 只接受 `"all"` / `"archived"` / `"trash"`——**旧会话里存的 `active` / `done` 会被忽略并回落到「全部」**；已不存在的分组回落为 `"all"`）。
+- **会话状态**：`setGroup()` / `setView()` / `deleteGroup()` 末尾调 `saveSessionState()` 写 `sessionStorage`；启动时 `restoreSessionState()` 读回并校验（`view` 只接受 `"all"` / `"archived"` / `"trash"`——**旧会话里存的 `active` / `done` 会被忽略并回落到「全部」**；已不存在的分组回落为 `"all"`；`archiveGroup` 只接受 `"all"` / `"day"` / `"week"`，非法 / 缺失均为「全部归档」）。
 - **归档**：`archiveDone()`（右上「归档已完成」按钮）只把**当前分组范围**内已完成的条目打上 `archivedAt`（一条条改字段、不删数据），于是它们同时从 `activeTodos` / 分组计数 / 统计里消失，只出现在「已归档」视图（`archivedTodos`）；`unarchiveTodo(id)` 清 `archivedAt` 让条目回列表（`done` 与各时间戳不变）；从垃圾桶还原时 `restoreTodo()` 一并清 `archivedAt`。
+- **归档查看方式**：子标签 `on:click="setArchiveGroupMode('day')"` → 只改 `archiveGroupMode`（`archiveGroups` 随之重算、写会话状态），不动任何数据；`archiveBucket()` 只读 `archivedAt`，所以取消归档 / 删除归档项后组内条数即时重算。
 - **侧栏宽度**：`startResize(ev)` 记下起始 `sideWidth`，`pointermove` 时写 `sideWidth = clampSideWidth(...)`（驱动侧栏宽度与手柄位置，任务区按 `1fr` 自动变宽 / 变窄），`pointerup` / `pointercancel` 移除监听、置 `resizing = false` 并 `saveUi()` 落盘。
 - **分组**：`loadGroups()` / `persistGroups()` 读写 `groups` 键；`setGroup(id)` 切侧栏选中项并重算空状态；新建走 `openAddGroup()` → 弹窗输入 → `submitGroup()`，改名走行内菜单「重命名」→ `openRenameGroup(id)` → 同一个 `submitGroup()`（看 `editingGroupId` 分支），两者成功后都关弹窗并 `persistGroups()`；删除走行内菜单「删除」→ `requestDeleteGroup(id)` → `confirmAction()` → `deleteGroup()`（任务 `groupId` 改回 `default`、若正在浏览该分组则回到 `all`）。
 - **改动数据**：`addTodo` / `toggleTodo` / `archiveDone` / `unarchiveTodo` / `restoreTodo` / `confirmAction` / `deleteGroup` 都会重建 `this.todos` 后调 `persistTodos()` 写回存储；模板由 ofa 响应式更新。`startPendingDelete` / `cancelPendingDelete` / 倒计时到点也会落盘（`pendingDeleteAt` 不跨刷新恢复，但 `deletedAt` 会）。
 - **拖拽排序**：按住某行手柄 `pointerdown` → `startDrag(ev, id)` 置 `draggingId` 并把 `pointermove` / `pointerup` / `pointercancel` 挂到 `window`；每次 `pointermove` 调 `dragDropPosition(clientY, 手柄元素)` 算出落点，**只更新 `dropBeforeId` / `dropAfterId`（行边缘的指示线）并把落点存进闭包**——`todos` 在整个拖动过程中不变；`pointerup` / `pointercancel` 时移除监听、清掉落点提示，**真的移动过才** 调 `commitDragDrop(id, beforeId, afterId)`（splice 提出来、按下标映射插回去、`persistTodos()`）；落点即原位则只打日志、不动数据。
-- **筛选**：`setView(value)` 只改 `view` 与 `emptyText`，`visibleTodos` 随之重算，不动数据，并把会话状态写入 `sessionStorage`。
+- **筛选**：`setView(value)` 只改 `view` 与 `emptyText`，`visibleTodos` 随之重算，不动数据，并把会话状态写入 `sessionStorage`。三个视图的数据源都过 `scopeByGroup()`，所以**切换分组会同时改变三个视图的内容**（列表、归档、垃圾桶的计数 / 徒标 / 底栏 / 空状态都跟着变）。
 - **删除倒计时（核心机制）**：`handleDeleteClick(id)` 判分支——无 `pendingDeleteAt` 则 `startPendingDelete`（写入 `pendingDeleteAt`、写一次 `nowTick`、`startTicker()`），已有则 `cancelPendingDelete`（置 `null`）。`startTicker()` 用自终止的 `setTimeout` 链（`_tickId`，步长 `TICK_MS`）：每步写 `nowTick` 驱动界面刷新剩余秒数，把 `now - pendingDeleteAt >= TRASH_DELAY_MS` 的条目改为 `deletedAt = Date.now()` 并落盘；**没有倒计时条目时不再调度下一步**，不会留下常驻定时器。
 - **彻底删除 / 删除分组**：`purgeTodo(id)` / `emptyTrash()` / `requestDeleteGroup(id)` 都只设置 `confirmKind` + 目标（`purgeTarget` 或 `confirmGroupId`）与确认文案、打开 `st-dialog`（此阶段不删任何东西）；只有 `confirmAction()` 才真正执行并落盘，`closeConfirm()` 则取消。
 - **时间记录**：`addTodo` 写入 `createdAt`；`toggleTodo` 每次切换写入 `statusChangedAt`；两者都随 `persistTodos()` 落盘。
 
-**核心链路（实测清单，功能演进时同步扩充）**（①–㉑ 为主线流程；【编辑任务】【行尾操作区尺寸与观感】【归档链路】【拖拽排序】是后加功能的专题链路，未重排编号）：① 打开应用渲染列表与计数；② 点「添加任务」按钮弹窗（空输入时「添加」禁用）→ 多行输入提交后标题 / 描述分别正确、弹窗关闭、草稿清空；点「取消」关掉不新增，重开弹窗草稿为空；③ 勾选/取消勾选（删除线 + 计数变化 + 副标题出现「完成于/恢复于 …」）；④ 三个视图（全部 / 已归档 / 垃圾桶）切换与空状态文案；⑤ 点删除按钮（关闭图标）后 5 秒倒计时（逐秒递减、pending 样式、图标变 `mdi:reply`）→ 自动进垃圾桶；⑥ 倒计时中点同一按钮（撤销图标）撤销（条目保留、不再倒计时）；⑦ 垃圾桶视图还原（回列表且不影响计数，如果它之前被归档过也会正确回到列表）；⑧ 彻底删除单条（弹框 → 取消不删 → 确认才删）；⑨ 清空垃圾桶（空时按钮禁用，弹框带条数，取消/确认均正确）；⑩ 进垃圾桶后硬刷新仍在（`deletedAt` 持久化）；⑪ （旧功能「清除已完成」已改为「归档已完成」，见后面的【归档链路】）；⑫ 重开后数据仍在；⑬ 长列表（含多行描述）可滚到底；⑭ 每条任务显示创建时间，状态变更后时间实时更新，旧数据显示「创建时间未知」；⑮ 点任务正文区弹详情（标题 / 描述全文 / 状态 / 四个时间正确），点勾选框不会误开详情；⑯ 详情弹窗底部只有「关闭」，点它关闭弹窗（列表内与垃圾桶内的条目都一样）；【编辑任务】列表行铅笔（`title`「编辑：xxx」）→ 详情弹窗以「编辑任务」为标题打开且标题 / 描述已预填 → 改标题与描述（含多行）→「保存」→ 列表项标题 / 描述即时更新、弹窗回到只读（headline 变新标题）；硬刷新后修改仍在（已落盘）；再次进入编辑后点「取消」→ 列表值不变（预填仍为当前值）；标题改成全空白 → 「保存」置灰；归档视图里的条目也能用同样的方式编辑（同理可删）；编辑不改分组、勾选状态与时间戳；【行尾操作区尺寸与观感】`.item-actions` 内两个按钮实测 34.3×34.3（图标 18.9×18.9），操作区总宽 70.6（原 92），与 `.body` 垂直居中对齐（无描述行 30/30、有描述行 40/40）；编辑按钮常态 `opacity 0.7`、删除按钮 1；倒计时行的两个按钮图标颜色变 `rgb(255,180,171)`（on-error-container）且编辑按钮恢复不透明；点铅笔仍能正常进入「编辑任务」弹窗（回归通过）。【归档链路】点**右上**的「归档已完成」（无已完成项时置灰；三个视图下均可见）→ 已完成条目从列表消失、`已归档 N` 徒标出现、统计与侧栏分组计数同步减少、「归档已完成」马上变禁用态；切到「已归档」→ 顶部有说明行、条目带归档图标与「归档于 … · 创建于 …」副标题、底部显示「已归档 N 项」；点正文开详情 → 状态「已归档（已完成）」且「归档时间」有值（未归档条目为 `—`）；点「取消归档」→ 回到列表与原分组（勾选状态保留）、徒标个数回落；在归档视图点删除 → 5 秒倒计时 → 进垃圾桶 → 在垃圾桶点「还原」→ 回到**列表**（而不是回归档箱，`archivedAt` 已清）；在某个分组下点「归档已完成」只归档该分组的已完成项，其它分组不受影响；硬刷新后归档状态与视图仍保持。⑰ 分组（左栏）：点「新建分组」按钮 → 弹窗（空时「创建」禁用、输入后启用）→ 提交后侧栏出现新项并关弹窗（重名自动加序号）；点分组行右侧 ⋯ → 菜单弹出「重命名 / 删除」（默认分组的「删除」置灰）→「重命名」打开弹窗（标题「改名分组：「xxx」」、预填原名、按钮为「保存」），**且当前选中的分组不变（不因点行内按钮而切分组）**，「取消」不改名、提交后侧栏同步新名；「删除」→ 二次确认（标题 / 文案 / 条数正确）→ 确认后分组消失、列表回到「全部任务」；点分组名即选中高亮且只看该分组；在分组下添加的任务归入该分组（元信息与弹窗提示均正确），“全部任务”下添加则归默认；改名同步到侧栏与列表元信息；删除需二次确认（取消不删；确认后组内任务移入默认并落盘）；「默认」的「删除」置灰（点了无反应）、「全部任务」行没有行内菜单；底部统计随分组变化；「归档已完成」只归档当前分组范围；刷新后分组与归属仍正确；⑱ 侧栏宽度：在侧栏右边缘拖拽手柄（拖动 300→220px），松手后侧栏变窄、**任务区同步变宽（828→908px，吃满剩余宽度、右侧无多余空白）**、存储 `ui.sideWidth` 写入 220，硬刷新后宽度保持；⑲ AI 添加：打开添加弹窗 → 描述框为空时「AI 生成」禁用 → 输入一句话后点「AI 生成」（按钮变「AI 生成中…」并禁用）→ 成功后标题 / 描述回填到上方输入框且提示「AI 已生成…」→ 点「添加」后列表里的标题与描述分别是模型给的 title / desc（描述多行正确保留）→ 关弹窗重开，AI 区字段全部清空；AI 失败时弹窗内红字提示且不丢用户输入；⑳ 会话状态：在非默认分组（如「个人」）下刷新 → 仍是该分组；再切「已完成」刷新 → 分组与视图都保留、空状态文案正确；把 `sessionStorage` 里的 `groupFilter` 改成不存在的 id、`view` 改成 `trash` → 刷新后分组回落「全部任务」、视图仍为垃圾桶；清掉 `sessionStorage` 刷新 → 回到「全部任务」+「全部」；刷新过程无应用报错（装了 `error` / `unhandledrejection` 记录器验证）；㉑ 分组行点击区与对齐：四行（全部任务 / 默认 / 个人 / LINLEE）**行高均为 42px**、`.gname` 高 42px（与行等高等宽，即整行左半都是点击区），四处 `.gcount` 的 `right` **都在 269**（计数右边缘对齐，「全部任务」不再向右突出）；点行名切分组、点计数也切分组、点 ⋯ 按钮**不切分组**且菜单正常弹出 / 收起（关闭后菜单项宽回 0、无弹窗残留）；刷新后用户原有数据与侧栏宽度偏好不变（实测后将 `sessionStorage` 会话状态清空）。【拖拽排序】列表每行首位有 `mdi:drag-vertical` 手柄（实测 24×28、图标 20px、`opacity 0.45`、`touch-action: none`、`title`「按住拖动调整顺序：xxx」）；向手柄派发 `pointerdown` → 行变 `.item.dragging`（位置不动）/ `.shell` 变 `shell dragging`，此时**顺序未变、无落点提示**；向 `window` 派发 `pointermove` 到目标行 → **落点提示是目标行的边缘线**（实测：指针在第 2 行上半 → `class` 为 `item drop-before`，`::after` 计算值 `top -5px` / `height 2px` / 颜色主题色 `rgb(159,202,255)`、`::before` 9×9 圆点；指针在末行下半 → `drop-after`，线贴在该行下边缘），两行之间 8px 缝隙中线正落在行间距中点（行底 219 / 行顶 227，线在 222~224），而**拖动过程中列表顺序完全不变**；`pointerup` 后提示类全部消失、日志 `[drag] 已放下，xxx 移到第 N 位` + `[storage] 已保存待办`、顺序才互换；**硬刷新后新顺序仍在**；把被拖行拖回原位 → `[drag] 落点仍是原位，顺序不变`、不写盘；点手柄 / 拖手柄都**不会**误开详情弹窗；控制台无应用报错。
+**核心链路（实测清单，功能演进时同步扩充）**（①–㉑ 为主线流程；【编辑任务】【行尾操作区尺寸与观感】【归档链路】【拖拽排序】是后加功能的专题链路，未重排编号）：① 打开应用渲染列表与计数；② 点「添加任务」按钮弹窗（空输入时「添加」禁用）→ 多行输入提交后标题 / 描述分别正确、弹窗关闭、草稿清空；点「取消」关掉不新增，重开弹窗草稿为空；③ 勾选/取消勾选（删除线 + 计数变化 + 副标题出现「完成于/恢复于 …」）；④ 三个视图（全部 / 已归档 / 垃圾桶）切换与空状态文案；⑤ 点删除按钮（关闭图标）后 5 秒倒计时（逐秒递减、pending 样式、图标变 `mdi:reply`）→ 自动进垃圾桶；⑥ 倒计时中点同一按钮（撤销图标）撤销（条目保留、不再倒计时）；⑦ 垃圾桶视图还原（回列表且不影响计数，如果它之前被归档过也会正确回到列表）；⑧ 彻底删除单条（弹框 → 取消不删 → 确认才删）；⑨ 清空垃圾桶（空时按钮禁用，弹框带条数，取消/确认均正确）；⑩ 进垃圾桶后硬刷新仍在（`deletedAt` 持久化）；⑪ （旧功能「清除已完成」已改为「归档已完成」，见后面的【归档链路】）；⑫ 重开后数据仍在；⑬ 长列表（含多行描述）可滚到底；⑭ 每条任务显示创建时间，状态变更后时间实时更新，旧数据显示「创建时间未知」；⑮ 点任务正文区弹详情（标题 / 描述全文 / 状态 / 四个时间正确），点勾选框不会误开详情；⑯ 详情弹窗底部只有「关闭」，点它关闭弹窗（列表内与垃圾桶内的条目都一样）；【编辑任务】列表行铅笔（`title`「编辑：xxx」）→ 详情弹窗以「编辑任务」为标题打开且标题 / 描述已预填 → 改标题与描述（含多行）→「保存」→ 列表项标题 / 描述即时更新、弹窗回到只读（headline 变新标题）；硬刷新后修改仍在（已落盘）；再次进入编辑后点「取消」→ 列表值不变（预填仍为当前值）；标题改成全空白 → 「保存」置灰；归档视图里的条目也能用同样的方式编辑（同理可删）；编辑不改分组、勾选状态与时间戳；【行尾操作区尺寸与观感】`.item-actions` 内两个按钮实测 34.3×34.3（图标 18.9×18.9），操作区总宽 70.6（原 92），与 `.body` 垂直居中对齐（无描述行 30/30、有描述行 40/40）；编辑按钮常态 `opacity 0.7`、删除按钮 1；倒计时行的两个按钮图标颜色变 `rgb(255,180,171)`（on-error-container）且编辑按钮恢复不透明；点铅笔仍能正常进入「编辑任务」弹窗（回归通过）。【归档链路】点**右上**的「归档已完成」（无已完成项时置灰；三个视图下均可见）→ 已完成条目从列表消失、`已归档 N` 徒标出现、统计与侧栏分组计数同步减少、「归档已完成」马上变禁用态；切到「已归档」→ 顶部有说明行、条目带归档图标与「归档于 … · 创建于 …」副标题、底部显示「已归档 N 项」；点正文开详情 → 状态「已归档（已完成）」且「归档时间」有值（未归档条目为 `—`）；点「取消归档」→ 回到列表与原分组（勾选状态保留）、徒标个数回落；在归档视图点删除 → 5 秒倒计时 → 进垃圾桶 → 在垃圾桶点「还原」→ 回到**列表**（而不是回归档箱，`archivedAt` 已清）；在某个分组下点「归档已完成」只归档该分组的已完成项，其它分组不受影响；硬刷新后归档状态与视图仍保持；【归档分组】归档视图内的子标签默认「全部归档」（选中态 `variant=filled`）且**无日期组头**（`.agroup-head` 计算值为 `display:none`）、条目平铺；点「按日期」→ 同一天的归档合成一组、组头「10-10 周六」+「2 项」（跨两天的数据成 3 组、最新的排最前、组内顺序不变）；点「按周」→ 组头「2026 年第 41 周 · 10-05 ~ 10-11」+「N 项」，同周的两条合成一组；切换后 `sessionStorage` 写入 `archiveGroup`，**硬刷新后仍停在「按周」且周分组照旧**。⑰ 分组（左栏）：点「新建分组」按钮 → 弹窗（空时「创建」禁用、输入后启用）→ 提交后侧栏出现新项并关弹窗（重名自动加序号）；点分组行右侧 ⋯ → 菜单弹出「重命名 / 删除」（默认分组的「删除」置灰）→「重命名」打开弹窗（标题「改名分组：「xxx」」、预填原名、按钮为「保存」），**且当前选中的分组不变（不因点行内按钮而切分组）**，「取消」不改名、提交后侧栏同步新名；「删除」→ 二次确认（标题 / 文案 / 条数正确）→ 确认后分组消失、列表回到「全部任务」；点分组名即选中高亮且只看该分组；在分组下添加的任务归入该分组（元信息与弹窗提示均正确），“全部任务”下添加则归默认；改名同步到侧栏与列表元信息；删除需二次确认（取消不删；确认后组内任务移入默认并落盘）；「默认」的「删除」置灰（点了无反应）、「全部任务」行没有行内菜单；底部统计随分组变化；「归档已完成」只归档当前分组范围；刷新后分组与归属仍正确；⑱ 侧栏宽度：在侧栏右边缘拖拽手柄（拖动 300→220px），松手后侧栏变窄、**任务区同步变宽（828→908px，吃满剩余宽度、右侧无多余空白）**、存储 `ui.sideWidth` 写入 220，硬刷新后宽度保持；⑲ AI 添加：打开添加弹窗 → 描述框为空时「AI 生成」禁用 → 输入一句话后点「AI 生成」（按钮变「AI 生成中…」并禁用）→ 成功后标题 / 描述回填到上方输入框且提示「AI 已生成…」→ 点「添加」后列表里的标题与描述分别是模型给的 title / desc（描述多行正确保留）→ 关弹窗重开，AI 区字段全部清空；AI 失败时弹窗内红字提示且不丢用户输入；⑳ 会话状态：在非默认分组（如「个人」）下刷新 → 仍是该分组；再切「已完成」刷新 → 分组与视图都保留、空状态文案正确；把 `sessionStorage` 里的 `groupFilter` 改成不存在的 id、`view` 改成 `trash` → 刷新后分组回落「全部任务」、视图仍为垃圾桶；清掉 `sessionStorage` 刷新 → 回到「全部任务」+「全部」；刷新过程无应用报错（装了 `error` / `unhandledrejection` 记录器验证）；㉑ 分组行点击区与对齐：四行（全部任务 / 默认 / 个人 / LINLEE）**行高均为 42px**、`.gname` 高 42px（与行等高等宽，即整行左半都是点击区），四处 `.gcount` 的 `right` **都在 269**（计数右边缘对齐，「全部任务」不再向右突出）；点行名切分组、点计数也切分组、点 ⋯ 按钮**不切分组**且菜单正常弹出 / 收起（关闭后菜单项宽回 0、无弹窗残留）；刷新后用户原有数据与侧栏宽度偏好不变（实测后将 `sessionStorage` 会话状态清空）。【拖拽排序】列表每行首位有 `mdi:drag-vertical` 手柄（实测 24×28、图标 20px、`opacity 0.45`、`touch-action: none`、`title`「按住拖动调整顺序：xxx」）；向手柄派发 `pointerdown` → 行变 `.item.dragging`（位置不动）/ `.shell` 变 `shell dragging`，此时**顺序未变、无落点提示**；向 `window` 派发 `pointermove` 到目标行 → **落点提示是目标行的边缘线**（实测：指针在第 2 行上半 → `class` 为 `item drop-before`，`::after` 计算值 `top -5px` / `height 2px` / 颜色主题色 `rgb(159,202,255)`、`::before` 9×9 圆点；指针在末行下半 → `drop-after`，线贴在该行下边缘），两行之间 8px 缝隙中线正落在行间距中点（行底 219 / 行顶 227，线在 222~224），而**拖动过程中列表顺序完全不变**；`pointerup` 后提示类全部消失、日志 `[drag] 已放下，xxx 移到第 N 位` + `[storage] 已保存待办`、顺序才互换；**硬刷新后新顺序仍在**；把被拖行拖回原位 → `[drag] 落点仍是原位，顺序不变`、不写盘；点手柄 / 拖手柄都**不会**误开详情弹窗；控制台无应用报错。【归档桶跟随分组】左栏选中某分组后：「已归档」「垃圾桶」两个视图只列该分组的条目（实测选「个人」时分组的垃圾项目在筛选内外都不出现，切换回「全部任务」才看到），切分组时视图标签数量 / 底栏计数 / 空状态文案同步变化（实测「工作」下垃圾桶 0 项、置灰「清空垃圾桶」且空状态为「「工作」的垃圾桶是空的」；「默认」下垃圾桶 1 项、按钮可用；「全部任务」下为全量 1 项）；「清空垃圾桶」在选中分组时只清该分组范围，确认框标题为「清空「默认」的垃圾桶？」、文案说明范围与条数，确认后其它分组的垃圾桶条目不受影响。
 
 ## 场景测试（`client/test/*.test.json`）
 
-用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。8 个用例一文件一主流程，文件名即功能名：
+用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。10 个用例一文件一主流程，文件名即功能名：
 
 | 文件 | name | 覆盖内容 |
 | ---- | ---- | -------- |
@@ -248,6 +266,8 @@ client/
 | `session-state.test.json` | 会话状态 | 切分组 / 切视图写入 `sessionStorage` 且刷新保留、非法分组回落「全部任务」、非法视图回落、清空后回默认 |
 | `toggle-archive.test.json` | 归档链路 | 勾选完成/恢复、归档已完成只收当前分组范围、已归档视图与详情状态、取消归档回列表、归档项删除后从垃圾桶还原回列表、刷新持久化 |
 | `trash-purge.test.json` | 垃圾桶清理 | 彻底删除二次确认（取消不删 / 确认才删）、清空垃圾桶（条数提示 / 取消 / 确认 / 空时禁用）、刷新落盘 |
+| `archive-group.test.json` | 归档分组 | 默认「全部归档」无组头、按日期分组（同日一组 / 最新在前 / 组头带日期星期与条数 / 组内顺序不变）、按周分组（组头含年·周·起止 / 总条数不变）、查看方式写 `sessionStorage` 并刷新保持 |
+| `group-scope-views.test.json` | 归档桶跟随分组 | 左栏选中分组后「已归档」「垃圾桶」只显示该分组条目（选「全部任务」才是全部）、视图标签数量 / 底栏计数 / 空状态文案同步跟随；「清空垃圾桶」只清当前分组范围（确认框标题带分组名），不动其它分组 |
 
 ### 用例写法约定（本项目）
 
@@ -287,3 +307,6 @@ client/
 | 017 | 用例断言要按实现的真实语义写：旧「拖拽排序」用例把落点语义写反（`after 某行` ≠ 往下挪一格） | `pitfalls/017-test-expectation-vs-drag-semantics.md` |
 | 018 | 宿主未注入 run-tests 通道时如何本地回放 `.test.json`：动态 import 要用绝对 URL、单条指令 ≤30s、reload 必须单独一次调用 | `pitfalls/018-local-replay-tests-without-run-tests.md` |
 | 019 | 用例步骤要「等页面复活」再动：reload 窗口里的选择器等不到（ACK timeout）、就绪锚点不能挑可能为空的节点（`.item` → 用 `.shell`） | `pitfalls/019-test-step-readiness-and-host-runner-failures.md` |
+| 020 | `preview action=app` 报 ACK timeout 但推送其实已生效（先用 eval 判定，别反复重推） | `pitfalls/020-preview-app-push-ack-timeout-not-fatal.md` |
+| 021 | 临时改预览数据时备份要挂 localStorage（挂 `window` 会被 reload 抹掉，`setItem(key, undefined)` 会清掉数据） | `pitfalls/021-temp-preview-data-backup-must-survive-reload.md` |
+| 022 | 把过滤下沉到 getter 后，忘了同一视图的 `o-fill` 还绑着未过滤的旧数组（计数已过滤、列表却是全量） | `pitfalls/022-同一视图可能有两个数据源绑定.md` |

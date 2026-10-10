@@ -303,7 +303,6 @@
             <div
               class="session-item"
               class:active="$data.id === $host.currentSessionId"
-              class:removing="$host.removingSid === $data.id"
               class:drag-over="$host.dragOverSid === $data.id"
               attr:draggable="'true'"
               on:click="$host.loadSession($data.id)"
@@ -1251,6 +1250,35 @@
       </div>
     </footer>
       </div>
+      <!-- 任务清单（右）：模型开发前拆解的任务 + 宿主自动登记的错误修复任务，
+           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作 -->
+      <o-if :value="sessionTasks.length > 0">
+        <aside class="tasks-panel" class:collapsed="!tasksPanelOpen">
+          <button
+            class="tasks-head"
+            on:click="toggleTasksPanel"
+            attr:title="tasksPanelOpen ? '收起任务清单' : '展开任务清单'"
+          >
+            <n-icon class="tasks-head-ico" icon="mdi:format-list-checks"></n-icon>
+            <span class="tasks-head-title">任务清单</span>
+            <span class="tasks-progress">{{tasksDoneCount}}/{{sessionTasks.length}}</span>
+            <n-icon class="tasks-chev" icon="mdi:chevron-right"></n-icon>
+          </button>
+          <o-if :value="tasksPanelOpen">
+            <div class="tasks-body">
+              <o-fill :value="sessionTasks" fill-key="id">
+                <div class="task-item" attr:data-status="$data.status">
+                  <o-if :value="$data.source === 'error'">
+                    <span class="task-badge">错误</span>
+                  </o-if>
+                  <n-icon class="task-ico" attr:icon="$host.taskIcon($data.status)"></n-icon>
+                  <span class="task-text">{{$data.text}}</span>
+                </div>
+              </o-fill>
+            </div>
+          </o-if>
+        </aside>
+      </o-if>
     </div>
 
     <!-- 项目抽屉（左）：点击项新标签打开项目；已开标签聚焦复用 -->
@@ -2077,7 +2105,9 @@
           localDirLabel: "",
           permGrantNeeded: false,
           confirmingDelSession: "",
-          removingSid: "", // 正在播放折叠删除动画的会话 id
+          // 会话任务清单（task_list 工具维护，对话右侧面板展示；store 镜像）
+          sessionTasks: [],
+          tasksPanelOpen: true, // 面板折叠开关（页面级 UI 态，不持久化）
           dragSid: "", // 拖拽排序：被拖起的会话 id
           dragOverSid: "", // 拖拽排序：悬停目标会话 id（高亮）
           toolDefs,
@@ -3477,6 +3507,26 @@
             store.newSessionFor(name);
           },
 
+          // ---- 任务清单（右侧面板）----
+
+          // 已完成任务数（进度徽标）；sessionTasks 声明为空数组，getter 求值安全
+          get tasksDoneCount() {
+            return this.sessionTasks.filter((t) => t.status === "done").length;
+          },
+
+          // 任务状态 → 图标名（attr:icon 动态属性用）
+          taskIcon(status) {
+            return status === "done"
+              ? "mdi:check-circle-outline"
+              : status === "in_progress"
+                ? "mdi:progress-check"
+                : "mdi:circle-outline";
+          },
+
+          toggleTasksPanel() {
+            this.tasksPanelOpen = !this.tasksPanelOpen;
+          },
+
           // 编辑当前会话名称（senti-ui prompt 命令式对话框）
           async editSessionTitle() {
             if (this.currentSessionId === "") return;
@@ -3611,16 +3661,31 @@
               return;
             }
             this.confirmingDelSession = "";
-            // 先播折叠动画（高度 + 透明度归零）再真正删除
+            // 折叠动画走纯 DOM：锁高度 → 强制回流（锁定值先完成一次样式
+            // 计算，成为过渡起点）→ 加 removing 类过渡到 0。不走响应式
+            // class 绑定——绑定由状态驱动，等待删除 IO 期间任何状态复位
+            // 都会把 item 弹回展开态（表象即「塌缩→弹回→瞬删」），同帧
+            // 加类还会吃掉过渡起点让塌缩变成瞬跳
             const el = event?.target?.closest?.(".session-item");
             if (el) {
-              this.removingSid = sid;
               el.style.height = `${el.offsetHeight}px`; // 锁定当前高度让过渡有起点
-              requestAnimationFrame(() => el.classList.add("removing"));
-              await new Promise((r) => setTimeout(r, 240));
+              void el.offsetHeight; // 强制回流
+              el.classList.add("removing");
+              await new Promise((r) => setTimeout(r, 240)); // 与过渡时长 220ms 对应
             }
-            this.removingSid = "";
-            await store.deleteSession(sid);
+            let removed = false;
+            try {
+              await store.deleteSession(sid);
+              removed = true;
+            } finally {
+              // 只在删除失败时复位弹回（会话还在列表里，不能留个塌缩空壳）；
+              // 成功时保持塌缩态直到 o-fill 随数据移除元素——重渲染可能比
+              // 这个 finally 晚一个微任务，按 isConnected 判断会闪一帧
+              if (!removed && el && el.isConnected) {
+                el.classList.remove("removing");
+                el.style.removeProperty("height");
+              }
+            }
           },
 
           // ---- 项目抽屉（左侧滑出）：点击新标签打开；window name 命中已开标签则聚焦不重复开 ----
