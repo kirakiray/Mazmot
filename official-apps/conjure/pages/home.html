@@ -851,18 +851,6 @@
     </div>
 
     <footer class="composer-wrap">
-      <!-- 宿主自动检测到预览运行错误：提示条（下条消息自动附带给 AI 修复） -->
-      <o-if :value="autoErrors.length > 0">
-        <div class="auto-error-row" attr:title="autoErrors.join('\n')">
-          <n-icon icon="mdi:alert-circle-outline"></n-icon>
-          <span class="auto-error-text"
-            >预览自动检测到 {{autoErrors.length}} 条运行错误，下条消息将自动附带给 AI 修复</span
-          >
-          <st-icon-button title="忽略（本次不带给 AI）" on:click="dismissAutoErrors">
-            <n-icon icon="mdi:close"></n-icon>
-          </st-icon-button>
-        </div>
-      </o-if>
       <o-if :value="keyError">
         <div class="key-error-row">
           <div class="key-error">{{keyError}}</div>
@@ -2146,7 +2134,7 @@
           diffError: "",
           diffFromDisk: false, // true = 旧卡片兼容模式（对比当前盘，非冻结内容）
           rollbackOptionsOpen: 0, // 展开回滚语义选项的消息 id（0 = 收起）
-          autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；提示条数据源）
+          autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；走任务清单与提示词注入，无独立提示条）
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
           modelValueText: "自动（供应商默认）",
@@ -3182,10 +3170,6 @@
             }
           },
 
-          // 忽略自动检测到的预览错误（本次不再带给 AI）
-          dismissAutoErrors() {
-            store.dismissAutoErrors?.();
-          },
 
           // 关闭错误横幅（store 清 keyError）
           dismissKeyError() {

@@ -1612,9 +1612,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } catch (err) {
       recordPreviewDiag(err);
       // 回合中（preview 工具触发）：不弹横幅，错误卡片镜像进对话、紧跟
-      // 工具调用（AI 仍从工具结果文本得知失败）；非回合入口走可关闭横幅
+      // 工具调用（AI 仍从工具结果文本得知失败）；非回合入口走可关闭横幅。
+      // reported 标记：对话已报过，防上层调用方（runTests 重推等）二次镜像
       if (state.sending) {
         pushLocalError(`隔离预览失败：${err.message}`, err?.diag || null);
+        err.reported = true;
       } else {
         set("keyError", `隔离预览失败：${err.message}`);
       }
@@ -2097,7 +2099,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       }
       return { ok: summary.ok, summary: summarizeResults(results), results };
     } catch (err) {
-      set("keyError", `测试执行失败：${err.message}`);
+      // 回合内（preview 工具触发）：错误卡片进对话，不弹横幅；但 runRemotePreview
+      // 自身失败时已镜像过「隔离预览失败」卡（reported 标记），跳过防双卡。
+      // 非回合入口（测试抽屉）没有对话现场，走 keyError 横幅
+      if (state.sending && !err?.reported) {
+        pushLocalError(`测试执行失败：${err.message}`);
+      } else if (!state.sending) {
+        set("keyError", `测试执行失败：${err.message}`);
+      }
       return null;
     } finally {
       set("testBusy", false);

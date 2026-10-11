@@ -161,7 +161,8 @@ export default {
     if (action === "run-tests") {
       if (typeof ctx.runTests !== "function") return unavailable();
       const res = await ctx.runTests(args.files);
-      if (!res) return "测试执行失败（见错误横幅），请检查预览窗口状态后重试。";
+      if (!res)
+        return "测试执行失败（错误详情已记入对话错误卡片或错误横幅），请检查预览窗口状态后重试。";
       if (res.noTests) {
         return "当前应用还没有测试用例。重要功能请在 client/test/ 下编写 .test.json 场景用例（格式见系统提示词「场景测试」节），再跑 run-tests。";
       }
