@@ -108,7 +108,8 @@
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: row; /* 对话列 + 右侧任务清单面板（有任务时 o-if 渲染） */
+  flex-direction: column;
+  position: relative; /* 右侧浮动任务清单的定位锚（悬浮层，不占文档流） */
 }
 
 /* ---------- 顶栏 ---------- */
@@ -3806,22 +3807,34 @@ st-icon-button.published {
   filter: brightness(1.06);
 }
 
-/* ---------- 任务清单（聊天右侧，task_list 工具维护） ---------- */
+/* ---------- 任务清单（对话右上浮动卡片，task_list 工具维护） ----------
+ * 悬浮层设计：固定锚在聊天区右上角的空白处，不参与文档流——宽窗口下
+ * 聊天列（--chat-w 限宽居中）右侧本来就是留白，清单浮在那里；窄窗口
+ * 会盖住消息边缘，点头部可折叠成小条。绝不能做成 flex 布局列：
+ * .main-col 里 chat-wrap 与 composer-wrap 是兄弟节点，改横向会把输入区
+ * 挤到右边（实测翻过车） */
 
 .tasks-panel {
-  flex: none;
-  width: 264px;
-  min-height: 0;
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: 280px;
+  max-height: calc(100% - 24px);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid
-    color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  border-radius: 14px;
   background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  z-index: 6; /* 盖过聊天流（chat-resize 手柄是 5） */
 }
 
 .tasks-panel.collapsed {
   width: auto;
-  min-width: 172px;
+  min-width: 168px;
+  max-height: none;
 }
 
 .tasks-head {
@@ -3943,6 +3956,7 @@ st-icon-button.published {
 /* 窄视口收窄面板，聊天列优先 */
 @media (max-width: 960px) {
   .tasks-panel {
-    width: 200px;
+    width: 220px;
+    right: 10px;
   }
 }

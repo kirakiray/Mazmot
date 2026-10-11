@@ -551,7 +551,7 @@
          两者共用同一个 o-fill——「全部归档」时 archiveGroups 只有一组且 showHead=false（组头隐藏），
          按日期 / 按周时每组一条数据，这样不必维护两套一模一样的条目模板 -->
     <o-if :value="inArchiveView">
-      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。</p>
+      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。「按完成日 / 按完成周」按任务的完成时间划分（不是归档时间），每条同时显示完成时间与归档时间。</p>
 
       <st-button-group class="archive-tabs">
         <st-button
@@ -561,11 +561,11 @@
         <st-button
           attr:variant="archiveGroupMode === 'day' ? 'filled' : 'text'"
           on:click="setArchiveGroupMode('day')"
-        >按日期</st-button>
+        >按完成日</st-button>
         <st-button
           attr:variant="archiveGroupMode === 'week' ? 'filled' : 'text'"
           on:click="setArchiveGroupMode('week')"
-        >按周</st-button>
+        >按完成周</st-button>
       </st-button-group>
 
       <div class="agroups">
@@ -761,7 +761,25 @@
   </div>
 
   <script>
-    const STORE_ID = "conjure-todo-app";
+    // 数据空间 id。默认是正式空间；场景测试会在跑之前往 sessionStorage 写一个临时开关
+    // （见 CONTEXT.md「场景测试」），把本次会话切到一个隔离空间里跑，
+    // 这样测试永远不会碰到用户的真实数据。开关带 10 分钟有效期，
+    // 万一测试中断也不会让应用一直指着隔离空间。
+    const STORE_ID = (() => {
+      try {
+        const raw = sessionStorage.getItem("__todo_store_id");
+        if (!raw) return "conjure-todo-app";
+        const o = JSON.parse(raw);
+        if (o && typeof o.id === "string" && o.exp > Date.now()) {
+          console.log("[init] 使用隔离数据空间（测试模式）", o.id);
+          return o.id;
+        }
+        sessionStorage.removeItem("__todo_store_id");
+      } catch (err) {
+        console.error("[init] 读取数据空间开关失败", err);
+      }
+      return "conjure-todo-app";
+    })();
     const STORE_KEY = "todos";
     // 分组单独一个键存：Array<{ id, name }>（首项固定为默认分组）
     const GROUPS_KEY = "groups";
@@ -790,6 +808,10 @@
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
       const store = getStorage(STORE_ID);
+      // 测试模式下额外提示一下，方便比对日志时确认跑的是隔离空间
+      if (STORE_ID !== "conjure-todo-app") {
+        console.warn("[init] 当前为测试数据空间：", STORE_ID);
+      }
       window.__todoInitCount = (window.__todoInitCount || 0) + 1;
       console.log("[init] 待办页初始化 #" + window.__todoInitCount, "store=", STORE_ID);
 
@@ -944,7 +966,9 @@
             }
             const buckets = new Map();
             for (const t of this.scopedArchivedTodos) {
-              const b = this.archiveBucket(t.archivedAt);
+              // 分组基准是「完成时刻」而不是归档时刻：归档可能在完成后过很久才做，
+              // 按完成日 / 完成周归组才能对上「哪天做完的」这个直觉
+              const b = this.archiveBucket(this.completedAt(t));
               let g = buckets.get(b.key);
               if (!g) {
                 g = { key: b.key, label: b.label, showHead: true, countText: "", todos: [] };
@@ -1532,15 +1556,17 @@
               );
             }
             if (todo.archivedAt) {
-              return (
-                g +
-                " · 归档于 " +
-                this.formatTime(todo.archivedAt) +
-                " · " +
-                (todo.createdAt
+              // 归档项同时给「完成于」与「归档于」：归档分组按完成日划分，条目上也要能对上完成时间
+              const parts = [g, "归档于 " + this.formatTime(todo.archivedAt)];
+              if (typeof todo.statusChangedAt === "number") {
+                parts.push("完成于 " + this.formatTime(todo.statusChangedAt));
+              }
+              parts.push(
+                todo.createdAt
                   ? "创建于 " + this.formatTime(todo.createdAt)
-                  : "创建时间未知")
+                  : "创建时间未知"
               );
+              return parts.join(" · ");
             }
             const parts = [
               g,
@@ -1637,10 +1663,22 @@
           },
 
           // ===== 已归档视图的分组（全部归档 / 按日期 / 按周） =====
+          // 一条归档项的「完成时刻」：done 时的 statusChangedAt（勾选完成就是最后一次状态变更）。
+          // 旧数据没有状态变更时间时回退到归档时刻（当时归档的就是刚完成的那些），两者都缺则 null
+          completedAt(todo) {
+            if (typeof todo.statusChangedAt === "number") return todo.statusChangedAt;
+            if (typeof todo.archivedAt === "number") return todo.archivedAt;
+            return null;
+          },
+
           setArchiveGroupMode(mode) {
             if (!["all", "day", "week"].includes(mode)) return;
             this.archiveGroupMode = mode;
-            console.log("[archive] 归档查看方式 →", mode);
+            console.log(
+              "[archive] 归档查看方式 →",
+              mode,
+              "（day/week 按任务完成时刻分组）"
+            );
             this.saveSessionState();
           },
 
@@ -1656,13 +1694,13 @@
             return p(d.getMonth() + 1) + "-" + p(d.getDate());
           },
 
-          // 一个归档时刻属于哪个分组：返回 { key, label }
+          // 一个「完成时刻」（见 completedAt）属于哪个分组：返回 { key, label }
           //   day  → key = "dYYYY-MM-DD"，label 形如「10-09 周四」
           //   week → key = "wYYYY-MM-DD"（该周周一），label 形如「2026 年第 41 周 · 10-05 ~ 10-11」
           archiveBucket(ts) {
             if (typeof ts !== "number" || Number.isNaN(new Date(ts).getTime())) {
-              // 旧数据没有归档时间：单独兜底一组，key 以 0 开头（字典序最小）所以排在最后
-              return { key: "0-unknown", label: "归档时间未知" };
+              // 完成时间未知（旧数据）：单独兜底一组，key 以 0 开头（字典序最小）所以排在最后
+              return { key: "0-unknown", label: "完成时间未知" };
             }
             const d = new Date(ts);
             if (this.archiveGroupMode === "week") {
