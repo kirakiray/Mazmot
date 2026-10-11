@@ -212,7 +212,9 @@ async function runStep(step, previewDebug) {
  *   waitOnline       () => Promise（reload 后等调试代理回线）
  *   recover          () => Promise（可选；dbg 投递失败时重推预览并等回线，
  *                      每个用例失败后自动重试一次）
- *   onProgress       ({done, total, current}) 可选
+ *   onProgress       ({done, total, current, file}) 可选（file = 正在跑的用例文件）
+ *   onCaseResult     (result) 可选；每条用例跑完立即回调（调用方借此在 UI
+ *                      上逐条实时回填，不等全量跑完）
  *   stepTimeoutMs    单步 dbg 超时（默认 30s）
  * 返回 [{file, name, ok, ms, consoleErrors, steps: [{desc, ok, result?, error?}], error?}]
  */
@@ -222,11 +224,17 @@ export async function runTestCases({
   waitOnline,
   recover,
   onProgress,
+  onCaseResult,
   stepTimeoutMs = 30_000,
 }) {
   const results = [];
   for (const [ci, testCase] of cases.entries()) {
-    onProgress?.({ done: ci, total: cases.length, current: testCase.name });
+    onProgress?.({
+      done: ci,
+      total: cases.length,
+      current: testCase.name,
+      file: testCase.file,
+    });
     const t0 = Date.now();
     const stepResults = [];
     let ok = true;
@@ -295,6 +303,7 @@ export async function runTestCases({
       steps: stepResults,
       ...(error ? { error } : {}),
     });
+    onCaseResult?.(results[results.length - 1]);
   }
   onProgress?.({ done: cases.length, total: cases.length, current: "" });
   return results;

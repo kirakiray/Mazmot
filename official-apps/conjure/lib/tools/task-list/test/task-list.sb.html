@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>task_list 工具插件测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <!-- 纯插件层测试：ctx.setSessionTasks 用 fake 替身直驱 exec -->
+    <sb-test name="task_list - 未注入通道时返回可读提示" parallel>
+      <template>
+        <script type="module">
+          const plugin = (await import("../index.js")).default;
+          const res = await plugin.exec({ tasks: [{ text: "x" }] }, {});
+          return {
+            assert: res.includes("任务清单不可用"),
+            content: { res },
+          };
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="task_list - tasks 原样透传且返回仓库结果" parallel>
+      <template>
+        <script type="module">
+          const plugin = (await import("../index.js")).default;
+          const list = [
+            { text: "拆页面结构", status: "done" },
+            { text: "写交互逻辑", status: "in_progress" },
+            { text: "跑场景测试", status: "pending" },
+          ];
+          let received = null;
+          const res = await plugin.exec(
+            { tasks: list },
+            {
+              setSessionTasks: (tasks) => {
+                received = tasks;
+                return "任务清单已更新（1/3 完成）";
+              },
+            },
+          );
+          return {
+            assert: received === list && received.length === 3 && res.includes("1/3"),
+            content: { received, res },
+          };
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

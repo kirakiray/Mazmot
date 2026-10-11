@@ -109,6 +109,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  position: relative; /* 右侧浮动任务清单的定位锚（悬浮层，不占文档流） */
 }
 
 /* ---------- 顶栏 ---------- */
@@ -1212,35 +1213,6 @@ st-icon-button.published {
 }
 
 /* 自动错误提示条（输入区上方，宿主回合后检测预览收集） */
-.auto-error-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  max-width: var(--chat-w, 768px);
-  margin: 0 auto 6px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 35%, transparent);
-  color: var(--md-sys-color-on-surface);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.auto-error-row n-icon:first-child {
-  color: var(--md-sys-color-error);
-  flex: none;
-}
-
-.auto-error-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 本轮 token 用量统计（回合末条 AI 消息底部） */
 /* 本轮用量胶囊复用 .stat-pill；明细面板复用 .stat-panel（含开合动画） */
 
@@ -1957,6 +1929,160 @@ st-icon-button.published {
   white-space: pre-wrap;
 }
 
+/* 诊断展开：主行可点（带 diag 时），chip 指示展开方向 */
+.local-error-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.local-error-main.has-diag {
+  cursor: pointer;
+}
+
+.diag-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 1px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.diag-chip n-icon {
+  color: inherit;
+  font-size: 12px;
+  transition: transform 160ms ease;
+}
+
+.local-error-card.diag-open .diag-chip n-icon {
+  transform: rotate(180deg);
+}
+
+/* 诊断详情：元信息 + 窗口快照 + 链路事件（等宽字体，限高滚动） */
+.diag-detail {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+.diag-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.diag-label {
+  margin: 8px 0 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.diag-wins {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diag-win {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.diag-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--md-sys-color-outline);
+}
+
+.diag-dot[data-on] {
+  background: var(--md-sys-color-primary);
+}
+
+.diag-win-app {
+  flex: none;
+  color: var(--md-sys-color-on-surface);
+}
+
+.diag-win-id {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.diag-events {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 16px;
+  scrollbar-width: thin;
+}
+
+.diag-ev {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diag-ev-t {
+  flex: none;
+  color: var(--md-sys-color-outline);
+}
+
+.diag-ev-p {
+  flex: none;
+  width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.diag-ev-p[data-tone="ok"] {
+  color: var(--md-sys-color-primary);
+}
+
+.diag-ev-p[data-tone="bad"] {
+  color: var(--md-sys-color-error);
+}
+
+.diag-ev-p[data-tone="flow"] {
+  color: var(--md-sys-color-tertiary);
+  font-weight: 600;
+}
+
+.diag-ev-x {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 /* ---------- 场景测试（测试管理抽屉 + 变更卡 chip） ---------- */
 
 /* 测试抽屉：跑全部按钮沿用 backup-actions 通栏布局，上次结果作为按钮下方
@@ -1989,6 +2115,12 @@ st-icon-button.published {
   flex: none;
   margin-top: 2px;
   color: var(--md-sys-color-on-surface-variant);
+}
+
+/* 正在跑的用例：spinner 旋转 + 主色 */
+.test-item .test-tone.spin {
+  color: var(--md-sys-color-primary);
+  animation: tool-spin 1s linear infinite;
 }
 
 .test-item .test-tone[icon="mdi:check-circle-outline"] {
@@ -3804,4 +3936,158 @@ st-icon-button.published {
 
 .edit-btn:hover {
   filter: brightness(1.06);
+}
+
+/* ---------- 任务清单（对话右上浮动卡片，task_list 工具维护） ----------
+ * 悬浮层设计：固定锚在聊天区右上角的空白处，不参与文档流——宽窗口下
+ * 聊天列（--chat-w 限宽居中）右侧本来就是留白，清单浮在那里；窄窗口
+ * 会盖住消息边缘，点头部可折叠成小条。绝不能做成 flex 布局列：
+ * .main-col 里 chat-wrap 与 composer-wrap 是兄弟节点，改横向会把输入区
+ * 挤到右边（实测翻过车） */
+
+.tasks-panel {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: 280px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  z-index: 6; /* 盖过聊天流（chat-resize 手柄是 5） */
+}
+
+.tasks-panel.collapsed {
+  width: auto;
+  min-width: 168px;
+  max-height: none;
+}
+
+.tasks-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tasks-head:hover .tasks-head-title {
+  color: var(--md-sys-color-primary);
+}
+
+.tasks-head-title {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tasks-progress {
+  flex: 1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.tasks-chev {
+  flex: none;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: transform 160ms ease;
+}
+
+.tasks-panel.collapsed .tasks-chev {
+  transform: rotate(180deg);
+}
+
+.tasks-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+}
+
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface);
+}
+
+.task-item .task-ico {
+  flex: none;
+  font-size: 15px;
+  margin-top: 2px;
+  color: var(--md-sys-color-outline);
+}
+
+.task-item[data-status="in_progress"] {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+.task-item[data-status="in_progress"] .task-ico {
+  color: var(--md-sys-color-primary);
+  animation: tool-spin 1s linear infinite;
+}
+
+.task-item[data-status="done"] {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.task-item[data-status="done"] .task-ico {
+  color: var(--md-sys-color-primary);
+}
+
+.task-item[data-status="done"] .task-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface-variant) 50%,
+    transparent
+  );
+}
+
+.task-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* 错误修复任务：来源徽标（宿主自动登记，非模型拆解项） */
+.task-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  margin-top: 2px;
+  color: var(--md-sys-color-error);
+  background: color-mix(in srgb, var(--md-sys-color-error) 10%, transparent);
+}
+
+/* 窄视口收窄面板，聊天列优先 */
+@media (max-width: 960px) {
+  .tasks-panel {
+    width: 220px;
+    right: 10px;
+  }
 }

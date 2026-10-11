@@ -4,6 +4,56 @@
 
 ## 记录
 
+### 2026-10-10 · 归档项副标题去掉「归档于」（用户反馈：归档时间可点开详情看到）
+
+- **用户需求**：截图的归档条目副标题「LINLEE · 归档于 10-11 14:02 · 完成于 10-10 17:29 · 创建于 10-10 16:13」↓——「不需要将归档时间显示出来了，因为我发现可以点开详情看到归档的时间」。
+- **改了什么**：① `pages/home.html` 的 `timeMeta()` 归档分支：去掉 `归档于 …`，只留 `分组 · 完成于 … · 创建于 …`（完成时间缺失时只剩创建于）；② 归档视图说明行的 `st-tooltip` 文案末句由「每条同时显示完成时间与归档时间」改为「条目上显示的是完成时间，归档时间点开这条任务的详情可以查看」；③ 文档：CONTEXT.md 的 `timeMeta` 方法表 / 归档视图说明 / 归档链路与归档分组实测链路 / 用例表。
+- **不动的地方**：详情弹窗仍保留「归档时间」一行（这正是用户看归档时间的入口，`detail.archivedText` / `buildDetail` 不动）；归档分组仍按完成时刻（`completedAt`）划分，因此副标题上的完成时间与组头仍然对得上；数据模型、存储、排序全不动。
+- **验证结论**：`action=app` 推送后 `action=run-tests` **全套 10 用例全绿**（其中 `归档分组` 与 `归档链路` 两条已改成新断言：副标题含「完成于」、**不含「归档于」**）；增量控制台无应用报错（只有 `[bridge-link]` 噪声）；跑完核对 `__todo_test_dirty` 已清、`__todo_store_id` / `todo-ui-state` 已移除，正式空间用户数据完好（3 条待办：`22222` 在垃圾桶 / `111111` / `222222`、`groups` = 默认 + 个人、`ui.sideWidth 239`）。
+- **本回合未踩新坑**（纯文案调整，未新建 pitfalls 文件）。
+
+### 2026-10-10 · 归档视图说明行改成「一行短文案 + 「?」悬浮提示」（用户截图反馈「太繁琐」）
+
+- **用户需求**：截图框出「已归档」视图顶部那段长说明，问「能弄个简单的问号，然后 tooltips 显示吗，或者干脆文字弄少一点」——两选一，实际两者都做了。
+- **改了什么**（`pages/home.html`）：① 归档视图的 `p.trash-tip` 长段落（原 3 行，含取消归档 / 删除 / 跟随分组 / 按完成时间划分四层语义）改为 `.trash-tip.archive-tip`：可见文案只留「**归档的任务不计入统计，也不在列表里显示**」，其余全部搬进 `st-tooltip` 的 `content`；② 提示触发器是 `span.help-btn`（`n-icon mdi:help-circle-outline`、`tabindex="0"`、`role="img"` + `aria-label`），悬浮 / 键盘聚焦弹出；③ 新增 `<l-m src="/gh/ofajs/senti-ui@latest/packages/tooltip/tooltip.html"></l-m>`；④ CSS：`.archive-tip` 用 flex 让「?」与文案同线，`.help-btn` 悬停 / 聚焦变主题色、`cursor: help`；`.archive-tip st-tooltip { font-size: 14px }` 把气泡正文从 10.28px 提到 12px，`n-icon { font-size: 1.07em }` 折回 15px。垃圾桶视图的那条短说明（本来就两行）未动。
+- **设计决策**：① **两者都做**而不是二选一——可见短文案保留最关键的一句（触屏无悬停也丢不了关键信息，组件文档也提醒「提示不要承载关键信息」），细则（取消归档 / 删除 / 跟随分组 / 按完成时间划分）放提示里；② 提示内容是**静态字符串**，不走任何绑定，所以放在 `o-if` 里也不会碰到 `$host` 相关问题；③ 保留「?」图标而不是把整段文案做成 hover 目标，视觉上明确指出「这里还有说明」。
+- **验证结论**（预览实测）：说明行渲染为**单行 17px 高**、触发图标 15×15、文案正是短句；对 `st-tooltip` **宿主**派发 `pointerenter` → `open` 属性出现、气泡 **240×135**、`drop-up` 贴在触发器上方、正文 `font-size: 12px`、`max-width 240px`、完全在视口内（左 412 / 上 38），`pointerleave` 后关闲且无残留；**sub 标签与列表渲染无回归**（默认「全部归档」仍是 4 条平铺、无组头，会话状态仍恢复到 `archived` 视图）；控制台 `errors: 0`。
+- **测试**：给 `client/test/archive-group.test.json` 补了一条静态断言（`.archive-tip` 存在、文案严格等于短句、`st-tooltip` 的 `content` 含「取消归档」与「完成时间」、触发器里有 `n-icon`），防止以后被改回长段落；`action=run-tests` **全套 10 用例全绿**（归档分组 13.0s）。跑完核对：`__todo_test_dirty` 已清、`__todo_store_id` 已移除、正式空间用户数据完好（3 条待办 `22222`[垃圾桶] / `111111` / `222222`、`groups` = 默认 + 个人、`ui.sideWidth 239`）。
+- **未实测的点**：**悬停效果需用户在前台用鼠标确认**——预览标签页在后台，浏览器不更新指针状态；`focus()` 能拿到 `activeElement` 但后台不触发 `focusin`（提示不走键盘路径）。已用「对宿主派发 pointerenter 能开合 + 气泡几何完全正确」作旁证，见踩坑 024。
+- **本回合踩的坑（已沉淀 `pitfalls/024`）**：`st-tooltip` 把 `pointerenter` / `focusin` 监听在**宿主**上，`pointerenter` 不冒泡，往子触发器派发事件它收不到（要派发到宿主本身）；气泡尺寸全用 em，`::part` 不存在、只能靠宿主 `font-size` 缩放；后台标签页验不了悬停与聚焦。
+- **环境备注**：`action=app` 首次报 `ACK timeout after 4 retries`（按踩坑 020 用 eval 验模板已生效，未反复重推）；`action=run-tests` **带 `files` 参数会直接报“测试执行失败”**（宿主不认该参数），去掉参数跑全套即正常——与历史记录一致。
+
+### 2026-10-10 · 归档分组基准改为「任务完成时间」+ 场景测试改跑隔离数据空间（用户反馈 + 数据事故复盘）
+
+- **用户需求**：「归档的按日期和按周那里，不是按归档的日期来划分，而是应该按任务的完成日期来划分（当然归档时间也要在 item 上显示）」。
+- **改了什么**（`pages/home.html`）：① 新增 proto 方法 **`completedAt(todo)`**（完成时刻：`statusChangedAt` → 回退 `archivedAt` → 都没有 `null`）；② `archiveGroups` 的 `day` / `week` 分组改为 `archiveBucket(completedAt(t))`；③ `archiveBucket` 的兜底组 label 「归档时间未知」→「完成时间未知」；④ `timeMeta` 的归档分支改为 `分组 · 归档于 A · 完成于 C · 创建于 D`（完成时间缺失时只显示归档于 + 创建于）；⑤ 子标签文案改成 **「按完成日」「按完成周」**（消除歧义），归档视图说明行补一句“按完成时间划分（不是归档时间）”。
+- **设计决策**：① 分组基准选 `statusChangedAt`——「完成」就是最后一次完成态切换，而且它本来就落盘，不需新增字段；② 旧数据没有完成时间时回退到归档时刻（当时“归档已完成”就是刚做完的一批），两者都缺才落到「完成时间未知」兜底组；③ 条目上**归档时间与完成时间都显示**，用户能自己核对分组依据；④ 选项卡文案带「完成」二字，避免再次被误读为按归档时间。
+- **验证结论**：预览实测——新用例**重新构造了「能区分两种语义」的数据**：4 条全部 `archivedAt = 现在`（今天归档），但完成时间跨今天 / 昨天 / 9 天前 → 「按完成日」得 3 组（2/1/1，昨天那条的 meta 同时含昨天的完成时间与今天的归档时间），**旧版按归档日期分只会得到 1 组**，故该用例能真正锁死新语义；「按完成周」同周合并、总条数不变；刷新后仍停在「按完成周」。全套 `action=run-tests` **10 用例全绿**，`console` errors: 0。
+- **⚠️ 本回合的数据事故与修复**：跑全套用例时把用户原有 3 条待办冲掉了（存储里只剩用例自己造的「周报（最终）」）。根因看 `pitfalls/023`：用例在**正式数据空间**上「备份 + 清空」，而宿主会并行跑用例，多个用例共用同一个备份键 `localStorage.__todo_test_backup_v1` → 备份链锚点被换成测试数据，回滚回来的就是测试数据。
+  - **治本（已实施）**：`pages/home.html` 顶部 `STORE_ID` 改为可被 `sessionStorage.__todo_store_id`（`{ id, exp }`，10 分钟有效）临时切换到隔离空间；10 个用例的 wipe 写入开关并 `reload`、restore 移除开关，且用例里所有直接读写存储的步骤都改用 `conjure-todo-app-test`。跑完全套后实测**正式空间三条数据、groups、ui 一字未动**，用例数据只落在隔离空间里。
+  - **隔离上线后又被打掉一次（重要教训）**：推完隔离版并核对正式空间无恙之后，正式空间里又冒出了 crafted 数据。查日志发现：**宿主 runner 的调试指令会迟到十分钟成批钻进来**（同一秒接连 `recv` 一堆十分钟前创建的 `msgId`），那批是**改隔离之前**的用例指令，仍然写正式空间且它们的 restore 早已丢弃。因此：推送 / 跑测试后要**隔一段时间连查两次**正式空间才敢下结论；报告中随机的单条「eval 等待结果超时（30000ms）」多为这种滞后（同一轮里每次失败的都是不同用例，重跑即绿），不要当成回归。已补进 `pitfalls/023` 与 AGENTS.md。
+  - **已用 best-effort 还原用户数据两次**（无任何历史副本可恢复）：按本会话记录过的事实重建——`22222`（在垃圾桶，createdAt 1791446821823）、`111111`（已完成，createdAt 1791446819849）、`222222`（createdAt 1791516989471），分组 = 默认 + 个人、`ui.sideWidth = 239` 均未丢。**注意：这三条的 id / desc / 删除时刻等字段是重建值，不是原件**；已向用户说明，若他记得原值可以再改。
+  - **教训（已写进 AGENTS.md 与 CONTEXT.md「用例写法约定」）**：测试要**隔离**，不要靠“备份 + 回滚”保护正式数据；用例里漏一处写回正式空间就等于防线全丢。
+- **本回合踩的坑（已沉淀）**：`pitfalls/022`（改数据范围时漏改模板 `:value=`）、`pitfalls/023`（测试隔离）；另：改 JSON 用例时多写一个 `}` 会让文件静默不被执行（报告里少了那个用例、总数对不上就是它），改完要核总数。
+
+### 2026-10-10 · 「已归档」「垃圾桶」两个视图改为跟随左栏分组（用户反馈）
+
+- **用户需求**：「为什么已归档那里，没有按照我左边的分组进行显示？垃圾桶和已归档，都应该按照左侧的分组来」。
+- **改了什么**（`pages/home.html`）：① 新增 proto 方法 `scopeByGroup(list)`（`groupFilter === 'all'` 时原样返回，否则按 `groupId` 过滤）与两个 getter `scopedArchivedTodos` / `scopedTrashTodos`；② `scopedActiveTodos` 改用 `scopeByGroup`，与归档 / 垃圾桶三个视图**同一口径**；③ `visibleTodos` 两个分支、`archiveGroups`（`all` 模式的 todos 与 `day` / `week` 的分组循环）均改为 scoped 数据；④ `trashBadge` / `archiveBadge` / 两个底栏计数 / 垃圾桶列表的 `o-fill` 全部改读 scoped 数据；⑤ `updateEmptyText()` 在选中分组时给出带分组名的空状态（「「工作」的垃圾桶是空的…」）并提示可切到「全部任务」看全部；⑥ `emptyTrash()` 改为**只清当前分组范围**（条数取 `scopedTrashTodos.length`，范围记在非响应式字段 `this._purgeScope`，`confirmAction()` 按它过滤；`closeConfirm()` 清空），确认框标题 / 文案在选中分组时带分组名；⑦ 两处视图说明文案（`.trash-tip`）写明“左栏选中某个分组时只显示该分组的条目”。
+- **设计决策**：① **三个视图口径统一**：左栏分组是全局的“作用范围”，不分“归档 / 垃圾桶忽略分组”（旧行为是前者与后者不一致，正是用户困惑的来源）；② 筛选**只改显示**——`scopeByGroup` 是纯 filter，不动数据、不影响 `groupId` 与任何时间戳；③ **“清空垃圾桶”跟着缩到当前分组**：否则底栏写「垃圾桶 0 项」、旁边按钮却能一键清掉其它分组的条目，属硬伤；确认框文案带分组名作提示；④ 视图标签数量也跟着分组走，保证“标签数 = 里面能看到的条数”。
+- **验证结论**（预览实测 + `action=run-tests`）：手工实测——选「个人」后垃圾桶显示 0 条、空状态「「个人」的垃圾桶是空的 🗑，切到「全部任务」可以看到所有分组的条目」、标签徒标消失、「清空垃圾桶」置灰；切「全部任务」后恢复 1 条 / 标签「垃圾桶 1」/ 按钮可用。**新增用例 `client/test/group-scope-views.test.json`（name「归档桶跟随分组」）跑到通过**；全套 10 个用例 `action=run-tests` **10 通过**；`action=status` 的 `errors: 0`；跑完核对 `__todo_test_dirty` 已清、用户数据与偏好均完好（3 条待办：`22222` 在垃圾桶 / `111111` / `222222`，`groups` = 默认 + 个人，`ui.sideWidth 239`，`sessionStorage` 已清）。
+- **本回合踩的坑（已沉淀 `pitfalls/022`）**：改完 getter 后**只改了底栏 / 徒标 / 空状态，忘了垃圾桶列表的 `o-fill` 绑的是未过滤的 `trashTodos`** → 用例直接报「「工作」下的垃圾桶不应出现其它分组的条目，实际 默认项」，同一屏上“底栏 0 项”与“列表 1 条”并存。教训：改数据范围时先把模板里所有 `:value=` 扫一遍。
+- **环境备注**：`action=app` 推送报 `ACK timeout` 但**推送已生效**（用 eval 读页面里的新说明文案佐证，见 `pitfalls/020`）；`action=run-tests` 本会话可用（不认 `files` 参数，会跑全套）；跑全套时「删除倒计时」出现过一次瞬时失败（`找不到任务：任务B`，重跑即绿，已确认非本次改动引入——该用例全流程在 `groupFilter = all` 下跑，与 scoped getter 行为等价）。
+
+### 2026-10-10 · 已归档视图加子标签「全部归档 / 按日期 / 按周」（用户需求）
+
+- **用户需求**：「已归档那里，下面再添加几个 tab，默认查看所有归档，可以按归档日期查看归档，按周查看归档（按周的话，归档也要简单的加一下日期分组）」。
+- **改了什么**（`pages/home.html`）：① data 新增 `archiveGroupMode`（`"all"` 默认 / `"day"` / `"week"`）；② 新增 getter **`archiveGroups`**（`all` → 一组 `{key:"all", showHead:false, todos: archivedTodos}`；`day`/`week` → 按 `archiveBucket()` 分组、**最新一组在前**、每组带 `label` / `countText` / `showHead:true`）与方法 `setArchiveGroupMode` / `dateKey` / `monthDayText` / `archiveBucket` / `isoWeek`；③ 模板：归档视图说明行下方加子标签 `st-button-group.archive-tabs`，`archivedTodos` 的平铺列表改为 **`.agroups` → 外层 `o-fill :value="archiveGroups" fill-key="key"`（`.agroup` = `.agroup-head` + `.list` → 内层 `o-fill :value="$data.todos" fill-key="id"`）**，`showHead` 控制组头显隐；④ 样式新增 `.archive-tabs` / `.agroups`（组间 18px）/ `.agroup` / `.agroup-head`（13px 半粗 + 12px 条数）；⑤ 会话状态快照加 `archiveGroup`（`sessionSnapshot` / `restoreSessionState` 校验）。
+- **设计决策**：① **不给「全部归档」另写一套平铺模板**——它在 `archiveGroups` 里就是「一组 + 组头隐藏」，与分组模式共用同一个 `o-fill` 与同一份行模板（以后改行结构只改一处）；② 分组只改**怎么显示**、不筛数据不改数据，`archiveBucket()` 只读 `archivedAt`（取消归档 / 删除后条数自动重算）；② key 一律「`d`/`w` + `YYYY-MM-DD`」→ **字典序即时间序**，排序简单且天然把「归档时间未知」的兜底组（`0-unknown`）排到最后；③ 按**本地时区**切日期（不用 UTC，避免凌晨归档被算到前一天），按周用 **ISO 周**（周一为一周起点、取该周周四所在年份与周序号，跨年周不错位）；④ 查看方式随会话记忆（写 `sessionStorage`，与「刷新保留、关标签页重置」的既有语义一致）。
+- **验证结论**（预览实测）：**新写 `client/test/archive-group.test.json`（用 crafted `archivedAt`：今天两条 / 昨天一条 / 9 天前一条）+ 本地驱动分片回放全绿**——默认「全部归档」：`variant=filled`、4 条平铺、`.agroup-head` 计算值 `display:none`；「按日期」：3 组（`10-10 周六`+`10-09 周五`+`09-30 周三`，各带条数、组头 19px 单行、组前后 y 247/374）、各组条数 `2,1,1`、组内顺序不变、总条数仍 4；「按周」：同周两条合成一组、组头「2026 年第 41 周 · 10-05 ~ 10-11 2 项」、总条数不变、`sessionStorage.archiveGroup="week"`；**硬刷新后仍停在「按周」且周分组照旧**。**回归**：`toggle-archive`（归档视图结构改了，全链路 20 步全绿）与 `session-state`（快照加了字段，19 步含 4 次 reload 全绿）分片回放通过；控制台 `errors: 0`；跑完核对 `__todo_test_dirty` 已清、用户数据（3 条待办 / 2 个分组 / `ui.sideWidth 239`）与列表渲染（111111 / 222222、「1 项未完成 · 共 2 项」、垃圾桶徒标）均已回来。
+- **环境限制**：本会话 `action=run-tests` 与 `action=windows` 都报「宿主未注入预览通道」（`status` / `eval` / `console` / `dom` 正常），测试仍走 `test/_driver.js` 分片回放；`action=app` 两次报 ACK timeout 但**推送其实已生效**（用 `eval` 查页面模板里的中文文案佐证），见 `pitfalls/020`。
+- **本回合踩的坑（已沉淀两个文件并登记索引）**：`pitfalls/020`（`action=app` ACK timeout ≠ 推送失败）、`pitfalls/021`——**临时改预览数据时的备份挂在了 `window` 上，reload 后变 `undefined`，`setItem('todos', undefined)` 直接把用户 3 条待办抹掉**；已立即用 `localStorage.__todo_test_backup_v1` 完整还原（标题 / done / deletedAt / groups / sideWidth 全部核对一致）。教训：跨 reload 的临时状态一律存 `localStorage`，且还原前先判空。
+
 ### 2026-10-10 · 修「宿主跑测试报 ACK timeout / wait 超时」——reload 窗口与就绪锚点两个时序坑（用例重构引入）
 
 - **症状**：宿主自动跑 `client/test/` 时报 6–7 条错误，名字正是上一回合重构后的短功能名：`添加任务 / 拖拽排序 / 分组管理 / 会话状态：调试指令投递失败（预览页无响应）：ACK timeout after 4 retries`；`删除倒计时 / 编辑任务：调试指令 wait 等待结果超时（25000ms）`。而同一套步骤在页面里手动回放（本地驱动）当时是全绿的 → 应用行为无问题，是**步骤与页面的时序**问题。

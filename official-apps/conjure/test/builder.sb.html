@@ -201,6 +201,54 @@
       </template>
     </sb-test>
 
+    <sb-test name="任务清单纯函数（normalizeTaskList / mergeErrorTasks）">
+      <template>
+        <script type="module">
+          import {
+            normalizeTaskList,
+            mergeErrorTasks,
+            errorTaskText,
+            TASK_LIST_MAX,
+          } from "../lib/builder.js";
+          {
+            // 规整：清洗文本 / 非法 status 回落 pending / 空项过滤 / 条数封顶
+            const normalized = normalizeTaskList([
+              { text: "  写页面 ", status: "in_progress" },
+              { text: "" },
+              { text: "跑测试", status: "bogus" },
+              { nope: 1 },
+            ]);
+            const many = Array.from({ length: 30 }, (_, i) => ({ text: "t" + i }));
+            const normChecks = {
+              two: normalized.length === 2,
+              keep: normalized[0].text === "写页面" && normalized[0].status === "in_progress",
+              fallback: normalized[1].status === "pending",
+              ids: normalized.every((t) => t.id),
+              cap: normalizeTaskList(many).length === TASK_LIST_MAX,
+              empty: normalizeTaskList([]) === null && normalizeTaskList("x") === null,
+            };
+            // 错误同步：新错误追加 → 同错误幂等（原引用返回）→ 错误消失勾完成
+            const base = [{ id: "a", text: "写页面", status: "done" }];
+            const withErr = mergeErrorTasks(base, ["[error] TypeError: foo is not defined"]);
+            const sameErr = mergeErrorTasks(withErr, ["[error] TypeError: foo is not defined"]);
+            const doneErr = mergeErrorTasks(withErr, []);
+            const mergeChecks = {
+              add: withErr !== base && withErr.length === 2 && withErr[1].source === "error" && withErr[1].status === "pending" && withErr[1].text.includes("TypeError"),
+              stable: sameErr === withErr,
+              done: doneErr[1].status === "done" && doneErr[0].status === "done",
+              text: errorTaskText("[error] boom at x").startsWith("修复运行错误：boom"),
+            };
+            return {
+              assert:
+                Object.values(normChecks).every(Boolean) &&
+                Object.values(mergeChecks).every(Boolean),
+              content: { normChecks, mergeChecks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="工具插件注册中心加载">
       <template>
         <script type="module">
@@ -221,14 +269,14 @@
               displayName: "X",
             });
             const checks = {
-              tenDefs: TOOL_DEFS.length === 10,
-              names: ["create_app", "write_file", "edit_file", "read_file", "list_files", "read_skill", "show_form", "preview", "web_fetch", "web_search"]
+              elevenDefs: TOOL_DEFS.length === 11,
+              names: ["create_app", "write_file", "edit_file", "read_file", "list_files", "read_skill", "show_form", "preview", "web_fetch", "web_search", "task_list"]
                 .every((n) => names.includes(n)),
               defShape: TOOL_DEFS.every(
                 (d) => d.key && d.name && d.description && d.schema && typeof d.exec === "function",
               ),
               allHaveSelfTest: TOOL_DEFS.every((d) => /self-test\.js$/.test(d.selfTest || "")),
-              keys: ["createApp", "writeFile", "editFile", "readFile", "listFiles", "readSkill", "showForm", "preview", "webFetch", "webSearch"].every(
+              keys: ["createApp", "writeFile", "editFile", "readFile", "listFiles", "readSkill", "showForm", "preview", "webFetch", "webSearch", "taskList"].every(
                 (k) => tools[k],
               ),
               ctxEvents: seen.length === 1 && seen[0].appName === "x",

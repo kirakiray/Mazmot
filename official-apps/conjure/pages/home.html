@@ -303,7 +303,6 @@
             <div
               class="session-item"
               class:active="$data.id === $host.currentSessionId"
-              class:removing="$host.removingSid === $data.id"
               class:drag-over="$host.dragOverSid === $data.id"
               attr:draggable="'true'"
               on:click="$host.loadSession($data.id)"
@@ -750,6 +749,43 @@
                         <div class="tool-label">结果</div>
                         <pre class="tool-code">{{$data.result}}</pre>
                       </div>
+                      <!-- 失败诊断（diag）：链路事件 / 窗口快照，dbg 类失败没有
+                           错误卡，诊断只能从这里看（默认随工具卡折叠） -->
+                      <o-if :value="$data.diag">
+                        <div class="tool-section">
+                          <div class="tool-label">
+                            诊断 · {{$host.diagInfo($data).stage}}（链路事件 {{$host.diagRows($data).length}} 条）
+                          </div>
+                          <div class="diag-detail">
+                            <div class="diag-meta">
+                              <span>对端：{{$host.diagInfo($data).peer}}</span>
+                              <span>时间：{{$host.diagInfo($data).at}}</span>
+                            </div>
+                            <o-if :value="$host.diagWindows($data).length > 0">
+                              <div class="diag-label">预览窗口</div>
+                              <div class="diag-wins">
+                                <o-fill :value="$host.diagWindows($data)" fill-key="id">
+                                  <div class="diag-win">
+                                    <span class="diag-dot" attr:data-on="$data.online"></span>
+                                    <span class="diag-win-app">{{$data.app || "?"}}</span>
+                                    <span class="diag-win-id">{{$data.sid}}</span>
+                                    <span class="diag-win-st">{{$data.online ? "在线" : "离线"}}</span>
+                                  </div>
+                                </o-fill>
+                              </div>
+                            </o-if>
+                            <div class="diag-events">
+                              <o-fill :value="$host.diagRows($data)" fill-key="eid">
+                                <div class="diag-ev">
+                                  <span class="diag-ev-t">{{$data.tt}}</span>
+                                  <span class="diag-ev-p" attr:data-tone="$data.tone">{{$data.phase}}</span>
+                                  <span class="diag-ev-x">{{$data.extra}}</span>
+                                </div>
+                              </o-fill>
+                            </div>
+                          </div>
+                        </div>
+                      </o-if>
                     </div>
                   </o-if>
                 </div>
@@ -813,10 +849,55 @@
               </o-if>
 
               <o-if :value="$data.role === 'error'">
-                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI） -->
-                <div class="local-error-card">
-                  <n-icon icon="mdi:alert-outline"></n-icon>
-                  <div class="local-error-text">{{$data.text}}</div>
+                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI）。
+                     携带 diag 诊断（链路事件 / 窗口快照等）时整卡可点开，供事后排查 -->
+                <div class="local-error-card" class:diag-open="$data.diagOpen">
+                  <div
+                    class="local-error-main"
+                    class:has-diag="$data.diag"
+                    on:click="$host.toggleDiag($data)"
+                  >
+                    <n-icon icon="mdi:alert-outline"></n-icon>
+                    <div class="local-error-text">{{$data.text}}</div>
+                    <o-if :value="$data.diag">
+                      <span class="diag-chip">
+                        <span>诊断</span>
+                        <n-icon icon="mdi:chevron-down"></n-icon>
+                      </span>
+                    </o-if>
+                  </div>
+                  <o-if :value="$data.diag && $data.diagOpen">
+                    <div class="diag-detail">
+                      <div class="diag-meta">
+                        <span>阶段：{{$host.diagInfo($data).stage}}</span>
+                        <span>对端：{{$host.diagInfo($data).peer}}</span>
+                        <span>时间：{{$host.diagInfo($data).at}}</span>
+                      </div>
+                      <o-if :value="$host.diagWindows($data).length > 0">
+                        <div class="diag-label">预览窗口</div>
+                        <div class="diag-wins">
+                          <o-fill :value="$host.diagWindows($data)" fill-key="id">
+                            <div class="diag-win">
+                              <span class="diag-dot" attr:data-on="$data.online"></span>
+                              <span class="diag-win-app">{{$data.app || "?"}}</span>
+                              <span class="diag-win-id">{{$data.sid}}</span>
+                              <span class="diag-win-st">{{$data.online ? "在线" : "离线"}}</span>
+                            </div>
+                          </o-fill>
+                        </div>
+                      </o-if>
+                      <div class="diag-label">链路事件（{{$host.diagRows($data).length}} 条）</div>
+                      <div class="diag-events">
+                        <o-fill :value="$host.diagRows($data)" fill-key="eid">
+                          <div class="diag-ev">
+                            <span class="diag-ev-t">{{$data.tt}}</span>
+                            <span class="diag-ev-p" attr:data-tone="$data.tone">{{$data.phase}}</span>
+                            <span class="diag-ev-x">{{$data.extra}}</span>
+                          </div>
+                        </o-fill>
+                      </div>
+                    </div>
+                  </o-if>
                 </div>
               </o-if>
             </div>
@@ -852,18 +933,6 @@
     </div>
 
     <footer class="composer-wrap">
-      <!-- 宿主自动检测到预览运行错误：提示条（下条消息自动附带给 AI 修复） -->
-      <o-if :value="autoErrors.length > 0">
-        <div class="auto-error-row" attr:title="autoErrors.join('\n')">
-          <n-icon icon="mdi:alert-circle-outline"></n-icon>
-          <span class="auto-error-text"
-            >预览自动检测到 {{autoErrors.length}} 条运行错误，下条消息将自动附带给 AI 修复</span
-          >
-          <st-icon-button title="忽略（本次不带给 AI）" on:click="dismissAutoErrors">
-            <n-icon icon="mdi:close"></n-icon>
-          </st-icon-button>
-        </div>
-      </o-if>
       <o-if :value="keyError">
         <div class="key-error-row">
           <div class="key-error">{{keyError}}</div>
@@ -1251,6 +1320,35 @@
       </div>
     </footer>
       </div>
+      <!-- 任务清单（右）：模型开发前拆解的任务 + 宿主自动登记的错误修复任务，
+           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作 -->
+      <o-if :value="sessionTasks.length > 0">
+        <aside class="tasks-panel" class:collapsed="!tasksPanelOpen">
+          <button
+            class="tasks-head"
+            on:click="toggleTasksPanel"
+            attr:title="tasksPanelOpen ? '收起任务清单' : '展开任务清单'"
+          >
+            <n-icon class="tasks-head-ico" icon="mdi:format-list-checks"></n-icon>
+            <span class="tasks-head-title">任务清单</span>
+            <span class="tasks-progress">{{tasksDoneCount}}/{{sessionTasks.length}}</span>
+            <n-icon class="tasks-chev" icon="mdi:chevron-right"></n-icon>
+          </button>
+          <o-if :value="tasksPanelOpen">
+            <div class="tasks-body">
+              <o-fill :value="sessionTasks" fill-key="id">
+                <div class="task-item" attr:data-status="$data.status">
+                  <o-if :value="$data.source === 'error'">
+                    <span class="task-badge">错误</span>
+                  </o-if>
+                  <n-icon class="task-ico" attr:icon="$host.taskIcon($data.status)"></n-icon>
+                  <span class="task-text">{{$data.text}}</span>
+                </div>
+              </o-fill>
+            </div>
+          </o-if>
+        </aside>
+      </o-if>
     </div>
 
     <!-- 项目抽屉（左）：点击项新标签打开项目；已开标签聚焦复用 -->
@@ -1475,12 +1573,13 @@
           <div class="test-item">
             <n-icon
               class="test-tone"
+              class:spin="$host.testIsRunning($data)"
               attr:icon="$host.testTone($data)"
             ></n-icon>
             <div class="test-item-main">
               <div class="test-item-name">
                 {{$data.name}}
-                <span class="test-steps">{{$data.stepCount}} 步</span>
+                <span class="test-steps">{{$data.stepCount}} 步{{$host.testMsText($data)}}</span>
               </div>
               <div class="test-item-file">{{$data.desc || $data.file}}</div>
               <o-if :value="$host.testFailText($data)">
@@ -2028,7 +2127,7 @@
           tests: [], // 场景用例清单（client/test/*.test.json）
           testResults: {}, // 每用例上次结果（file → {ok, ms, error, steps}）
           testLastRun: null, // 上次全量摘要 {at, ok, pass, fail}
-          testRunning: null, // 执行进度 {done, total, current}
+          testRunning: null, // 执行进度 {done, total, current, file}（file = 正在跑的用例，spinner 高亮用）
           testBusy: false,
           backups: [], // 当前应用已备份清单（backup/ 目录名，新的在前）
           currentHash: "", // 当前 client/ 内容指纹（已回滚派生态用）
@@ -2077,7 +2176,9 @@
           localDirLabel: "",
           permGrantNeeded: false,
           confirmingDelSession: "",
-          removingSid: "", // 正在播放折叠删除动画的会话 id
+          // 会话任务清单（task_list 工具维护，对话右侧面板展示；store 镜像）
+          sessionTasks: [],
+          tasksPanelOpen: true, // 面板折叠开关（页面级 UI 态，不持久化）
           dragSid: "", // 拖拽排序：被拖起的会话 id
           dragOverSid: "", // 拖拽排序：悬停目标会话 id（高亮）
           toolDefs,
@@ -2116,7 +2217,7 @@
           diffError: "",
           diffFromDisk: false, // true = 旧卡片兼容模式（对比当前盘，非冻结内容）
           rollbackOptionsOpen: 0, // 展开回滚语义选项的消息 id（0 = 收起）
-          autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；提示条数据源）
+          autoErrors: [], // 宿主自动检测的预览错误行（store patch 同步；走任务清单与提示词注入，无独立提示条）
           liveTurnStats: null, // 进行中回合的实时快照（仓库 patch，收尾清零）
           modelTriggerText: "自动 · 低", // 触发器文案：模型 · 推理等级
           modelValueText: "自动（供应商默认）",
@@ -3152,10 +3253,6 @@
             }
           },
 
-          // 忽略自动检测到的预览错误（本次不再带给 AI）
-          dismissAutoErrors() {
-            store.dismissAutoErrors?.();
-          },
 
           // 关闭错误横幅（store 清 keyError）
           dismissKeyError() {
@@ -3477,6 +3574,86 @@
             store.newSessionFor(name);
           },
 
+          // ---- 任务清单（右侧面板）----
+
+          // 已完成任务数（进度徽标）；sessionTasks 声明为空数组，getter 求值安全
+          get tasksDoneCount() {
+            return this.sessionTasks.filter((t) => t.status === "done").length;
+          },
+
+          // 任务状态 → 图标名（attr:icon 动态属性用）
+          taskIcon(status) {
+            return status === "done"
+              ? "mdi:check-circle-outline"
+              : status === "in_progress"
+                ? "mdi:progress-check"
+                : "mdi:circle-outline";
+          },
+
+          toggleTasksPanel() {
+            this.tasksPanelOpen = !this.tasksPanelOpen;
+          },
+
+          // ---- 错误诊断（消息 diag 字段的展开视图）----
+
+          diagInfo(m) {
+            const d = m?.diag || {};
+            const t = d.at ? new Date(d.at) : null;
+            const p = (n, w = 2) => String(n).padStart(w, "0");
+            return {
+              stage: d.stage || "-",
+              peer: d.peerService || "-",
+              at: t
+                ? `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`
+                : "-",
+            };
+          },
+
+          // 窗口注册表快照 → 面板行（sessionId 短显示；id 兼作 fill-key）
+          diagWindows(m) {
+            return (m?.diag?.windows || []).map((w) => ({
+              ...w,
+              sid: String(w.id || "").split("|").pop() || "-",
+            }));
+          },
+
+          // 链路事件 → 可读行：时间 / 阶段（tone 分色）/ 摘要（其余字段拼串）
+          diagRows(m) {
+            return (m?.diag?.linkEvents || []).map((e, i) => {
+              const t = new Date(e.t);
+              const p = (n, w = 2) => String(n).padStart(w, "0");
+              const extra = Object.entries(e)
+                .filter(([k]) => k !== "t" && k !== "phase" && k !== "msgId")
+                .map(
+                  ([k, v]) =>
+                    `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`,
+                )
+                .join(" ");
+              const phase = e.phase || "?";
+              const tone = phase.startsWith("ctl:") || phase.startsWith("flow:")
+                ? "flow"
+                : phase === "ack" || phase === "recv"
+                  ? "ok"
+                  : phase === "rejected" ||
+                      phase === "send-capped" ||
+                      phase === "reconnect" ||
+                      phase === "reply-throw"
+                    ? "bad"
+                    : "dim";
+              return {
+                eid: `e${i}`,
+                tt: `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}.${p(t.getMilliseconds(), 3)}`,
+                phase,
+                tone,
+                extra: String(extra).slice(0, 160),
+              };
+            });
+          },
+
+          toggleDiag(m) {
+            store.toggleDiag(m?.id);
+          },
+
           // 编辑当前会话名称（senti-ui prompt 命令式对话框）
           async editSessionTitle() {
             if (this.currentSessionId === "") return;
@@ -3611,16 +3788,31 @@
               return;
             }
             this.confirmingDelSession = "";
-            // 先播折叠动画（高度 + 透明度归零）再真正删除
+            // 折叠动画走纯 DOM：锁高度 → 强制回流（锁定值先完成一次样式
+            // 计算，成为过渡起点）→ 加 removing 类过渡到 0。不走响应式
+            // class 绑定——绑定由状态驱动，等待删除 IO 期间任何状态复位
+            // 都会把 item 弹回展开态（表象即「塌缩→弹回→瞬删」），同帧
+            // 加类还会吃掉过渡起点让塌缩变成瞬跳
             const el = event?.target?.closest?.(".session-item");
             if (el) {
-              this.removingSid = sid;
               el.style.height = `${el.offsetHeight}px`; // 锁定当前高度让过渡有起点
-              requestAnimationFrame(() => el.classList.add("removing"));
-              await new Promise((r) => setTimeout(r, 240));
+              void el.offsetHeight; // 强制回流
+              el.classList.add("removing");
+              await new Promise((r) => setTimeout(r, 240)); // 与过渡时长 220ms 对应
             }
-            this.removingSid = "";
-            await store.deleteSession(sid);
+            let removed = false;
+            try {
+              await store.deleteSession(sid);
+              removed = true;
+            } finally {
+              // 只在删除失败时复位弹回（会话还在列表里，不能留个塌缩空壳）；
+              // 成功时保持塌缩态直到 o-fill 随数据移除元素——重渲染可能比
+              // 这个 finally 晚一个微任务，按 isConnected 判断会闪一帧
+              if (!removed && el && el.isConnected) {
+                el.classList.remove("removing");
+                el.style.removeProperty("height");
+              }
+            }
           },
 
           // ---- 项目抽屉（左侧滑出）：点击新标签打开；window name 命中已开标签则聚焦不重复开 ----
@@ -3737,12 +3929,26 @@
             await store.runTests?.([file]);
           },
 
-          // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）
+          // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）；
+          // 正在跑的用例转 spinner（抽屉逐条实时反馈）
           testTone(t) {
             if (t.broken) return "mdi:alert-circle-outline";
+            if (this.testRunning?.file === t.file) return "mdi:loading";
             const r = this.testResults[t.file];
             if (!r) return "mdi:flask-outline";
             return r.ok ? "mdi:check-circle-outline" : "mdi:close-circle-outline";
+          },
+
+          // 正在跑的用例（spinner 旋转样式用）
+          testIsRunning(t) {
+            return this.testRunning?.file === t.file;
+          },
+
+          // 已有用例结果的耗时片段（名称行尾部展示）
+          testMsText(t) {
+            const r = this.testResults[t.file];
+            if (!r || r.ms == null) return "";
+            return ` · ${(r.ms / 1000).toFixed(1)}s`;
           },
 
           // 用例失败详情一行（只说原因——用例名上一行已经有了，不重复）

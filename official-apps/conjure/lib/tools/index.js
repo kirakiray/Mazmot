@@ -6,7 +6,8 @@
 //   self-test.js 内置测试模组（导出 testPlan + runSelfTest，基座见 lib/test-space/）
 //   test/        包的 sibyl-test 测试（test/<tool-name>.sb.html，不分发）
 // ctx 由调用方注入：{ fs, rootHandle, onAppCreated, onFileWrite, readSkill,
-//   requestForm, openPreview, previewDebug, onPreviewShot, netFetch, netSearch }
+//   requestForm, openPreview, previewDebug, listPreviewWindows, checkPopup,
+//   runTests, setSessionTasks, onPreviewShot, netFetch, netSearch }
 //
 // 新增工具：在 lib/tools/ 下建 <tool-name>/ 目录包（结构照现有包），
 // 然后在下方 import 并加入 TOOL_DEFS 即可（无需改动页面或 builder.js）；
@@ -22,6 +23,7 @@ import showForm from "./show-form/index.js";
 import preview from "./preview/index.js";
 import webFetch from "./web-fetch/index.js";
 import webSearch from "./web-search/index.js";
+import taskList from "./task-list/index.js";
 
 export const TOOL_DEFS = [
   createApp,
@@ -34,6 +36,7 @@ export const TOOL_DEFS = [
   preview,
   webFetch,
   webSearch,
+  taskList,
 ];
 
 // 配套视觉组件模块地址：宿主页面预载（聚合为 visualModules）后，
@@ -52,6 +55,10 @@ export const visualModules = TOOL_DEFS.map((d) => d.visual).filter(Boolean);
  * @param {Function} [opts.requestForm] 视觉交互表单（show_form）：渲染表单卡片并等待用户提交，resolve 用户数据
  * @param {Function} [opts.openPreview] preview 工具（action=app）：推送应用到隔离预览窗口
  * @param {Function} [opts.previewDebug] preview 工具的调试指令通道 (cmd, args, timeoutMs) => outcome
+ * @param {Function} [opts.listPreviewWindows] preview 工具（action=windows）：预览窗口清单
+ * @param {Function} [opts.checkPopup] preview 工具（action=check-popup）：弹窗放行探测
+ * @param {Function} [opts.runTests] preview 工具（action=run-tests）：跑应用场景测试
+ * @param {Function} [opts.setSessionTasks] task_list 工具：更新会话任务清单（右侧面板）
  * @param {Function} [opts.onPreviewShot] preview 工具（action=screenshot）：把截图 dataUrl 展示为聊天图片卡片
  * @param {Function} [opts.netFetch] web_fetch 工具：/mz/net 的 fetchText（联网抓取网页文本）
  * @param {Function} [opts.netSearch] web_search 工具：/mz/net 的 searchWeb（联网搜索）
@@ -67,6 +74,10 @@ export function createTools({
   requestForm,
   openPreview,
   previewDebug,
+  listPreviewWindows,
+  checkPopup,
+  runTests,
+  setSessionTasks,
   onPreviewShot,
   netFetch,
   netSearch,
@@ -80,6 +91,10 @@ export function createTools({
     requestForm,
     openPreview,
     previewDebug,
+    listPreviewWindows,
+    checkPopup,
+    runTests,
+    setSessionTasks,
     onPreviewShot,
     netFetch,
     netSearch,
