@@ -749,6 +749,43 @@
                         <div class="tool-label">结果</div>
                         <pre class="tool-code">{{$data.result}}</pre>
                       </div>
+                      <!-- 失败诊断（diag）：链路事件 / 窗口快照，dbg 类失败没有
+                           错误卡，诊断只能从这里看（默认随工具卡折叠） -->
+                      <o-if :value="$data.diag">
+                        <div class="tool-section">
+                          <div class="tool-label">
+                            诊断 · {{$host.diagInfo($data).stage}}（链路事件 {{$host.diagRows($data).length}} 条）
+                          </div>
+                          <div class="diag-detail">
+                            <div class="diag-meta">
+                              <span>对端：{{$host.diagInfo($data).peer}}</span>
+                              <span>时间：{{$host.diagInfo($data).at}}</span>
+                            </div>
+                            <o-if :value="$host.diagWindows($data).length > 0">
+                              <div class="diag-label">预览窗口</div>
+                              <div class="diag-wins">
+                                <o-fill :value="$host.diagWindows($data)" fill-key="id">
+                                  <div class="diag-win">
+                                    <span class="diag-dot" attr:data-on="$data.online"></span>
+                                    <span class="diag-win-app">{{$data.app || "?"}}</span>
+                                    <span class="diag-win-id">{{$data.sid}}</span>
+                                    <span class="diag-win-st">{{$data.online ? "在线" : "离线"}}</span>
+                                  </div>
+                                </o-fill>
+                              </div>
+                            </o-if>
+                            <div class="diag-events">
+                              <o-fill :value="$host.diagRows($data)" fill-key="eid">
+                                <div class="diag-ev">
+                                  <span class="diag-ev-t">{{$data.tt}}</span>
+                                  <span class="diag-ev-p" attr:data-tone="$data.tone">{{$data.phase}}</span>
+                                  <span class="diag-ev-x">{{$data.extra}}</span>
+                                </div>
+                              </o-fill>
+                            </div>
+                          </div>
+                        </div>
+                      </o-if>
                     </div>
                   </o-if>
                 </div>
@@ -812,10 +849,55 @@
               </o-if>
 
               <o-if :value="$data.role === 'error'">
-                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI） -->
-                <div class="local-error-card">
-                  <n-icon icon="mdi:alert-outline"></n-icon>
-                  <div class="local-error-text">{{$data.text}}</div>
+                <!-- 宿主错误卡片：回合中发生的错误镜像进对话（仅展示，不传给 AI）。
+                     携带 diag 诊断（链路事件 / 窗口快照等）时整卡可点开，供事后排查 -->
+                <div class="local-error-card" class:diag-open="$data.diagOpen">
+                  <div
+                    class="local-error-main"
+                    class:has-diag="$data.diag"
+                    on:click="$host.toggleDiag($data)"
+                  >
+                    <n-icon icon="mdi:alert-outline"></n-icon>
+                    <div class="local-error-text">{{$data.text}}</div>
+                    <o-if :value="$data.diag">
+                      <span class="diag-chip">
+                        <span>诊断</span>
+                        <n-icon icon="mdi:chevron-down"></n-icon>
+                      </span>
+                    </o-if>
+                  </div>
+                  <o-if :value="$data.diag && $data.diagOpen">
+                    <div class="diag-detail">
+                      <div class="diag-meta">
+                        <span>阶段：{{$host.diagInfo($data).stage}}</span>
+                        <span>对端：{{$host.diagInfo($data).peer}}</span>
+                        <span>时间：{{$host.diagInfo($data).at}}</span>
+                      </div>
+                      <o-if :value="$host.diagWindows($data).length > 0">
+                        <div class="diag-label">预览窗口</div>
+                        <div class="diag-wins">
+                          <o-fill :value="$host.diagWindows($data)" fill-key="id">
+                            <div class="diag-win">
+                              <span class="diag-dot" attr:data-on="$data.online"></span>
+                              <span class="diag-win-app">{{$data.app || "?"}}</span>
+                              <span class="diag-win-id">{{$data.sid}}</span>
+                              <span class="diag-win-st">{{$data.online ? "在线" : "离线"}}</span>
+                            </div>
+                          </o-fill>
+                        </div>
+                      </o-if>
+                      <div class="diag-label">链路事件（{{$host.diagRows($data).length}} 条）</div>
+                      <div class="diag-events">
+                        <o-fill :value="$host.diagRows($data)" fill-key="eid">
+                          <div class="diag-ev">
+                            <span class="diag-ev-t">{{$data.tt}}</span>
+                            <span class="diag-ev-p" attr:data-tone="$data.tone">{{$data.phase}}</span>
+                            <span class="diag-ev-x">{{$data.extra}}</span>
+                          </div>
+                        </o-fill>
+                      </div>
+                    </div>
+                  </o-if>
                 </div>
               </o-if>
             </div>
@@ -3509,6 +3591,66 @@
 
           toggleTasksPanel() {
             this.tasksPanelOpen = !this.tasksPanelOpen;
+          },
+
+          // ---- 错误诊断（消息 diag 字段的展开视图）----
+
+          diagInfo(m) {
+            const d = m?.diag || {};
+            const t = d.at ? new Date(d.at) : null;
+            const p = (n, w = 2) => String(n).padStart(w, "0");
+            return {
+              stage: d.stage || "-",
+              peer: d.peerService || "-",
+              at: t
+                ? `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`
+                : "-",
+            };
+          },
+
+          // 窗口注册表快照 → 面板行（sessionId 短显示；id 兼作 fill-key）
+          diagWindows(m) {
+            return (m?.diag?.windows || []).map((w) => ({
+              ...w,
+              sid: String(w.id || "").split("|").pop() || "-",
+            }));
+          },
+
+          // 链路事件 → 可读行：时间 / 阶段（tone 分色）/ 摘要（其余字段拼串）
+          diagRows(m) {
+            return (m?.diag?.linkEvents || []).map((e, i) => {
+              const t = new Date(e.t);
+              const p = (n, w = 2) => String(n).padStart(w, "0");
+              const extra = Object.entries(e)
+                .filter(([k]) => k !== "t" && k !== "phase" && k !== "msgId")
+                .map(
+                  ([k, v]) =>
+                    `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`,
+                )
+                .join(" ");
+              const phase = e.phase || "?";
+              const tone = phase.startsWith("ctl:") || phase.startsWith("flow:")
+                ? "flow"
+                : phase === "ack" || phase === "recv"
+                  ? "ok"
+                  : phase === "rejected" ||
+                      phase === "send-capped" ||
+                      phase === "reconnect" ||
+                      phase === "reply-throw"
+                    ? "bad"
+                    : "dim";
+              return {
+                eid: `e${i}`,
+                tt: `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}.${p(t.getMilliseconds(), 3)}`,
+                phase,
+                tone,
+                extra: String(extra).slice(0, 160),
+              };
+            });
+          },
+
+          toggleDiag(m) {
+            store.toggleDiag(m?.id);
           },
 
           // 编辑当前会话名称（senti-ui prompt 命令式对话框）

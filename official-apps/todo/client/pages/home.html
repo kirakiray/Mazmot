@@ -375,6 +375,26 @@
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
+    /* 归档视图说明行：一行短文案 + 末尾的「?」提示图标（完整说明在 st-tooltip 里） */
+    .archive-tip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .archive-tip .help-btn {
+      display: inline-flex;
+      align-items: center;
+      outline: none;
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: help;
+    }
+    .archive-tip .help-btn:hover,
+    .archive-tip .help-btn:focus-visible { color: var(--md-sys-color-primary); }
+    /* st-tooltip 的气泡尺寸全用 em（字号 0.857em、max-width 20em），
+       想让提示正文到 12px 左右就得把宿主的 font-size 提到 14px；
+       图标再用 em 折算回 15px 左右，与 12px 文案齐高 */
+    .archive-tip st-tooltip { font-size: 14px; }
+    .archive-tip .help-btn n-icon { font-size: 1.07em; }
     .empty {
       text-align: center;
       padding: 36px 0;
@@ -422,6 +442,7 @@
   <!-- NoneOS Core 的图标组件：走 Iconify，比 emoji 更统一、颜色自动继承 currentColor -->
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@latest/packages/tooltip/tooltip.html"></l-m>
 
   <div class="shell" class:resizing="resizing" class:dragging="!!draggingId">
     <!-- 左侧固定侧栏：选分组 / 新建分组 / 改名删除；宽度可拖拽（150–300px） -->
@@ -551,7 +572,13 @@
          两者共用同一个 o-fill——「全部归档」时 archiveGroups 只有一组且 showHead=false（组头隐藏），
          按日期 / 按周时每组一条数据，这样不必维护两套一模一样的条目模板 -->
     <o-if :value="inArchiveView">
-      <p class="trash-tip">归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。「按完成日 / 按完成周」按任务的完成时间划分（不是归档时间），每条同时显示完成时间与归档时间。</p>
+      <!-- 说明行保持一行短文案，细则收进「?」的悬浮提示里（长段落会占掉一大块版面） -->
+      <p class="trash-tip archive-tip">
+        归档的任务不计入统计，也不在列表里显示
+        <st-tooltip
+          content="归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。「按完成日 / 按完成周」按任务的完成时间划分（不是归档时间），每条同时显示完成时间与归档时间。"
+        ><span class="help-btn" tabindex="0" role="img" aria-label="归档说明"><n-icon icon="mdi:help-circle-outline"></n-icon></span></st-tooltip>
+      </p>
 
       <st-button-group class="archive-tabs">
         <st-button

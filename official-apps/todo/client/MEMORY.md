@@ -4,6 +4,17 @@
 
 ## 记录
 
+### 2026-10-10 · 归档视图说明行改成「一行短文案 + 「?」悬浮提示」（用户截图反馈「太繁琐」）
+
+- **用户需求**：截图框出「已归档」视图顶部那段长说明，问「能弄个简单的问号，然后 tooltips 显示吗，或者干脆文字弄少一点」——两选一，实际两者都做了。
+- **改了什么**（`pages/home.html`）：① 归档视图的 `p.trash-tip` 长段落（原 3 行，含取消归档 / 删除 / 跟随分组 / 按完成时间划分四层语义）改为 `.trash-tip.archive-tip`：可见文案只留「**归档的任务不计入统计，也不在列表里显示**」，其余全部搬进 `st-tooltip` 的 `content`；② 提示触发器是 `span.help-btn`（`n-icon mdi:help-circle-outline`、`tabindex="0"`、`role="img"` + `aria-label`），悬浮 / 键盘聚焦弹出；③ 新增 `<l-m src="/gh/ofajs/senti-ui@latest/packages/tooltip/tooltip.html"></l-m>`；④ CSS：`.archive-tip` 用 flex 让「?」与文案同线，`.help-btn` 悬停 / 聚焦变主题色、`cursor: help`；`.archive-tip st-tooltip { font-size: 14px }` 把气泡正文从 10.28px 提到 12px，`n-icon { font-size: 1.07em }` 折回 15px。垃圾桶视图的那条短说明（本来就两行）未动。
+- **设计决策**：① **两者都做**而不是二选一——可见短文案保留最关键的一句（触屏无悬停也丢不了关键信息，组件文档也提醒「提示不要承载关键信息」），细则（取消归档 / 删除 / 跟随分组 / 按完成时间划分）放提示里；② 提示内容是**静态字符串**，不走任何绑定，所以放在 `o-if` 里也不会碰到 `$host` 相关问题；③ 保留「?」图标而不是把整段文案做成 hover 目标，视觉上明确指出「这里还有说明」。
+- **验证结论**（预览实测）：说明行渲染为**单行 17px 高**、触发图标 15×15、文案正是短句；对 `st-tooltip` **宿主**派发 `pointerenter` → `open` 属性出现、气泡 **240×135**、`drop-up` 贴在触发器上方、正文 `font-size: 12px`、`max-width 240px`、完全在视口内（左 412 / 上 38），`pointerleave` 后关闲且无残留；**sub 标签与列表渲染无回归**（默认「全部归档」仍是 4 条平铺、无组头，会话状态仍恢复到 `archived` 视图）；控制台 `errors: 0`。
+- **测试**：给 `client/test/archive-group.test.json` 补了一条静态断言（`.archive-tip` 存在、文案严格等于短句、`st-tooltip` 的 `content` 含「取消归档」与「完成时间」、触发器里有 `n-icon`），防止以后被改回长段落；`action=run-tests` **全套 10 用例全绿**（归档分组 13.0s）。跑完核对：`__todo_test_dirty` 已清、`__todo_store_id` 已移除、正式空间用户数据完好（3 条待办 `22222`[垃圾桶] / `111111` / `222222`、`groups` = 默认 + 个人、`ui.sideWidth 239`）。
+- **未实测的点**：**悬停效果需用户在前台用鼠标确认**——预览标签页在后台，浏览器不更新指针状态；`focus()` 能拿到 `activeElement` 但后台不触发 `focusin`（提示不走键盘路径）。已用「对宿主派发 pointerenter 能开合 + 气泡几何完全正确」作旁证，见踩坑 024。
+- **本回合踩的坑（已沉淀 `pitfalls/024`）**：`st-tooltip` 把 `pointerenter` / `focusin` 监听在**宿主**上，`pointerenter` 不冒泡，往子触发器派发事件它收不到（要派发到宿主本身）；气泡尺寸全用 em，`::part` 不存在、只能靠宿主 `font-size` 缩放；后台标签页验不了悬停与聚焦。
+- **环境备注**：`action=app` 首次报 `ACK timeout after 4 retries`（按踩坑 020 用 eval 验模板已生效，未反复重推）；`action=run-tests` **带 `files` 参数会直接报“测试执行失败”**（宿主不认该参数），去掉参数跑全套即正常——与历史记录一致。
+
 ### 2026-10-10 · 归档分组基准改为「任务完成时间」+ 场景测试改跑隔离数据空间（用户反馈 + 数据事故复盘）
 
 - **用户需求**：「归档的按日期和按周那里，不是按归档的日期来划分，而是应该按任务的完成日期来划分（当然归档时间也要在 item 上显示）」。

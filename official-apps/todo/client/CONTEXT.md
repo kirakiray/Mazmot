@@ -32,7 +32,8 @@
    - **AI 添加（同一个弹窗的下半部分）**：用一句自然语言描述要做的事（如「明天下午三点和客户开会，记得先准备报价单」）→ 点「AI 生成」（前置 `mdi:creation` 图标）→ 调平台 AI（`/mz/ai/main.js`）让模型输出 `{title, desc}`，**自动回填到上面的多行输入框**（标题首行 + 描述在后），用户改一改再点「添加」；描述框为空时按钮禁用，请求中按钮变「AI 生成中…」并禁用，成功后提示「AI 已生成，确认或改一改再点「添加」」，失败则在弹窗内红字显示原因且输入内容不丢。
 6. **视图筛选**：`全部 / 已归档 / 垃圾桶` 按钮组（已归档前置 `mdi:archive-arrow-down`、垃圾桶前置 `mdi:delete-outline` 图标，后两个标签带数量），与左栏分组叠加生效。
    - **全部**：列表（未归档、未删除的条目，含已完成与未完成两种）。
-   - **已归档**：任务在这个视图里「收起来」——**不在列表显示、不计入统计与侧栏分组计数**，但数据没被删。每条可「取消归档」（回到原分组，勾选状态保留，由 `unarchiveTodo()`）或删除（走列表同款的 5 秒倒计时 → 垃圾桶）。**归档视图跟随左栏分组**（与列表视图同一口径）：左栏选中某分组时只显示该分组的归档，选「全部任务」时才是所有分组的归档；顶部有一行说明。
+   - **已归档**：任务在这个视图里「收起来」——**不在列表显示、不计入统计与侧栏分组计数**，但数据没被删。每条可「取消归档」（回到原分组，勾选状态保留，由 `unarchiveTodo()`）或删除（走列表同款的 5 秒倒计时 → 垃圾桶）。**归档视图跟随左栏分组**（与列表视图同一口径）：左栏选中某分组时只显示该分组的归档，选「全部任务」时才是所有分组的归档。
+     - **顶部说明行是一行短文案 + 末尾一个「?」图标**（`p.trash-tip.archive-tip` + `st-tooltip`）：可见文案只有「归档的任务不计入统计，也不在列表里显示」，完整的细则（取消归档 / 删除 / 跟随分组 / 按完成时间划分）放在 `st-tooltip` 的 `content` 里，悬浮或键盘聚焦「?」时弹出。**改回一整段长文案会被用户再抱怨一次**（原版 3 行长段落占掉一大块版面，用户反馈「太繁琐」）；短文案已覆盖最关键的语义，提示只是补充，因此触屏无悬停也不丢关键信息。
    - **归档视图内的查看方式（子标签）**：说明行下方是 `全部归档 / 按完成日 / 按完成周` 三个子标签，**默认「全部归档」**（平铺、无日期组头，等价于原来的样子）。
      - **分组基准是「任务完成时刻」**（`statusChangedAt`，见 `completedAt()`），**不是归档时刻**：归档往往比完成晚很久（“归档已完成”是攒着一起点的），按完成日 / 完成周归组才能对上「哪天做完的」这个直觉。条目上仍同时显示**完成时间与归档时间**，两者能对上。
      - **按完成日**：按完成时刻的**本地日期**分组（用本机时区切分，不用 UTC），**最新的一组排最前**；组头形如「**10-10 周六**」+ 右侧「N 项」（跨年时补 `YYYY-` 前缀）。
@@ -180,8 +181,10 @@ client/
 - `.dialog-field { width: 100%; }`：弹窗内输入框只改宽度，**不覆盖 `st-input` 的 `display`**（原因见踩坑 004）。
 - **右上操作区 `.top-actions`**：`display: flex; align-items: center; gap: 8px; flex: none`，内容依次是「归档已完成」（`variant="text"`，与主按钮「添加任务」区分主次）与「添加任务」。实测任务区右边缘贴齐视口（归档按钮 x=898 / 添加按钮 x=1042、右边缘 1164 = 视口 1180 - 16 padding）。窄屏（≤620px）在媒体查询里给 `.top` 加 `flex-wrap: wrap`，放不下时按钮组整块换行，不把标题挤扁。
 - **行尾操作区 `.item-actions`**：`flex: none; display: flex; gap: 2px`，里面并排「编辑」`st-icon-button.edit-btn`（常态 `opacity: 0.7`，`hover` / `focus-within` 变 `opacity: 1` + 主题色）与「删除」`st-icon-button`。**两个按钮统一 34px**（给 `st-icon-button` 设 `font-size: 12px`，em 等比缩放，图标 18.9px；不要给 `n-icon` 写尺寸，见踩坑 009）——曾经是默认 40px、两个并排占 92px，显得笨重（用户反馈“太丑”），现为 70.6px。倒计时（`.item.pending`，错误容器底色）下两个按钮的**宿主** color 换成 `on-error-container`（实测 255,180,171），编辑按钮也取消降透明度。注意必须直接命中 `st-icon-button` 宿主：它自带 `color: on-surface-variant`，父容器上写 `color` 会被组件自声明盖掉。
-- **「已归档」视图内是两层容器 + 嵌套 `o-fill`**：说明行 → 子标签 `st-button-group.archive-tabs`（`全部归档 / 按完成日 / 按完成周`）→ `.agroups` → `o-fill :value="archiveGroups" fill-key="key"`（每组一个 `.agroup`，组内是 `.agroup-head`（`label` + `countText`）+ `.list` → 内层 `o-fill :value="$data.todos" fill-key="id"` 渲染条目）。**嵌套 `o-fill` 里的 `$data` 分别指向两层数据**（外层是组、内层是任务），内层条目上的回调仍旧用 `$host.xxx($data.id)`；`fill-key` 两层都要给（外层 `key`、内层 `id`）。
+- **「已归档」视图内是两层容器 + 嵌套 `o-fill`**：说明行 `.archive-tip` → 子标签 `st-button-group.archive-tabs`（`全部归档 / 按完成日 / 按完成周`）→ `.agroups` → `o-fill :value="archiveGroups" fill-key="key"`（每组一个 `.agroup`，组内是 `.agroup-head`（`label` + `countText`）+ `.list` → 内层 `o-fill :value="$data.todos" fill-key="id"` 渲染条目）。**嵌套 `o-fill` 里的 `$data` 分别指向两层数据**（外层是组、内层是任务），内层条目上的回调仍旧用 `$host.xxx($data.id)`；`fill-key` 两层都要给（外层 `key`、内层 `id`）。
 - **「全部归档」不用单独一套模板**：`archiveGroups` 在 `all` 模式下返回「一组 + `showHead:false`」，组头用 `class:hidden="!$data.showHead"` 隐藏，条目模板与分组模式完全共用（少维护一套一模一样的行结构）。
+- **说明行用 `st-tooltip` 收纳长文案**（引入 `<l-m src="/gh/ofajs/senti-ui@latest/packages/tooltip/tooltip.html"></l-m>`）：可见的只有一行短文案，末尾的 `span.help-btn`（`n-icon mdi:help-circle-outline`、`tabindex="0"`、`role="img"` + `aria-label`）是提示触发器，完整说明放在 `st-tooltip` 的 `content` 属性里（内容是**静态字符串，不涉及任何绑定**，因此放在 `o-if` 里也没有 $host 相关的坑）。
+  尺寸上：**气泡的 padding / 字号 / max-width 全是 em**，直接给 `st-tooltip` 打 `font-size: 14px` 把气泡正文提到 12px（默认继承说明行的 12px → 气泡只有 10.28px、宽 206px，读长句太憋）；触发图标用 `1.07em` 折回 15px 与 12px 文案齐高。组件 shadow 里没有 `part`，只能这样从宿主缩放，**别用 `::part`**——样式不会生效。改触发器 / 验证提示时的两个陷阱见踩坑 024。
 - **三个视图的模板结构**：`全部`（`.item`：拖拽手柄 `.drag-handle` + `st-checkbox` + `.body` + `.item-actions`（编辑 / 删除））、`已归档`（`.item.archived`：用 `.arch` 包一个 `n-icon icon="mdi:archive-arrow-down"` 占住勾选框位置（行高与其它视图一致）+ `.body` + 「取消归档」`st-button` + `.item-actions`）、`垃圾桶`（`.item.trash`：`.body` + 「还原」+ 彻底删除）。**三套列表各自一个 `o-fill`**，且**都绑过滤后的 getter**：列表视图 `visibleTodos`、归档视图 `archiveGroups`（内部用 `scopedArchivedTodos`）、垃圾桶视图 `scopedTrashTodos`。改数据范围时要三处一起看——本项目就漏过垃圾桶那一处（底栏计数已过滤、列表还是全量，见踩坑 022）。共用 `.list` / `.item` 基础样式；空状态 `isListEmpty` 与 `{{emptyText}}` 在三套之外只写一次（数组成空就显一个，不会重叠）。
 
 ### 时间显示（proto 方法）
@@ -269,7 +272,7 @@ client/
 | `session-state.test.json` | 会话状态 | 切分组 / 切视图写入 `sessionStorage` 且刷新保留、非法分组回落「全部任务」、非法视图回落、清空后回默认 |
 | `toggle-archive.test.json` | 归档链路 | 勾选完成/恢复、归档已完成只收当前分组范围、已归档视图与详情状态、取消归档回列表、归档项删除后从垃圾桶还原回列表、刷新持久化 |
 | `trash-purge.test.json` | 垃圾桶清理 | 彻底删除二次确认（取消不删 / 确认才删）、清空垃圾桶（条数提示 / 取消 / 确认 / 空时禁用）、刷新落盘 |
-| `archive-group.test.json` | 归档分组 | 默认「全部归档」无组头且条目含「归档于 + 完成于」、**按完成时间**分组（4 条同为今天归档、完成跨 3 天 → 3 组；组头带日期星期与条数 / 最新在前 / 组内顺序不变 / 「昨天」条的完成与归档时间对得上）、按完成周分组（组头含年·周·起止 / 总条数不变）、查看方式写 `sessionStorage` 并刷新保持 |
+| `archive-group.test.json` | 归档分组 | 说明行是一行短文案 + `st-tooltip`（完整说明在 content 里）且带「?」图标；默认「全部归档」无组头且条目含「归档于 + 完成于」、**按完成时间**分组（4 条同为今天归档、完成跨 3 天 → 3 组；组头带日期星期与条数 / 最新在前 / 组内顺序不变 / 「昨天」条的完成与归档时间对得上）、按完成周分组（组头含年·周·起止 / 总条数不变）、查看方式写 `sessionStorage` 并刷新保持 |
 | `group-scope-views.test.json` | 归档桶跟随分组 | 左栏选中分组后「已归档」「垃圾桶」只显示该分组条目（选「全部任务」才是全部）、视图标签数量 / 底栏计数 / 空状态文案同步跟随；「清空垃圾桶」只清当前分组范围（确认框标题带分组名），不动其它分组 |
 
 ### 用例写法约定（本项目）
@@ -315,3 +318,4 @@ client/
 | 021 | 临时改预览数据时备份要挂 localStorage（挂 `window` 会被 reload 抹掉，`setItem(key, undefined)` 会清掉数据） | `pitfalls/021-temp-preview-data-backup-must-survive-reload.md` |
 | 022 | 把过滤下沉到 getter 后，忘了同一视图的 `o-fill` 还绑着未过滤的旧数组（计数已过滤、列表却是全量） | `pitfalls/022-同一视图可能有两个数据源绑定.md` |
 | 023 | 测试直接清空 / 覆写正式数据空间 + 共享一个备份键 → 并行跑用例时把用户数据冲掉（改用隔离空间） | `pitfalls/023-场景测试必须跑在隔离数据空间.md` |
+| 024 | `st-tooltip` 的三个要点：`pointerenter` 不冒泡（事件要派发到宿主）、气泡尺寸全用 em（靠宿主 font-size 缩放）、后台标签页验不了悬停 / 聚焦 | `pitfalls/024-st-tooltip-trigger-and-em-sizing.md` |

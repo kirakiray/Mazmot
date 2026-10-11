@@ -4059,6 +4059,14 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         msgEvent({ op: "patch", id, patch: { open: item.open } });
       }
     },
+    // 错误卡/工具消息的诊断详情折叠开关（diagOpen 是临时 UI 态，不刻意落盘）
+    toggleDiag(id) {
+      const item = bucketFor(viewKey()).find((m) => m.id === id);
+      if (item) {
+        item.diagOpen = !item.diagOpen;
+        msgEvent({ op: "patch", id, patch: { diagOpen: item.diagOpen } });
+      }
+    },
     setReasoning,
     toggleReasoning(id) {
       const item = bucketFor(viewKey()).find((m) => m.id === id);

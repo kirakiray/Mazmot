@@ -282,6 +282,13 @@ const agentRemotes = new Map(); // userId → remoteUser（dbg 指令的投递�
 let dbgCollector = null; // dbg-chunk/dbg-result 聚合（见 proto.createDbgCollector）
 const dbgWaiters = new Map(); // reqId -> { resolve, reject }
 
+// 慢路径自行推送的抑制窗：openRemotePreview 打开引导窗口后，该窗口的
+// hello 会同时触发 onBridgeHello 自动推送（pushToWindow）——两个推送并肩
+// 跑会轮流把同一窗口导航走（对方刚写完 done 就跳走），落后一方的
+// sync-check / app-begin 全部 no_receiver 烧尽重试（diag 链路事件实测定位）。
+// 慢路径活动期间抑制 hello 自动推送，窗口期 60s 自愈（异常路径没清理时）
+let slowPathUntil = 0;
+
 /* ---------- 链路诊断（失败排查用，不进 AI 上下文） ----------
  * 所有链路（回合 / 调试 / 能力桥）的事件统一进一个环形缓冲；推送或调试
  * 失败时经 attachDiag 把最近事件段 + 推送上下文挂上错误对象，由
@@ -499,12 +506,24 @@ function ensureService(user) {
       // onBridgeHello 钩子（builder-store 据此自动推送当前应用给扫码设备）；
       // hello/agent-online 仅在等待同一对端时结算回合等待器（防别的窗口冒领）
       if (type === "announce" || type === "hello" || type === "agent-online") {
+        // 控制面事件进诊断流：hello / 代理回线的到达时序是排查推送互踩、
+        // 引导页生命周期的关键证据（announce 心跳量大，不记——窗口注册表
+        // 快照已能证明存活）
+        if (type !== "announce") {
+          recordLinkEvent({ phase: `ctl:${type}`, sid: ctx.fromSessionId });
+        }
         if (!isDupControl(data?.msgId)) {
           if (type === "announce") {
             upsertWindowEntry(ctx, data.payload || {});
           }
           const fromPeer = data.payload?.userId;
-          if (type === "hello" && fromPeer) {
+          if (
+            type === "hello" &&
+            fromPeer &&
+            Date.now() >= slowPathUntil
+          ) {
+            // 慢路径（openRemotePreview 打开引导窗口自行推送）活动期间抑制
+            // 自动推送——它的 hello 会让 pushToWindow 并肩再推一次，互踩翻车
             try {
               previewHooks.onBridgeHello?.(fromPeer, data.payload.app || "");
             } catch (err) {
@@ -1003,6 +1022,7 @@ async function openRemotePreviewImpl({
       } catch (err) {
         // 代理确实离线（应用页已关 / 彻底无响应）→ 回退 bridge 引导页流程
         console.warn("[remote-preview] 快路径不可用，回退 bridge 流程：", err);
+        recordLinkEvent({ phase: "flow:fast-fallback", err: err.message });
         peerService = SERVICE_ID_BRIDGE;
         remote = null;
         // 上一轮等待器可能已被消费或永不到来，换新的一组
@@ -1028,6 +1048,10 @@ async function openRemotePreviewImpl({
   if (!win) {
     throw popupBlockedError();
   }
+  // 本流程自行推送该窗口，抑制其 hello 触发的 onBridgeHello 自动推送
+  //（双推互踩见 slowPathUntil 注释）；60s 自愈防异常路径未清理
+  slowPathUntil = Date.now() + 60_000;
+  recordLinkEvent({ phase: "flow:slow-open" });
   previewSlots.set(1, win); // 槽位 1 = 主预览窗口（新开窗口从槽位 2 起找空闲）
 
   status("等待 bridge 就绪（首次访问需安装 NoneOS Core）...");
@@ -1048,8 +1072,13 @@ async function openRemotePreviewImpl({
   try {
     status("对比文件差异...");
     // 阶段通知：bridge 引导页在 sync-check 到达前只能干等，先告知「正在
-    // 比对」让它的等待态动起来（引导页 best-effort 展示，失败不影响推送）
-    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    // 比对」让它的等待态动起来（引导页 best-effort 展示，失败不影响推送）。
+    // 走独立队列：对端没就绪时它会烧满自己的重试窗，不能占了串行队首
+    // 把 sync-check / app-begin 压在身后陪葬（diag 实测：push-stage 一条
+    // 消息阻塞 21s，拖垮整个推送节奏）
+    link
+      .send({ type: "push-stage", stage: "diff" }, "ctl")
+      .catch(() => {});
     const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
@@ -1092,6 +1121,7 @@ async function openRemotePreviewImpl({
   }
   done.agentOnline = agentBack?.agent === true;
   link.dispose();
+  slowPathUntil = 0; // 慢路径收尾，恢复 hello 自动推送（新窗口 / 扫码设备）
   status(`隔离预览就绪：${done.url}`);
   refreshWatcher?.();
   return done;
@@ -1219,8 +1249,11 @@ async function pushRound(user, peerId, { appName, files, onStatus = () => {}, on
   try {
     status("对比文件差异...");
     // 阶段通知：新窗口 / 扫码设备的引导页在此阶段只能干等，先告知「正在
-    // 比对」让它的等待态动起来（best-effort，失败不影响推送）
-    link.send({ type: "push-stage", stage: "diff" }).catch(() => {});
+    // 比对」让它的等待态动起来（best-effort，失败不影响推送）。独立队列同
+    // openRemotePreview：别让它对未就绪对端的重试占住串行队首
+    link
+      .send({ type: "push-stage", stage: "diff" }, "ctl")
+      .catch(() => {});
     const manifest = await buildManifest(files, (d, t) => report(d, t));
     await link.send({ type: "sync-check", appName, manifest });
     diff = await withTimeout(waiters.diff, DIFF_TIMEOUT, "等待差异比对超时");
