@@ -2060,6 +2060,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         previewDebug,
         waitOnline: waitTestAgentOnline,
         onProgress: (p) => set("testRunning", p),
+        // 单条用例跑完立即回填抽屉（✓/✗ 逐条点亮，不等全量结束）；
+        // 跑完全量后再整体替换一次（自愈重试等的最终态以它为准）
+        onCaseResult: (r) =>
+          set("testResults", { ...state.testResults, [r.file]: r }),
         // 用例中途连接失效的自愈：重推预览 + 等回线后重试该用例
         recover: async () => {
           await runRemotePreview(state.currentAppName, state.currentAppMode);
@@ -2114,14 +2118,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
-  // 回合收尾自动跑（fire-and-forget，不阻塞收尾）：仅预览窗口已开时，与
-  // autoCheckPreview 同策略不自动开窗打扰
-  async function autoRunTests() {
-    if (state.testBusy) return;
-    await refreshTests();
-    if (!state.tests.length) return;
-    await runTests();
-  }
+  // 回合收尾自动跑已移除（用户拍板：自动跑体验太密）——场景测试只经
+  // preview 工具 action=run-tests（AI 主动）或测试管理抽屉（用户点跑）触发
 
   // 变更卡展开：快照（该回合开始前）vs 当前盘上指定文件的行级 diff。
   // 历史回合展开时当前盘可能含后续回合改动（diff 随时间漂移，UI 如实标注）
@@ -3669,8 +3667,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         !abort.stopped
       ) {
         autoCheckPreview(changedApp);
-        // 场景测试自动跑：有文件改动且存在用例时执行，失败行回流 autoErrors
-        autoRunTests();
+        // 场景测试不自动跑（用户拍板：回合收尾自动跑体验太密，改为用户在
+        // 测试抽屉点跑 / AI 经 preview action=run-tests 主动跑）
       }
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(turnKey, false);

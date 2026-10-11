@@ -576,7 +576,7 @@
       <p class="trash-tip archive-tip">
         归档的任务不计入统计，也不在列表里显示
         <st-tooltip
-          content="归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。「按完成日 / 按完成周」按任务的完成时间划分（不是归档时间），每条同时显示完成时间与归档时间。"
+          content="归档的任务不计入统计，也不在列表里显示；可随时「取消归档」让它回到原分组，或删除（进垃圾桶）。左栏选中某个分组时，这里只显示该分组的归档（选「全部任务」即全部）。「按完成日 / 按完成周」按任务的完成时间划分（不是归档时间）；条目上显示的是完成时间，归档时间点开这条任务的详情可以查看。"
         ><span class="help-btn" tabindex="0" role="img" aria-label="归档说明"><n-icon icon="mdi:help-circle-outline"></n-icon></span></st-tooltip>
       </p>
 
@@ -1583,8 +1583,9 @@
               );
             }
             if (todo.archivedAt) {
-              // 归档项同时给「完成于」与「归档于」：归档分组按完成日划分，条目上也要能对上完成时间
-              const parts = [g, "归档于 " + this.formatTime(todo.archivedAt)];
+              // 归档项只显示「完成于」与「创建于」：归档时刻不在这里露出（点开详情能看到），
+              // 这样副标题更短；归档分组本就按完成时刻划分，条目上有完成时间就能对上
+              const parts = [g];
               if (typeof todo.statusChangedAt === "number") {
                 parts.push("完成于 " + this.formatTime(todo.statusChangedAt));
               }
