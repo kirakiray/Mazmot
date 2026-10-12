@@ -285,7 +285,7 @@
   display: grid;
   grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  /* 保持默认 stretch：详情卡随列拉伸占满高度（start 会缩成内容高，用户拍板要撑满） */
 }
 
 .tools-list {
@@ -302,9 +302,11 @@
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 3%, transparent);
 }
 
-/* 详情卡内复用对话框时代的面板样式：去掉对话框承担的留白与撑满 */
+/* 详情卡内复用对话框时代的面板样式：去掉对话框承担的留白，
+   面板撑满卡片（卡片被列拉伸后，Schema 等内容才能跟随生长） */
 .tools-detail .tool-detail-panel {
-  height: auto;
+  height: 100%;
+  box-sizing: border-box;
   padding: 0;
   gap: 12px;
 }
@@ -312,6 +314,13 @@
 /* 详情列较窄：信息/演示、断言/运行画面改纵向堆叠 */
 .tools-detail .tool-info-row {
   flex-direction: column;
+}
+
+/* Schema 不再钉 180px：跟随卡片剩余高度生长，超出才内部滚动 */
+.tools-detail .tool-detail-schema {
+  flex: 1;
+  max-height: none;
+  min-height: 180px;
 }
 
 .tools-detail .tool-test-grid {
