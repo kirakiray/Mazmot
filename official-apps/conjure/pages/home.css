@@ -1804,6 +1804,81 @@ st-icon-button.published {
 
 /* ---------- 运行态 shimmer ---------- */
 
+/* 上次回合被硬中断的提醒卡：对话末尾，整卡可点继续 */
+.interrupt-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: var(--chat-w, 768px);
+  margin: 10px 0 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-tertiary-container) 45%,
+    var(--md-sys-color-surface-container-low, var(--md-sys-color-surface))
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-tertiary) 35%, transparent);
+  transition: filter 0.15s ease;
+}
+
+.interrupt-card:hover {
+  filter: brightness(1.12);
+}
+
+.interrupt-card .interrupt-ico {
+  flex: none;
+  font-size: 20px;
+  color: var(--md-sys-color-tertiary);
+}
+
+.interrupt-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.interrupt-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.interrupt-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.interrupt-go {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--md-sys-color-tertiary);
+}
+
+.interrupt-x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  font: inherit;
+}
+
+.interrupt-x:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+}
+
 .turn-status {
   margin-top: 4px;
   align-self: flex-start;
@@ -4045,6 +4120,10 @@ st-icon-button.published {
 
 .task-item[data-status="in_progress"] .task-ico {
   color: var(--md-sys-color-primary);
+}
+
+/* spinner 只在回合进行中转；刷新 / 停止后停在这一步显示暂停图标不转 */
+.task-item.running[data-status="in_progress"] .task-ico {
   animation: tool-spin 1s linear infinite;
 }
 

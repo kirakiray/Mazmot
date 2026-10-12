@@ -1501,6 +1501,22 @@ export function errorTaskDigest(line) {
   return String(line || "").trim().slice(0, 160);
 }
 
+/**
+ * 上次回合是否被硬中断（纯函数）：刷新 / 崩溃等没走 driveTurn 收尾 finally 的
+ * 异常退出。判据：正常完成与手动停止都会给末条 AI 消息 patch turnMs（随会话
+ * 桶持久化），没打上即中断；末条还是 user = 发出后没来得及产生任何回复，同属
+ * 中断。正常对话永远以带 turnMs 的 assistant 收尾，不会误报。
+ * @param {Array<Object>} list 会话消息桶（持久化顺序）
+ * @returns {boolean}
+ */
+export function detectInterruptedTurn(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const last = arr[arr.length - 1];
+  if (!last) return false;
+  if (last.role === "user") return true;
+  return last.role === "assistant" && !last.turnMs;
+}
+
 /** 错误行 → 任务展示文本（剥 [error] 前缀、截 80 字） */
 export function errorTaskText(line) {
   const s = String(line || "")

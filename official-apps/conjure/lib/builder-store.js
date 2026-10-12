@@ -26,6 +26,7 @@ import {
   sanitizeAppName,
   normalizeTaskList,
   mergeErrorTasks,
+  detectInterruptedTurn,
   errorTaskDigest,
   listAppFiles,
   readAppFile,
@@ -87,6 +88,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     nextId: 1,
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
+    interrupted: false, // 上次回合被硬中断（刷新 / 崩溃，没走收尾 finally）；会话加载时检测，对话末尾出「继续」提醒卡
+
     coreError: "",
     reasoning: "low", // 推理等级偏好："off" / "low" / "medium" / "high" / "max"（无=不思考）
     // 推理等级菜单的可选项（跟随当前生效 key 的供应商 + 选中模型动态生成，
@@ -815,12 +818,16 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       // 切回正在进行流式回合的会话：直接投影内存实时桶，
       // 不能读盘覆盖（盘上是上一回合的旧内容，读盘会顶掉进行中的消息）
       projectBucket(key);
+      set("interrupted", false); // 回合还开着，谈不上中断
     } else {
       const saved = (await selfStore.getItem(key)) || [];
       // await 期间视图可能已被其他流程接管（回合收尾迁移草稿 / 自动切换
       // 应用）：目标已不是当前视图则放弃替换，避免过期 key 覆盖新视图
       if (key === viewKey()) {
         replaceMessages(saved, key);
+        // 上次回合硬中断检测（刷新 / 崩溃没走收尾 finally → 末条无 turnMs），
+        // driveTurn 开始时清除；切回进行中回合的分支已在上方置 false
+        set("interrupted", detectInterruptedTurn(bucketFor(key)));
       }
     }
     invalidateAgent(); // 会话切换后重建 Agent（threadId 变化）
@@ -844,6 +851,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       publishedInfo: null, // 回到草稿：发布态随应用上下文清空
       publishMatch: null,
       publishShareUrl: "",
+      interrupted: false, // 草稿桶恒空，不存在中断回合
     });
     localRootHandle = null;
     set("localDirLabel", "");
@@ -3532,6 +3540,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 落盘、迁移草稿、清忙）。send 与表单恢复回合共用
   async function driveTurn(threadId, firstUserText, inputMessages) {
     activeBubble = null;
+    // 本回合开跑，上次中断提醒随之失效（点继续 / 用户发新消息都算接手）
+    set("interrupted", false);
     currentAbort = { stopped: false };
     currentAbortCtrl = new AbortController();
     turnUsage = null;

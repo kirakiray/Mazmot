@@ -163,6 +163,77 @@
     .ai-actions { display: flex; justify-content: flex-end; }
     .ai-note { margin: 0; font-size: 12px; color: var(--md-sys-color-primary); }
     .ai-error { margin: 0; font-size: 12px; color: var(--md-sys-color-error); }
+    /* ===== 图片附件（添加弹窗选图 / 粘贴，列表行缩略图，详情大图） ===== */
+    .img-box { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    /* 选择图片区本身就是 label：点它即打开文件选择（file input 藏在里面） */
+    .img-drop {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px;
+      border: 1px dashed var(--md-sys-color-outline-variant);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .img-drop:hover { border-color: var(--md-sys-color-primary); color: var(--md-sys-color-primary); }
+    .img-drop n-icon { font-size: 1.2em; }
+    .img-input { display: none; }
+    .img-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    /* 草稿缩略图：64px 方块 + 右上角「移除这张图片」 */
+    .thumb { position: relative; }
+    .thumb img {
+      display: block;
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    /* 缩略图 / 详情大图右上角的移除按钮：用原生 button（不用 st-icon-button，
+       免得组件的 40px 尺寸体系在 64px 缩略图上喧宾夺主） */
+    .thumb-del {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 50%;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+    }
+    .thumb-del:hover { color: var(--md-sys-color-error); border-color: var(--md-sys-color-error); }
+    .thumb-del n-icon { font-size: 14px; }
+    .img-note { margin: 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    /* 列表行里的缩略图：小尺寸、跟着 .body 一起点开详情 */
+    .item .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .item .thumb-sm {
+      display: block;
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    /* 详情弹窗里的图片：等比缩到弹窗宽度内，右上角可移除 */
+    .detail-images { display: flex; flex-direction: column; gap: 10px; }
+    .dimg { position: relative; align-self: flex-start; max-width: 100%; }
+    .dimg img {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 10px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
     /* 窄屏：侧栏转为顶部横向条，单列堆叠；拖拽手柄隐藏，侧栏宽度固定为通栏 */
     @media (max-width: 620px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
@@ -549,6 +620,12 @@
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
               <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+              <!-- 图片缩略图：整块在 .body 里，点它同样打开详情弹窗看大图 -->
+              <div class="thumbs" class:hidden="!$data.images.length">
+                <o-fill :value="$data.images" fill-key="id">
+                  <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                </o-fill>
+              </div>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <div class="item-actions">
@@ -609,6 +686,11 @@
                   <div class="body" on:click="$host.openDetail($data.id)">
                     <span class="text">{{$data.text}}</span>
                     <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+                    <div class="thumbs" class:hidden="!$data.images.length">
+                      <o-fill :value="$data.images" fill-key="id">
+                        <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                      </o-fill>
+                    </div>
                     <span class="meta">{{$host.timeMeta($data)}}</span>
                   </div>
                   <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
@@ -640,6 +722,12 @@
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
               <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+              <!-- 图片缩略图：整块在 .body 里，点它同样打开详情弹窗看大图 -->
+              <div class="thumbs" class:hidden="!$data.images.length">
+                <o-fill :value="$data.images" fill-key="id">
+                  <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                </o-fill>
+              </div>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <st-button variant="text" on:click="$host.restoreTodo($data.id)">还原</st-button>
@@ -689,23 +777,55 @@
         sync:value="draft"
         placeholder="第一行是标题，换行后写的都是描述…"
       ></st-textarea>
+
+      <!-- 图片附件：点虚线区选图，或直接在弹窗里粘贴（Ctrl/⌘+V）；
+           图片会跟着任务一起保存，也能交给下面的 AI 识别 -->
+      <div class="img-box">
+        <label class="img-drop">
+          <input
+            class="img-input"
+            type="file"
+            accept="image/*"
+            multiple
+            on:change="onPickImages"
+          />
+          <n-icon icon="mdi:image-plus"></n-icon>
+          <span>点击选择图片，或直接粘贴（Ctrl/⌘ + V）</span>
+        </label>
+        <div class="img-grid">
+          <o-fill :value="draftImages" fill-key="id">
+            <div class="thumb">
+              <img attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+              <button
+                class="thumb-del"
+                type="button"
+                title="移除这张图片"
+                on:click="$host.removeDraftImage($data.id)"
+              ><n-icon icon="mdi:close"></n-icon></button>
+            </div>
+          </o-fill>
+        </div>
+        <p class="img-note" class:hidden="!imgNote">{{imgNote}}</p>
+      </div>
+
       <p class="manage-title">{{addGroupHint}}</p>
 
-      <!-- AI 添加：输入一句自然语言描述，AI 生成标题 + 描述回填到上面的输入框 -->
+      <!-- AI 添加：输入一句自然语言描述，AI 生成标题 + 描述回填到上面的输入框；
+           上面粘了图片时，这个按钮会变成「AI 识别图片」，识别图里的文字提取任务 -->
       <div class="ai-box">
-        <p class="ai-head"><n-icon icon="mdi:auto-fix"></n-icon>AI 添加：说说你要做什么，自动生成标题和描述</p>
+        <p class="ai-head"><n-icon icon="mdi:auto-fix"></n-icon>AI 添加：说说你要做什么；粘贴图片后可让 AI 识别图里的文字</p>
         <st-textarea
           class="ai-field"
           rows="2"
           sync:value="aiDraft"
-          placeholder="例如：明天下午三点和客户开会，记得先准备好报价单"
+          placeholder="例如：明天下午三点和客户开会；也可把清单 / 聊天截图粘进弹窗，再点「AI 识别图片」提取成任务"
         ></st-textarea>
         <div class="ai-actions">
           <st-button
             variant="text"
             on:click="generateWithAi"
             attr:disabled="aiDisabled"
-          ><n-icon slot="prefix" icon="mdi:creation"></n-icon>{{aiButtonLabel}}</st-button>
+          ><n-icon slot="prefix" attr:icon="aiButtonIcon"></n-icon>{{aiButtonLabel}}</st-button>
         </div>
         <p class="ai-note" class:hidden="!aiNote">{{aiNote}}</p>
         <p class="ai-error" class:hidden="!aiError">{{aiError}}</p>
@@ -740,6 +860,20 @@
       <!-- 只读视图 -->
       <div class="detail" class:hidden="detailEditing">
         <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
+        <!-- 任务图片：等比缩到弹窗宽度内，右上角可移除（立即落盘） -->
+        <div class="detail-images" class:hidden="!detail.images.length">
+          <o-fill :value="detail.images" fill-key="id">
+            <div class="dimg">
+              <img attr:src="$data.dataUrl" attr:alt="'任务图片'" />
+              <button
+                class="thumb-del"
+                type="button"
+                title="移除这张图片"
+                on:click="$host.removeDetailImage($data.id)"
+              ><n-icon icon="mdi:close"></n-icon></button>
+            </div>
+          </o-fill>
+        </div>
         <div class="detail-row"><span class="k">分组</span><span>{{detail.groupText}}</span></div>
         <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
         <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
@@ -824,6 +958,11 @@
     // 删除后的倒计时时长：到点后条目才真正进入垃圾桶
     const TRASH_DELAY_MS = 5000;
     const TICK_MS = 200;
+    // 每条待办的图片附件上限；粘贴 / 选图后统一压到最长边 IMAGE_MAX_SIDE、JPEG，
+    // 避免把原图（动辄几 MB）直接塞进存储
+    const MAX_IMAGES = 4;
+    const IMAGE_MAX_SIDE = 1280;
+    const IMAGE_QUALITY = 0.82;
     // AI 生成任务标题 / 描述时给模型的系统提示：只要求返回严格 JSON，便于程序解析
     const AI_SYSTEM_PROMPT =
       "你是一个待办事项整理助手。用户会用一句话描述要做的事，" +
@@ -831,6 +970,20 @@
       "desc 是补充说明（1-3 句、需要分点时用换行符分隔），信息不足时 desc 留空字符串。" +
       "只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块，格式：" +
       '{"title":"…","desc":"…"}';
+    // 带图片时的提示：让模型自己判断「图里有可提取的文字 → 整理成任务」
+    // 还是「图里没有文字 → 作为图片附件带入」（kind = image，标题用一句短语概括图片）
+    const AI_IMAGE_SYSTEM_PROMPT =
+      "你是一个会看图的待办事项整理助手。用户会给你一张或多张图片（可能是清单、聊天记录、" +
+      "便条、文档截图、手写内容，也可能是风景 / 人物 / 实物照片），可能还附带一句文字描述。" +
+      "请判断并只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块，格式：" +
+      '{"kind":"task","title":"…","desc":"…"}\n' +
+      "判断规则：\n" +
+      "1. 图片里有可提取的文字（清单、聊天记录、便条、文档、屏幕截图等）→ kind 取 \"task\"：" +
+      "把其中的待办事项整理成 title（简洁，不超过 20 个字，不要句末标点）与 desc" +
+      "（补充说明 1-3 句，需要分点时用换行符分隔，没有补充就留空字符串）；" +
+      "图里有多件事时合并成一句 title 并在 desc 里逐条列出。\n" +
+      "2. 图片里没有可提取的文字（风景、人物、实物照片等）→ kind 取 \"image\"：" +
+      "title 用一句短语概括这张图（不超过 20 个字），desc 写它的用途或内容描述。";
 
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
@@ -874,6 +1027,12 @@
           aiLoading: false,
           aiNote: "",
           aiError: "",
+          // 添加弹窗里的图片草稿：Array<{ id, dataUrl, w, h }>（粘贴 / 选图后压缩而来，
+          // 点「添加」时原样写进任务的 images）
+          draftImages: [],
+          // 是否正在压缩图片 / 图片区提示文案
+          imgBusy: false,
+          imgNote: "",
           // 倒计时刷新用：每次 tick 写入当前时间，驱动界面重算剩余秒数
           nowTick: 0,
           // 彻底删除 / 删除分组的二次确认
@@ -900,6 +1059,8 @@
             title: "",
             desc: "",
             hasDesc: false,
+            // 详情弹窗里的图片快照：Array<{ id, dataUrl }>
+            images: [],
             statusText: "",
             groupText: "",
             createdText: "",
@@ -916,6 +1077,10 @@
           await this.loadGroups();
           await this.loadTodos();
           this.restoreSessionState();
+          // 图片粘贴：监听挂 document（弹窗里 textarea 在页面 shadow 内，
+          // 粘贴事件 composed 冒出来才收得到）；只在添加弹窗开着时接图
+          document.addEventListener("paste", (ev) => this.handlePaste(ev));
+          console.log("[init] 已监听图片粘贴");
         },
 
         proto: {
@@ -1219,6 +1384,25 @@
                   deletedAt: typeof t.deletedAt === "number" ? t.deletedAt : null,
                   // 倒计时不跨刷新恢复：重新打开时把未完成的倒计时取消，避免“隔夜回来发现被删了”
                   pendingDeleteAt: null,
+                  // 图片附件：只认 data:image/ 开头的 dataURL（旧数据没有该字段 → 空数组），
+                  // 超上限的截断，保证模板里的缩略图渲染永远有值
+                  images: Array.isArray(t.images)
+                    ? t.images
+                        .filter(
+                          (im) =>
+                            im &&
+                            typeof im.dataUrl === "string" &&
+                            im.dataUrl.indexOf("data:image/") === 0
+                        )
+                        .slice(0, MAX_IMAGES)
+                        .map((im) => ({
+                          id:
+                            typeof im.id === "string" && im.id
+                              ? im.id
+                              : "i" + Math.random().toString(36).slice(2, 8),
+                          dataUrl: im.dataUrl,
+                        }))
+                    : [],
                 }));
               }
               console.log("[storage] 已读取待办，共", this.todos.length, "项");
@@ -1241,10 +1425,13 @@
             this.draft = "";
             this.addGroupHint =
               "将加入分组：「" + this.groupName(this.draftGroupId) + "」";
-            // AI 区每次都从干净状态开始
+            // AI 区与图片区每次都从干净状态开始
             this.aiDraft = "";
             this.aiNote = "";
             this.aiError = "";
+            this.draftImages = [];
+            this.imgNote = "";
+            this.imgBusy = false;
             this.addOpen = true;
             console.log("[todo] 打开添加弹窗，目标分组 =", this.draftGroupId);
           },
@@ -1255,16 +1442,168 @@
             this.aiDraft = "";
             this.aiNote = "";
             this.aiError = "";
+            this.draftImages = [];
+            this.imgNote = "";
+            this.imgBusy = false;
             console.log("[todo] 关闭添加弹窗（未添加）");
           },
 
-          // ===== AI 添加任务：一句话描述 → 标题 + 描述 =====
+          // ===== 图片附件：选图 / 粘贴 / 压缩 / 移除 =====
+          // 选图入口（label 里藏着的 file input 的 change）
+          onPickImages(ev) {
+            const input = ev && ev.target;
+            const files = input && input.files ? Array.from(input.files) : [];
+            // 清空 value 才能再次选同一张图
+            if (input) input.value = "";
+            if (files.length) {
+              console.log("[img] 选择文件", files.length, "个");
+              this.attachImages(files);
+            }
+          },
+
+          // 粘贴入口（document 级监听，只在添加弹窗开着时接图）。
+          // 剪贴板图片在 clipboardData.items 里（kind: "file"）；没找到图片就什么都不做，
+          // 让浏览器自己处理普通文字粘贴（不 preventDefault）
+          handlePaste(ev) {
+            if (!this.addOpen) return;
+            const dt = ev && ev.clipboardData;
+            if (!dt || !dt.items) return;
+            const files = [];
+            for (const item of Array.from(dt.items)) {
+              if (item.kind !== "file") continue;
+              if (!item.type || item.type.indexOf("image/") !== 0) continue;
+              const f = item.getAsFile ? item.getAsFile() : null;
+              if (f) files.push(f);
+            }
+            if (!files.length) return;
+            // 剪贴板里同时有文字时不要拦掉文字粘贴（否则用户从网页复制图文会丢文字）
+            if (Array.from(dt.types || []).indexOf("text/plain") === -1) {
+              ev.preventDefault();
+            }
+            console.log("[img] 粘贴到", files.length, "张图片");
+            this.attachImages(files);
+          },
+
+          // 把文件列表压成 dataURL 并挂到草稿上；超上限 / 单张失败都只提示不抛错
+          async attachImages(files) {
+            const list = Array.from(files || []);
+            if (!list.length) return;
+            this.imgBusy = true;
+            this.imgNote = "正在处理图片…";
+            let skipped = 0;
+            for (const f of list) {
+              if (this.draftImages.length >= MAX_IMAGES) {
+                skipped += 1;
+                continue;
+              }
+              try {
+                const img = await this.compressImage(f);
+                this.draftImages = [
+                  ...this.draftImages,
+                  {
+                    id:
+                      "i" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                    dataUrl: img.dataUrl,
+                    w: img.w,
+                    h: img.h,
+                  },
+                ];
+                console.log(
+                  "[img] 已加入图片",
+                  img.w + "x" + img.h,
+                  Math.round(img.dataUrl.length / 1024) + "KB"
+                );
+              } catch (err) {
+                skipped += 1;
+                console.error("[img] 处理图片失败", err);
+              }
+            }
+            this.imgBusy = false;
+            this.imgNote = this.draftImages.length
+              ? "已添加 " +
+                this.draftImages.length +
+                " 张图片（最多 " +
+                MAX_IMAGES +
+                " 张）" +
+                (skipped ? "，有 " + skipped + " 张未能加入" : "")
+              : skipped
+              ? "图片处理失败，换一张试试"
+              : "";
+          },
+
+          // 压缩：等比缩到最长边 IMAGE_MAX_SIDE 以内并转 JPEG；先铺白底，
+          // 透明 PNG 转 JPEG 后不会出现黑块
+          compressImage(file) {
+            return new Promise((resolve, reject) => {
+              const url = URL.createObjectURL(file);
+              const el = new Image();
+              el.onload = () => {
+                try {
+                  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(el.width, el.height));
+                  const w = Math.max(1, Math.round(el.width * scale));
+                  const h = Math.max(1, Math.round(el.height * scale));
+                  const canvas = document.createElement("canvas");
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext("2d");
+                  ctx.fillStyle = "#fff";
+                  ctx.fillRect(0, 0, w, h);
+                  ctx.drawImage(el, 0, 0, w, h);
+                  resolve({ dataUrl: canvas.toDataURL("image/jpeg", IMAGE_QUALITY), w, h });
+                } catch (err) {
+                  reject(err);
+                } finally {
+                  URL.revokeObjectURL(url);
+                }
+              };
+              el.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error("图片无法解码"));
+              };
+              el.src = url;
+            });
+          },
+
+          // 草稿里移除一张（缩略图右上角按钮）
+          removeDraftImage(id) {
+            this.draftImages = this.draftImages.filter((im) => im.id !== id);
+            this.imgNote = this.draftImages.length
+              ? "已添加 " + this.draftImages.length + " 张图片（最多 " + MAX_IMAGES + " 张）"
+              : "";
+            console.log("[img] 已移除草稿图片", id, "剩余", this.draftImages.length);
+          },
+
+          // 已保存任务的图片移除（详情弹窗里点缩略图右上角）：立即落盘
+          removeDetailImage(id) {
+            const tid = this.detailId;
+            if (!tid) return;
+            this.todos = this.todos.map((t) =>
+              t.id === tid
+                ? { ...t, images: (t.images || []).filter((im) => im.id !== id) }
+                : t
+            );
+            const updated = this.todos.find((t) => t.id === tid);
+            if (updated) this.detail = this.buildDetail(updated);
+            console.log("[img] 已移除任务图片", id);
+            this.persistTodos();
+          },
+
+          // ===== AI 添加任务：一句话描述 / 图片 → 标题 + 描述 =====
           get aiDisabled() {
-            return this.aiLoading || !String(this.aiDraft || "").trim();
+            const hasText = !!String(this.aiDraft || "").trim();
+            // 正在压缩图片时也不允许发起识别（那会儿图片还没进草稿）
+            return this.aiLoading || this.imgBusy || (!hasText && !this.draftImages.length);
           },
 
           get aiButtonLabel() {
-            return this.aiLoading ? "AI 生成中…" : "AI 生成";
+            if (this.aiLoading) {
+              return this.draftImages.length ? "AI 识别中…" : "AI 生成中…";
+            }
+            return this.draftImages.length ? "AI 识别图片" : "AI 生成";
+          },
+
+          get aiButtonIcon() {
+            return this.draftImages.length ? "mdi:image-search" : "mdi:creation";
           },
 
           // AI 助手按需加载并缓存（预览环境里 /mz/ai/main.js 由能力桥替身接管）
@@ -1292,7 +1631,12 @@
                 const title = String(obj.title || obj.name || "").trim();
                 const desc = String(obj.desc || obj.description || "").trim();
                 if (title || desc) {
-                  return { title: title || desc.split("\n")[0], desc };
+                  return {
+                    // kind = image：图里没有可提取的文字（模型判定），图片作为附件带入
+                    kind: obj.kind === "image" ? "image" : "task",
+                    title: title || desc.split("\n")[0],
+                    desc,
+                  };
                 }
               } catch (err) {
                 console.warn("[ai] 回复不是合法 JSON，回退到多行文本解析", err);
@@ -1304,28 +1648,48 @@
 
           async generateWithAi() {
             const raw = String(this.aiDraft || "").trim();
-            if (!raw || this.aiLoading) return;
+            const imgs = this.draftImages;
+            if (this.aiLoading) return;
+            if (!raw && !imgs.length) return;
             this.aiLoading = true;
             this.aiError = "";
-            this.aiNote = "AI 正在整理标题和描述…";
-            console.log("[ai] 请求生成任务", raw.slice(0, 40));
+            this.aiNote = imgs.length ? "AI 正在识别图片里的文字…" : "AI 正在整理标题和描述…";
+            console.log("[ai] 请求生成任务，文本长度", raw.length, "图片", imgs.length, "张");
             try {
               const assistant = await this.getAssistant();
-              const res = await assistant.chat({
-                messages: [
-                  { role: "system", content: AI_SYSTEM_PROMPT },
-                  { role: "user", content: raw },
-                ],
-              });
+              const messages = [
+                { role: "system", content: imgs.length ? AI_IMAGE_SYSTEM_PROMPT : AI_SYSTEM_PROMPT },
+              ];
+              if (imgs.length) {
+                // 有图片时走多模态：content 用 [文字, 图片…] 数组（OpenAI 兼容格式）
+                const content = [
+                  { type: "text", text: raw || "请识别图片里的内容，整理成待办任务。" },
+                ];
+                for (const im of imgs) {
+                  content.push({ type: "image_url", image_url: { url: im.dataUrl } });
+                }
+                messages.push({ role: "user", content });
+              } else {
+                messages.push({ role: "user", content: raw });
+              }
+              const res = await assistant.chat({ messages });
               const parsed = this.parseAiReply(res && res.content);
               if (!parsed || !parsed.title) throw new Error("AI 返回内容无法解析");
               // 回填到上方输入框：保持“第一行标题、其余为描述”的既有格式，用户可再改
               this.draft = parsed.desc
                 ? parsed.title + "\n" + parsed.desc
                 : parsed.title;
-              this.aiNote = "AI 已生成，确认或改一改再点「添加」";
+              if (!imgs.length) {
+                this.aiNote = "AI 已生成，确认或改一改再点「添加」";
+              } else if (parsed.kind === "image") {
+                this.aiNote = "图片里没有可提取的文字，已作为图片附件带入（点「添加」保存）";
+              } else {
+                this.aiNote = "已从图片文字里提取任务，确认或改一改再点「添加」（图片会一起附上）";
+              }
               console.log(
-                "[ai] 生成完成，标题 =",
+                "[ai] 生成完成，kind =",
+                parsed.kind || "task",
+                "标题 =",
                 parsed.title,
                 "描述长度 =",
                 (parsed.desc || "").length,
@@ -1380,15 +1744,21 @@
                 archivedAt: null,
                 deletedAt: null,
                 pendingDeleteAt: null,
+                // 图片附件：把弹窗里已压缩好的草稿原样带走
+                images: this.draftImages.slice(),
               },
               ...this.todos,
             ];
+            const imgCount = this.draftImages.length;
             this.draft = "";
+            this.draftImages = [];
+            this.imgNote = "";
             console.log(
               "[todo] 新增",
               id,
               parsed.title,
               parsed.desc ? "（含描述）" : "",
+              imgCount ? "（含 " + imgCount + " 张图片）" : "",
               "分组 =",
               this.draftGroupId
             );
@@ -1894,6 +2264,8 @@
               title: todo.text || "（无标题）",
               desc: todo.desc || "",
               hasDesc: !!todo.desc,
+              // 详情弹窗里的图片快照（模板只读字段）
+              images: (todo.images || []).map((im) => ({ id: im.id, dataUrl: im.dataUrl })),
               groupText: this.groupName(todo.groupId),
               statusText: todo.pendingDeleteAt
                 ? "待删除（倒计时中）"

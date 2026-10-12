@@ -908,6 +908,29 @@
                  活动切换（思考中 / 正在执行 xx / 生成中），且只在回合视图显示 -->
             <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
+
+          <o-if :value="interrupted && !sending && !interruptedDismissed">
+            <!-- 上次回合被硬中断（刷新 / 崩溃）：对话末尾提醒，可从断点继续。
+                 wire 记忆停在合法断点（mz/ai 落盘保证 tool_calls 不悬空），
+                 补发一条「继续」即接着断点做；整卡可点，× 仅收起本次提醒 -->
+            <div class="interrupt-card" on:click="continueInterrupted">
+              <n-icon class="interrupt-ico" icon="mdi:restart-alert"></n-icon>
+              <div class="interrupt-main">
+                <div class="interrupt-title">上一轮对话被中断了</div>
+                <div class="interrupt-desc">
+                  页面刷新或意外关闭导致生成暂停，已完成的内容不会丢失。
+                </div>
+              </div>
+              <span class="interrupt-go">继续对话</span>
+              <button
+                class="interrupt-x"
+                title="暂不提醒"
+                on:click="dismissInterrupted($event)"
+              >
+                <n-icon icon="mdi:close"></n-icon>
+              </button>
+            </div>
+          </o-if>
         </div>
       </section>
 
@@ -1319,9 +1342,10 @@
         </o-if>
       </div>
     </footer>
-      </div>
       <!-- 任务清单（右）：模型开发前拆解的任务 + 宿主自动登记的错误修复任务，
-           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作 -->
+           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作。
+           必须留在 .main-col 内（它是 absolute 定位锚）：挪到外面会落到根节点
+           .app 锚上，top:12 从窗口顶算起，整卡盖住顶栏右侧按钮（实测翻过车） -->
       <o-if :value="sessionTasks.length > 0">
         <aside class="tasks-panel" class:collapsed="!tasksPanelOpen">
           <button
@@ -1337,7 +1361,11 @@
           <o-if :value="tasksPanelOpen">
             <div class="tasks-body">
               <o-fill :value="sessionTasks" fill-key="id">
-                <div class="task-item" attr:data-status="$data.status">
+                <div
+                  class="task-item"
+                  attr:data-status="$data.status"
+                  class:running="$host.turnInView"
+                >
                   <o-if :value="$data.source === 'error'">
                     <span class="task-badge">错误</span>
                   </o-if>
@@ -1349,6 +1377,7 @@
           </o-if>
         </aside>
       </o-if>
+      </div>
     </div>
 
     <!-- 项目抽屉（左）：点击项新标签打开项目；已开标签聚焦复用 -->
@@ -2100,6 +2129,14 @@
       window.addEventListener("beforeunload", () => {
         if (announcedName) bc?.postMessage({ type: "bye", name: announcedName });
       });
+      // 回合进行中拦截刷新 / 关闭标签：浏览器原生确认弹窗（自定义文案现代
+      // 浏览器不展示，措辞由浏览器统一）；回合收尾 sending 复位即自动放行
+      window.addEventListener("beforeunload", (e) => {
+        if (store.state.sending) {
+          e.preventDefault();
+          e.returnValue = ""; // Chrome 旧链路要求的置位触发
+        }
+      });
 
       return {
         data: {
@@ -2115,6 +2152,8 @@
           stopRequested: false, // 用户点了停止、回合尚未收尾（按钮禁用显示「停止中」）
           reasoning: "low", // 推理等级偏好（仓库 patch；off/low/medium/high）
           keyError: "",
+          interrupted: false, // 上次回合被硬中断（仓库检测，随 patch 事件镜像）
+          interruptedDismissed: false, // 提醒卡本次视图收起（切换会话重置）
           coreError: "",
           atBottom: true,
           sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
@@ -2494,6 +2533,7 @@
             const op = evt?.op;
             // 会话整体切换（replace）：编辑态指向的消息可能已不存在，收起
             if (op === "replace" && this.editingMsgId) this.cancelMsgEdit();
+            if (op === "replace") this.interruptedDismissed = false;
             // 窗口模块统一处理：全量（_win.all）与渲染窗口（this.messages）
             // 同步更新；push 只加尾不丢头，replace 重置为最近一段
             this._win.apply(evt);
@@ -3405,6 +3445,23 @@
               !!this.sending && (this.turningKey || "") === vk;
           },
 
+          // ---- 上次回合被中断（刷新 / 崩溃）提醒 ----
+
+          // 整卡可点：补发一条「继续」。wire 记忆停在合法断点（mz/ai 落盘
+          // 保证 assistant 的 tool_calls 不悬空），模型接着断点做，而不是
+          // 回到上个完整回合重跑
+          continueInterrupted() {
+            if (this.sending) return;
+            this.atBottom = true;
+            this.followScroll(true);
+            store.send("继续");
+          },
+
+          dismissInterrupted(e) {
+            e.stopPropagation(); // 阻断冒泡到整卡的继续
+            this.interruptedDismissed = true; // 仅本次视图收起，切换会话重置
+          },
+
           // ---- 编辑并重发末条用户消息 ----
 
           // 仅当前会话最后一条用户消息、且停止/完成后可编辑（UI 与仓库双层守卫）
@@ -3583,11 +3640,12 @@
 
           // 任务状态 → 图标名（attr:icon 动态属性用）
           taskIcon(status) {
-            return status === "done"
-              ? "mdi:check-circle-outline"
-              : status === "in_progress"
-                ? "mdi:progress-check"
-                : "mdi:circle-outline";
+            if (status === "done") return "mdi:check-circle-outline";
+            if (status === "in_progress") {
+              // 回合进行中才转 spinner；刷新 / 停止后停在这一步的显示暂停态
+              return this.turnInView ? "mdi:loading" : "mdi:pause-circle-outline";
+            }
+            return "mdi:circle-outline";
           },
 
           toggleTasksPanel() {

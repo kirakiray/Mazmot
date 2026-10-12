@@ -249,6 +249,33 @@
       </template>
     </sb-test>
 
+    <sb-test name="中断回合检测纯函数（detectInterruptedTurn）">
+      <template>
+        <script type="module">
+          import { detectInterruptedTurn } from "../lib/builder.js";
+          {
+            // 正常完成 / 手动停止：末条 AI 消息带 turnMs → 不算中断
+            const closed = { role: "assistant", content: "done", turnMs: 1200 };
+            const checks = {
+              empty: detectInterruptedTurn([]) === false,
+              notList: detectInterruptedTurn("x") === false,
+              closedTurn: detectInterruptedTurn([{ role: "user", content: "hi" }, closed]) === false,
+              stoppedTurn: detectInterruptedTurn([{ role: "user", content: "hi" }, { role: "assistant", content: "...", turnMs: 9, stopped: true }]) === false,
+              // 硬中断（刷新 / 崩溃）：末条 AI 消息没打上 turnMs
+              midTurn: detectInterruptedTurn([{ role: "user", content: "hi" }, { role: "assistant", content: "..." }]) === true,
+              // 发出后还没来得及产生任何回复：末条还是 user
+              noReply: detectInterruptedTurn([{ role: "user", content: "hi" }]) === true,
+              noReplyWithImgs: detectInterruptedTurn([{ role: "user", content: "", images: ["data:image/png;base64,x"] }]) === true,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: checks,
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="工具插件注册中心加载">
       <template>
         <script type="module">
