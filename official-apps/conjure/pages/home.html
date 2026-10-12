@@ -1400,11 +1400,10 @@
               <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
             </div>
             <div class="hub-pane-body">
-                <div class="pp-head">
-                  <span class="pp-title">预览窗口</span>
-                  <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
-                </div>
-                <div class="pp-actions">
+                
+                <div class="prev-layout">
+            <div class="prev-main">
+            <div class="pp-actions">
                   <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
                     <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
                     更新全部
@@ -1440,11 +1439,16 @@
                   </o-fill>
                 </div>
                 <o-if :value="previewWindows.length === 0">
-                  <div class="pp-empty">
-                    还没有打开的预览窗口：点「新开窗口」或用下方二维码让手机加入
+                  <div class="prev-empty">
+                    <n-icon icon="mdi:monitor-screenshot"></n-icon>
+                    <div class="prev-empty-title">还没有打开的预览窗口</div>
+                    <div class="prev-empty-desc">点上方「新开窗口」把当前应用跑进隔离域预览，或用右侧二维码让手机加入调试</div>
                   </div>
                 </o-if>
-                <div class="pp-sec">
+                </div>
+
+            <aside class="prev-qr">
+            <div class="pp-sec">
                   <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
                   <div class="pp-qr-row">
                     <o-if :value="previewShareUrl">
@@ -1463,19 +1467,21 @@
                     </div>
                   </div>
                 </div></div>
+            </aside>
+            </div>
           </o-if>
           <o-if :value="hubTab === 'publish'">
-            <div class="hub-pane-head">发布到首页应用列表</div>
+            <div class="hub-pane-head">
+              发布到首页应用列表
+              <o-if :value="publishedInfo">
+                <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
+              </o-if>
+              <o-if :value="!publishedInfo">
+                <span class="pp-badge">未发布</span>
+              </o-if>
+            </div>
             <div class="hub-pane-body hub-narrow">
-                <div class="pp-head">
-                  <span class="pp-title">发布到首页应用列表</span>
-                  <o-if :value="publishedInfo">
-                    <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
-                  </o-if>
-                  <o-if :value="!publishedInfo">
-                    <span class="pp-badge">未发布</span>
-                  </o-if>
-                </div>
+                
                 <div class="pub-rows">
                   <div class="pub-row">
                     <span class="pub-label">发布版本</span>

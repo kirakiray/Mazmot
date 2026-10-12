@@ -167,14 +167,149 @@
   margin-top: 0;
 }
 
-/* 发布表单在大面板里限宽（通栏拉伸观感差） */
-.hub-pane-body.hub-narrow {
-  max-width: 560px;
-}
-
 /* 预览窗口磁贴在大面板里按宽度自适应列数（气泡时代固定两列） */
 .hub-pane .pp-wins-grid {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+/* ---- Hub 页面改版：限宽容器 + 分栏 + 卡片化（拒绝 90vw 直铺拉伸） ---- */
+
+.hub-pane-body {
+  max-width: 1120px;
+}
+
+/* 预览：左主列（动作 + 窗口磁贴）+ 右手机调试卡；窄视口退化为单列 */
+.prev-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .prev-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 动作按钮保持自然宽度（原气泡样式会在宽容器里被拉成两条巨型胶囊） */
+.hub-pane .pp-actions {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+
+.hub-pane .pp-actions st-button {
+  flex: none;
+  min-width: 172px;
+}
+
+/* 完整空态：图标 + 标题 + 引导文案（虚线框收住） */
+.prev-empty {
+  margin-top: 4px;
+  padding: 56px 24px;
+  border: 1px dashed
+    color-mix(in srgb, var(--md-sys-color-outline) 45%, transparent);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.prev-empty n-icon {
+  font-size: 44px;
+  color: var(--md-sys-color-outline);
+  margin-bottom: 8px;
+}
+
+.prev-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.prev-empty-desc {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--md-sys-color-on-surface-variant);
+  max-width: 400px;
+}
+
+/* 手机调试卡：悬浮卡片替代原气泡底部的分隔线区块 */
+.hub-pane .pp-sec {
+  padding: 16px;
+  border-top: none;
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 3%, transparent);
+  gap: 4px;
+  position: sticky;
+  top: 0;
+}
+
+.hub-pane .pp-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: 2px;
+}
+
+/* 二维码衬白底 tile，深浅主题下都保持扫描对比度 */
+.hub-pane .pp-qr-row {
+  margin-top: 10px;
+  align-items: flex-start;
+}
+
+.hub-pane .pp-qr-row m-ercode {
+  padding: 8px;
+  border-radius: 10px;
+  background: #fff;
+  flex: none;
+}
+
+.hub-pane .pp-url {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+  margin-bottom: 6px;
+}
+
+/* 发布页：限宽卡片，行间发丝线分隔 */
+.hub-pane-body.hub-narrow {
+  max-width: 620px;
+  padding: 6px 22px 22px;
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 3%, transparent);
+}
+
+.hub-pane .pub-row {
+  padding: 13px 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.hub-pane .pub-row:last-child {
+  border-bottom: none;
+}
+
+.hub-pane .pub-actions {
+  margin-top: 18px;
+}
+
+.hub-pane .pub-note {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.hub-pane .pub-link {
+  max-width: 420px;
 }
 
 /* ---------- 顶栏 ---------- */
