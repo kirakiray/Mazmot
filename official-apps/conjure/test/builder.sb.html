@@ -249,6 +249,102 @@
       </template>
     </sb-test>
 
+    <sb-test name="应用信息修改（updateAppMeta）">
+      <template>
+        <script type="module">
+          import {
+            updateAppMeta,
+            createAppDir,
+            writeAppFile,
+          } from "../lib/builder.js";
+          import { createVirtualFs, readVirtualFile } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const fsFake = createVirtualFs();
+              await createAppDir(fsFake, {
+                name: "demo",
+                displayName: "Demo",
+                icon: "📦",
+              });
+              // 只改名称：icon 与 version 等其余字段原样保留
+              const r1 = await updateAppMeta(fsFake, "demo", undefined, {
+                displayName: "演示应用",
+              });
+              const root = await fsFake.init("ai-apps");
+              let meta = JSON.parse(
+                await readVirtualFile(root, "demo/client/app.json"),
+              );
+              const keep = {
+                r1: r1.displayName === "演示应用" && r1.icon === "📦",
+                iconKept: meta.icon === "📦",
+                versionKept: meta.version === "0.1.0",
+              };
+              // 改图标：非法输入回落 📦；displayName 传 undefined 不动
+              const r2 = await updateAppMeta(fsFake, "demo", undefined, {
+                icon: "  ⏰ ",
+              });
+              meta = JSON.parse(
+                await readVirtualFile(await fsFake.init("ai-apps"), "demo/client/app.json"),
+              );
+              const iconChecks = {
+                r2: r2.icon === "⏰" && r2.displayName === "演示应用",
+                metaIcon: meta.icon === "⏰",
+              };
+              const r3 = await updateAppMeta(fsFake, "demo", undefined, {
+                displayName: "   ",
+                icon: "   ",
+              });
+              meta = JSON.parse(
+                await readVirtualFile(await fsFake.init("ai-apps"), "demo/client/app.json"),
+              );
+              const fallback = {
+                name: r3.displayName === "demo",
+                icon: r3.icon === "📦",
+                metaName: meta.displayName === "demo",
+              };
+              // 名称超长截 24
+              const r4 = await updateAppMeta(fsFake, "demo", undefined, {
+                displayName: "x".repeat(40),
+              });
+              // 无 app.json 的目录（直接建目录，不经 writeAppFile——它会对
+              // 任何文件写入自动初始化 app.json）：抛可读错误
+              const bare = await root.get("demo3", { create: "dir" });
+              await bare.get("client", { create: "dir" });
+              let missing = "";
+              try {
+                await updateAppMeta(fsFake, "demo3", undefined, { displayName: "x" });
+              } catch (err) {
+                missing = err.message;
+              }
+              // app.json 损坏（非 JSON）：抛可读错误
+              await writeAppFile(fsFake, "demo4", "app.json", "not-json{{{");
+              let broken = "";
+              try {
+                await updateAppMeta(fsFake, "demo4", undefined, { displayName: "x" });
+              } catch (err) {
+                broken = err.message;
+              }
+              const edge = {
+                clip: r4.displayName.length === 24,
+                missing: missing.includes("app.json"),
+                broken: broken.includes("JSON"),
+              };
+              return {
+                assert:
+                  Object.values(keep).every(Boolean) &&
+                  Object.values(iconChecks).every(Boolean) &&
+                  Object.values(fallback).every(Boolean) &&
+                  Object.values(edge).every(Boolean),
+                content: { keep, iconChecks, fallback, edge },
+              };
+            } catch (err) {
+              return { assert: false, content: { fatal: String(err) } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="版本段递增纯函数（bumpVersion）">
       <template>
         <script type="module">

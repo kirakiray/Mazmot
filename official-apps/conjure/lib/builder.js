@@ -244,6 +244,36 @@ export function buildAppJson({ name, displayName, description, icon }) {
 }
 
 /**
+ * 修改应用元数据（应用名称 / 图标，手动编辑入口）：读 client/app.json 原文、
+ * 只 patch 传入字段后写回（version / permissions 等其余字段原样保留）。
+ * displayName 规整为非空 ≤24 字（空 / 非法回落目录名）；icon 取非空白字符
+ * （按 code point 截 8 个，空回落 📦）。app.json 缺失或非 JSON 时抛可读错误。
+ * @returns {Promise<{displayName: string, icon: string}>} 写回后的值
+ */
+export async function updateAppMeta(fs, appName, rootHandle, patch = {}) {
+  const clean = sanitizeAppName(appName);
+  if (!clean) throw new Error("应用名不合法");
+  const raw = await readAppFile(fs, clean, "app.json", rootHandle);
+  if (!raw) throw new Error("还没有 app.json，无法修改应用信息");
+  let meta;
+  try {
+    meta = JSON.parse(raw) || {};
+  } catch {
+    throw new Error("app.json 内容不是合法 JSON，请先在对话里修复它再修改应用信息");
+  }
+  if (patch.displayName !== undefined) {
+    const display = String(patch.displayName || "").trim().slice(0, 24);
+    meta.displayName = display || meta.name || clean;
+  }
+  if (patch.icon !== undefined) {
+    const icon = [...String(patch.icon || "").trim()].slice(0, 8).join("");
+    meta.icon = icon || "📦";
+  }
+  await writeAppFile(fs, clean, "app.json", JSON.stringify(meta, null, 2), rootHandle);
+  return { displayName: meta.displayName || clean, icon: meta.icon || "📦" };
+}
+
+/**
  * 获取（或创建）生成应用根目录。
  * @param {Object} fs 注入的 /nos/fs/main.js 模块
  * @returns {Promise<Object>} DirHandle

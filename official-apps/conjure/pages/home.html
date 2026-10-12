@@ -1,16 +1,20 @@
 <template page>
   <link rel="stylesheet" href="./home.css?v=12" />
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/menu/menu.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"></l-m>
+  <!-- 临时全量 @main（senti-ui 1.0.10 发版后全部改回 @latest）：nav 药丸初入
+       错位修复未发版；组件树共享注册表，只切单个组件会造成同 tag 双 URL
+       重复注册（st-ripple 已被注册），必须整app一致 -->
+  <l-m src="/gh/ofajs/senti-ui@main/packages/navigation/nav-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/textarea/textarea.html"></l-m>
   <!-- show-form 表单卡片的控件依赖（组件模板经 :html 生成，须全局预载） -->
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/radio/radio.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/radio/radio.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/mz/comps/ercode/ercode.html"></l-m>
   <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
@@ -27,6 +31,14 @@
               <div class="brand-name">
                 {{currentAppDisplay}}
                 <span class="mode-badge" attr:mode="currentAppMode">{{modeText(currentAppMode)}}</span>
+                <!-- 应用信息编辑入口：写回 client/app.json 的 displayName / icon -->
+                <st-icon-button
+                  class="app-meta-edit-btn"
+                  title="修改应用名称与图标"
+                  on:click="openAppMetaEdit"
+                >
+                  <n-icon icon="mdi:pencil-outline"></n-icon>
+                </st-icon-button>
               </div>
             </div>
             <!-- 项目抽屉（左侧滑出）：项目清单，点击新标签打开（已开标签聚焦） -->
@@ -97,202 +109,42 @@
               class:preview-live="previewOnline"
               attr:title="previewOnline ? '预览窗口已打开 · 点击多窗口面板' : '预览应用（隔离域运行）'"
               attr:disabled="previewBusy"
-              on:click="togglePreviewPop"
+              on:click="openHub('preview')"
             >
               <n-icon
                 attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
               ></n-icon>
             </st-icon-button>
-            <o-if :value="previewPopOpen">
-              <div class="preview-pop">
-                <div class="pp-head">
-                  <span class="pp-title">预览窗口</span>
-                  <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
-                </div>
-                <div class="pp-actions">
-                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
-                    <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
-                    更新全部
-                  </st-button>
-                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popNewWindow">
-                    <span slot="prefix"><n-icon icon="mdi:open-in-new"></n-icon></span>
-                    新开窗口
-                  </st-button>
-                </div>
-                <div class="pp-wins-grid">
-                  <o-fill :value="previewWindows" fill-key="id">
-                    <div class="pp-win-tile" class:offline="!$data.online">
-                      <div class="pp-thumb">
-                        <o-if :value="$host.thumbFor($data)">
-                          <img
-                            class="pp-thumb-img"
-                            attr:src="$host.thumbFor($data)"
-                            alt="预览缩略图"
-                          />
-                        </o-if>
-                        <o-if :value="!$host.thumbFor($data)">
-                          <div class="pp-thumb-empty">
-                            <n-icon icon="mdi:monitor-screenshot"></n-icon>
-                          </div>
-                        </o-if>
-                        <span class="pp-tile-dot"></span>
-                      </div>
-                      <div class="pp-tile-meta">
-                        <span class="pp-tile-app">{{$data.app || "?"}}</span>
-                        <span class="pp-tile-device">{{$host.winLabel($data)}}</span>
-                      </div>
-                    </div>
-                  </o-fill>
-                </div>
-                <o-if :value="previewWindows.length === 0">
-                  <div class="pp-empty">
-                    还没有打开的预览窗口：点「新开窗口」或用下方二维码让手机加入
-                  </div>
-                </o-if>
-                <div class="pp-sec">
-                  <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
-                  <div class="pp-qr-row">
-                    <o-if :value="previewShareUrl">
-                      <m-ercode attr:content="previewShareUrl"></m-ercode>
-                    </o-if>
-                    <div class="pp-qr-side">
-                      <span class="pp-url">{{shortUrl(previewShareUrl)}}</span>
-                      <st-icon-button
-                        class="pp-copy"
-                        title="复制链接"
-                        attr:disabled="!previewShareUrl"
-                        on:click="copyText(previewShareUrl)"
-                      >
-                        <n-icon icon="mdi:content-copy"></n-icon>
-                      </st-icon-button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </o-if>
+            
           </div>
           <div class="publish-wrap">
             <st-icon-button
               class:published="publishedInfo"
               attr:title="publishedInfo ? '已发布 v' + publishedInfo.version : '发布到首页应用列表'"
               attr:disabled="publishBusy"
-              on:click="togglePublishPop"
+              on:click="openHub('publish')"
             >
               <n-icon
                 attr:icon="publishedInfo ? 'mdi:rocket-launch' : 'mdi:rocket-launch-outline'"
               ></n-icon>
             </st-icon-button>
-            <o-if :value="publishPopOpen">
-              <div class="publish-pop">
-                <div class="pp-head">
-                  <span class="pp-title">发布到首页应用列表</span>
-                  <o-if :value="publishedInfo">
-                    <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
-                  </o-if>
-                  <o-if :value="!publishedInfo">
-                    <span class="pp-badge">未发布</span>
-                  </o-if>
-                </div>
-                <div class="pub-rows">
-                  <div class="pub-row">
-                    <span class="pub-label">发布版本</span>
-                    <o-if :value="publishedInfo">
-                      <span>v{{publishedInfo.version}}</span>
-                    </o-if>
-                    <o-if :value="!publishedInfo">
-                      <span>未发布</span>
-                    </o-if>
-                  </div>
-                  <div class="pub-row">
-                    <span class="pub-label">代码状态</span>
-                    <o-if :value="!publishedInfo">
-                      <span>发布后即可在首页打开</span>
-                    </o-if>
-                    <o-if :value="publishMatch === true">
-                      <span class="pub-ok">发布内容就是当前代码</span>
-                    </o-if>
-                    <o-if :value="publishMatch === false">
-                      <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
-                    </o-if>
-                  </div>
-                  <o-if :value="publishedInfo">
-                    <div class="pub-row">
-                      <span class="pub-label">分享链接</span>
-                      <o-if :value="publishShareUrl">
-                        <span
-                          class="pub-link"
-                          attr:title="publishShareUrl"
-                        >{{shortUrl(publishShareUrl)}}</span>
-                        <st-icon-button
-                          class="pub-copy"
-                          title="复制分享链接"
-                          on:click="copyText(publishShareUrl)"
-                        >
-                          <n-icon icon="mdi:content-copy"></n-icon>
-                        </st-icon-button>
-                      </o-if>
-                      <o-if :value="!publishShareUrl">
-                        <span>打开首页应用列表后自动生成</span>
-                      </o-if>
-                    </div>
-                  </o-if>
-                </div>
-                <div class="pub-actions">
-                  <st-button
-                    class="pub-main-btn"
-                    variant="filled"
-                    attr:disabled="publishBusy"
-                    on:click="handlePublish()"
-                  >
-                    <o-if :value="!publishedInfo">🚀 发布</o-if>
-                    <o-if :value="publishedInfo">🚀 更新发布</o-if>
-                  </st-button>
-                  <o-if :value="publishedInfo">
-                    <!-- 版本类型菜单：默认更新发布 = 小版本（末段 +1）；菜单可选
-                         中版本 / 大版本。大版本对应重大改版，handlePublish 内二次确认 -->
-                    <st-menu align="right" class="pub-ver-menu">
-                      <button
-                        slot="trigger"
-                        class="pub-menu-btn"
-                        attr:disabled="publishBusy"
-                        attr:title="'选择发布版本类型'"
-                      >
-                        <n-icon icon="mdi:chevron-down"></n-icon>
-                      </button>
-                      <st-menu-item on:click="handlePublish('minor')">
-                        <span slot="prefix" class="menu-check"></span>
-                        更新中版本（功能更新）
-                        <span slot="suffix" class="menu-value">{{nextVersion('minor')}}</span>
-                      </st-menu-item>
-                      <st-menu-item on:click="handlePublish('major')">
-                        <span slot="prefix" class="menu-check"></span>
-                        更新大版本（重大改版）
-                        <span slot="suffix" class="menu-value">{{nextVersion('major')}}</span>
-                      </st-menu-item>
-                    </st-menu>
-                  </o-if>
-                </div>
-                <div class="pub-note">
-                  发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
-                </div>
-              </div>
-            </o-if>
+            
           </div>
           <st-icon-button
             title="备份管理"
-            on:click="openBackupDrawer"
+            on:click="openHub('backup')"
           >
             <n-icon icon="mdi:backup-restore"></n-icon>
           </st-icon-button>
           <st-icon-button
             class="test-entry"
             title="测试管理（client/test/ 场景用例）"
-            on:click="openTestDrawer"
+            on:click="openHub('tests')"
           >
             <n-icon icon="mdi:flask-outline"></n-icon>
           </st-icon-button>
         </o-if>
-        <st-icon-button title="工具 / 技能" on:click="openPanel">
+        <st-icon-button title="工具 / 技能" on:click="openHub('tools')">
           <svg
             viewBox="0 0 24 24"
             width="20"
@@ -1486,25 +1338,230 @@
     </aside>
 
     <!-- 备份管理抽屉（右，比普通面板宽）：把当前应用 client/ 打包到同层 backup/ 目录 -->
-    <div class="panel-mask" class:show="backupDrawerOpen" on:click="closeBackupDrawer"></div>
-    <aside class="backup-drawer" class:show="backupDrawerOpen">
-      <div class="panel-head">
-        <span>备份管理</span>
-        <st-icon-button title="关闭" on:click="closeBackupDrawer">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
+        
+
+    <!-- 测试管理抽屉（右）：client/test/ 场景用例的清单与一键执行 -->
+        
+
+    <!-- 工具 / 技能面板（右） -->
+        
+
+    <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
+         避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
+    <!-- 应用信息编辑：名称 + 图标，保存写回 client/app.json 并同步登记表 /
+         顶栏 / 项目抽屉；生成中不可改（防与模型写 app.json 互踩） -->
+    <st-dialog class="app-meta-edit" sync:open="appMetaEditOpen" auto-close>
+      <div class="backup-edit-panel">
+        <div class="backup-edit-title">应用信息</div>
+        <div class="backup-edit-id">{{currentAppName}}/client/app.json</div>
+        <div class="backup-edit-field">
+          <div class="backup-edit-label">应用名称</div>
+          <st-input
+            sync:value="appMetaName"
+            maxlength="24"
+            placeholder="显示名称（≤24 字，留空回落目录名）"
+          ></st-input>
+        </div>
+        <div class="backup-edit-field">
+          <div class="backup-edit-label">图标（emoji）</div>
+          <st-input
+            class="app-meta-icon-input"
+            sync:value="appMetaIcon"
+            maxlength="8"
+            placeholder="一个 emoji，如 📦"
+          ></st-input>
+          <div class="app-meta-presets">
+            <o-fill :value="metaIconPresets">
+              <button
+                class="app-meta-preset"
+                attr:data-on="$data === $host.appMetaIcon"
+                on:click="pickMetaIcon($data)"
+              >{{$data}}</button>
+            </o-fill>
+          </div>
+        </div>
+        <div class="backup-edit-actions">
+          <st-button variant="text" on:click="closeAppMetaEdit">取消</st-button>
+          <st-button variant="filled" attr:disabled="sending" on:click="saveAppMeta">保存</st-button>
+        </div>
       </div>
-      <div class="backup-sub">
+    </st-dialog>
+
+  <!-- 顶栏功能 Hub：预览 / 发布 / 备份 / 测试 / 资源 五入口收拢的居中大对话框
+       （90vw × 90vh），底部横向 navigation 切换内容页；hub-layout 绝对定位
+       撑满面板（st-dialog 内容槽在 shadow .body 里、高度随内容，height:100%
+       解析不到面板高度），保证内容不满高时导航栏也固定在底部 -->
+    <st-dialog class="hub-dialog" sync:open="hubOpen" auto-close>
+      <div class="hub-layout">
+        <div class="hub-pane">
+          <o-if :value="hubTab === 'preview'">
+            <div class="hub-pane-head">
+              预览窗口
+              <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
+            </div>
+            <div class="hub-pane-body">
+                <div class="pp-head">
+                  <span class="pp-title">预览窗口</span>
+                  <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
+                </div>
+                <div class="pp-actions">
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
+                    <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
+                    更新全部
+                  </st-button>
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popNewWindow">
+                    <span slot="prefix"><n-icon icon="mdi:open-in-new"></n-icon></span>
+                    新开窗口
+                  </st-button>
+                </div>
+                <div class="pp-wins-grid">
+                  <o-fill :value="previewWindows" fill-key="id">
+                    <div class="pp-win-tile" class:offline="!$data.online">
+                      <div class="pp-thumb">
+                        <o-if :value="$host.thumbFor($data)">
+                          <img
+                            class="pp-thumb-img"
+                            attr:src="$host.thumbFor($data)"
+                            alt="预览缩略图"
+                          />
+                        </o-if>
+                        <o-if :value="!$host.thumbFor($data)">
+                          <div class="pp-thumb-empty">
+                            <n-icon icon="mdi:monitor-screenshot"></n-icon>
+                          </div>
+                        </o-if>
+                        <span class="pp-tile-dot"></span>
+                      </div>
+                      <div class="pp-tile-meta">
+                        <span class="pp-tile-app">{{$data.app || "?"}}</span>
+                        <span class="pp-tile-device">{{$host.winLabel($data)}}</span>
+                      </div>
+                    </div>
+                  </o-fill>
+                </div>
+                <o-if :value="previewWindows.length === 0">
+                  <div class="pp-empty">
+                    还没有打开的预览窗口：点「新开窗口」或用下方二维码让手机加入
+                  </div>
+                </o-if>
+                <div class="pp-sec">
+                  <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
+                  <div class="pp-qr-row">
+                    <o-if :value="previewShareUrl">
+                      <m-ercode attr:content="previewShareUrl"></m-ercode>
+                    </o-if>
+                    <div class="pp-qr-side">
+                      <span class="pp-url">{{shortUrl(previewShareUrl)}}</span>
+                      <st-icon-button
+                        class="pp-copy"
+                        title="复制链接"
+                        attr:disabled="!previewShareUrl"
+                        on:click="copyText(previewShareUrl)"
+                      >
+                        <n-icon icon="mdi:content-copy"></n-icon>
+                      </st-icon-button>
+                    </div>
+                  </div>
+                </div></div>
+          </o-if>
+          <o-if :value="hubTab === 'publish'">
+            <div class="hub-pane-head">发布到首页应用列表</div>
+            <div class="hub-pane-body hub-narrow">
+                <div class="pp-head">
+                  <span class="pp-title">发布到首页应用列表</span>
+                  <o-if :value="publishedInfo">
+                    <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
+                  </o-if>
+                  <o-if :value="!publishedInfo">
+                    <span class="pp-badge">未发布</span>
+                  </o-if>
+                </div>
+                <div class="pub-rows">
+                  <div class="pub-row">
+                    <span class="pub-label">发布版本</span>
+                    <o-if :value="publishedInfo">
+                      <span>v{{publishedInfo.version}}</span>
+                    </o-if>
+                    <o-if :value="!publishedInfo">
+                      <span>未发布</span>
+                    </o-if>
+                  </div>
+                  <div class="pub-row">
+                    <span class="pub-label">代码状态</span>
+                    <o-if :value="!publishedInfo">
+                      <span>发布后即可在首页打开</span>
+                    </o-if>
+                    <o-if :value="publishMatch === true">
+                      <span class="pub-ok">发布内容就是当前代码</span>
+                    </o-if>
+                    <o-if :value="publishMatch === false">
+                      <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
+                    </o-if>
+                  </div>
+                  <o-if :value="publishedInfo">
+                    <div class="pub-row">
+                      <span class="pub-label">分享链接</span>
+                      <o-if :value="publishShareUrl">
+                        <span
+                          class="pub-link"
+                          attr:title="publishShareUrl"
+                        >{{shortUrl(publishShareUrl)}}</span>
+                        <st-icon-button
+                          class="pub-copy"
+                          title="复制分享链接"
+                          on:click="copyText(publishShareUrl)"
+                        >
+                          <n-icon icon="mdi:content-copy"></n-icon>
+                        </st-icon-button>
+                      </o-if>
+                      <o-if :value="!publishShareUrl">
+                        <span>打开首页应用列表后自动生成</span>
+                      </o-if>
+                    </div>
+                  </o-if>
+                </div>
+                <div class="pub-actions">
+                  <st-button
+                    class="pub-main-btn"
+                    variant="filled"
+                    attr:disabled="publishBusy"
+                    on:click="handlePublish()"
+                  >
+                    <o-if :value="!publishedInfo">🚀 发布</o-if>
+                    <o-if :value="publishedInfo">🚀 更新发布</o-if>
+                  </st-button>
+                  <o-if :value="publishedInfo">
+                    <!-- 版本类型菜单：默认更新发布 = 小版本（末段 +1）；菜单可选
+                         中版本 / 大版本。大版本对应重大改版，handlePublish 内二次确认 -->
+                    <st-menu align="right" class="pub-ver-menu">
+                      <button
+                        slot="trigger"
+                        class="pub-menu-btn"
+                        attr:disabled="publishBusy"
+                        attr:title="'选择发布版本类型'"
+                      >
+                        <n-icon icon="mdi:chevron-down"></n-icon>
+                      </button>
+                      <st-menu-item on:click="handlePublish('minor')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新中版本（功能更新）
+                        <span slot="suffix" class="menu-value">{{nextVersion('minor')}}</span>
+                      </st-menu-item>
+                      <st-menu-item on:click="handlePublish('major')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新大版本（重大改版）
+                        <span slot="suffix" class="menu-value">{{nextVersion('major')}}</span>
+                      </st-menu-item>
+                    </st-menu>
+                  </o-if>
+                </div>
+                <div class="pub-note">
+                  发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
+                </div></div>
+          </o-if>
+          <o-if :value="hubTab === 'backup'">
+            <div class="hub-pane-head">备份管理</div>
+            <div class="hub-pane-body"><div class="backup-sub">
         {{currentAppDisplay || currentAppName}} · 备份存于应用目录的 backup/ 下
       </div>
       <div class="backup-actions">
@@ -1589,32 +1646,11 @@
             </div>
           </div>
         </o-fill>
-      </div>
-    </aside>
-
-    <!-- 测试管理抽屉（右）：client/test/ 场景用例的清单与一键执行 -->
-    <div class="panel-mask" class:show="testDrawerOpen" on:click="closeTestDrawer"></div>
-    <aside class="backup-drawer test-drawer" class:show="testDrawerOpen">
-      <div class="panel-head">
-        <span>测试管理</span>
-        <st-icon-button title="关闭" on:click="closeTestDrawer">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
-      </div>
-      <div class="backup-sub">
-        {{currentAppDisplay || currentAppName}} · 用例存于应用目录的 client/test/ 下
-      </div>
-      <div class="backup-actions">
+      </div></div>
+          </o-if>
+          <o-if :value="hubTab === 'tests'">
+            <div class="hub-pane-head">测试管理</div>
+            <div class="hub-pane-body"><div class="backup-actions">
         <st-button
           variant="filled"
           attr:disabled="testBusy || tests.length === 0"
@@ -1672,29 +1708,11 @@
             </st-button>
           </div>
         </o-fill>
-      </div>
-    </aside>
-
-    <!-- 工具 / 技能面板（右） -->
-    <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
-    <aside class="panel" class:show="panelOpen">
-      <div class="panel-head">
-        <span>资源</span>
-        <st-icon-button title="关闭" on:click="closePanel">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
-      </div>
-      <st-tab-bar class="panel-tabs">
+      </div></div>
+          </o-if>
+          <o-if :value="hubTab === 'tools'">
+            <div class="hub-pane-head">工具 / 技能</div>
+            <div class="hub-pane-body"><st-tab-bar class="panel-tabs">
         <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
           <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>工具</span>
         </st-tab-item>
@@ -1770,11 +1788,51 @@
             </o-fill>
           </div>
         </o-if>
+      </div></div>
+          </o-if>
+        </div>
+        <!-- 底部导航：横向 st-nav-bar + parallel 项（图标左 / 文字右，
+             active 药丸整行包裹，M3 emphasized 跟随），active 由 hubTab 驱动 -->
+        <st-nav-bar class="hub-nav">
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'preview'"
+            on:click="setHubTab('preview')"
+          >
+            <span slot="icon"><n-icon icon="mdi:play-circle"></n-icon></span>预览
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'publish'"
+            on:click="setHubTab('publish')"
+          >
+            <span slot="icon"><n-icon icon="mdi:rocket-launch"></n-icon></span>发布
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'backup'"
+            on:click="setHubTab('backup')"
+          >
+            <span slot="icon"><n-icon icon="mdi:backup-restore"></n-icon></span>备份
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'tests'"
+            on:click="setHubTab('tests')"
+          >
+            <span slot="icon"><n-icon icon="mdi:flask-outline"></n-icon></span>测试
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'tools'"
+            on:click="setHubTab('tools')"
+          >
+            <span slot="icon"><n-icon icon="mdi:view-grid"></n-icon></span>资源
+          </st-nav-item>
+        </st-nav-bar>
       </div>
-    </aside>
+    </st-dialog>
 
-    <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
-         避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
     <st-dialog class="backup-edit" sync:open="backupEditOpen" auto-close>
       <div class="backup-edit-panel">
         <div class="backup-edit-title">编辑备份</div>
@@ -2023,7 +2081,7 @@
         ["input", "textarea", "select", "checkbox", "radio"]
           .map(
             (n) =>
-              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
+              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@main/packages/' + n + "/" + n + '.html"></l-m>',
           )
           .join("");
 
@@ -2204,11 +2262,11 @@
           atBottom: true,
           sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
           chatWidth: 768, // 对话内容列宽度（左右手柄拖拽可调，480–1280，--chat-w 驱动）
-          panelOpen: false,
+          hubOpen: false, // 顶栏功能 Hub 大对话框（预览 / 发布 / 备份 / 测试 / 资源）
+          hubTab: "preview", // Hub 当前内容页
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
-          backupDrawerOpen: false, // 右侧备份管理抽屉
-          testDrawerOpen: false, // 右侧测试管理抽屉
+
           tests: [], // 场景用例清单（client/test/*.test.json）
           testResults: {}, // 每用例上次结果（file → {ok, ms, error, steps}）
           testLastRun: null, // 上次全量摘要 {at, ok, pass, fail}
@@ -2220,7 +2278,10 @@
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           publishBusy: false, // 发布到首页应用列表进行中
           publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
-          publishPopOpen: false, // 发布下拉气泡开关
+          appMetaEditOpen: false, // 应用信息编辑对话框（名称 / 图标）
+          appMetaName: "", // 编辑中的显示名称草稿
+          appMetaIcon: "", // 编辑中的图标草稿（emoji）
+          metaIconPresets: ["📦", "⏰", "✅", "🎵", "💰", "📝", "🎮", "🌤️", "📷", "🔔", "📊", "🧩"],
           publishMatch: null, // 发布内容与当前代码一致性（true 一致 / false 有修改 / null 未知）
           publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
@@ -2229,7 +2290,6 @@
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           previewWindows: [], // 预览窗口注册表快照（多窗口下拉气泡）
           previewThumbs: {}, // 窗口缩略图缓存（winId → dataURL，空串 = 占位图）
-          previewPopOpen: false, // 预览下拉气泡开关
           previewShareUrl: "", // 跨设备入口（bridge 引导页 ?u=&app=，手机扫码用）
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
@@ -2522,26 +2582,11 @@
             }
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
-            // 预览下拉气泡：点击发生在气泡/按钮内不关（composedPath 穿 shadow 判定）
-            if (
-              !e
-                .composedPath()
-                .some(
-                  (el) =>
-                    el.classList?.contains?.("preview-wrap") ||
-                    el.classList?.contains?.("publish-wrap"),
-                )
-            ) {
-              this.previewPopOpen = false;
-              this.publishPopOpen = false;
-            }
           };
           this._docKey = (e) => {
             if (e.key !== "Escape") return;
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
-            if (this.previewPopOpen) this.previewPopOpen = false;
-            if (this.publishPopOpen) this.publishPopOpen = false;
           };
           document.addEventListener("mousedown", this._docClose);
           document.addEventListener("keydown", this._docKey);
@@ -3307,7 +3352,7 @@
             if (!msg?.snapshotId) return;
             this.rollbackOptionsOpen = 0;
             const { default: alertDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
             );
             try {
               // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
@@ -3370,7 +3415,7 @@
             const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
@@ -3640,13 +3685,13 @@
               const r = await store.compress();
               if (!r.ok && r.reason) {
                 const { default: alertDlg } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                  "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
                 );
                 await alertDlg({ title: "压缩上下文", message: r.reason });
               }
             } catch (err) {
               const { default: alertDlg } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
               );
               await alertDlg({ title: "压缩失败", message: err.message });
             } finally {
@@ -3762,7 +3807,7 @@
           async editSessionTitle() {
             if (this.currentSessionId === "") return;
             const { default: promptDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/prompt.js",
             );
             const val = await promptDlg({
               title: "重命名会话",
@@ -3773,6 +3818,42 @@
             const title = String(val).trim();
             if (!title) return;
             await store.renameSession(title);
+          },
+
+          // ---- 应用信息（名称 / 图标）编辑 ----
+
+          openAppMetaEdit() {
+            this.appMetaName = this.currentAppDisplay;
+            this.appMetaIcon = this.currentAppIcon;
+            this.appMetaEditOpen = true;
+          },
+
+          closeAppMetaEdit() {
+            this.appMetaEditOpen = false;
+          },
+
+          pickMetaIcon(c) {
+            this.appMetaIcon = c;
+          },
+
+          async saveAppMeta() {
+            const displayName = this.appMetaName.trim();
+            if (!displayName) return; // 名称必填（写回侧还有回落目录名兜底）
+            const res = await store.updateAppMeta({ displayName, icon: this.appMetaIcon });
+            if (!res?.ok) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
+              );
+              toast({
+                message:
+                  res?.reason === "sending"
+                    ? "生成中暂不能修改应用信息，请等回合结束"
+                    : res?.reason || "修改失败，请稍后再试",
+                color: "warning",
+              });
+              return; // 失败保持对话框打开，不丢输入
+            }
+            this.appMetaEditOpen = false;
           },
 
           selectMode(mode) {
@@ -3809,18 +3890,13 @@
           // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图 = wire 线框数据
           // 本地重绘，免屏幕授权，打开期间每 5s 刷新一次——单张 ~8KB，仅面板
           // 打开期间产生流量）
-          togglePreviewPop() {
-            const next = !this.previewPopOpen;
-            this.previewPopOpen = next;
-            clearInterval(this._thumbTimer);
-            if (next) {
-              store.refreshPreviewWindows();
-              store.refreshPreviewInfo();
-              store.refreshPreviewThumbs();
-              this._thumbTimer = setInterval(() => {
-                if (!document.hidden) store.refreshPreviewThumbs();
-              }, 5000);
-            }
+          // ---- 顶栏功能 Hub（大对话框：nav rail 切换 预览/发布/备份/测试/资源）----
+
+          // 打开即定位到对应页并做该页的刷新副作用（预览=窗口清单/缩略图心跳，
+          // 发布=一致性计算，备份=清单刷新，测试=用例索引刷新）
+          openHub(tab) {
+            this.hubOpen = true;
+            this.setHubTab(tab);
           },
 
           // 更新全部窗口（主推送 + 其余在线窗口同步；气泡保持打开看进度）
@@ -3843,7 +3919,7 @@
             navigator.clipboard.writeText(text).then(
               async () => {
                 const { default: toast } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                  "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
                 );
                 toast({ message: "已复制", color: "success" });
               },
@@ -4001,27 +4077,6 @@
             this.projDrawerOpen = false;
           },
 
-          // ---- 备份管理抽屉（业务在仓库：打包 / 列表 / 删除走 backup/ 目录） ----
-
-          async openBackupDrawer() {
-            this.backupDrawerOpen = true;
-            this.confirmingDelBackup = "";
-            await store.refreshBackups();
-          },
-
-          closeBackupDrawer() {
-            this.backupDrawerOpen = false;
-          },
-
-          // ---- 测试管理抽屉 ----
-          openTestDrawer() {
-            store.refreshTests?.();
-            this.testDrawerOpen = true;
-          },
-
-          closeTestDrawer() {
-            this.testDrawerOpen = false;
-          },
 
           async handleRunAllTests() {
             if (this.testBusy) return;
@@ -4043,7 +4098,7 @@
           async handleFixFailedTests() {
             if (this.sending || this.testBusy) return;
             const res = await store.fixFailedTests?.();
-            if (res?.ok) this.closeTestDrawer();
+            if (res?.ok) this.closeHub();
           },
 
           // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）；
@@ -4106,7 +4161,7 @@
             const res = await store.createBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
@@ -4117,18 +4172,12 @@
             const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
           },
 
-          // 发布下拉气泡：打开时计算发布内容与当前代码的一致性（publishMatch）
-          async togglePublishPop() {
-            const next = !this.publishPopOpen;
-            this.publishPopOpen = next;
-            if (next) await store.refreshPublishState();
-          },
 
           // 发布当前应用到首页应用列表（成功 / 幂等重发都弹 toast 反馈；
           // 失败经仓库写入 keyError 横幅）
@@ -4144,7 +4193,7 @@
             if (this.publishBusy) return;
             if (bump === "major") {
               const { default: confirm } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+                "/gh/ofajs/senti-ui@main/packages/dialog/confirm.js",
               );
               const ok = await confirm({
                 title: "更新大版本？",
@@ -4158,7 +4207,7 @@
             if (!res) return;
             await store.refreshPublishState();
             const { default: toast } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
             );
             toast({
               message: res.bumped
@@ -4371,10 +4420,10 @@
           // 还原备份：先确认覆盖风险；当前内容与备份一致时提示无变动
           async restoreBackupClick(backup) {
             const { default: confirmDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/confirm.js",
             );
             const { default: toast } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
             );
             if (this.backups.length === 0) {
               const ok = await confirmDlg({
@@ -4528,12 +4577,33 @@
             el.addEventListener("pointercancel", onUp);
           },
 
-          openPanel() {
-            this.panelOpen = true;
+          setHubTab(tab) {
+            this.hubTab = tab;
+            clearInterval(this._thumbTimer);
+            if (tab === "preview") {
+              store.refreshPreviewWindows();
+              store.refreshPreviewInfo();
+              store.refreshPreviewThumbs();
+              // 缩略图 = wire 线框数据本地重绘，免屏幕授权；仅在 Hub 停留在
+              // 预览页期间每 5s 刷新（单张 ~8KB）
+              this._thumbTimer = setInterval(() => {
+                if (!document.hidden && this.hubOpen && this.hubTab === "preview") {
+                  store.refreshPreviewThumbs();
+                }
+              }, 5000);
+            } else if (tab === "publish") {
+              store.refreshPublishState();
+            } else if (tab === "backup") {
+              this.confirmingDelBackup = "";
+              store.refreshBackups();
+            } else if (tab === "tests") {
+              store.refreshTests?.();
+            }
           },
 
-          closePanel() {
-            this.panelOpen = false;
+          closeHub() {
+            this.hubOpen = false;
+            clearInterval(this._thumbTimer);
           },
 
           setPanelTab(tab) {
@@ -4544,7 +4614,7 @@
 
           async addSkillByUrl() {
             const { default: promptDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/prompt.js",
             );
             const val = await promptDlg({
               title: "添加技能",
@@ -4566,7 +4636,7 @@
               await store.installSkillFromSource(url);
             } catch (err) {
               const { default: alertDlg } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
               );
               await alertDlg({ title: "技能安装失败", message: err.message });
             }
@@ -4660,7 +4730,7 @@
               // 会话里触发，给出可读提示而不是静默吞掉
               if (!this.turnInView) {
                 const { default: toast } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                  "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
                 );
                 toast({
                   message: "另一个会话正在生成中，可回到该会话查看或停止",

@@ -28,6 +28,7 @@ import {
   mergeErrorTasks,
   detectInterruptedTurn,
   buildTestFixMessage,
+  updateAppMeta as writeAppMetaToDisk,
   errorTaskDigest,
   listAppFiles,
   readAppFile,
@@ -2880,6 +2881,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  // 手动修改应用信息（名称 / 图标，顶栏铅笔入口）：写回 client/app.json 后走
+  // syncAppMetaFromDisk 统一回填登记表与顶栏展示。对话生成中不允许改——模型
+  // 同回合可能也在写 app.json，两边互踩；改完 invalidateAgent 让下回合提示词
+  // 用新名称
+  async function updateAppMeta(patch) {
+    if (state.sending) return { ok: false, reason: "sending" };
+    if (state.currentAppName === "" || !fs) return { ok: false, reason: "draft" };
+    const isLocal = state.currentAppMode === "local" && !!localRootHandle;
+    let res;
+    try {
+      res = await writeAppMetaToDisk(
+        fs,
+        state.currentAppName,
+        isLocal ? localRootHandle : undefined,
+        patch,
+      );
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+    await syncAppMetaFromDisk(state.currentAppName);
+    invalidateAgent();
+    return { ok: true, ...res };
+  }
+
   // 发送前确保落点就绪：草稿需本地句柄；已选应用需会话（无则自动新建）
   async function prepareContext(text) {
     if (state.currentAppName === "") {
@@ -4062,6 +4087,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     refreshTests,
     runTests,
     fixFailedTests,
+    updateAppMeta,
     refreshBackups,
     createBackup,
     smartBackup,
