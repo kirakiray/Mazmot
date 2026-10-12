@@ -796,8 +796,21 @@ function cmpVersion(a, b) {
  * @returns {string}
  */
 export function bumpPatchVersion(version) {
+  return bumpVersion(version, "patch");
+}
+
+/**
+ * 按版本段递增（纯函数）：kind = patch（缺省，末段 +1）/ minor（中段 +1、
+ * 末段归零，功能级更新）/ major（首段 +1、中末段归零，重大改版）。
+ * 非法输入回落到对应段的保守起点。
+ */
+export function bumpVersion(version, kind = "patch") {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version || "").trim());
-  if (!m) return "0.1.1";
+  if (!m) {
+    return kind === "major" ? "1.0.0" : kind === "minor" ? "0.2.0" : "0.1.1";
+  }
+  if (kind === "major") return `${Number(m[1]) + 1}.0.0`;
+  if (kind === "minor") return `${m[1]}.${Number(m[2]) + 1}.0`;
   return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
 }
 
@@ -823,8 +836,10 @@ async function findFreePublishName(fs, apps, base, exceptRecord) {
  * 版本规则：
  * - 首次发布：app.json 版本原样发布（如 0.1.0）；
  * - 内容与上次发布一致且发布副本完好：幂等重发，不 bump、不拷贝；
- * - 内容有变化：app.json 的 version patch +1 写回后，全量重拷（清空旧 client/
- *   再写，避免上一版的残留文件）。
+ * - 内容有变化：app.json 的 version 按 options.bump 递增（"patch" 缺省末段
+ *   +1 / "minor" 中段 +1 末段归零 / "major" 首段 +1 中末段归零——发布弹窗
+ *   的菜单可选，大版本对应重大改版）写回后，全量重拷（清空旧 client/ 再写，
+ *   避免上一版的残留文件）。
  * 妙造源登记记录（ai-builder 标记）记发布元数据：published / publishedVersion /
  * publishedAt / publishedHash（发布内容指纹，8 位 hex——含刚写回的 app.json
  * 版本号，发布后立刻打的备份与发布内容一致）/ publishedVersions:
@@ -904,7 +919,12 @@ export async function publishAppToHome(fs, mazmotStore, appName, rootHandle, opt
     version = published.publishedVersion;
   } else {
     version = published
-      ? bumpPatchVersion(meta.version)
+      ? bumpVersion(
+          meta.version,
+          options.bump === "major" || options.bump === "minor"
+            ? options.bump
+            : "patch",
+        )
       : String(meta.version || "0.1.0");
     meta.version = version;
     await writeAppFile(
@@ -998,7 +1018,7 @@ export async function publishAppToHome(fs, mazmotStore, appName, rootHandle, opt
 export const TESTING_RULE_MARK = "重要功能必须带场景测试";
 
 const TESTING_RULE_LINE =
-  '- **重要功能必须带场景测试**：新增或修改交互流程 / 数据存取 / 核心逻辑时，在 `client/test/` 下同步写或更新 .test.json 场景用例（步骤格式见宿主系统提示词「场景测试」节），并用 preview 工具 action=run-tests 跑到全绿才算完成；纯样式微调可豁免。后续需求迭代时这些用例会反复重跑，是防止改错文件的主要防线。';
+  '- **重要功能必须带场景测试**：新增或修改交互流程 / 数据存取 / 核心逻辑时，在 `client/test/` 下同步写或更新 .test.json 场景用例（步骤格式见宿主系统提示词「场景测试」节），并用 preview 工具 action=run-tests 把新增 / 修改的用例跑到通过才算完成（files 只传涉及的文件，不全量跑）；纯样式微调可豁免。后续需求迭代时这些用例会反复重跑，是防止改错文件的主要防线。';
 
 export function withTestingRule(raw) {
   if (!raw || raw.includes(TESTING_RULE_MARK) || !raw.includes("## 硬性约定")) {
@@ -1502,19 +1522,54 @@ export function errorTaskDigest(line) {
 }
 
 /**
+ * 测试抽屉「修复失败用例」→ 自动发进对话的消息文案（纯函数）。
+ * @param {Array<Object>} results 跑测结果（test-runner 产物，含 ✓/✗）
+ * @returns {string} 修复请求全文；空串 = 没有失败用例
+ */
+export function buildTestFixMessage(results) {
+  const fails = (Array.isArray(results) ? results : []).filter((r) => r && !r.ok);
+  if (!fails.length) return "";
+  const lines = fails.map((r, i) => {
+    const bad = (r.steps || []).filter((st) => !st.ok);
+    const detail = bad.length
+      ? bad
+          .map(
+            (st) =>
+              `步骤「${st.desc}」失败${st.error ? `：${String(st.error).slice(0, 200)}` : ""}`,
+          )
+          .join("；")
+      : r.error
+        ? String(r.error).slice(0, 200)
+        : "未知失败";
+    return `${i + 1}. 「${r.name}」（${r.file}）—— ${detail}`;
+  });
+  return [
+    `上一轮手动全量测试有 ${fails.length} 个场景用例没通过，请修复应用代码（用例本身写错也可一并修正）：`,
+    ...lines,
+    "修完后用 preview 的 action=run-tests 只重跑上面失败的用例文件（files 参数），全部通过即可，不要全量跑其他用例。",
+  ].join("\n");
+}
+
+/**
  * 上次回合是否被硬中断（纯函数）：刷新 / 崩溃等没走 driveTurn 收尾 finally 的
- * 异常退出。判据：正常完成与手动停止都会给末条 AI 消息 patch turnMs（随会话
- * 桶持久化），没打上即中断；末条还是 user = 发出后没来得及产生任何回复，同属
- * 中断。正常对话永远以带 turnMs 的 assistant 收尾，不会误报。
+ * 异常退出。判据：正常完成与手动停止都会给回合内末条 AI 消息 patch turnMs
+ * （随会话桶持久化），从尾向前跳过 tool / error 展示卡后找到的 assistant 没
+ * 打上即中断；先扫到 user = 发出后没来得及产生任何回复，同属中断。正常对话
+ * 永远以带 turnMs 的 assistant 收尾，不会误报。
  * @param {Array<Object>} list 会话消息桶（持久化顺序）
  * @returns {boolean}
  */
 export function detectInterruptedTurn(list) {
   const arr = Array.isArray(list) ? list : [];
-  const last = arr[arr.length - 1];
-  if (!last) return false;
-  if (last.role === "user") return true;
-  return last.role === "assistant" && !last.turnMs;
+  // 从尾向前找最后一条 user / assistant：tool / error 是展示层卡片，可能
+  // 缀在被中断回合的末尾（刷新时 preview 工具卡还挂在最后），不参与判据。
+  // 先扫到 user = 该请求之后没有任何回复，也算中断
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i];
+    if (m?.role === "user") return true;
+    if (m?.role === "assistant") return !m.turnMs;
+  }
+  return false;
 }
 
 /** 错误行 → 任务展示文本（剥 [error] 前缀、截 80 字） */
@@ -1689,7 +1744,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
    - **pitfalls/** —— 开发过程踩的每个坑一坑一文件（\`NNN-英文短横线-slug.md\`，格式见 \`pitfalls/README.md\`），并同步登记进 CONTEXT.md 踩坑索引；本次没踩坑就不建文件；
    - **AGENTS.md** —— 已预写通用规范，**不要重写**；本项目沉淀出特有的硬性规则时追加在其「硬性约定」节末尾，通用条款不动；
    - 骨架里的 \`<!-- skeleton\` 首行注释标记与「待填」「暂无记录」占位必须全部被真实内容替换，不能留着占位交差。
-6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）；④ 场景测试全绿（见下方「场景测试」节：新增或修改了重要功能就必须有对应用例并跑到通过）；⑤ 任务清单全部 done（见下方「任务清单」节）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
+6. 完成标准（全部满足才算完成，不要提前宣布完成）：① preview 实际运行且控制台无错误；② 核心交互在预览窗口实测过（action=click / type 真实操作过），不是只看渲染；③ 文档体系已填充为与实际代码一致的真实内容（CONTEXT.md / MEMORY.md / 踩坑索引，不留骨架占位；修改已有应用时已同步更新，AGENTS.md 有新硬规则已追加）；④ 场景用例通过（本次新增 / 修改的功能对应用例跑到通过即可，**不全量跑所有用例**——见下方「场景测试」节）；⑤ 任务清单全部 done（见下方「任务清单」节）。全部满足后，用一段简短的话告诉用户：做了什么、功能与用法、验证过的结论。
 
 ## 任务清单（task_list 工具，对话右侧面板实时展示）
 非平凡需求（新功能 / 多文件改动 / 排查修复链路）**动手写代码前**，先用 task_list 把工作拆解成任务清单：每条是一个可独立验证的具体单元（3~8 条为宜，按执行顺序排列），用户在右侧面板实时看到进度。规则：
@@ -1701,7 +1756,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
 单点小改（一行修复 / 文案调整 / 纯问答）不必拆解。清单按会话保存：暂停或刷新后继续时，先核对清单现状再接着做。
 
 ## 场景测试（client/test/*.test.json，防迭代回归）
-重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，完成前用 preview 的 action=run-tests 跑到全绿（无测试的应用第一次加重要功能时就建立 test/ 目录）。用例是 JSON 文件：
+重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，收尾前用 preview 的 action=run-tests 跑**本次新增 / 修改的用例文件**（files 参数）到通过（无测试的应用第一次加重要功能时就建立 test/ 目录）。**不要全量跑所有用例**——应用大时全套太久；全量验证由用户在「测试管理」抽屉手动触发，用户发来失败用例清单时，修完只重跑失败的那些文件。用例是 JSON 文件：
 \`\`\`json
 { "name": "新增任务", "desc": "多行输入解析标题/描述、空输入禁用、刷新持久化", "steps": [
   { "eval": "T.wipe = async () => { /* 清空自身存储 */ }; await T.wipe();" },

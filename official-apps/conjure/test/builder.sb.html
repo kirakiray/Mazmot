@@ -249,6 +249,65 @@
       </template>
     </sb-test>
 
+    <sb-test name="版本段递增纯函数（bumpVersion）">
+      <template>
+        <script type="module">
+          import { bumpVersion, bumpPatchVersion } from "../lib/builder.js";
+          {
+            const checks = {
+              patch: bumpVersion("0.1.28") === "0.1.29",
+              minor: bumpVersion("0.1.28", "minor") === "0.2.0",
+              major: bumpVersion("0.1.28", "major") === "1.0.0",
+              carryMinor: bumpVersion("1.2.3", "minor") === "1.3.0",
+              carryMajor: bumpVersion("1.2.3", "major") === "2.0.0",
+              badPatch: bumpVersion("") === "0.1.1",
+              badMinor: bumpVersion("", "minor") === "0.2.0",
+              badMajor: bumpVersion("x.y.z", "major") === "1.0.0",
+              deleg: bumpPatchVersion("0.1.28") === "0.1.29",
+            };
+            return { assert: Object.values(checks).every(Boolean), content: checks };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="测试修复文案纯函数（buildTestFixMessage）">
+      <template>
+        <script type="module">
+          import { buildTestFixMessage } from "../lib/builder.js";
+          {
+            const msg = buildTestFixMessage([
+              {
+                name: "会话状态",
+                file: "test/session.test.json",
+                ok: false,
+                steps: [
+                  { desc: "刷新后状态保持", ok: true },
+                  { desc: "点击归档", ok: false, error: "count 期望 1 实际 0" },
+                ],
+              },
+              { name: "图片附件", file: "test/img.test.json", ok: false, error: "ACK timeout" },
+              { name: "新增任务", file: "test/add.test.json", ok: true },
+            ]);
+            const checks = {
+              hasCount: msg.includes("2 个场景用例没通过"),
+              hasFile: msg.includes("test/session.test.json"),
+              hasStep: msg.includes("步骤「点击归档」失败"),
+              hasErr: msg.includes("ACK timeout"),
+              skipsPass: !msg.includes("新增任务"),
+              rerunScope: msg.includes("只重跑上面失败的用例文件"),
+              noFullRun: msg.includes("不要全量跑"),
+              // 通过的用例只留 2 条失败行（编号连续）
+              lines: msg.split("\n").filter((l) => /^\d\./.test(l)).length === 2,
+              none: buildTestFixMessage([{ name: "a", ok: true }]) === "",
+              bad: buildTestFixMessage(null) === "",
+            };
+            return { assert: Object.values(checks).every(Boolean), content: checks };
+          }
+        </script>
+      </template>
+    </sb-test>
+
     <sb-test name="中断回合检测纯函数（detectInterruptedTurn）">
       <template>
         <script type="module">
@@ -266,6 +325,23 @@
               // 发出后还没来得及产生任何回复：末条还是 user
               noReply: detectInterruptedTurn([{ role: "user", content: "hi" }]) === true,
               noReplyWithImgs: detectInterruptedTurn([{ role: "user", content: "", images: ["data:image/png;base64,x"] }]) === true,
+              // 中断回合末尾可能还挂着 tool / error 展示卡（刷新时 preview
+              // 工具卡就在最后）：跳过它们再判，不能因为它们落在末尾就漏报
+              toolTail: detectInterruptedTurn([
+                { role: "user", content: "hi" },
+                { role: "assistant", content: "" },
+                { role: "tool", name: "preview", pending: false },
+              ]) === true,
+              errTail: detectInterruptedTurn([
+                { role: "assistant", content: "" },
+                { role: "tool", name: "write_file" },
+                { role: "error", text: "推送失败" },
+              ]) === true,
+              closedWithToolTail: detectInterruptedTurn([
+                { role: "user", content: "hi" },
+                { role: "assistant", content: "ok", turnMs: 500 },
+                { role: "tool", name: "preview" },
+              ]) === false,
             };
             return {
               assert: Object.values(checks).every(Boolean),

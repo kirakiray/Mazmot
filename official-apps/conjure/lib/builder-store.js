@@ -27,6 +27,7 @@ import {
   normalizeTaskList,
   mergeErrorTasks,
   detectInterruptedTurn,
+  buildTestFixMessage,
   errorTaskDigest,
   listAppFiles,
   readAppFile,
@@ -2126,6 +2127,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  // 测试抽屉「修复失败用例」：把上一轮跑测的失败内容（用例名 / 文件 / 失败
+  // 步骤与期望实际）整理成对话自动发给 AI，由这个专门的修复回合接手；提示词
+  // 已约定修完只重跑失败的用例文件（不全量跑），跑测循环由 AI 在回合内完成
+  async function fixFailedTests() {
+    if (state.sending) return { ok: false, reason: "sending" };
+    if (state.currentAppName === "") return { ok: false, reason: "draft" };
+    const text = buildTestFixMessage(Object.values(state.testResults));
+    if (!text) return { ok: false, reason: "no-fail" };
+    return send(text);
+  }
+
   // 回合收尾自动跑已移除（用户拍板：自动跑体验太密）——场景测试只经
   // preview 工具 action=run-tests（AI 主动）或测试管理抽屉（用户点跑）触发
 
@@ -2333,7 +2345,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 发布当前应用到首页应用列表（复制 client/ 到 mazmot-apps/<发布名>/）；
   // 发布成功同时在备份管理打一条带正式版本号标注的备份（已有同内容备份
   // 且用户未命名时也补标注，不覆盖用户自定义名称）
-  async function publishCurrent() {
+  async function publishCurrent(bump) {
     if (state.publishBusy || state.currentAppName === "" || !fs) return null;
     set("publishBusy", true);
     try {
@@ -2351,7 +2363,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         mazmotStore,
         state.currentAppName,
         rootHandle,
-        { userId },
+        { userId, bump },
       );
       try {
         const backup = await createAppBackup(
@@ -4049,6 +4061,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     dismissError,
     refreshTests,
     runTests,
+    fixFailedTests,
     refreshBackups,
     createBackup,
     smartBackup,

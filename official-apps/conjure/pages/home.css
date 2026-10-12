@@ -311,6 +311,46 @@ st-icon-button.published {
   display: inline-flex;
 }
 
+/* 发布按钮组：主按钮（默认小版本）+ 右侧版本类型菜单按钮，贴合为一体；
+   st-button 视觉在 :host 上，外层 CSS 可直接覆盖圆角做左半贴合 */
+.pub-actions {
+  display: flex;
+  align-items: stretch;
+}
+
+.pub-actions .pub-main-btn {
+  flex: 1 1 auto;
+  border-radius: 999px 0 0 999px;
+}
+
+.pub-ver-menu {
+  flex: none;
+}
+
+.pub-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-radius: 0 999px 999px 0;
+}
+
+.pub-menu-btn:hover {
+  filter: brightness(1.08);
+}
+
+.pub-menu-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .publish-pop {
   position: absolute;
   top: calc(100% + 8px);
@@ -4035,12 +4075,23 @@ st-icon-button.published {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
   overflow: hidden;
   z-index: 6; /* 盖过聊天流（chat-resize 手柄是 5） */
+  /* 展开：宽度形变 + 阴影加深走 M3 减速曲线 */
+  transition:
+    width 0.34s cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 0.34s ease;
+}
+
+.tasks-panel:not(.collapsed) {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
 }
 
 .tasks-panel.collapsed {
-  width: auto;
-  min-width: 168px;
+  width: 172px;
   max-height: none;
+  /* 收起用 ease：加速曲线把宽度变化全堆在最后一下，观感突兀（用户拍板） */
+  transition:
+    width 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .tasks-head {
@@ -4078,22 +4129,52 @@ st-icon-button.published {
 .tasks-chev {
   flex: none;
   color: var(--md-sys-color-on-surface-variant);
-  transition: transform 160ms ease;
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .tasks-panel.collapsed .tasks-chev {
   transform: rotate(180deg);
 }
 
+/* 折叠包裹层：grid-template-rows 0fr↔1fr 让高度平滑过渡（内容常驻挂载，
+   收起不卸载才有退出动画）；min-height:0 + overflow:hidden 让面板限高时
+   内层 tasks-body 自己滚动 */
+.tasks-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  /* 收起：ease，与面板宽度收窄同节奏 */
+  transition:
+    grid-template-rows 0.3s ease,
+    opacity 0.25s ease;
+}
+
+.tasks-panel:not(.collapsed) .tasks-body-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  /* 展开：减速曲线，落定从容 */
+  transition:
+    grid-template-rows 0.34s cubic-bezier(0.2, 0, 0, 1),
+    opacity 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
 .tasks-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 10px 14px;
+  scrollbar-width: thin;
+}
+
+/* 列表本体：padding / 纵向排布都在这一层——上一条 .tasks-body 是 0fr 折叠
+   的 grid item，自身 padding 会漏进轨道高度（收起后卡片底下残留一条空隙，
+   实测翻过车），所以视觉内边距必须放内层 */
+.tasks-list {
+  padding: 2px 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  scrollbar-width: thin;
 }
 
 .task-item {
@@ -4105,6 +4186,56 @@ st-icon-button.published {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--md-sys-color-on-surface);
+}
+
+/* 展开时任务逐条错峰入场（45ms 步进，M3 减速曲线）；选择器随 collapsed
+   类启停，每次展开都重放；新任务在展开态挂载时同样走这条入场 */
+@keyframes task-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+.tasks-panel:not(.collapsed) .task-item {
+  animation: task-in 0.3s cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(4) {
+  animation-delay: 135ms;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(5) {
+  animation-delay: 180ms;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(6) {
+  animation-delay: 225ms;
+}
+
+.tasks-panel:not(.collapsed) .task-item:nth-child(n + 7) {
+  animation-delay: 260ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tasks-panel,
+  .tasks-panel.collapsed,
+  .tasks-body-wrap,
+  .tasks-panel:not(.collapsed) .tasks-body-wrap {
+    transition: none;
+  }
+
+  .tasks-panel:not(.collapsed) .task-item {
+    animation: none;
+  }
 }
 
 .task-item .task-ico {

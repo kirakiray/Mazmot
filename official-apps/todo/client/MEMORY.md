@@ -4,6 +4,16 @@
 
 ## 记录
 
+### 2026-10-10 · 待办支持图片（选图 / 粘贴）+ AI 识别图里文字提取任务（用户需求）
+
+- **用户需求**：「现在添加任务那里，现在是不支持图片的。你要让那里开始支持图片。并且，允许直接粘贴图片。AI 识别那里，要支持粘贴图片，并且支持识别图片上的文字进行提取任务。（如果识别图片不是文字类，就作为图片资源带入）」
+- **改了什么**（`pages/home.html` 单文件 + 新用例）：① 数据模型加 `images: Array<{id,dataUrl}>`（`loadTodos` 逐张校验只收 `data:image/` 开头、截断到 `MAX_IMAGES`、缺 `id` 补随机 id；`addTodo` 把草稿 `slice()` 拷贝进新条目）；② 新增常量 `MAX_IMAGES = 4` / `IMAGE_MAX_SIDE = 1280` / `IMAGE_QUALITY = 0.82` 与提示词 `AI_IMAGE_SYSTEM_PROMPT`；③ 添加弹窗中部新增图片区 `.img-box`（`label.img-drop` + 隐藏 file input + `.img-grid` 缩略图 `o-fill` + `.img-note` 提示），`ready()` 里挂 **`document` 级 `paste` 监听**（`handlePaste` 只在 `addOpen` 时接图，剪贴板里同时有文字时不 `preventDefault`）；新增 proto `onPickImages` / `handlePaste` / `attachImages` / `compressImage` / `removeDraftImage` / `removeDetailImage`；④ AI 按钮按有无图片自动变身：文案「AI 生成」↔**「AI 识别图片」**（新 getter `aiButtonIcon`，`aiDisabled` / `aiButtonLabel` 改写），`generateWithAi()` 有图时改传 `AI_IMAGE_SYSTEM_PROMPT` 并把 user 消息 `content` 换成 `[{type:text}, {type:image_url,image_url:{url:dataUrl}}…]` 多模态数组，`parseAiReply` 多解一个 `kind`（`"image"` 表示图里没文字）；⑤ 列表 / 归档 / 垃圾桶三个视图的 `.body` 内部都加 `.thumbs`（`o-fill :value="$data.images"` 渲染 40px `.thumb-sm`），详情弹窗只读区顶部加 `.detail-images` 大图（`buildDetail` 多带 `images`）。
+- **设计决策**：① **图片只在入草稿时压缩一次**（canvas 等比缩到最长边 1280px + 牌白底 + 转 JPEG），`addTodo` 只拷贝引用，不重复压；② **上限 4 张 / 条**（弹窗内就显示「最多 4 张」，超出的忽略并提示张数）——图片是 base64 存在存储里的，不做上限会让存储快速膨胀；③ **粘贴监听挂 `document`**：弹窗里的 textarea 在页面 shadow 内，靠 `composed` 的 paste 冒出到 document 才能稳定收到；用 `this.addOpen` 门控、无图时不拦截，不影响正常文字粘贴；④ **不另建「AI 识图」按钮**：复用原 AI 按钮，有图即变身——用户不用学新入口，且“图里有没有文字”交给模型判断（提示词里写好两种分支），应用侧不做 OCR 启发式；⑤ 图里无文字时**仍把图片挂在任务上**（用户明确要求「作为图片资源带入」），标题用模型给的一句短语；⑥ 缩略图右上角移除按钮用**原生 `<button>`** 而不是 `st-icon-button`（组件 40px 尺寸体系在 64px 缩略图上喧宾夺主）；⑦ 详情里移除图片**立即落盘**（与编辑保存同性质，不再二次确认）。
+- **验证结论**（preview 实测，在隔离空间 `conjure-todo-app-test` 里跑，事后已清空并切回正式空间）：粘贴一张 PNG → 缩略图 64×64、移除按钮 20×20、`src` 为 `data:image/jpeg;base64,…`、提示「已添加 1 张图片（最多 4 张）」、AI 按钮变「AI 识别图片」且不再因无文字而禁用；file input 再加 2 张 → 3 张；点移除 → 2 张且提示同步；粘贴 6 张 → **只收 4 张** + 「有 2 张未能加入」；点「添加」→ 任务行显示 2 张 40px 缩略图、弹窗关闭、统计「1 项未完成 · 共 1 项」；**硬刷新后 2 张图仍在**（存储 `images.length === 2`、`dataUrl` 为 `data:image/`）；点正文 → 详情 2 张大图（`max-height` 220px）→ 移除一张 → 详情剩 1 张、列表缩略图同步 1 张、存储也剩 1 张。**AI 识图两种分支都实测过**：粘一张写着「1. 买牛奶 / 2. 给妈妈打电话 / 3. 交水电费」的 PNG → 回填标题「买牛奶、给妈妈打电话、交水电费」、描述逐条列出、提示「已从图片文字里提取任务…」；换成纯色渐变 + 红圆的抽象图 → 提示「图片里没有可提取的文字，已作为图片附件带入」、标题「蓝黄渐变背景上的红圆」。控制台 `errors: 0`。
+- **测试**：新增 `client/test/image-attach.test.json`（name「图片附件」，12 步：粘贴入图与 AI 按钮变身、加图到 3 张再移除、添加后列表 40px 缩略图、reload 后 2 张仍在、详情大图与移除落盘、末步 restore）—— `action=run-tests` **该用例稳定通过**；全套曾多次出现「某一个用例的 reload 后就绪 eval / ACK timeout」失败，但**每轮失败的用例都不同**（会话状态 / 归档分组 / 垃圾桶清理轮流中招），按 `pitfalls/023` 与本地回放验证为宿主并行调度的抖动：用 `test/_driver.js` 分片回放「会话状态」**0–17 步全通过（含 5 次 reload）**，其中一次甚至连单独的 `location.reload()` 指令都投递超时→确认为调试桥在 reload 窗口的偶发抖动，非应用 / 用例问题。用户说不用再跑全套、自己会测，故未再追跑。
+- **未实测的点（需用户在前台确认）**：本次粘贴是**在页面里构造带 `clipboardData` 的 `paste` 事件**模拟的（真实系统剪贴板截图在预览环境里无法可靠注入）；真实从截图工具 / 网页复制图片再 Ctrl/⌘+V 的效果需用户自行验证（选图路径已用真实 file input 的 `change` 走过）。
+- **本回合未踩新坑**（图片链路基本一次跑通，未新建 pitfalls 文件）；新增的 `document` 级 paste 监听、原生 button 移除按钮、压缩时机等实现要点已写进 CONTEXT.md「页面骨架」。
+
 ### 2026-10-10 · 归档项副标题去掉「归档于」（用户反馈：归档时间可点开详情看到）
 
 - **用户需求**：截图的归档条目副标题「LINLEE · 归档于 10-11 14:02 · 完成于 10-10 17:29 · 创建于 10-10 16:13」↓——「不需要将归档时间显示出来了，因为我发现可以点开详情看到归档的时间」。

@@ -237,14 +237,41 @@
                     </div>
                   </o-if>
                 </div>
-                <st-button
-                  variant="filled"
-                  attr:disabled="publishBusy"
-                  on:click="handlePublish"
-                >
-                  <o-if :value="!publishedInfo">🚀 发布</o-if>
-                  <o-if :value="publishedInfo">🚀 更新发布</o-if>
-                </st-button>
+                <div class="pub-actions">
+                  <st-button
+                    class="pub-main-btn"
+                    variant="filled"
+                    attr:disabled="publishBusy"
+                    on:click="handlePublish()"
+                  >
+                    <o-if :value="!publishedInfo">🚀 发布</o-if>
+                    <o-if :value="publishedInfo">🚀 更新发布</o-if>
+                  </st-button>
+                  <o-if :value="publishedInfo">
+                    <!-- 版本类型菜单：默认更新发布 = 小版本（末段 +1）；菜单可选
+                         中版本 / 大版本。大版本对应重大改版，handlePublish 内二次确认 -->
+                    <st-menu align="right" class="pub-ver-menu">
+                      <button
+                        slot="trigger"
+                        class="pub-menu-btn"
+                        attr:disabled="publishBusy"
+                        attr:title="'选择发布版本类型'"
+                      >
+                        <n-icon icon="mdi:chevron-down"></n-icon>
+                      </button>
+                      <st-menu-item on:click="handlePublish('minor')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新中版本（功能更新）
+                        <span slot="suffix" class="menu-value">{{nextVersion('minor')}}</span>
+                      </st-menu-item>
+                      <st-menu-item on:click="handlePublish('major')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新大版本（重大改版）
+                        <span slot="suffix" class="menu-value">{{nextVersion('major')}}</span>
+                      </st-menu-item>
+                    </st-menu>
+                  </o-if>
+                </div>
                 <div class="pub-note">
                   发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
                 </div>
@@ -1358,8 +1385,14 @@
             <span class="tasks-progress">{{tasksDoneCount}}/{{sessionTasks.length}}</span>
             <n-icon class="tasks-chev" icon="mdi:chevron-right"></n-icon>
           </button>
-          <o-if :value="tasksPanelOpen">
+          <!-- body 常驻挂载（不套 o-if）：展开 / 收起走 CSS 过渡——0fr 折叠 +
+               淡入淡出 + 任务逐条错峰入场；o-if 卸载会让收起瞬间消失、做不出
+               退出动画。tasksPanelOpen 只驱动面板的 collapsed 类 -->
+          <div class="tasks-body-wrap">
             <div class="tasks-body">
+              <!-- padding 必须在这一层（.tasks-body 是 0fr 的 grid item，
+                   它自身的 padding 会漏进轨道尺寸，收起后残留一条高度） -->
+              <div class="tasks-list">
               <o-fill :value="sessionTasks" fill-key="id">
                 <div
                   class="task-item"
@@ -1373,8 +1406,9 @@
                   <span class="task-text">{{$data.text}}</span>
                 </div>
               </o-fill>
+              </div>
             </div>
-          </o-if>
+          </div>
         </aside>
       </o-if>
       </div>
@@ -1589,6 +1623,18 @@
           <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
           <o-if :value="!testRunning">▶ 跑全部</o-if>
         </st-button>
+        <o-if :value="testFailCount > 0">
+          <!-- 有失败用例才出：点击把失败内容自动发进对话，由专门的修复
+               回合接手（修完只重跑失败的用例文件，见 buildTestFixMessage） -->
+          <st-button
+            variant="outlined"
+            attr:disabled="testBusy || sending"
+            on:click="handleFixFailedTests"
+          >
+            <span slot="prefix"><n-icon icon="mdi:wrench-outline"></n-icon></span>
+            修复失败用例（{{testFailCount}}）
+          </st-button>
+        </o-if>
       </div>
       <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
       <div class="panel-body">
@@ -1879,7 +1925,7 @@
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
       const { createMsgWindow } = await load("../lib/msg-window.js");
-      const { contextInfo } = await load("../lib/builder.js");
+      const { contextInfo, bumpVersion } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
       // 句柄等类实例由仓库闭包持有，不进入响应式数据
@@ -3987,6 +4033,19 @@
             await store.runTests?.([file]);
           },
 
+          // 当前结果里的失败用例数（修复按钮的显隐与计数）
+          get testFailCount() {
+            return Object.values(this.testResults || {}).filter((r) => !r.ok).length;
+          },
+
+          // 修复失败用例：失败内容自动发进对话（buildTestFixMessage 组文案），
+          // 让专门的修复回合接手；发出后收起抽屉把视野还给对话
+          async handleFixFailedTests() {
+            if (this.sending || this.testBusy) return;
+            const res = await store.fixFailedTests?.();
+            if (res?.ok) this.closeTestDrawer();
+          },
+
           // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）；
           // 正在跑的用例转 spinner（抽屉逐条实时反馈）
           testTone(t) {
@@ -4073,8 +4132,29 @@
 
           // 发布当前应用到首页应用列表（成功 / 幂等重发都弹 toast 反馈；
           // 失败经仓库写入 keyError 横幅）
-          async handlePublish() {
-            const res = await store.publishCurrent();
+          // 发布 / 更新发布（bump 缺省 patch 小版本；菜单可选 minor / major）。
+          // 大版本只在界面或功能大规模改版时用：先经 confirm 二次确认防误触
+          // 发布菜单的版本预览：按已发布版本递增（实际 bump 基准是源
+          // app.json 的 version，有偏差时以发布结果 toast 为准）
+          nextVersion(kind) {
+            return bumpVersion(this.publishedInfo?.version || "0.1.0", kind);
+          },
+
+          async handlePublish(bump = "patch") {
+            if (this.publishBusy) return;
+            if (bump === "major") {
+              const { default: confirm } = await load(
+                "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+              );
+              const ok = await confirm({
+                title: "更新大版本？",
+                message: `大版本（v${this.nextVersion("major")}）适用于界面或功能大规模改版后的发布，平时的功能迭代请用「更新发布」或「更新中版本」。确认把当前代码发布为大版本吗？`,
+                yes: "发布大版本",
+                cancel: "再想想",
+              });
+              if (ok !== true) return;
+            }
+            const res = await store.publishCurrent(bump);
             if (!res) return;
             await store.refreshPublishState();
             const { default: toast } = await load(
