@@ -35,7 +35,7 @@
                 <st-icon-button
                   class="app-meta-edit-btn"
                   title="修改应用名称与图标"
-                  on:click="openAppMetaEdit"
+                  on:click="openHub('appinfo')"
                 >
                   <n-icon icon="mdi:pencil-outline"></n-icon>
                 </st-icon-button>
@@ -1348,58 +1348,56 @@
 
     <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
          避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
-    <!-- 应用信息编辑：名称 + 图标，保存写回 client/app.json 并同步登记表 /
-         顶栏 / 项目抽屉；生成中不可改（防与模型写 app.json 互踩） -->
-    <st-dialog class="app-meta-edit" sync:open="appMetaEditOpen" auto-close>
-      <div class="backup-edit-panel">
-        <div class="backup-edit-title">应用信息</div>
-        <div class="backup-edit-id">{{currentAppName}}/client/app.json</div>
-        <div class="backup-edit-field">
-          <div class="backup-edit-label">应用名称</div>
-          <st-input
-            sync:value="appMetaName"
-            maxlength="24"
-            placeholder="显示名称（≤24 字，留空回落目录名）"
-          ></st-input>
-        </div>
-        <div class="backup-edit-field">
-          <div class="backup-edit-label">图标（emoji）</div>
-          <st-input
-            class="app-meta-icon-input"
-            sync:value="appMetaIcon"
-            maxlength="8"
-            placeholder="一个 emoji，如 📦"
-          ></st-input>
-          <div class="app-meta-presets">
-            <o-fill :value="metaIconPresets">
-              <button
-                class="app-meta-preset"
-                attr:data-on="$data === $host.appMetaIcon"
-                on:click="pickMetaIcon($data)"
-              >{{$data}}</button>
-            </o-fill>
-          </div>
-        </div>
-        <div class="backup-edit-actions">
-          <st-button variant="text" on:click="closeAppMetaEdit">取消</st-button>
-          <st-button variant="filled" attr:disabled="sending" on:click="saveAppMeta">保存</st-button>
-        </div>
-      </div>
-    </st-dialog>
-
-  <!-- 顶栏功能 Hub：预览 / 发布 / 备份 / 测试 / 资源 五入口收拢的居中大对话框
+  <!-- 顶栏功能 Hub：应用设置 / 预览 / 发布 / 备份 / 测试 / 资源 收拢的居中大对话框
        （90vw × 90vh），底部横向 navigation 切换内容页；hub-layout 绝对定位
        撑满面板（st-dialog 内容槽在 shadow .body 里、高度随内容，height:100%
        解析不到面板高度），保证内容不满高时导航栏也固定在底部 -->
     <st-dialog class="hub-dialog" sync:open="hubOpen" auto-close>
       <div class="hub-layout">
         <div class="hub-pane">
+          <o-if :value="hubTab === 'appinfo'">
+            <div class="hub-pane-head">应用设置</div>
+            <div class="hub-pane-body hub-narrow appinfo-body">
+              <div class="backup-edit-id">{{currentAppName}}/client/app.json</div>
+              <div class="backup-edit-field">
+                <div class="backup-edit-label">应用名称</div>
+                <st-input
+                  sync:value="appMetaName"
+                  maxlength="24"
+                  placeholder="显示名称（≤24 字，留空回落目录名）"
+                ></st-input>
+              </div>
+              <div class="backup-edit-field">
+                <div class="backup-edit-label">图标（emoji）</div>
+                <st-input
+                  class="app-meta-icon-input"
+                  sync:value="appMetaIcon"
+                  maxlength="8"
+                  placeholder="一个 emoji，如 📦"
+                ></st-input>
+                <div class="app-meta-presets">
+                  <o-fill :value="metaIconPresets">
+                    <button
+                      class="app-meta-preset"
+                      attr:data-on="$data === $host.appMetaIcon"
+                      on:click="pickMetaIcon($data)"
+                    >{{$data}}</button>
+                  </o-fill>
+                </div>
+              </div>
+              <div class="backup-edit-actions">
+                <st-button variant="filled" attr:disabled="sending" on:click="saveAppMeta">保存</st-button>
+              </div>
+              <div class="pub-note">修改写回 client/app.json 并同步登记表 / 顶栏 / 项目抽屉；生成中不可修改</div>
+            </div>
+          </o-if>
+
           <o-if :value="hubTab === 'preview'">
             <div class="hub-pane-head">
               预览窗口
               <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
             </div>
-            <div class="hub-pane-body">
+            <div class="hub-pane-body hub-wide">
                 
                 <div class="prev-layout">
             <div class="prev-main">
@@ -1567,7 +1565,7 @@
           </o-if>
           <o-if :value="hubTab === 'backup'">
             <div class="hub-pane-head">备份管理</div>
-            <div class="hub-pane-body"><div class="backup-sub">
+            <div class="hub-pane-body hub-wide"><div class="backup-sub">
         {{currentAppDisplay || currentAppName}} · 备份存于应用目录的 backup/ 下
       </div>
       <div class="backup-actions">
@@ -1656,7 +1654,7 @@
           </o-if>
           <o-if :value="hubTab === 'tests'">
             <div class="hub-pane-head">测试管理</div>
-            <div class="hub-pane-body"><div class="backup-actions">
+            <div class="hub-pane-body hub-wide"><div class="backup-actions">
         <st-button
           variant="filled"
           attr:disabled="testBusy || tests.length === 0"
@@ -1718,7 +1716,10 @@
           </o-if>
           <o-if :value="hubTab === 'tools'">
             <div class="hub-pane-head">工具 / 技能</div>
-            <div class="hub-pane-body"><st-tab-bar class="panel-tabs">
+            <div class="hub-pane-body hub-wide tools-body">
+            <div class="tools-layout">
+            <div class="tools-list">
+            <st-tab-bar class="panel-tabs">
         <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
           <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>工具</span>
         </st-tab-item>
@@ -1734,7 +1735,12 @@
               <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
             </div>
             <o-fill :value="toolDefs" fill-key="name">
-              <div class="tool-def" title="查看工具详情" on:click="$host.openToolDetail($data.name)">
+              <div
+                  class="tool-def"
+                  class:selected="$host.isToolSelected($data.name)"
+                  title="查看工具详情"
+                  on:click="$host.openToolDetail($data.name)"
+                >
                 <div class="tool-def-row">
                   <span class="tool-def-name">{{$data.name}}</span>
                   <o-if :value="$data.tags.includes('视觉')">
@@ -1794,12 +1800,127 @@
             </o-fill>
           </div>
         </o-if>
-      </div></div>
+      </div>
+            </div>
+
+            <aside class="tools-detail">
+              <o-if :value="toolDetail">
+                <div class="tool-detail-panel">
+                  <div class="tool-detail-title">
+                    <span>{{toolDetail.name}}</span>
+                    <o-if :value="toolDetail.isVisual">
+                      <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                        <n-icon icon="mdi:eye"></n-icon>视觉
+                      </span>
+                    </o-if>
+                  </div>
+
+                  <o-if :value="toolDetail.hasTabs">
+                    <st-tab-bar class="tool-detail-tabs">
+                      <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
+                        <span class="tab-label">工具信息</span>
+                      </st-tab-item>
+                      <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
+                        <span class="tab-label">内置测试</span>
+                      </st-tab-item>
+                    </st-tab-bar>
+                  </o-if>
+
+                  <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
+                    <div class="tool-info-row">
+                      <div class="tool-detail-main">
+                        <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
+                        <div class="tool-detail-label">参数 Schema</div>
+                        <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+                      </div>
+                      <o-if :value="toolDetail.isVisual">
+                        <div class="tool-demo-side">
+                          <div class="tool-demo-label">运行效果预览 · 可交互</div>
+                          <iframe
+                            class="tool-demo-frame"
+                            title="视觉工具组件演示"
+                            attr:srcdoc="toolDemoDoc"
+                          ></iframe>
+                        </div>
+                      </o-if>
+                    </div>
+                  </o-if>
+
+                  <o-if :value="toolDetail.hasTabs">
+                    <div class="tool-test-grid" class:show="toolTab === 'test'">
+                      <div class="tool-test-left">
+                        <div class="tool-test-bar">
+                          <st-button
+                            variant="outlined"
+                            attr:disabled="toolTestRunning"
+                            on:click="runToolSelfTest"
+                          >
+                            <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                            <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
+                          </st-button>
+                          <o-if :value="toolTestDone">
+                            <span
+                              class="tool-test-verdict"
+                              class:pass="toolTestAllPass"
+                              class:fail="!toolTestAllPass"
+                            >
+                              {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                            </span>
+                          </o-if>
+                        </div>
+                        <div class="tool-test-cases">
+                          <o-fill :value="toolTestPlan" fill-key="name">
+                            <div class="tool-test-case">
+                              <o-if :value="$data.status === 'pending'">
+                                <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
+                              </o-if>
+                              <o-if :value="$data.status === 'pass'">
+                                <n-icon class="pass" icon="mdi:check-circle"></n-icon>
+                              </o-if>
+                              <o-if :value="$data.status === 'fail'">
+                                <n-icon class="fail" icon="mdi:close-circle"></n-icon>
+                              </o-if>
+                              <span class="tool-test-case-name">{{$data.name}}</span>
+                              <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
+                            </div>
+                          </o-fill>
+                        </div>
+                      </div>
+                      <div class="tool-test-right">
+                        <iframe
+                          class="tool-test-frame"
+                          title="内置测试运行画面"
+                          attr:srcdoc="toolTestDoc"
+                        ></iframe>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+              <o-if :value="!toolDetail">
+                <div class="tools-detail-empty">
+                  <n-icon icon="mdi:cursor-default-click-outline"></n-icon>
+                  <div class="tools-detail-empty-title">从左侧选择工具</div>
+                  <div class="tools-detail-empty-desc">查看完整描述与参数 Schema；带内置测试的工具可以直接在这里跑测试</div>
+                </div>
+              </o-if>
+            </aside>
+            </div>
+            </div>
           </o-if>
         </div>
         <!-- 底部导航：横向 st-nav-bar + parallel 项（图标左 / 文字右，
              active 药丸整行包裹，M3 emphasized 跟随），active 由 hubTab 驱动 -->
         <st-nav-bar class="hub-nav">
+          <o-if :value="currentAppName !== ''">
+            <st-nav-item
+              parallel
+              attr:active="hubTab === 'appinfo'"
+              on:click="setHubTab('appinfo')"
+            >
+              <span slot="icon"><n-icon icon="mdi:application-edit-outline"></n-icon></span>应用设置
+            </st-nav-item>
+          </o-if>
           <st-nav-item
             parallel
             attr:active="hubTab === 'preview'"
@@ -1867,118 +1988,6 @@
          「工具信息 / 内置测试」双 Tab，无内置测试的工具用窄面板、无 Tab。
          测试 Tab：左断言 list，右 iframe 实跑测试（视觉工具挂载被测组件，
          纯插件工具显示断言运行记录） -->
-    <st-dialog
-      class="tool-detail"
-      class:narrow="toolDetail && !toolDetail.hasTabs"
-      sync:open="toolDetailOpen"
-      auto-close
-    >
-      <o-if :value="toolDetail">
-        <div class="tool-detail-panel">
-          <div class="tool-detail-title">
-            <span>{{toolDetail.name}}</span>
-            <o-if :value="toolDetail.isVisual">
-              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
-                <n-icon icon="mdi:eye"></n-icon>视觉
-              </span>
-            </o-if>
-          </div>
-
-          <!-- 有内置测试的工具：Tab 切换（信息 / 测试） -->
-          <o-if :value="toolDetail.hasTabs">
-            <st-tab-bar class="tool-detail-tabs">
-              <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
-                <span class="tab-label">工具信息</span>
-              </st-tab-item>
-              <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
-                <span class="tab-label">内置测试</span>
-              </st-tab-item>
-            </st-tab-bar>
-          </o-if>
-
-          <!-- Tab 1：工具信息（描述 + Schema；视觉工具右侧保留运行效果演示） -->
-          <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
-            <div class="tool-info-row">
-              <div class="tool-detail-main">
-                <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
-                <div class="tool-detail-label">参数 Schema</div>
-                <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
-              </div>
-              <!-- 视觉工具：iframe 实时演示组件运行效果（pending 可交互） -->
-              <o-if :value="toolDetail.isVisual">
-                <div class="tool-demo-side">
-                  <div class="tool-demo-label">运行效果预览 · 可交互</div>
-                  <iframe
-                    class="tool-demo-frame"
-                    title="视觉工具组件演示"
-                    attr:srcdoc="toolDemoDoc"
-                  ></iframe>
-                </div>
-              </o-if>
-            </div>
-          </o-if>
-
-          <!-- Tab 2：内置测试（左断言 list | 右测试运行 iframe）。
-               不用 o-if 卸载：切 Tab 销毁 iframe 会让保留的 srcdoc 重挂载时
-               自动重跑；改为常驻 + display 切换，跑完的画面得以保留 -->
-          <o-if :value="toolDetail.hasTabs">
-            <div class="tool-test-grid" class:show="toolTab === 'test'">
-              <div class="tool-test-left">
-                <div class="tool-test-bar">
-                  <st-button
-                    variant="outlined"
-                    attr:disabled="toolTestRunning"
-                    on:click="runToolSelfTest"
-                  >
-                    <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
-                    <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
-                  </st-button>
-                  <o-if :value="toolTestDone">
-                    <span
-                      class="tool-test-verdict"
-                      class:pass="toolTestAllPass"
-                      class:fail="!toolTestAllPass"
-                    >
-                      {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
-                    </span>
-                  </o-if>
-                </div>
-                <div class="tool-test-cases">
-                  <!-- 测试计划（self-test.js 导出 testPlan）：进 Tab 即见待测清单，
-                       运行后逐条由 pending → pass / fail -->
-                  <o-fill :value="toolTestPlan" fill-key="name">
-                    <div class="tool-test-case">
-                      <o-if :value="$data.status === 'pending'">
-                        <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
-                      </o-if>
-                      <o-if :value="$data.status === 'pass'">
-                        <n-icon class="pass" icon="mdi:check-circle"></n-icon>
-                      </o-if>
-                      <o-if :value="$data.status === 'fail'">
-                        <n-icon class="fail" icon="mdi:close-circle"></n-icon>
-                      </o-if>
-                      <span class="tool-test-case-name">{{$data.name}}</span>
-                      <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
-                    </div>
-                  </o-fill>
-                </div>
-              </div>
-              <div class="tool-test-right">
-                <iframe
-                  class="tool-test-frame"
-                  title="内置测试运行画面"
-                  attr:srcdoc="toolTestDoc"
-                ></iframe>
-              </div>
-            </div>
-          </o-if>
-
-          <div class="backup-edit-actions">
-            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
-          </div>
-        </div>
-      </o-if>
-    </st-dialog>
   </div>
 
   <script>
@@ -2284,7 +2293,6 @@
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           publishBusy: false, // 发布到首页应用列表进行中
           publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
-          appMetaEditOpen: false, // 应用信息编辑对话框（名称 / 图标）
           appMetaName: "", // 编辑中的显示名称草稿
           appMetaIcon: "", // 编辑中的图标草稿（emoji）
           metaIconPresets: ["📦", "⏰", "✅", "🎵", "💰", "📝", "🎮", "🌤️", "📷", "🔔", "📊", "🧩"],
@@ -2301,7 +2309,6 @@
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
-          toolDetailOpen: false, // 工具详情对话框
           toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual / hasTabs）
           toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
           toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
@@ -3828,16 +3835,6 @@
 
           // ---- 应用信息（名称 / 图标）编辑 ----
 
-          openAppMetaEdit() {
-            this.appMetaName = this.currentAppDisplay;
-            this.appMetaIcon = this.currentAppIcon;
-            this.appMetaEditOpen = true;
-          },
-
-          closeAppMetaEdit() {
-            this.appMetaEditOpen = false;
-          },
-
           pickMetaIcon(c) {
             this.appMetaIcon = c;
           },
@@ -3857,9 +3854,12 @@
                     : res?.reason || "修改失败，请稍后再试",
                 color: "warning",
               });
-              return; // 失败保持对话框打开，不丢输入
+              return; // 失败保留输入，卡片不关
             }
-            this.appMetaEditOpen = false;
+            const { default: toast } = await load(
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
+            );
+            toast({ message: "应用信息已更新", color: "success" });
           },
 
           selectMode(mode) {
@@ -4298,7 +4298,7 @@
             this.toolTestRunning = false; // 关闭对话框可能发生在运行中，重开时复位
             this.toolTestDone = false;
             this.toolTestPlan = [];
-            this.toolDetailOpen = true;
+
             // 复位上个工具遗留的内容区高度（带 Tab 的工具会在 sync 里重新设置）
             const panelEle = this.shadow
               .$("st-dialog.tool-detail")
@@ -4322,8 +4322,10 @@
             }
           },
 
-          closeToolDetail() {
-            this.toolDetailOpen = false;
+          // 主从布局下的选中高亮
+          isToolSelected(name) {
+            const d = this.toolDetail;
+            return !!d && d.name === name;
           },
 
           // st-dialog 的 body 包裹层不会自动伸展（flex: 0 1 auto），CSS 够不到
@@ -4604,6 +4606,10 @@
               store.refreshBackups();
             } else if (tab === "tests") {
               store.refreshTests?.();
+            } else if (tab === "appinfo") {
+              // 每次进设置页都按当前展示值预填（应用信息可能被模型或别处改过）
+              this.appMetaName = this.currentAppDisplay;
+              this.appMetaIcon = this.currentAppIcon;
             }
           },
 
