@@ -5,9 +5,9 @@
   <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/button/icon-button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"></l-m>
-  <!-- 临时全量 @main（senti-ui 1.0.10 发版后全部改回 @latest）：nav 药丸初入
-       错位修复未发版；组件树共享注册表，只切单个组件会造成同 tag 双 URL
-       重复注册（st-ripple 已被注册），必须整app一致 -->
+  <!-- 临时全量 @main（senti-ui 1.0.10 发版后全仓改回 @latest）：nav 药丸初入
+       错位 + menu 对话框内 fixed 漂移两修复未发版；组件树共享注册表，只切
+       单个组件会造成同 tag 双 URL 重复注册（st-ripple 已被注册），必须一致 -->
   <l-m src="/gh/ofajs/senti-ui@main/packages/navigation/nav-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/textarea/textarea.html"></l-m>
@@ -118,24 +118,18 @@
             
           </div>
           <div class="publish-wrap">
+            <!-- 版本入口：发布与备份合并的「版本」页（发布条 + 版本历史） -->
             <st-icon-button
               class:published="publishedInfo"
-              attr:title="publishedInfo ? '已发布 v' + publishedInfo.version : '发布到首页应用列表'"
+              attr:title="publishedInfo ? '版本 · 已发布 v' + publishedInfo.version : '版本 · 发布与备份'"
               attr:disabled="publishBusy"
-              on:click="openHub('publish')"
+              on:click="openHub('version')"
             >
               <n-icon
                 attr:icon="publishedInfo ? 'mdi:rocket-launch' : 'mdi:rocket-launch-outline'"
               ></n-icon>
             </st-icon-button>
-            
           </div>
-          <st-icon-button
-            title="备份管理"
-            on:click="openHub('backup')"
-          >
-            <n-icon icon="mdi:backup-restore"></n-icon>
-          </st-icon-button>
           <st-icon-button
             class="test-entry"
             title="测试管理（client/test/ 场景用例）"
@@ -1468,9 +1462,9 @@
             </aside>
             </div>
           </o-if>
-          <o-if :value="hubTab === 'publish'">
+          <o-if :value="hubTab === 'version'">
             <div class="hub-pane-head">
-              发布到首页应用列表
+              版本 · 发布与备份
               <o-if :value="publishedInfo">
                 <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
               </o-if>
@@ -1478,51 +1472,48 @@
                 <span class="pp-badge">未发布</span>
               </o-if>
             </div>
-            <div class="hub-pane-body hub-narrow">
-                
-                <div class="pub-rows">
-                  <div class="pub-row">
-                    <span class="pub-label">发布版本</span>
-                    <o-if :value="publishedInfo">
-                      <span>v{{publishedInfo.version}}</span>
-                    </o-if>
-                    <o-if :value="!publishedInfo">
-                      <span>未发布</span>
-                    </o-if>
+            <div class="hub-pane-body hub-wide">
+              <!-- 发布条：版本号 / 代码一致性 / 分享链接在左，发布操作在右。
+                   发布永远针对当前代码；发完下方历史立即出现带版本标注的存档 -->
+              <div class="pub-strip">
+                <div class="pub-strip-main">
+                  <div class="pub-strip-ver">
+                    <o-if :value="publishedInfo">v{{publishedInfo.version}}</o-if>
+                    <o-if :value="!publishedInfo">未发布</o-if>
                   </div>
-                  <div class="pub-row">
-                    <span class="pub-label">代码状态</span>
-                    <o-if :value="!publishedInfo">
-                      <span>发布后即可在首页打开</span>
-                    </o-if>
-                    <o-if :value="publishMatch === true">
-                      <span class="pub-ok">发布内容就是当前代码</span>
-                    </o-if>
-                    <o-if :value="publishMatch === false">
-                      <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
-                    </o-if>
-                  </div>
-                  <o-if :value="publishedInfo">
-                    <div class="pub-row">
-                      <span class="pub-label">分享链接</span>
-                      <o-if :value="publishShareUrl">
-                        <span
-                          class="pub-link"
-                          attr:title="publishShareUrl"
-                        >{{shortUrl(publishShareUrl)}}</span>
-                        <st-icon-button
-                          class="pub-copy"
-                          title="复制分享链接"
-                          on:click="copyText(publishShareUrl)"
-                        >
-                          <n-icon icon="mdi:content-copy"></n-icon>
-                        </st-icon-button>
+                  <div class="pub-strip-info">
+                    <div class="pub-strip-line">
+                      <o-if :value="!publishedInfo">
+                        <span>发布后即可在首页应用列表打开</span>
                       </o-if>
-                      <o-if :value="!publishShareUrl">
-                        <span>打开首页应用列表后自动生成</span>
+                      <o-if :value="publishMatch === true">
+                        <span class="pub-ok">发布内容就是当前代码</span>
+                      </o-if>
+                      <o-if :value="publishMatch === false">
+                        <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
                       </o-if>
                     </div>
-                  </o-if>
+                    <o-if :value="publishedInfo">
+                      <div class="pub-strip-line">
+                        <o-if :value="publishShareUrl">
+                          <span
+                            class="pub-link"
+                            attr:title="publishShareUrl"
+                          >{{shortUrl(publishShareUrl)}}</span>
+                          <st-icon-button
+                            class="pub-copy"
+                            title="复制分享链接"
+                            on:click="copyText(publishShareUrl)"
+                          >
+                            <n-icon icon="mdi:content-copy"></n-icon>
+                          </st-icon-button>
+                        </o-if>
+                        <o-if :value="!publishShareUrl">
+                          <span>分享链接在打开首页应用列表后自动生成</span>
+                        </o-if>
+                      </div>
+                    </o-if>
+                  </div>
                 </div>
                 <div class="pub-actions">
                   <st-button
@@ -1559,98 +1550,100 @@
                     </st-menu>
                   </o-if>
                 </div>
-                <div class="pub-note">
-                  发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
-                </div></div>
-          </o-if>
-          <o-if :value="hubTab === 'backup'">
-            <div class="hub-pane-head">备份管理</div>
-            <div class="hub-pane-body hub-wide"><div class="backup-sub">
-        {{currentAppDisplay || currentAppName}} · 备份存于应用目录的 backup/ 下
-      </div>
-      <div class="backup-actions">
-        <st-button
-          variant="filled"
-          attr:disabled="backupBusy"
-          on:click="handleCreateBackup"
-        >
-          <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
-          <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
-        </st-button>
-        <st-button
-          variant="outlined"
-          attr:disabled="backupBusy"
-          on:click="handleSmartBackup"
-        >
-          <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
-          <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
-        </st-button>
-      </div>
-      <div class="panel-body">
-        <o-if :value="backups.length === 0">
-          <div class="panel-empty">还没有备份，点上方「新增备份」打包当前代码</div>
-        </o-if>
-        <o-fill :value="backups" fill-key="id">
-          <div class="backup-item">
-            <n-icon class="backup-icon" icon="mdi:folder-zip-outline"></n-icon>
-            <div class="backup-item-main">
-              <div class="backup-item-name">
-                {{$host.backupLabel($data)}}
-                <o-if :value="$data.current">
-                  <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
-                </o-if>
-                <o-if :value="$data.publishedVersion">
-                  <span
-                    class="backup-published-badge"
-                    attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
-                  >v{{$data.publishedVersion}} 已发布</span>
-                </o-if>
               </div>
-              <div class="backup-item-dir">{{$data.id}}/</div>
-              <o-if :value="$data.note !== ''">
-                <div class="backup-item-note" attr:title="$data.note">{{$data.note}}</div>
-              </o-if>
+              <!-- 版本历史 = 备份列表：发布存档（rocket 徽标 + tertiary 底色）
+                   与手动 / 智能备份同列，恢复条目即回滚到该版本 -->
+              <div class="ver-history-head">
+                <span class="ver-history-title">版本历史</span>
+                <span class="ver-history-sub">备份存于应用目录的 backup/ 下</span>
+                <div class="backup-actions">
+                  <st-button
+                    variant="filled"
+                    attr:disabled="backupBusy"
+                    on:click="handleCreateBackup"
+                  >
+                    <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
+                    <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
+                  </st-button>
+                  <st-button
+                    variant="outlined"
+                    attr:disabled="backupBusy"
+                    on:click="handleSmartBackup"
+                  >
+                    <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
+                    <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
+                  </st-button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <o-if :value="backups.length === 0">
+                  <div class="panel-empty">还没有版本记录，点上方「新增备份」打包当前代码</div>
+                </o-if>
+                <o-fill :value="backups" fill-key="id">
+                  <div class="backup-item" class:published="$data.publishedVersion">
+                    <n-icon
+                      class="backup-icon"
+                      attr:icon="$data.publishedVersion ? 'mdi:rocket-launch' : 'mdi:folder-zip-outline'"
+                    ></n-icon>
+                    <div class="backup-item-main">
+                      <div class="backup-item-name">
+                        {{$host.backupLabel($data)}}
+                        <o-if :value="$data.current">
+                          <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
+                        </o-if>
+                        <o-if :value="$data.publishedVersion">
+                          <span
+                            class="backup-published-badge"
+                            attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
+                          >v{{$data.publishedVersion}} 已发布</span>
+                        </o-if>
+                      </div>
+                      <div class="backup-item-dir">{{$data.id}}/</div>
+                      <o-if :value="$data.note !== ''">
+                        <div class="backup-item-note" attr:title="$data.note">{{$data.note}}</div>
+                      </o-if>
+                    </div>
+                    <div class="backup-item-actions">
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        attr:title="$data.current ? '内容已是该备份状态' : '还原此版本'"
+                        on:click="$host.restoreBackupClick($data)"
+                      >
+                        <o-if :value="!$data.current">
+                          <n-icon icon="mdi:restore"></n-icon>
+                        </o-if>
+                        <o-if :value="$data.current">
+                          <n-icon icon="mdi:check"></n-icon>
+                        </o-if>
+                      </st-button>
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        attr:title="'编辑名称与备注'"
+                        on:click="$host.openBackupEdit($data)"
+                      >
+                        <n-icon icon="mdi:pencil-outline"></n-icon>
+                      </st-button>
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        class:confirm="$host.confirmingDelBackup === $data.id"
+                        attr:title="$host.confirmingDelBackup === $data.id ? ($data.publishedVersion ? '删除后无法再还原到 v' + $data.publishedVersion + '，再点一次确认' : '再点一次确认删除') : '删除备份'"
+                        on:click="$host.deleteBackupClick($event, $data.id)"
+                      >
+                        <o-if :value="$host.confirmingDelBackup === $data.id">
+                          <span>确认</span>
+                        </o-if>
+                        <o-if :value="$host.confirmingDelBackup !== $data.id">
+                          <n-icon icon="mdi:delete-outline"></n-icon>
+                        </o-if>
+                      </st-button>
+                    </div>
+                  </div>
+                </o-fill>
+              </div>
             </div>
-            <div class="backup-item-actions">
-              <st-button
-                class="del-btn"
-                variant="text"
-                attr:title="$data.current ? '内容已是该备份状态' : '还原此备份'"
-                on:click="$host.restoreBackupClick($data)"
-              >
-                <o-if :value="!$data.current">
-                  <n-icon icon="mdi:restore"></n-icon>
-                </o-if>
-                <o-if :value="$data.current">
-                  <n-icon icon="mdi:check"></n-icon>
-                </o-if>
-              </st-button>
-              <st-button
-                class="del-btn"
-                variant="text"
-                attr:title="'编辑名称与备注'"
-                on:click="$host.openBackupEdit($data)"
-              >
-                <n-icon icon="mdi:pencil-outline"></n-icon>
-              </st-button>
-              <st-button
-                class="del-btn"
-                variant="text"
-                class:confirm="$host.confirmingDelBackup === $data.id"
-                attr:title="$host.confirmingDelBackup === $data.id ? '再点一次确认删除' : '删除备份'"
-                on:click="$host.deleteBackupClick($event, $data.id)"
-              >
-                <o-if :value="$host.confirmingDelBackup === $data.id">
-                  <span>确认</span>
-                </o-if>
-                <o-if :value="$host.confirmingDelBackup !== $data.id">
-                  <n-icon icon="mdi:delete-outline"></n-icon>
-                </o-if>
-              </st-button>
-            </div>
-          </div>
-        </o-fill>
-      </div></div>
           </o-if>
           <o-if :value="hubTab === 'tests'">
             <div class="hub-pane-head">测试管理</div>
@@ -1930,17 +1923,10 @@
           </st-nav-item>
           <st-nav-item
             parallel
-            attr:active="hubTab === 'publish'"
-            on:click="setHubTab('publish')"
+            attr:active="hubTab === 'version'"
+            on:click="setHubTab('version')"
           >
-            <span slot="icon"><n-icon icon="mdi:rocket-launch"></n-icon></span>发布
-          </st-nav-item>
-          <st-nav-item
-            parallel
-            attr:active="hubTab === 'backup'"
-            on:click="setHubTab('backup')"
-          >
-            <span slot="icon"><n-icon icon="mdi:backup-restore"></n-icon></span>备份
+            <span slot="icon"><n-icon icon="mdi:rocket-launch"></n-icon></span>版本
           </st-nav-item>
           <st-nav-item
             parallel
@@ -3896,10 +3882,10 @@
           // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图 = wire 线框数据
           // 本地重绘，免屏幕授权，打开期间每 5s 刷新一次——单张 ~8KB，仅面板
           // 打开期间产生流量）
-          // ---- 顶栏功能 Hub（大对话框：nav rail 切换 预览/发布/备份/测试/资源）----
+          // ---- 顶栏功能 Hub（大对话框：底部 nav 切换 应用设置/预览/版本/测试/资源）----
 
           // 打开即定位到对应页并做该页的刷新副作用（预览=窗口清单/缩略图心跳，
-          // 发布=一致性计算，备份=清单刷新，测试=用例索引刷新）
+          // 版本=发布一致性计算 + 历史清单刷新，测试=用例索引刷新）
           openHub(tab) {
             this.hubOpen = true;
             this.setHubTab(tab);
@@ -4448,7 +4434,7 @@
               return;
             }
             const ok = await confirmDlg({
-              title: "还原备份",
+              title: "还原版本",
               message:
                 `将把应用内容还原为「${this.backupLabel(backup)}」时的状态，` +
                 "还原后当前未备份的修改会消失。确定还原？",
@@ -4599,10 +4585,10 @@
                   store.refreshPreviewThumbs();
                 }
               }, 5000);
-            } else if (tab === "publish") {
-              store.refreshPublishState();
-            } else if (tab === "backup") {
+            } else if (tab === "version") {
+              // 发布态（一致性 / 分享链接）与版本历史清单一并刷新
               this.confirmingDelBackup = "";
+              store.refreshPublishState();
               store.refreshBackups();
             } else if (tab === "tests") {
               store.refreshTests?.();

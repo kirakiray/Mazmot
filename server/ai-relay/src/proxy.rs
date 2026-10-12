@@ -164,6 +164,7 @@ pub(crate) async fn probe_key(
         Provider::Gemini => "gemini-2.5-flash",
         Provider::Anthropic => "claude-haiku-4-5",
         Provider::Qwen => "qwen3-flash",
+        Provider::Grok => "grok-4.7",
         Provider::Glm | Provider::GlmCoding => "glm-4.7",
     };
 
@@ -287,7 +288,7 @@ pub(crate) async fn chat_completions(
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             format!(
-                "无法从模型名 {model} 识别上游（支持 deepseek-* / glm-* / gemini-* / claude-* / gpt-* 等）"
+                "无法从模型名 {model} 识别上游（支持 deepseek-* / glm-* / gemini-* / claude-* / gpt-* / grok-* 等）"
             ),
         ));
     }

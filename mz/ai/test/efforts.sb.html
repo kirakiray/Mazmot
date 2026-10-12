@@ -42,6 +42,10 @@
             anthropic: effortLevelsFor("anthropic", "claude-sonnet-5-5").length === 0,
             qwen: JSON.stringify(effortLevelsFor("qwen", "qwen3-max")) ===
               JSON.stringify(["off", "low"]),
+            grok4: JSON.stringify(effortLevelsFor("grok", "grok-4.7")) ===
+              JSON.stringify(["low", "medium", "high", "max"]),
+            grokLegacy: JSON.stringify(effortLevelsFor("grok", "grok-3")) ===
+              JSON.stringify(["off", "low", "medium", "high"]),
             relay: effortLevelsFor("relay", "anything").includes("max"),
             generic: JSON.stringify(effortLevelsFor("unknown", "")) ===
               JSON.stringify(["off", "low", "medium", "high"]),
@@ -75,6 +79,10 @@
             openaiOff: clampEffort("openai", "gpt-5.6", "off") === "minimal",
             // 未知偏好值（null/undefined）按 low 档处理
             nullEffort: clampEffort("deepseek", "deepseek-v4-flash", null) === "low",
+            // grok 偏好 off（grok-4 系不支持完全关）：夹到最弱档 low
+            grokOff: clampEffort("grok", "grok-4.7", "off") === "low",
+            // grok max 档在表内：原样（wire 层映射 xhigh）
+            grokMax: clampEffort("grok", "grok-4.7", "max") === "max",
           };
           return {
             assert: Object.values(checks).every(Boolean),
@@ -89,11 +97,11 @@
         <script type="module">
           const { EFFORT_LABELS, effortLevelsFor } = await import("/mz/ai/efforts.js");
           const providers = [
-            "deepseek", "kimi", "glm", "openai", "gemini", "anthropic", "qwen", "relay",
+            "deepseek", "kimi", "glm", "openai", "gemini", "anthropic", "qwen", "grok", "relay",
           ];
           const models = ["deepseek-v4-flash", "kimi-k3", "kimi-k2.7-code",
             "glm-5.3", "gpt-5.6", "o4-mini", "gemini-3-flash", "claude-sonnet-5-5",
-            "qwen3-max", ""];
+            "qwen3-max", "grok-4.7", ""];
           const missing = [];
           for (const p of providers) {
             for (const m of models) {

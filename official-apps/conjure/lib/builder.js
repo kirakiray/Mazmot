@@ -1814,7 +1814,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
     <title>应用名</title>
     <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
     <script src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
-    <script src="/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>
+    <script src="/gh/ofajs/senti-ui@main/packages/boot/st-boot.js"></script>
     <style>html,body{height:100%;margin:0}</style>
   </head>
   <body>
@@ -1864,7 +1864,7 @@ export default async ({ load }) => {
 
 ### 视觉与组件
 - 配色只用 Material Design 3 语义色 CSS 变量：var(--md-sys-color-primary)、surface、on-surface、surface-variant、primary-container、error-container 等，不得写死十六进制色。
-- 需要弹窗/提示时可用 senti-ui 的 st-dialog / toast（先 \`<l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/st-dialog.html"></l-m>\` 声明）。
+- 需要弹窗/提示时可用 senti-ui 的 st-dialog / toast（先 \`<l-m src="/gh/ofajs/senti-ui@main/packages/dialog/st-dialog.html"></l-m>\` 声明）。
 
 ### 数据持久化（如应用需要保存数据）
 - 统一用 /nos/storage/main.js，禁止 localStorage。页面模块顶层禁止 import /nos/*，必须运行时用**页面工厂参数注入的 load** 加载（**禁止 \`lm(import.meta)\`**——页面脚本被编译成 \`data:\` URL 模块执行，import.meta 不能作 URL base，解析任何路径都抛 Invalid URL，整页加载失败且报错不带原因）：

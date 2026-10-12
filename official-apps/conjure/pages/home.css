@@ -218,6 +218,13 @@
     grid-template-columns: 1fr;
   }
 
+  /* 窄屏下发布条信息换行到版本号下方，按钮组由 flex-wrap 自然换行 */
+  .pub-strip-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
   .hub-pane-body.tools-body {
     flex: none;
   }
@@ -439,20 +446,6 @@
     color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
   border-radius: 14px;
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 3%, transparent);
-}
-
-.hub-pane .pub-row {
-  padding: 13px 0;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
-}
-
-.hub-pane .pub-row:last-child {
-  border-bottom: none;
-}
-
-.hub-pane .pub-actions {
-  margin-top: 18px;
 }
 
 .hub-pane .pub-note {
@@ -723,6 +716,7 @@ st-icon-button.published {
 /* 发布按钮组：主按钮（默认小版本）+ 右侧版本类型菜单按钮，贴合为一体；
    st-button 视觉在 :host 上，外层 CSS 可直接覆盖圆角做左半贴合 */
 .pub-actions {
+  flex: none;
   display: flex;
   align-items: stretch;
 }
@@ -760,23 +754,87 @@ st-icon-button.published {
   cursor: default;
 }
 
-.pub-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.pub-row {
+/* 版本页发布条：版本号 + 一致性 / 分享信息在左，发布操作在右 */
+.pub-strip {
+  flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 0 8px 14px;
+  padding: 14px 18px;
+  border: 1px solid
+    color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 3%, transparent);
 }
 
-.pub-label {
+.pub-strip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.pub-strip-ver {
+  flex: none;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.pub-strip-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
   color: var(--md-sys-color-on-surface-variant);
-  flex-shrink: 0;
+}
+
+.pub-strip-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 版本历史区头：标题 + 存储位置说明在左，备份操作按钮收在右不拉伸 */
+.ver-history-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 8px 6px;
+}
+
+.ver-history-title {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.ver-history-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ver-history-head .backup-actions {
+  flex: none;
+  padding: 0;
+}
+
+.ver-history-head .backup-actions st-button {
+  flex: 0 0 auto;
 }
 
 .pub-ok {
@@ -3353,14 +3411,7 @@ st-icon-button.published {
   transform: translateX(0);
 }
 
-/* 备份管理抽屉（右）：比普通面板宽，列表展示 backup/ 目录 */
-.backup-sub {
-  flex: none;
-  padding: 0 20px 10px;
-  font-size: 12px;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
+/* 版本历史（Hub 版本页）：发布条下方的时间线列表，条目 = backup/ 存档 */
 .backup-actions {
   flex: none;
   display: flex;
@@ -3433,6 +3484,19 @@ st-icon-button.published {
   background: color-mix(in srgb, var(--md-sys-color-tertiary) 14%, transparent);
   color: var(--md-sys-color-tertiary);
   font-weight: 600;
+}
+
+/* 发布存档条目：rocket 图标 + 轻 tertiary 底色，与普通备份在时间线里区分 */
+.backup-item.published {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary) 6%, transparent);
+}
+
+.backup-item.published:hover {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary) 10%, transparent);
+}
+
+.backup-item.published .backup-icon {
+  color: var(--md-sys-color-tertiary);
 }
 
 .backup-item-dir {
