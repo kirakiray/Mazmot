@@ -6,6 +6,7 @@ import OpenAIAssistant from "./supplier/openai.js";
 import GeminiAssistant from "./supplier/gemini.js";
 import AnthropicAssistant from "./supplier/anthropic.js";
 import QwenAssistant from "./supplier/qwen.js";
+import GrokAssistant from "./supplier/grok.js";
 
 // /nos/storage 由 NoneOS Core Service Worker 提供，可能尚未就绪（如无 SW 的测试环境）。
 // 动态导入 + 失败降级为仅内存模式，保证模块本身在任何环境都能被加载。
@@ -59,6 +60,8 @@ const _createAssistant = (provider, id, apiKey) => {
       return new AnthropicAssistant(id, apiKey);
     case "qwen":
       return new QwenAssistant(id, apiKey);
+    case "grok":
+      return new GrokAssistant(id, apiKey);
     default:
       throw new Error(`provider not supported: ${provider}`);
   }

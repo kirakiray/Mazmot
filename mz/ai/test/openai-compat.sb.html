@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>国外供应商（OpenAI / Gemini / Anthropic）测试</title>
+    <title>国外供应商（OpenAI / Gemini / Anthropic / Grok）测试</title>
     <script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
     <script
       type="module"
@@ -11,13 +11,15 @@
   </head>
   <body>
     <!--
-      测试 mz/ai/supplier 的国外三家供应商（openai-compat 基类体系）。
+      测试 mz/ai/supplier 的国外系供应商（openai-compat 基类体系）。
       无真实 Key，全部 mock fetch（请求形态 / 响应映射 / 模型过滤 / 鉴权头差异）：
       - OpenAI：api.openai.com/v1，默认 gpt-5.6，thinking → reasoning_effort，
         getModels 过滤 embedding / 图像 / 音频等非对话模型
       - Gemini：官方 OpenAI 兼容端点 v1beta/openai，默认 gemini-3-flash，只留 gemini-*
       - Anthropic：官方 OpenAI 兼容层 api.anthropic.com/v1，附加 x-api-key +
         anthropic-version 头，不透传 reasoning_effort
+      - Grok：官方 api.x.ai/v1，默认 grok-4.7，reasoning_effort max→xhigh 映射、
+        off 不发思考参数，getModels 只留 grok-*（剔 image 图像模型）
       操作 window.fetch 的用例均不标 parallel（mock 会被并发用例的 finally 踩掉）
     -->
 
@@ -285,7 +287,7 @@
           const savedIds = [];
           try {
             const checks = {};
-            for (const provider of ["openai", "gemini", "anthropic", "qwen"]) {
+            for (const provider of ["openai", "gemini", "anthropic", "qwen", "grok"]) {
               const key = mod.saveKey(`fake-key-for-${provider}-route`, provider);
               savedIds.push(key.id);
               const assistant = mod.getAssistant(key.id);
@@ -363,6 +365,79 @@
             return {
               assert: urlOk && bodyOk && result.content === "ok" && filteredOk,
               content: { urlOk, bodyOk, filteredOk, body, ids },
+            };
+          } finally {
+            window.fetch = originalFetch;
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Grok: x.ai 端点请求 / effort 映射 / 模型过滤">
+      <template>
+        <script type="module">
+          const { default: GrokAssistant } = await import("/mz/ai/supplier/grok.js");
+          const assistant = new GrokAssistant("key-grok-1", "xai-test-key");
+
+          const chatBodies = [];
+          let capturedUrl = "";
+          let capturedAuth = "";
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options = {}) => {
+            if (url.endsWith("/chat/completions")) {
+              capturedUrl = url;
+              capturedAuth = options.headers.Authorization;
+              chatBodies.push(JSON.parse(options.body));
+              return new Response(
+                JSON.stringify({
+                  model: "grok-4.7",
+                  choices: [{ message: { content: "ok" } }],
+                  usage: { prompt_tokens: 5, completion_tokens: 7 },
+                }),
+                { status: 200 },
+              );
+            }
+            if (url.endsWith("/models")) {
+              return new Response(
+                JSON.stringify({
+                  data: [
+                    { id: "grok-4.7" },
+                    { id: "grok-4.6" },
+                    { id: "grok-code-fast-2" },
+                    { id: "grok-2-image" },
+                  ],
+                }),
+                { status: 200 },
+              );
+            }
+            throw new Error("unexpected url: " + url);
+          };
+          try {
+            // thinking + max 档：reasoning_effort 映射为 xhigh
+            const result = await assistant.chat({
+              thinking: true,
+              reasoningEffort: "max",
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const urlOk = capturedUrl === "https://api.x.ai/v1/chat/completions";
+            const authOk = capturedAuth === "Bearer xai-test-key";
+            const body0 = chatBodies[0];
+            const maxMapped = body0.model === "grok-4.7" && body0.reasoning_effort === "xhigh";
+            // off 档：不发思考参数
+            await assistant.chat({
+              thinking: true,
+              reasoningEffort: "off",
+              messages: [{ role: "user", content: "hi" }],
+            });
+            const offSkipped = !("reasoning_effort" in chatBodies[1]);
+            const models = await assistant.getModels();
+            const ids = models.map((m) => m.id);
+            const filteredOk =
+              ids.length === 3 && ids.every((id) => id.startsWith("grok")) &&
+              !ids.some((id) => id.includes("image"));
+            return {
+              assert: urlOk && authOk && maxMapped && offSkipped && filteredOk && result.content === "ok",
+              content: { urlOk, authOk, maxMapped, offSkipped, filteredOk, chatBodies, ids },
             };
           } finally {
             window.fetch = originalFetch;

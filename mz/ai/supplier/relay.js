@@ -181,7 +181,7 @@ export class RelayAssistant extends Assistant {
     const requestBody = { model, stream, messages };
     if (thinking) {
       // 思考参数按模型前缀适配：Qwen 系开关是 enable_thinking 布尔，
-      // 其余上游（deepseek/glm/gpt 系）认 reasoning_effort 字符串，
+      // 其余上游（deepseek/glm/gpt/grok 系）认 reasoning_effort 字符串，
       // 服务端原样转发 body，不认的字段由上游自行忽略
       if (model.startsWith("qwen")) {
         requestBody.enable_thinking = true;
