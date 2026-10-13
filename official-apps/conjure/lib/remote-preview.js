@@ -218,7 +218,13 @@ const isDupControl = (msgId) => {
 // 注册一个预览窗口（announce 心跳 / agent 首次上报）。超过上限时向对端
 // 回 preview-full（尽力投递，双服务都发，与 ACK 定向回复同款 spray）并不注册
 function upsertWindowEntry(ctx, payload) {
-  const key = `${ctx.fromUserId}|${ctx.fromSessionId}`;
+  // 窗口键：优先用对端上报的稳定 winKey（inject.js 存 sessionStorage——同一
+  // 窗口刷新不变，新开窗口 / 新标签 / 手机各不相同）；否则每次刷新的 P2P
+  // 会话 id 都不同，清单会把同一个窗口认成新窗口（实测踩坑）。旧版 inject
+  // 无 winKey 时回退 userId|sessionId，旧条目按心跳新鲜度自然淘汰
+  const key = payload.winKey
+    ? `${ctx.fromUserId}|w:${payload.winKey}`
+    : `${ctx.fromUserId}|${ctx.fromSessionId}`;
   const prev = winRegistry.get(key);
   if (!prev && freshWindowCount() >= MAX_PREVIEW_WINDOWS) {
     const env = {

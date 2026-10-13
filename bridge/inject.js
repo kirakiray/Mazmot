@@ -1003,7 +1003,25 @@ async function main() {
     await link.send({ type: "agent-online", userId: user.userId });
     // announce 心跳：向 conjure 的窗口注册表上报本窗口（多窗口清单 / 调试指令
     // 定向投递的依据）。15s 一次，conjure 侧 45s 无心跳即判离线；经可靠链路
-    // 发送（有 ACK/重发），conjure 不在线时重试耗尽静默失败
+    // 发送（有 ACK/重发），conjure 不在线时重试耗尽静默失败。
+    // winKey：sessionStorage 持久的窗口稳定标识——同一窗口刷新不变（reload 保留
+    // sessionStorage），新开窗口 / 新标签 / 手机浏览器各不相同；conjure 注册表
+    // 按它复用同一条目，刷新不会再多出一条「新窗口」。sessionStorage 不可用
+    // （隐私模式等）时传空串，conjure 回退旧的会话键
+    const winKey = (() => {
+      try {
+        let key = sessionStorage.getItem("conjure:winKey");
+        if (!key) {
+          key =
+            Math.random().toString(36).slice(2, 8) +
+            Date.now().toString(36).slice(-6);
+          sessionStorage.setItem("conjure:winKey", key);
+        }
+        return key;
+      } catch {
+        return "";
+      }
+    })();
     const announce = () =>
       link
         .send({
@@ -1011,6 +1029,7 @@ async function main() {
           appName,
           url: location.href,
           ua: navigator.userAgent,
+          winKey,
         })
         .catch(() => {});
     announce();

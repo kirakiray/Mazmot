@@ -1,16 +1,20 @@
 <template page>
   <link rel="stylesheet" href="./home.css?v=12" />
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/tabs/tab-bar.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/menu/menu.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/button/icon-button.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/dialog/dialog.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/textarea/textarea.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/tabs/tab-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/menu/menu.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"></l-m>
+  <!-- 临时全量 @main（senti-ui 1.0.10 发版后全仓改回 @latest）：nav 药丸初入
+       错位 + menu 对话框内 fixed 漂移两修复未发版；组件树共享注册表，只切
+       单个组件会造成同 tag 双 URL 重复注册（st-ripple 已被注册），必须一致 -->
+  <l-m src="/gh/ofajs/senti-ui@main/packages/navigation/nav-bar.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/input/input.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/textarea/textarea.html"></l-m>
   <!-- show-form 表单卡片的控件依赖（组件模板经 :html 生成，须全局预载） -->
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/select/select.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/checkbox/checkbox.html"></l-m>
-  <l-m src="/gh/ofajs/senti-ui@latest/packages/radio/radio.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/select/select.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/checkbox/checkbox.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/radio/radio.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/mz/comps/ercode/ercode.html"></l-m>
   <!-- 视觉交互工具包的组件（show-form 包的表单卡片）；声明式依赖，先于页面渲染注册 -->
@@ -27,6 +31,14 @@
               <div class="brand-name">
                 {{currentAppDisplay}}
                 <span class="mode-badge" attr:mode="currentAppMode">{{modeText(currentAppMode)}}</span>
+                <!-- 应用信息编辑入口：写回 client/app.json 的 displayName / icon -->
+                <st-icon-button
+                  class="app-meta-edit-btn"
+                  title="修改应用名称与图标"
+                  on:click="openHub('appinfo')"
+                >
+                  <n-icon icon="mdi:pencil-outline"></n-icon>
+                </st-icon-button>
               </div>
             </div>
             <!-- 项目抽屉（左侧滑出）：项目清单，点击新标签打开（已开标签聚焦） -->
@@ -97,175 +109,36 @@
               class:preview-live="previewOnline"
               attr:title="previewOnline ? '预览窗口已打开 · 点击多窗口面板' : '预览应用（隔离域运行）'"
               attr:disabled="previewBusy"
-              on:click="togglePreviewPop"
+              on:click="openHub('preview')"
             >
               <n-icon
                 attr:icon="previewOnline ? 'mdi:play-circle' : 'mdi:play-circle-outline'"
               ></n-icon>
             </st-icon-button>
-            <o-if :value="previewPopOpen">
-              <div class="preview-pop">
-                <div class="pp-head">
-                  <span class="pp-title">预览窗口</span>
-                  <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
-                </div>
-                <div class="pp-actions">
-                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
-                    <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
-                    更新全部
-                  </st-button>
-                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popNewWindow">
-                    <span slot="prefix"><n-icon icon="mdi:open-in-new"></n-icon></span>
-                    新开窗口
-                  </st-button>
-                </div>
-                <div class="pp-wins-grid">
-                  <o-fill :value="previewWindows" fill-key="id">
-                    <div class="pp-win-tile" class:offline="!$data.online">
-                      <div class="pp-thumb">
-                        <o-if :value="$host.thumbFor($data)">
-                          <img
-                            class="pp-thumb-img"
-                            attr:src="$host.thumbFor($data)"
-                            alt="预览缩略图"
-                          />
-                        </o-if>
-                        <o-if :value="!$host.thumbFor($data)">
-                          <div class="pp-thumb-empty">
-                            <n-icon icon="mdi:monitor-screenshot"></n-icon>
-                          </div>
-                        </o-if>
-                        <span class="pp-tile-dot"></span>
-                      </div>
-                      <div class="pp-tile-meta">
-                        <span class="pp-tile-app">{{$data.app || "?"}}</span>
-                        <span class="pp-tile-device">{{$host.winLabel($data)}}</span>
-                      </div>
-                    </div>
-                  </o-fill>
-                </div>
-                <o-if :value="previewWindows.length === 0">
-                  <div class="pp-empty">
-                    还没有打开的预览窗口：点「新开窗口」或用下方二维码让手机加入
-                  </div>
-                </o-if>
-                <div class="pp-sec">
-                  <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
-                  <div class="pp-qr-row">
-                    <o-if :value="previewShareUrl">
-                      <m-ercode attr:content="previewShareUrl"></m-ercode>
-                    </o-if>
-                    <div class="pp-qr-side">
-                      <span class="pp-url">{{shortUrl(previewShareUrl)}}</span>
-                      <st-icon-button
-                        class="pp-copy"
-                        title="复制链接"
-                        attr:disabled="!previewShareUrl"
-                        on:click="copyText(previewShareUrl)"
-                      >
-                        <n-icon icon="mdi:content-copy"></n-icon>
-                      </st-icon-button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </o-if>
+            
           </div>
           <div class="publish-wrap">
+            <!-- 版本入口：发布与备份合并的「版本」页（发布条 + 版本历史） -->
             <st-icon-button
               class:published="publishedInfo"
-              attr:title="publishedInfo ? '已发布 v' + publishedInfo.version : '发布到首页应用列表'"
+              attr:title="publishedInfo ? '版本 · 已发布 v' + publishedInfo.version : '版本 · 发布与备份'"
               attr:disabled="publishBusy"
-              on:click="togglePublishPop"
+              on:click="openHub('version')"
             >
               <n-icon
                 attr:icon="publishedInfo ? 'mdi:rocket-launch' : 'mdi:rocket-launch-outline'"
               ></n-icon>
             </st-icon-button>
-            <o-if :value="publishPopOpen">
-              <div class="publish-pop">
-                <div class="pp-head">
-                  <span class="pp-title">发布到首页应用列表</span>
-                  <o-if :value="publishedInfo">
-                    <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
-                  </o-if>
-                  <o-if :value="!publishedInfo">
-                    <span class="pp-badge">未发布</span>
-                  </o-if>
-                </div>
-                <div class="pub-rows">
-                  <div class="pub-row">
-                    <span class="pub-label">发布版本</span>
-                    <o-if :value="publishedInfo">
-                      <span>v{{publishedInfo.version}}</span>
-                    </o-if>
-                    <o-if :value="!publishedInfo">
-                      <span>未发布</span>
-                    </o-if>
-                  </div>
-                  <div class="pub-row">
-                    <span class="pub-label">代码状态</span>
-                    <o-if :value="!publishedInfo">
-                      <span>发布后即可在首页打开</span>
-                    </o-if>
-                    <o-if :value="publishMatch === true">
-                      <span class="pub-ok">发布内容就是当前代码</span>
-                    </o-if>
-                    <o-if :value="publishMatch === false">
-                      <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
-                    </o-if>
-                  </div>
-                  <o-if :value="publishedInfo">
-                    <div class="pub-row">
-                      <span class="pub-label">分享链接</span>
-                      <o-if :value="publishShareUrl">
-                        <span
-                          class="pub-link"
-                          attr:title="publishShareUrl"
-                        >{{shortUrl(publishShareUrl)}}</span>
-                        <st-icon-button
-                          class="pub-copy"
-                          title="复制分享链接"
-                          on:click="copyText(publishShareUrl)"
-                        >
-                          <n-icon icon="mdi:content-copy"></n-icon>
-                        </st-icon-button>
-                      </o-if>
-                      <o-if :value="!publishShareUrl">
-                        <span>打开首页应用列表后自动生成</span>
-                      </o-if>
-                    </div>
-                  </o-if>
-                </div>
-                <st-button
-                  variant="filled"
-                  attr:disabled="publishBusy"
-                  on:click="handlePublish"
-                >
-                  <o-if :value="!publishedInfo">🚀 发布</o-if>
-                  <o-if :value="publishedInfo">🚀 更新发布</o-if>
-                </st-button>
-                <div class="pub-note">
-                  发布把当前代码复制一份到 mazmot-apps/ 作为独立应用；同时在备份管理新增「发布 vX.Y.Z」备份
-                </div>
-              </div>
-            </o-if>
           </div>
-          <st-icon-button
-            title="备份管理"
-            on:click="openBackupDrawer"
-          >
-            <n-icon icon="mdi:backup-restore"></n-icon>
-          </st-icon-button>
           <st-icon-button
             class="test-entry"
             title="测试管理（client/test/ 场景用例）"
-            on:click="openTestDrawer"
+            on:click="openHub('tests')"
           >
             <n-icon icon="mdi:flask-outline"></n-icon>
           </st-icon-button>
         </o-if>
-        <st-icon-button title="工具 / 技能" on:click="openPanel">
+        <st-icon-button title="工具 / 技能" on:click="openHub('tools')">
           <svg
             viewBox="0 0 24 24"
             width="20"
@@ -908,6 +781,29 @@
                  活动切换（思考中 / 正在执行 xx / 生成中），且只在回合视图显示 -->
             <div class="turn-status">{{ turnStatusText(clock) }}</div>
           </o-if>
+
+          <o-if :value="interrupted && !sending && !interruptedDismissed">
+            <!-- 上次回合被硬中断（刷新 / 崩溃）：对话末尾提醒，可从断点继续。
+                 wire 记忆停在合法断点（mz/ai 落盘保证 tool_calls 不悬空），
+                 补发一条「继续」即接着断点做；整卡可点，× 仅收起本次提醒 -->
+            <div class="interrupt-card" on:click="continueInterrupted">
+              <n-icon class="interrupt-ico" icon="mdi:restart-alert"></n-icon>
+              <div class="interrupt-main">
+                <div class="interrupt-title">上一轮对话被中断了</div>
+                <div class="interrupt-desc">
+                  页面刷新或意外关闭导致生成暂停，已完成的内容不会丢失。
+                </div>
+              </div>
+              <span class="interrupt-go">继续对话</span>
+              <button
+                class="interrupt-x"
+                title="暂不提醒"
+                on:click="dismissInterrupted($event)"
+              >
+                <n-icon icon="mdi:close"></n-icon>
+              </button>
+            </div>
+          </o-if>
         </div>
       </section>
 
@@ -1319,9 +1215,10 @@
         </o-if>
       </div>
     </footer>
-      </div>
       <!-- 任务清单（右）：模型开发前拆解的任务 + 宿主自动登记的错误修复任务，
-           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作 -->
+           随 task_list 调用实时勾选推进；按会话持久化，跨暂停 / 刷新续作。
+           必须留在 .main-col 内（它是 absolute 定位锚）：挪到外面会落到根节点
+           .app 锚上，top:12 从窗口顶算起，整卡盖住顶栏右侧按钮（实测翻过车） -->
       <o-if :value="sessionTasks.length > 0">
         <aside class="tasks-panel" class:collapsed="!tasksPanelOpen">
           <button
@@ -1334,10 +1231,20 @@
             <span class="tasks-progress">{{tasksDoneCount}}/{{sessionTasks.length}}</span>
             <n-icon class="tasks-chev" icon="mdi:chevron-right"></n-icon>
           </button>
-          <o-if :value="tasksPanelOpen">
+          <!-- body 常驻挂载（不套 o-if）：展开 / 收起走 CSS 过渡——0fr 折叠 +
+               淡入淡出 + 任务逐条错峰入场；o-if 卸载会让收起瞬间消失、做不出
+               退出动画。tasksPanelOpen 只驱动面板的 collapsed 类 -->
+          <div class="tasks-body-wrap">
             <div class="tasks-body">
+              <!-- padding 必须在这一层（.tasks-body 是 0fr 的 grid item，
+                   它自身的 padding 会漏进轨道尺寸，收起后残留一条高度） -->
+              <div class="tasks-list">
               <o-fill :value="sessionTasks" fill-key="id">
-                <div class="task-item" attr:data-status="$data.status">
+                <div
+                  class="task-item"
+                  attr:data-status="$data.status"
+                  class:running="$host.turnInView"
+                >
                   <o-if :value="$data.source === 'error'">
                     <span class="task-badge">错误</span>
                   </o-if>
@@ -1345,10 +1252,12 @@
                   <span class="task-text">{{$data.text}}</span>
                 </div>
               </o-fill>
+              </div>
             </div>
-          </o-if>
+          </div>
         </aside>
       </o-if>
+      </div>
     </div>
 
     <!-- 项目抽屉（左）：点击项新标签打开项目；已开标签聚焦复用 -->
@@ -1423,135 +1332,322 @@
     </aside>
 
     <!-- 备份管理抽屉（右，比普通面板宽）：把当前应用 client/ 打包到同层 backup/ 目录 -->
-    <div class="panel-mask" class:show="backupDrawerOpen" on:click="closeBackupDrawer"></div>
-    <aside class="backup-drawer" class:show="backupDrawerOpen">
-      <div class="panel-head">
-        <span>备份管理</span>
-        <st-icon-button title="关闭" on:click="closeBackupDrawer">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
-      </div>
-      <div class="backup-sub">
-        {{currentAppDisplay || currentAppName}} · 备份存于应用目录的 backup/ 下
-      </div>
-      <div class="backup-actions">
-        <st-button
-          variant="filled"
-          attr:disabled="backupBusy"
-          on:click="handleCreateBackup"
-        >
-          <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
-          <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
-        </st-button>
-        <st-button
-          variant="outlined"
-          attr:disabled="backupBusy"
-          on:click="handleSmartBackup"
-        >
-          <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
-          <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
-        </st-button>
-      </div>
-      <div class="panel-body">
-        <o-if :value="backups.length === 0">
-          <div class="panel-empty">还没有备份，点上方「新增备份」打包当前代码</div>
-        </o-if>
-        <o-fill :value="backups" fill-key="id">
-          <div class="backup-item">
-            <n-icon class="backup-icon" icon="mdi:folder-zip-outline"></n-icon>
-            <div class="backup-item-main">
-              <div class="backup-item-name">
-                {{$host.backupLabel($data)}}
-                <o-if :value="$data.current">
-                  <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
-                </o-if>
-                <o-if :value="$data.publishedVersion">
-                  <span
-                    class="backup-published-badge"
-                    attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
-                  >v{{$data.publishedVersion}} 已发布</span>
-                </o-if>
-              </div>
-              <div class="backup-item-dir">{{$data.id}}/</div>
-              <o-if :value="$data.note !== ''">
-                <div class="backup-item-note" attr:title="$data.note">{{$data.note}}</div>
-              </o-if>
-            </div>
-            <div class="backup-item-actions">
-              <st-button
-                class="del-btn"
-                variant="text"
-                attr:title="$data.current ? '内容已是该备份状态' : '还原此备份'"
-                on:click="$host.restoreBackupClick($data)"
-              >
-                <o-if :value="!$data.current">
-                  <n-icon icon="mdi:restore"></n-icon>
-                </o-if>
-                <o-if :value="$data.current">
-                  <n-icon icon="mdi:check"></n-icon>
-                </o-if>
-              </st-button>
-              <st-button
-                class="del-btn"
-                variant="text"
-                attr:title="'编辑名称与备注'"
-                on:click="$host.openBackupEdit($data)"
-              >
-                <n-icon icon="mdi:pencil-outline"></n-icon>
-              </st-button>
-              <st-button
-                class="del-btn"
-                variant="text"
-                class:confirm="$host.confirmingDelBackup === $data.id"
-                attr:title="$host.confirmingDelBackup === $data.id ? '再点一次确认删除' : '删除备份'"
-                on:click="$host.deleteBackupClick($event, $data.id)"
-              >
-                <o-if :value="$host.confirmingDelBackup === $data.id">
-                  <span>确认</span>
-                </o-if>
-                <o-if :value="$host.confirmingDelBackup !== $data.id">
-                  <n-icon icon="mdi:delete-outline"></n-icon>
-                </o-if>
-              </st-button>
-            </div>
-          </div>
-        </o-fill>
-      </div>
-    </aside>
+        
 
     <!-- 测试管理抽屉（右）：client/test/ 场景用例的清单与一键执行 -->
-    <div class="panel-mask" class:show="testDrawerOpen" on:click="closeTestDrawer"></div>
-    <aside class="backup-drawer test-drawer" class:show="testDrawerOpen">
-      <div class="panel-head">
-        <span>测试管理</span>
-        <st-icon-button title="关闭" on:click="closeTestDrawer">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
-      </div>
-      <div class="backup-sub">
-        {{currentAppDisplay || currentAppName}} · 用例存于应用目录的 client/test/ 下
-      </div>
-      <div class="backup-actions">
+        
+
+    <!-- 工具 / 技能面板（右） -->
+        
+
+    <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
+         避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
+  <!-- 顶栏功能 Hub：应用设置 / 预览 / 发布 / 备份 / 测试 / 资源 收拢的居中大对话框
+       （90vw × 90vh），底部横向 navigation 切换内容页；hub-layout 绝对定位
+       撑满面板（st-dialog 内容槽在 shadow .body 里、高度随内容，height:100%
+       解析不到面板高度），保证内容不满高时导航栏也固定在底部 -->
+    <st-dialog class="hub-dialog" sync:open="hubOpen" auto-close>
+      <div class="hub-layout">
+        <div class="hub-pane">
+          <o-if :value="hubTab === 'appinfo'">
+            <div class="hub-pane-head">应用设置</div>
+            <div class="hub-pane-body hub-narrow appinfo-body">
+              <div class="backup-edit-id">{{currentAppName}}/client/app.json</div>
+              <div class="backup-edit-field">
+                <div class="backup-edit-label">应用名称</div>
+                <st-input
+                  sync:value="appMetaName"
+                  maxlength="24"
+                  placeholder="显示名称（≤24 字，留空回落目录名）"
+                ></st-input>
+              </div>
+              <div class="backup-edit-field">
+                <div class="backup-edit-label">图标（emoji）</div>
+                <st-input
+                  class="app-meta-icon-input"
+                  sync:value="appMetaIcon"
+                  maxlength="8"
+                  placeholder="一个 emoji，如 📦"
+                ></st-input>
+                <div class="app-meta-presets">
+                  <o-fill :value="metaIconPresets">
+                    <button
+                      class="app-meta-preset"
+                      attr:data-on="$data === $host.appMetaIcon"
+                      on:click="pickMetaIcon($data)"
+                    >{{$data}}</button>
+                  </o-fill>
+                </div>
+              </div>
+              <div class="backup-edit-actions">
+                <st-button variant="filled" attr:disabled="sending" on:click="saveAppMeta">保存</st-button>
+              </div>
+              <div class="pub-note">修改写回 client/app.json 并同步登记表 / 顶栏 / 项目抽屉；生成中不可修改</div>
+            </div>
+          </o-if>
+
+          <o-if :value="hubTab === 'preview'">
+            <div class="hub-pane-head">
+              预览窗口
+              <span class="pp-badge" class:live="previewOnline">{{previewOnlineText()}}</span>
+            </div>
+            <div class="hub-pane-body hub-wide">
+                
+                <div class="prev-layout">
+            <div class="prev-main">
+            <div class="pp-actions">
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popUpdateAll">
+                    <span slot="prefix"><n-icon icon="mdi:sync"></n-icon></span>
+                    更新全部
+                  </st-button>
+                  <st-button variant="outlined" attr:disabled="previewBusy" on:click="popNewWindow">
+                    <span slot="prefix"><n-icon icon="mdi:open-in-new"></n-icon></span>
+                    新开窗口
+                  </st-button>
+                </div>
+                <div class="pp-wins-grid">
+                  <o-fill :value="previewWindows" fill-key="id">
+                    <div class="pp-win-tile" class:offline="!$data.online">
+                      <div class="pp-thumb">
+                        <o-if :value="$host.thumbFor($data)">
+                          <img
+                            class="pp-thumb-img"
+                            attr:src="$host.thumbFor($data)"
+                            alt="预览缩略图"
+                          />
+                        </o-if>
+                        <o-if :value="!$host.thumbFor($data)">
+                          <div class="pp-thumb-empty">
+                            <n-icon icon="mdi:monitor-screenshot"></n-icon>
+                          </div>
+                        </o-if>
+                        <span class="pp-tile-dot"></span>
+                      </div>
+                      <div class="pp-tile-meta">
+                        <span class="pp-tile-app">{{$data.app || "?"}}</span>
+                        <span class="pp-tile-device">{{$host.winLabel($data)}}</span>
+                      </div>
+                    </div>
+                  </o-fill>
+                </div>
+                <o-if :value="previewWindows.length === 0">
+                  <div class="prev-empty">
+                    <n-icon icon="mdi:monitor-screenshot"></n-icon>
+                    <div class="prev-empty-title">还没有打开的预览窗口</div>
+                    <div class="prev-empty-desc">点上方「新开窗口」把当前应用跑进隔离域预览，或用右侧二维码让手机加入调试</div>
+                  </div>
+                </o-if>
+                </div>
+
+            <aside class="prev-qr">
+            <div class="pp-sec">
+                  <span class="pp-label">手机调试（扫码即收到当前应用，保持本页开启）</span>
+                  <div class="pp-qr-row">
+                    <o-if :value="previewShareUrl">
+                      <m-ercode attr:content="previewShareUrl"></m-ercode>
+                    </o-if>
+                    <div class="pp-qr-side">
+                      <span class="pp-url">{{shortUrl(previewShareUrl)}}</span>
+                      <st-icon-button
+                        class="pp-copy"
+                        title="复制链接"
+                        attr:disabled="!previewShareUrl"
+                        on:click="copyText(previewShareUrl)"
+                      >
+                        <n-icon icon="mdi:content-copy"></n-icon>
+                      </st-icon-button>
+                    </div>
+                  </div>
+                </div></div>
+            </aside>
+            </div>
+          </o-if>
+          <o-if :value="hubTab === 'version'">
+            <div class="hub-pane-head">
+              版本 · 发布与备份
+              <o-if :value="publishedInfo">
+                <span class="pp-badge live">已发布 v{{publishedInfo.version}}</span>
+              </o-if>
+              <o-if :value="!publishedInfo">
+                <span class="pp-badge">未发布</span>
+              </o-if>
+            </div>
+            <div class="hub-pane-body hub-wide">
+              <!-- 发布条：版本号 / 代码一致性 / 分享链接在左，发布操作在右。
+                   发布永远针对当前代码；发完下方历史立即出现带版本标注的存档 -->
+              <div class="pub-strip">
+                <div class="pub-strip-main">
+                  <div class="pub-strip-ver">
+                    <o-if :value="publishedInfo">v{{publishedInfo.version}}</o-if>
+                    <o-if :value="!publishedInfo">未发布</o-if>
+                  </div>
+                  <div class="pub-strip-info">
+                    <div class="pub-strip-line">
+                      <o-if :value="!publishedInfo">
+                        <span>发布后即可在首页应用列表打开</span>
+                      </o-if>
+                      <o-if :value="publishMatch === true">
+                        <span class="pub-ok">发布内容就是当前代码</span>
+                      </o-if>
+                      <o-if :value="publishMatch === false">
+                        <span class="pub-warn">有未发布的修改，发布将更新首页副本</span>
+                      </o-if>
+                    </div>
+                    <o-if :value="publishedInfo">
+                      <div class="pub-strip-line">
+                        <o-if :value="publishShareUrl">
+                          <span
+                            class="pub-link"
+                            attr:title="publishShareUrl"
+                          >{{shortUrl(publishShareUrl)}}</span>
+                          <st-icon-button
+                            class="pub-copy"
+                            title="复制分享链接"
+                            on:click="copyText(publishShareUrl)"
+                          >
+                            <n-icon icon="mdi:content-copy"></n-icon>
+                          </st-icon-button>
+                        </o-if>
+                        <o-if :value="!publishShareUrl">
+                          <span>分享链接在打开首页应用列表后自动生成</span>
+                        </o-if>
+                      </div>
+                    </o-if>
+                  </div>
+                </div>
+                <div class="pub-actions">
+                  <st-button
+                    class="pub-main-btn"
+                    variant="filled"
+                    attr:disabled="publishBusy"
+                    on:click="handlePublish()"
+                  >
+                    <o-if :value="!publishedInfo">🚀 发布</o-if>
+                    <o-if :value="publishedInfo">🚀 更新发布</o-if>
+                  </st-button>
+                  <o-if :value="publishedInfo">
+                    <!-- 版本类型菜单：默认更新发布 = 小版本（末段 +1）；菜单可选
+                         中版本 / 大版本。大版本对应重大改版，handlePublish 内二次确认 -->
+                    <st-menu align="right" class="pub-ver-menu">
+                      <button
+                        slot="trigger"
+                        class="pub-menu-btn"
+                        attr:disabled="publishBusy"
+                        attr:title="'选择发布版本类型'"
+                      >
+                        <n-icon icon="mdi:chevron-down"></n-icon>
+                      </button>
+                      <st-menu-item on:click="handlePublish('minor')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新中版本（功能更新）
+                        <span slot="suffix" class="menu-value">{{nextVersion('minor')}}</span>
+                      </st-menu-item>
+                      <st-menu-item on:click="handlePublish('major')">
+                        <span slot="prefix" class="menu-check"></span>
+                        更新大版本（重大改版）
+                        <span slot="suffix" class="menu-value">{{nextVersion('major')}}</span>
+                      </st-menu-item>
+                    </st-menu>
+                  </o-if>
+                </div>
+              </div>
+              <!-- 版本历史 = 备份列表：发布存档（rocket 徽标 + tertiary 底色）
+                   与手动 / 智能备份同列，恢复条目即回滚到该版本 -->
+              <div class="ver-history-head">
+                <span class="ver-history-title">版本历史</span>
+                <span class="ver-history-sub">备份存于应用目录的 backup/ 下</span>
+                <div class="backup-actions">
+                  <st-button
+                    variant="filled"
+                    attr:disabled="backupBusy"
+                    on:click="handleCreateBackup"
+                  >
+                    <o-if :value="smartBackupBusy">⏳ AI 分析中…</o-if>
+                    <o-if :value="!smartBackupBusy">＋ 新增备份</o-if>
+                  </st-button>
+                  <st-button
+                    variant="outlined"
+                    attr:disabled="backupBusy"
+                    on:click="handleSmartBackup"
+                  >
+                    <o-if :value="smartBackupBusy">✨ 生成中…</o-if>
+                    <o-if :value="!smartBackupBusy">✨ 智能备份</o-if>
+                  </st-button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <o-if :value="backups.length === 0">
+                  <div class="panel-empty">还没有版本记录，点上方「新增备份」打包当前代码</div>
+                </o-if>
+                <o-fill :value="backups" fill-key="id">
+                  <div class="backup-item" class:published="$data.publishedVersion">
+                    <n-icon
+                      class="backup-icon"
+                      attr:icon="$data.publishedVersion ? 'mdi:rocket-launch' : 'mdi:folder-zip-outline'"
+                    ></n-icon>
+                    <div class="backup-item-main">
+                      <div class="backup-item-name">
+                        {{$host.backupLabel($data)}}
+                        <o-if :value="$data.current">
+                          <span class="backup-current-badge" title="内容与当前应用完全一致">与当前一致</span>
+                        </o-if>
+                        <o-if :value="$data.publishedVersion">
+                          <span
+                            class="backup-published-badge"
+                            attr:title="'此备份内容即已发布的 v' + $data.publishedVersion"
+                          >v{{$data.publishedVersion}} 已发布</span>
+                        </o-if>
+                      </div>
+                      <div class="backup-item-dir">{{$data.id}}/</div>
+                      <o-if :value="$data.note !== ''">
+                        <div class="backup-item-note" attr:title="$data.note">{{$data.note}}</div>
+                      </o-if>
+                    </div>
+                    <div class="backup-item-actions">
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        attr:title="$data.current ? '内容已是该备份状态' : '还原此版本'"
+                        on:click="$host.restoreBackupClick($data)"
+                      >
+                        <o-if :value="!$data.current">
+                          <n-icon icon="mdi:restore"></n-icon>
+                        </o-if>
+                        <o-if :value="$data.current">
+                          <n-icon icon="mdi:check"></n-icon>
+                        </o-if>
+                      </st-button>
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        attr:title="'编辑名称与备注'"
+                        on:click="$host.openBackupEdit($data)"
+                      >
+                        <n-icon icon="mdi:pencil-outline"></n-icon>
+                      </st-button>
+                      <st-button
+                        class="del-btn"
+                        variant="text"
+                        class:confirm="$host.confirmingDelBackup === $data.id"
+                        attr:title="$host.confirmingDelBackup === $data.id ? ($data.publishedVersion ? '删除后无法再还原到 v' + $data.publishedVersion + '，再点一次确认' : '再点一次确认删除') : '删除备份'"
+                        on:click="$host.deleteBackupClick($event, $data.id)"
+                      >
+                        <o-if :value="$host.confirmingDelBackup === $data.id">
+                          <span>确认</span>
+                        </o-if>
+                        <o-if :value="$host.confirmingDelBackup !== $data.id">
+                          <n-icon icon="mdi:delete-outline"></n-icon>
+                        </o-if>
+                      </st-button>
+                    </div>
+                  </div>
+                </o-fill>
+              </div>
+            </div>
+          </o-if>
+          <o-if :value="hubTab === 'tests'">
+            <div class="hub-pane-head">测试管理</div>
+            <div class="hub-pane-body hub-wide"><div class="backup-actions">
         <st-button
           variant="filled"
           attr:disabled="testBusy || tests.length === 0"
@@ -1560,6 +1656,18 @@
           <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
           <o-if :value="!testRunning">▶ 跑全部</o-if>
         </st-button>
+        <o-if :value="testFailCount > 0">
+          <!-- 有失败用例才出：点击把失败内容自动发进对话，由专门的修复
+               回合接手（修完只重跑失败的用例文件，见 buildTestFixMessage） -->
+          <st-button
+            variant="outlined"
+            attr:disabled="testBusy || sending"
+            on:click="handleFixFailedTests"
+          >
+            <span slot="prefix"><n-icon icon="mdi:wrench-outline"></n-icon></span>
+            修复失败用例（{{testFailCount}}）
+          </st-button>
+        </o-if>
       </div>
       <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
       <div class="panel-body">
@@ -1597,29 +1705,14 @@
             </st-button>
           </div>
         </o-fill>
-      </div>
-    </aside>
-
-    <!-- 工具 / 技能面板（右） -->
-    <div class="panel-mask" class:show="panelOpen" on:click="closePanel"></div>
-    <aside class="panel" class:show="panelOpen">
-      <div class="panel-head">
-        <span>资源</span>
-        <st-icon-button title="关闭" on:click="closePanel">
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </st-icon-button>
-      </div>
-      <st-tab-bar class="panel-tabs">
+      </div></div>
+          </o-if>
+          <o-if :value="hubTab === 'tools'">
+            <div class="hub-pane-head">工具 / 技能</div>
+            <div class="hub-pane-body hub-wide tools-body">
+            <div class="tools-layout">
+            <div class="tools-list">
+            <st-tab-bar class="panel-tabs">
         <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
           <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>工具</span>
         </st-tab-item>
@@ -1635,7 +1728,12 @@
               <span>Agent 可调用的工具 · {{toolDefs.length}}</span>
             </div>
             <o-fill :value="toolDefs" fill-key="name">
-              <div class="tool-def" title="查看工具详情" on:click="$host.openToolDetail($data.name)">
+              <div
+                  class="tool-def"
+                  class:selected="$host.isToolSelected($data.name)"
+                  title="查看工具详情"
+                  on:click="$host.openToolDetail($data.name)"
+                >
                 <div class="tool-def-row">
                   <span class="tool-def-name">{{$data.name}}</span>
                   <o-if :value="$data.tags.includes('视觉')">
@@ -1696,10 +1794,158 @@
           </div>
         </o-if>
       </div>
-    </aside>
+            </div>
 
-    <!-- 备份编辑对话框（名称 + 备注 一并保存；放在无 transform 的 .app 层，
-         避免抽屉的 transform 让 fixed 遮罩相对抽屉定位） -->
+            <aside class="tools-detail">
+              <o-if :value="toolDetail">
+                <div class="tool-detail-panel">
+                  <div class="tool-detail-title">
+                    <span>{{toolDetail.name}}</span>
+                    <o-if :value="toolDetail.isVisual">
+                      <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
+                        <n-icon icon="mdi:eye"></n-icon>视觉
+                      </span>
+                    </o-if>
+                  </div>
+
+                  <o-if :value="toolDetail.hasTabs">
+                    <st-tab-bar class="tool-detail-tabs">
+                      <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
+                        <span class="tab-label">工具信息</span>
+                      </st-tab-item>
+                      <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
+                        <span class="tab-label">内置测试</span>
+                      </st-tab-item>
+                    </st-tab-bar>
+                  </o-if>
+
+                  <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
+                    <div class="tool-info-row">
+                      <div class="tool-detail-main">
+                        <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
+                        <div class="tool-detail-label">参数 Schema</div>
+                        <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
+                      </div>
+                      <o-if :value="toolDetail.isVisual">
+                        <div class="tool-demo-side">
+                          <div class="tool-demo-label">运行效果预览 · 可交互</div>
+                          <iframe
+                            class="tool-demo-frame"
+                            title="视觉工具组件演示"
+                            attr:srcdoc="toolDemoDoc"
+                          ></iframe>
+                        </div>
+                      </o-if>
+                    </div>
+                  </o-if>
+
+                  <o-if :value="toolDetail.hasTabs">
+                    <div class="tool-test-grid" class:show="toolTab === 'test'">
+                      <div class="tool-test-left">
+                        <div class="tool-test-bar">
+                          <st-button
+                            variant="outlined"
+                            attr:disabled="toolTestRunning"
+                            on:click="runToolSelfTest"
+                          >
+                            <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
+                            <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
+                          </st-button>
+                          <o-if :value="toolTestDone">
+                            <span
+                              class="tool-test-verdict"
+                              class:pass="toolTestAllPass"
+                              class:fail="!toolTestAllPass"
+                            >
+                              {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
+                            </span>
+                          </o-if>
+                        </div>
+                        <div class="tool-test-cases">
+                          <o-fill :value="toolTestPlan" fill-key="name">
+                            <div class="tool-test-case">
+                              <o-if :value="$data.status === 'pending'">
+                                <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
+                              </o-if>
+                              <o-if :value="$data.status === 'pass'">
+                                <n-icon class="pass" icon="mdi:check-circle"></n-icon>
+                              </o-if>
+                              <o-if :value="$data.status === 'fail'">
+                                <n-icon class="fail" icon="mdi:close-circle"></n-icon>
+                              </o-if>
+                              <span class="tool-test-case-name">{{$data.name}}</span>
+                              <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
+                            </div>
+                          </o-fill>
+                        </div>
+                      </div>
+                      <div class="tool-test-right">
+                        <iframe
+                          class="tool-test-frame"
+                          title="内置测试运行画面"
+                          attr:srcdoc="toolTestDoc"
+                        ></iframe>
+                      </div>
+                    </div>
+                  </o-if>
+                </div>
+              </o-if>
+              <o-if :value="!toolDetail">
+                <div class="tools-detail-empty">
+                  <n-icon icon="mdi:cursor-default-click-outline"></n-icon>
+                  <div class="tools-detail-empty-title">从左侧选择工具</div>
+                  <div class="tools-detail-empty-desc">查看完整描述与参数 Schema；带内置测试的工具可以直接在这里跑测试</div>
+                </div>
+              </o-if>
+            </aside>
+            </div>
+            </div>
+          </o-if>
+        </div>
+        <!-- 底部导航：横向 st-nav-bar + parallel 项（图标左 / 文字右，
+             active 药丸整行包裹，M3 emphasized 跟随），active 由 hubTab 驱动 -->
+        <st-nav-bar class="hub-nav">
+          <o-if :value="currentAppName !== ''">
+            <st-nav-item
+              parallel
+              attr:active="hubTab === 'appinfo'"
+              on:click="setHubTab('appinfo')"
+            >
+              <span slot="icon"><n-icon icon="mdi:application-edit-outline"></n-icon></span>应用设置
+            </st-nav-item>
+          </o-if>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'preview'"
+            on:click="setHubTab('preview')"
+          >
+            <span slot="icon"><n-icon icon="mdi:play-circle"></n-icon></span>预览
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'version'"
+            on:click="setHubTab('version')"
+          >
+            <span slot="icon"><n-icon icon="mdi:rocket-launch"></n-icon></span>版本
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'tests'"
+            on:click="setHubTab('tests')"
+          >
+            <span slot="icon"><n-icon icon="mdi:flask-outline"></n-icon></span>测试
+          </st-nav-item>
+          <st-nav-item
+            parallel
+            attr:active="hubTab === 'tools'"
+            on:click="setHubTab('tools')"
+          >
+            <span slot="icon"><n-icon icon="mdi:view-grid"></n-icon></span>资源
+          </st-nav-item>
+        </st-nav-bar>
+      </div>
+    </st-dialog>
+
     <st-dialog class="backup-edit" sync:open="backupEditOpen" auto-close>
       <div class="backup-edit-panel">
         <div class="backup-edit-title">编辑备份</div>
@@ -1728,118 +1974,6 @@
          「工具信息 / 内置测试」双 Tab，无内置测试的工具用窄面板、无 Tab。
          测试 Tab：左断言 list，右 iframe 实跑测试（视觉工具挂载被测组件，
          纯插件工具显示断言运行记录） -->
-    <st-dialog
-      class="tool-detail"
-      class:narrow="toolDetail && !toolDetail.hasTabs"
-      sync:open="toolDetailOpen"
-      auto-close
-    >
-      <o-if :value="toolDetail">
-        <div class="tool-detail-panel">
-          <div class="tool-detail-title">
-            <span>{{toolDetail.name}}</span>
-            <o-if :value="toolDetail.isVisual">
-              <span class="tool-def-tag" title="视觉交互工具：会在对话中渲染可交互的界面组件">
-                <n-icon icon="mdi:eye"></n-icon>视觉
-              </span>
-            </o-if>
-          </div>
-
-          <!-- 有内置测试的工具：Tab 切换（信息 / 测试） -->
-          <o-if :value="toolDetail.hasTabs">
-            <st-tab-bar class="tool-detail-tabs">
-              <st-tab-item attr:active="toolTab === 'info'" on:click="setToolTab('info')">
-                <span class="tab-label">工具信息</span>
-              </st-tab-item>
-              <st-tab-item attr:active="toolTab === 'test'" on:click="setToolTab('test')">
-                <span class="tab-label">内置测试</span>
-              </st-tab-item>
-            </st-tab-bar>
-          </o-if>
-
-          <!-- Tab 1：工具信息（描述 + Schema；视觉工具右侧保留运行效果演示） -->
-          <o-if :value="toolTab === 'info' || !toolDetail.hasTabs">
-            <div class="tool-info-row">
-              <div class="tool-detail-main">
-                <div class="tool-detail-desc" :html="toolDetail.descHtml"></div>
-                <div class="tool-detail-label">参数 Schema</div>
-                <pre class="tool-detail-schema">{{toolDetail.schemaText}}</pre>
-              </div>
-              <!-- 视觉工具：iframe 实时演示组件运行效果（pending 可交互） -->
-              <o-if :value="toolDetail.isVisual">
-                <div class="tool-demo-side">
-                  <div class="tool-demo-label">运行效果预览 · 可交互</div>
-                  <iframe
-                    class="tool-demo-frame"
-                    title="视觉工具组件演示"
-                    attr:srcdoc="toolDemoDoc"
-                  ></iframe>
-                </div>
-              </o-if>
-            </div>
-          </o-if>
-
-          <!-- Tab 2：内置测试（左断言 list | 右测试运行 iframe）。
-               不用 o-if 卸载：切 Tab 销毁 iframe 会让保留的 srcdoc 重挂载时
-               自动重跑；改为常驻 + display 切换，跑完的画面得以保留 -->
-          <o-if :value="toolDetail.hasTabs">
-            <div class="tool-test-grid" class:show="toolTab === 'test'">
-              <div class="tool-test-left">
-                <div class="tool-test-bar">
-                  <st-button
-                    variant="outlined"
-                    attr:disabled="toolTestRunning"
-                    on:click="runToolSelfTest"
-                  >
-                    <o-if :value="toolTestRunning">⏳ 测试运行中…</o-if>
-                    <o-if :value="!toolTestRunning">▶ 运行测试</o-if>
-                  </st-button>
-                  <o-if :value="toolTestDone">
-                    <span
-                      class="tool-test-verdict"
-                      class:pass="toolTestAllPass"
-                      class:fail="!toolTestAllPass"
-                    >
-                      {{toolTestAllPass ? '✓ 全部通过' : '✗ 存在失败'}}
-                    </span>
-                  </o-if>
-                </div>
-                <div class="tool-test-cases">
-                  <!-- 测试计划（self-test.js 导出 testPlan）：进 Tab 即见待测清单，
-                       运行后逐条由 pending → pass / fail -->
-                  <o-fill :value="toolTestPlan" fill-key="name">
-                    <div class="tool-test-case">
-                      <o-if :value="$data.status === 'pending'">
-                        <n-icon class="pending" icon="mdi:circle-outline"></n-icon>
-                      </o-if>
-                      <o-if :value="$data.status === 'pass'">
-                        <n-icon class="pass" icon="mdi:check-circle"></n-icon>
-                      </o-if>
-                      <o-if :value="$data.status === 'fail'">
-                        <n-icon class="fail" icon="mdi:close-circle"></n-icon>
-                      </o-if>
-                      <span class="tool-test-case-name">{{$data.name}}</span>
-                      <span class="tool-test-case-info" attr:title="$data.info">{{$data.info}}</span>
-                    </div>
-                  </o-fill>
-                </div>
-              </div>
-              <div class="tool-test-right">
-                <iframe
-                  class="tool-test-frame"
-                  title="内置测试运行画面"
-                  attr:srcdoc="toolTestDoc"
-                ></iframe>
-              </div>
-            </div>
-          </o-if>
-
-          <div class="backup-edit-actions">
-            <st-button variant="text" on:click="closeToolDetail">关闭</st-button>
-          </div>
-        </div>
-      </o-if>
-    </st-dialog>
   </div>
 
   <script>
@@ -1850,7 +1984,7 @@
       const { createBuilderStore } = await load("../lib/builder-store.js");
       const { TOOL_DEFS } = await load("../lib/tools/index.js");
       const { createMsgWindow } = await load("../lib/msg-window.js");
-      const { contextInfo } = await load("../lib/builder.js");
+      const { contextInfo, bumpVersion } = await load("../lib/builder.js");
 
       // Core 依赖：页面模块内必须运行时加载，失败则降级为不可写模式；
       // 句柄等类实例由仓库闭包持有，不进入响应式数据
@@ -1948,7 +2082,7 @@
         ["input", "textarea", "select", "checkbox", "radio"]
           .map(
             (n) =>
-              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@latest/packages/' + n + "/" + n + '.html"></l-m>',
+              '<l-m src="' + location.origin + '/gh/ofajs/senti-ui@main/packages/' + n + "/" + n + '.html"></l-m>',
           )
           .join("");
 
@@ -2100,6 +2234,14 @@
       window.addEventListener("beforeunload", () => {
         if (announcedName) bc?.postMessage({ type: "bye", name: announcedName });
       });
+      // 回合进行中拦截刷新 / 关闭标签：浏览器原生确认弹窗（自定义文案现代
+      // 浏览器不展示，措辞由浏览器统一）；回合收尾 sending 复位即自动放行
+      window.addEventListener("beforeunload", (e) => {
+        if (store.state.sending) {
+          e.preventDefault();
+          e.returnValue = ""; // Chrome 旧链路要求的置位触发
+        }
+      });
 
       return {
         data: {
@@ -2115,15 +2257,17 @@
           stopRequested: false, // 用户点了停止、回合尚未收尾（按钮禁用显示「停止中」）
           reasoning: "low", // 推理等级偏好（仓库 patch；off/low/medium/high）
           keyError: "",
+          interrupted: false, // 上次回合被硬中断（仓库检测，随 patch 事件镜像）
+          interruptedDismissed: false, // 提醒卡本次视图收起（切换会话重置）
           coreError: "",
           atBottom: true,
           sideWidth: 216, // 会话栏宽度（拖拽可调，150–400）
           chatWidth: 768, // 对话内容列宽度（左右手柄拖拽可调，480–1280，--chat-w 驱动）
-          panelOpen: false,
+          hubOpen: false, // 顶栏功能 Hub 大对话框（预览 / 发布 / 备份 / 测试 / 资源）
+          hubTab: "preview", // Hub 当前内容页
           panelTab: "tools", // 右侧面板 tab："tools" | "skills"
           projDrawerOpen: false, // 左侧项目抽屉
-          backupDrawerOpen: false, // 右侧备份管理抽屉
-          testDrawerOpen: false, // 右侧测试管理抽屉
+
           tests: [], // 场景用例清单（client/test/*.test.json）
           testResults: {}, // 每用例上次结果（file → {ok, ms, error, steps}）
           testLastRun: null, // 上次全量摘要 {at, ok, pass, fail}
@@ -2135,7 +2279,9 @@
           smartBackupBusy: false, // 智能备份的 AI 分析阶段
           publishBusy: false, // 发布到首页应用列表进行中
           publishedInfo: null, // 当前应用发布态（null = 未发布；{ version, at } = 已发布）
-          publishPopOpen: false, // 发布下拉气泡开关
+          appMetaName: "", // 编辑中的显示名称草稿
+          appMetaIcon: "", // 编辑中的图标草稿（emoji）
+          metaIconPresets: ["📦", "⏰", "✅", "🎵", "💰", "📝", "🎮", "🌤️", "📷", "🔔", "📊", "🧩"],
           publishMatch: null, // 发布内容与当前代码一致性（true 一致 / false 有修改 / null 未知）
           publishShareUrl: "", // 已发布副本的 P2P 分享链接（空 = 尚未生成）
           previewBusy: false, // 隔离预览推送中
@@ -2144,13 +2290,11 @@
           previewOnline: false, // 预览窗口（应用页代理）在线 → 预览按钮亮标
           previewWindows: [], // 预览窗口注册表快照（多窗口下拉气泡）
           previewThumbs: {}, // 窗口缩略图缓存（winId → dataURL，空串 = 占位图）
-          previewPopOpen: false, // 预览下拉气泡开关
           previewShareUrl: "", // 跨设备入口（bridge 引导页 ?u=&app=，手机扫码用）
           confirmingDelBackup: "", // 两步确认删除的备份 id
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
-          toolDetailOpen: false, // 工具详情对话框
           toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual / hasTabs）
           toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
           toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
@@ -2437,26 +2581,11 @@
             }
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
-            // 预览下拉气泡：点击发生在气泡/按钮内不关（composedPath 穿 shadow 判定）
-            if (
-              !e
-                .composedPath()
-                .some(
-                  (el) =>
-                    el.classList?.contains?.("preview-wrap") ||
-                    el.classList?.contains?.("publish-wrap"),
-                )
-            ) {
-              this.previewPopOpen = false;
-              this.publishPopOpen = false;
-            }
           };
           this._docKey = (e) => {
             if (e.key !== "Escape") return;
             if (this.openStat) this.openStat = "";
             if (this.openUsageMsgId) this.openUsageMsgId = 0;
-            if (this.previewPopOpen) this.previewPopOpen = false;
-            if (this.publishPopOpen) this.publishPopOpen = false;
           };
           document.addEventListener("mousedown", this._docClose);
           document.addEventListener("keydown", this._docKey);
@@ -2494,6 +2623,7 @@
             const op = evt?.op;
             // 会话整体切换（replace）：编辑态指向的消息可能已不存在，收起
             if (op === "replace" && this.editingMsgId) this.cancelMsgEdit();
+            if (op === "replace") this.interruptedDismissed = false;
             // 窗口模块统一处理：全量（_win.all）与渲染窗口（this.messages）
             // 同步更新；push 只加尾不丢头，replace 重置为最近一段
             this._win.apply(evt);
@@ -3221,7 +3351,7 @@
             if (!msg?.snapshotId) return;
             this.rollbackOptionsOpen = 0;
             const { default: alertDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
             );
             try {
               // 该回合的用户请求摘要（不满意通知里带给 AI，让它知道否决的是哪次改动）
@@ -3284,7 +3414,7 @@
             const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
@@ -3403,6 +3533,23 @@
                 : `chat:${this.currentAppName}:${this.currentSessionId}`;
             this.turnInView =
               !!this.sending && (this.turningKey || "") === vk;
+          },
+
+          // ---- 上次回合被中断（刷新 / 崩溃）提醒 ----
+
+          // 整卡可点：补发一条「继续」。wire 记忆停在合法断点（mz/ai 落盘
+          // 保证 assistant 的 tool_calls 不悬空），模型接着断点做，而不是
+          // 回到上个完整回合重跑
+          continueInterrupted() {
+            if (this.sending) return;
+            this.atBottom = true;
+            this.followScroll(true);
+            store.send("继续");
+          },
+
+          dismissInterrupted(e) {
+            e.stopPropagation(); // 阻断冒泡到整卡的继续
+            this.interruptedDismissed = true; // 仅本次视图收起，切换会话重置
           },
 
           // ---- 编辑并重发末条用户消息 ----
@@ -3537,13 +3684,13 @@
               const r = await store.compress();
               if (!r.ok && r.reason) {
                 const { default: alertDlg } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                  "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
                 );
                 await alertDlg({ title: "压缩上下文", message: r.reason });
               }
             } catch (err) {
               const { default: alertDlg } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
               );
               await alertDlg({ title: "压缩失败", message: err.message });
             } finally {
@@ -3583,11 +3730,12 @@
 
           // 任务状态 → 图标名（attr:icon 动态属性用）
           taskIcon(status) {
-            return status === "done"
-              ? "mdi:check-circle-outline"
-              : status === "in_progress"
-                ? "mdi:progress-check"
-                : "mdi:circle-outline";
+            if (status === "done") return "mdi:check-circle-outline";
+            if (status === "in_progress") {
+              // 回合进行中才转 spinner；刷新 / 停止后停在这一步的显示暂停态
+              return this.turnInView ? "mdi:loading" : "mdi:pause-circle-outline";
+            }
+            return "mdi:circle-outline";
           },
 
           toggleTasksPanel() {
@@ -3658,7 +3806,7 @@
           async editSessionTitle() {
             if (this.currentSessionId === "") return;
             const { default: promptDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/prompt.js",
             );
             const val = await promptDlg({
               title: "重命名会话",
@@ -3669,6 +3817,35 @@
             const title = String(val).trim();
             if (!title) return;
             await store.renameSession(title);
+          },
+
+          // ---- 应用信息（名称 / 图标）编辑 ----
+
+          pickMetaIcon(c) {
+            this.appMetaIcon = c;
+          },
+
+          async saveAppMeta() {
+            const displayName = this.appMetaName.trim();
+            if (!displayName) return; // 名称必填（写回侧还有回落目录名兜底）
+            const res = await store.updateAppMeta({ displayName, icon: this.appMetaIcon });
+            if (!res?.ok) {
+              const { default: toast } = await load(
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
+              );
+              toast({
+                message:
+                  res?.reason === "sending"
+                    ? "生成中暂不能修改应用信息，请等回合结束"
+                    : res?.reason || "修改失败，请稍后再试",
+                color: "warning",
+              });
+              return; // 失败保留输入，卡片不关
+            }
+            const { default: toast } = await load(
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
+            );
+            toast({ message: "应用信息已更新", color: "success" });
           },
 
           selectMode(mode) {
@@ -3705,18 +3882,13 @@
           // 开面板时顺带刷新窗口清单 / 入口地址 / 缩略图（缩略图 = wire 线框数据
           // 本地重绘，免屏幕授权，打开期间每 5s 刷新一次——单张 ~8KB，仅面板
           // 打开期间产生流量）
-          togglePreviewPop() {
-            const next = !this.previewPopOpen;
-            this.previewPopOpen = next;
-            clearInterval(this._thumbTimer);
-            if (next) {
-              store.refreshPreviewWindows();
-              store.refreshPreviewInfo();
-              store.refreshPreviewThumbs();
-              this._thumbTimer = setInterval(() => {
-                if (!document.hidden) store.refreshPreviewThumbs();
-              }, 5000);
-            }
+          // ---- 顶栏功能 Hub（大对话框：底部 nav 切换 应用设置/预览/版本/测试/资源）----
+
+          // 打开即定位到对应页并做该页的刷新副作用（预览=窗口清单/缩略图心跳，
+          // 版本=发布一致性计算 + 历史清单刷新，测试=用例索引刷新）
+          openHub(tab) {
+            this.hubOpen = true;
+            this.setHubTab(tab);
           },
 
           // 更新全部窗口（主推送 + 其余在线窗口同步；气泡保持打开看进度）
@@ -3739,7 +3911,7 @@
             navigator.clipboard.writeText(text).then(
               async () => {
                 const { default: toast } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                  "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
                 );
                 toast({ message: "已复制", color: "success" });
               },
@@ -3897,27 +4069,6 @@
             this.projDrawerOpen = false;
           },
 
-          // ---- 备份管理抽屉（业务在仓库：打包 / 列表 / 删除走 backup/ 目录） ----
-
-          async openBackupDrawer() {
-            this.backupDrawerOpen = true;
-            this.confirmingDelBackup = "";
-            await store.refreshBackups();
-          },
-
-          closeBackupDrawer() {
-            this.backupDrawerOpen = false;
-          },
-
-          // ---- 测试管理抽屉 ----
-          openTestDrawer() {
-            store.refreshTests?.();
-            this.testDrawerOpen = true;
-          },
-
-          closeTestDrawer() {
-            this.testDrawerOpen = false;
-          },
 
           async handleRunAllTests() {
             if (this.testBusy) return;
@@ -3927,6 +4078,19 @@
           async handleRunOne(file) {
             if (this.testBusy) return;
             await store.runTests?.([file]);
+          },
+
+          // 当前结果里的失败用例数（修复按钮的显隐与计数）
+          get testFailCount() {
+            return Object.values(this.testResults || {}).filter((r) => !r.ok).length;
+          },
+
+          // 修复失败用例：失败内容自动发进对话（buildTestFixMessage 组文案），
+          // 让专门的修复回合接手；发出后收起抽屉把视野还给对话
+          async handleFixFailedTests() {
+            if (this.sending || this.testBusy) return;
+            const res = await store.fixFailedTests?.();
+            if (res?.ok) this.closeHub();
           },
 
           // 用例行状态图标：绿勾 / 红叉 / 中性烧瓶（没跑过或解析失败）；
@@ -3989,7 +4153,7 @@
             const res = await store.createBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
@@ -4000,27 +4164,42 @@
             const res = await store.smartBackup();
             if (res?.skipped) {
               const { default: toast } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
               );
               toast("内容未变化，已跳过重复备份");
             }
           },
 
-          // 发布下拉气泡：打开时计算发布内容与当前代码的一致性（publishMatch）
-          async togglePublishPop() {
-            const next = !this.publishPopOpen;
-            this.publishPopOpen = next;
-            if (next) await store.refreshPublishState();
-          },
 
           // 发布当前应用到首页应用列表（成功 / 幂等重发都弹 toast 反馈；
           // 失败经仓库写入 keyError 横幅）
-          async handlePublish() {
-            const res = await store.publishCurrent();
+          // 发布 / 更新发布（bump 缺省 patch 小版本；菜单可选 minor / major）。
+          // 大版本只在界面或功能大规模改版时用：先经 confirm 二次确认防误触
+          // 发布菜单的版本预览：按已发布版本递增（实际 bump 基准是源
+          // app.json 的 version，有偏差时以发布结果 toast 为准）
+          nextVersion(kind) {
+            return bumpVersion(this.publishedInfo?.version || "0.1.0", kind);
+          },
+
+          async handlePublish(bump = "patch") {
+            if (this.publishBusy) return;
+            if (bump === "major") {
+              const { default: confirm } = await load(
+                "/gh/ofajs/senti-ui@main/packages/dialog/confirm.js",
+              );
+              const ok = await confirm({
+                title: "更新大版本？",
+                message: `大版本（v${this.nextVersion("major")}）适用于界面或功能大规模改版后的发布，平时的功能迭代请用「更新发布」或「更新中版本」。确认把当前代码发布为大版本吗？`,
+                yes: "发布大版本",
+                cancel: "再想想",
+              });
+              if (ok !== true) return;
+            }
+            const res = await store.publishCurrent(bump);
             if (!res) return;
             await store.refreshPublishState();
             const { default: toast } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
             );
             toast({
               message: res.bumped
@@ -4105,7 +4284,7 @@
             this.toolTestRunning = false; // 关闭对话框可能发生在运行中，重开时复位
             this.toolTestDone = false;
             this.toolTestPlan = [];
-            this.toolDetailOpen = true;
+
             // 复位上个工具遗留的内容区高度（带 Tab 的工具会在 sync 里重新设置）
             const panelEle = this.shadow
               .$("st-dialog.tool-detail")
@@ -4129,8 +4308,10 @@
             }
           },
 
-          closeToolDetail() {
-            this.toolDetailOpen = false;
+          // 主从布局下的选中高亮
+          isToolSelected(name) {
+            const d = this.toolDetail;
+            return !!d && d.name === name;
           },
 
           // st-dialog 的 body 包裹层不会自动伸展（flex: 0 1 auto），CSS 够不到
@@ -4233,10 +4414,10 @@
           // 还原备份：先确认覆盖风险；当前内容与备份一致时提示无变动
           async restoreBackupClick(backup) {
             const { default: confirmDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/confirm.js",
             );
             const { default: toast } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+              "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
             );
             if (this.backups.length === 0) {
               const ok = await confirmDlg({
@@ -4253,7 +4434,7 @@
               return;
             }
             const ok = await confirmDlg({
-              title: "还原备份",
+              title: "还原版本",
               message:
                 `将把应用内容还原为「${this.backupLabel(backup)}」时的状态，` +
                 "还原后当前未备份的修改会消失。确定还原？",
@@ -4390,12 +4571,37 @@
             el.addEventListener("pointercancel", onUp);
           },
 
-          openPanel() {
-            this.panelOpen = true;
+          setHubTab(tab) {
+            this.hubTab = tab;
+            clearInterval(this._thumbTimer);
+            if (tab === "preview") {
+              store.refreshPreviewWindows();
+              store.refreshPreviewInfo();
+              store.refreshPreviewThumbs();
+              // 缩略图 = wire 线框数据本地重绘，免屏幕授权；仅在 Hub 停留在
+              // 预览页期间每 5s 刷新（单张 ~8KB）
+              this._thumbTimer = setInterval(() => {
+                if (!document.hidden && this.hubOpen && this.hubTab === "preview") {
+                  store.refreshPreviewThumbs();
+                }
+              }, 5000);
+            } else if (tab === "version") {
+              // 发布态（一致性 / 分享链接）与版本历史清单一并刷新
+              this.confirmingDelBackup = "";
+              store.refreshPublishState();
+              store.refreshBackups();
+            } else if (tab === "tests") {
+              store.refreshTests?.();
+            } else if (tab === "appinfo") {
+              // 每次进设置页都按当前展示值预填（应用信息可能被模型或别处改过）
+              this.appMetaName = this.currentAppDisplay;
+              this.appMetaIcon = this.currentAppIcon;
+            }
           },
 
-          closePanel() {
-            this.panelOpen = false;
+          closeHub() {
+            this.hubOpen = false;
+            clearInterval(this._thumbTimer);
           },
 
           setPanelTab(tab) {
@@ -4406,7 +4612,7 @@
 
           async addSkillByUrl() {
             const { default: promptDlg } = await load(
-              "/gh/ofajs/senti-ui@latest/packages/dialog/prompt.js",
+              "/gh/ofajs/senti-ui@main/packages/dialog/prompt.js",
             );
             const val = await promptDlg({
               title: "添加技能",
@@ -4428,7 +4634,7 @@
               await store.installSkillFromSource(url);
             } catch (err) {
               const { default: alertDlg } = await load(
-                "/gh/ofajs/senti-ui@latest/packages/dialog/alert.js",
+                "/gh/ofajs/senti-ui@main/packages/dialog/alert.js",
               );
               await alertDlg({ title: "技能安装失败", message: err.message });
             }
@@ -4522,7 +4728,7 @@
               // 会话里触发，给出可读提示而不是静默吞掉
               if (!this.turnInView) {
                 const { default: toast } = await load(
-                  "/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js",
+                  "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
                 );
                 toast({
                   message: "另一个会话正在生成中，可回到该会话查看或停止",

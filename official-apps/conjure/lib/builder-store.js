@@ -26,6 +26,9 @@ import {
   sanitizeAppName,
   normalizeTaskList,
   mergeErrorTasks,
+  detectInterruptedTurn,
+  buildTestFixMessage,
+  updateAppMeta as writeAppMetaToDisk,
   errorTaskDigest,
   listAppFiles,
   readAppFile,
@@ -87,6 +90,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     nextId: 1,
     turnStartTs: 0, // 进行中回合的开始时间戳（毫秒），「生成中」实时计时用
     keyError: "",
+    interrupted: false, // 上次回合被硬中断（刷新 / 崩溃，没走收尾 finally）；会话加载时检测，对话末尾出「继续」提醒卡
+
     coreError: "",
     reasoning: "low", // 推理等级偏好："off" / "low" / "medium" / "high" / "max"（无=不思考）
     // 推理等级菜单的可选项（跟随当前生效 key 的供应商 + 选中模型动态生成，
@@ -815,12 +820,16 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       // 切回正在进行流式回合的会话：直接投影内存实时桶，
       // 不能读盘覆盖（盘上是上一回合的旧内容，读盘会顶掉进行中的消息）
       projectBucket(key);
+      set("interrupted", false); // 回合还开着，谈不上中断
     } else {
       const saved = (await selfStore.getItem(key)) || [];
       // await 期间视图可能已被其他流程接管（回合收尾迁移草稿 / 自动切换
       // 应用）：目标已不是当前视图则放弃替换，避免过期 key 覆盖新视图
       if (key === viewKey()) {
         replaceMessages(saved, key);
+        // 上次回合硬中断检测（刷新 / 崩溃没走收尾 finally → 末条无 turnMs），
+        // driveTurn 开始时清除；切回进行中回合的分支已在上方置 false
+        set("interrupted", detectInterruptedTurn(bucketFor(key)));
       }
     }
     invalidateAgent(); // 会话切换后重建 Agent（threadId 变化）
@@ -844,6 +853,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       publishedInfo: null, // 回到草稿：发布态随应用上下文清空
       publishMatch: null,
       publishShareUrl: "",
+      interrupted: false, // 草稿桶恒空，不存在中断回合
     });
     localRootHandle = null;
     set("localDirLabel", "");
@@ -2118,6 +2128,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     }
   }
 
+  // 测试抽屉「修复失败用例」：把上一轮跑测的失败内容（用例名 / 文件 / 失败
+  // 步骤与期望实际）整理成对话自动发给 AI，由这个专门的修复回合接手；提示词
+  // 已约定修完只重跑失败的用例文件（不全量跑），跑测循环由 AI 在回合内完成
+  async function fixFailedTests() {
+    if (state.sending) return { ok: false, reason: "sending" };
+    if (state.currentAppName === "") return { ok: false, reason: "draft" };
+    const text = buildTestFixMessage(Object.values(state.testResults));
+    if (!text) return { ok: false, reason: "no-fail" };
+    return send(text);
+  }
+
   // 回合收尾自动跑已移除（用户拍板：自动跑体验太密）——场景测试只经
   // preview 工具 action=run-tests（AI 主动）或测试管理抽屉（用户点跑）触发
 
@@ -2325,7 +2346,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 发布当前应用到首页应用列表（复制 client/ 到 mazmot-apps/<发布名>/）；
   // 发布成功同时在备份管理打一条带正式版本号标注的备份（已有同内容备份
   // 且用户未命名时也补标注，不覆盖用户自定义名称）
-  async function publishCurrent() {
+  async function publishCurrent(bump) {
     if (state.publishBusy || state.currentAppName === "" || !fs) return null;
     set("publishBusy", true);
     try {
@@ -2343,7 +2364,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         mazmotStore,
         state.currentAppName,
         rootHandle,
-        { userId },
+        { userId, bump },
       );
       try {
         const backup = await createAppBackup(
@@ -2858,6 +2879,30 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     } catch (err) {
       console.warn("回填项目元数据失败：", err);
     }
+  }
+
+  // 手动修改应用信息（名称 / 图标，顶栏铅笔入口）：写回 client/app.json 后走
+  // syncAppMetaFromDisk 统一回填登记表与顶栏展示。对话生成中不允许改——模型
+  // 同回合可能也在写 app.json，两边互踩；改完 invalidateAgent 让下回合提示词
+  // 用新名称
+  async function updateAppMeta(patch) {
+    if (state.sending) return { ok: false, reason: "sending" };
+    if (state.currentAppName === "" || !fs) return { ok: false, reason: "draft" };
+    const isLocal = state.currentAppMode === "local" && !!localRootHandle;
+    let res;
+    try {
+      res = await writeAppMetaToDisk(
+        fs,
+        state.currentAppName,
+        isLocal ? localRootHandle : undefined,
+        patch,
+      );
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+    await syncAppMetaFromDisk(state.currentAppName);
+    invalidateAgent();
+    return { ok: true, ...res };
   }
 
   // 发送前确保落点就绪：草稿需本地句柄；已选应用需会话（无则自动新建）
@@ -3394,6 +3439,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       invalidateAgent();
     }
+    // 上一回合已正常收尾（非中断续作）：先清空任务清单再建本回合 Agent。
+    // 清单是「本回合进度」，跨回合沿用会挂着上一轮的全完成清单不动（实测
+    // 第二轮对话面板不更新——注入的旧清单带着「全部 done 不必调用」条款，
+    // 模型正好拿它当跳过 task_list 的理由）；清在 ensureAgent 之前，本回合
+    // 提示词的任务节为空，由基础规则引导模型重建新清单。中断续作
+    // （interrupted）保留清单——暂停/继续的「停在哪一步」展示依赖它
+    if (!state.interrupted && sessionTasksKey()) {
+      applySessionTasks([]);
+      // 待修的运行错误重登记进新清单（提示词错误节声称宿主已登记）
+      if (state.autoErrors.length) syncErrorTasks(state.autoErrors);
+    }
     try {
       await ensureAgent();
     } catch {
@@ -3499,6 +3555,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       pendingRollback = null;
     }
+    // 重发 = 重新驱动本条请求：上一轮清单同步清空（同 send，中断续作除外）
+    if (!state.interrupted && sessionTasksKey()) {
+      applySessionTasks([]);
+      if (state.autoErrors.length) syncErrorTasks(state.autoErrors);
+    }
     try {
       await ensureAgent();
     } catch {
@@ -3532,6 +3593,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   // 落盘、迁移草稿、清忙）。send 与表单恢复回合共用
   async function driveTurn(threadId, firstUserText, inputMessages) {
     activeBubble = null;
+    // 本回合开跑，上次中断提醒随之失效（点继续 / 用户发新消息都算接手）
+    set("interrupted", false);
     currentAbort = { stopped: false };
     currentAbortCtrl = new AbortController();
     turnUsage = null;
@@ -4039,6 +4102,8 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     dismissError,
     refreshTests,
     runTests,
+    fixFailedTests,
+    updateAppMeta,
     refreshBackups,
     createBackup,
     smartBackup,

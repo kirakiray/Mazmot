@@ -84,7 +84,7 @@ const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔�
 - wait：轮询等待条件成立（200ms 间隔），避免异步渲染未完成就断言。args：selector（元素出现；absent=true 改等消失）或 code（返回真值的 JS 表达式，支持 await）二选一、timeoutMs（默认 10000）。
 - eval：执行任意 JS 并返回序列化结果（支持 await；末句表达式自动成为返回值）。args：code。预置 $ / $$、$deep / $$deep（穿 shadow DOM 深度查询）、$wait、$rect。读应用内部状态、调其方法做深度诊断。
 - screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。手机等远程设备上需对方现场点授权。
-- run-tests：跑应用 client/test/ 下的 .test.json 场景用例（宿主逐步驱动应用页执行 click/type/断言，自动重载/清场按用例步骤来）。args：files（可选，文件路径数组，缺省跑全部）。返回逐用例 ✓/✗ 报告，失败含失败步骤与期望/实际。新增或修改重要功能后必须跑到全绿再收尾；用例本身也要随功能同步新增与更新。`;
+- run-tests：跑应用 client/test/ 下的 .test.json 场景用例（宿主逐步驱动应用页执行 click/type/断言，自动重载/清场按用例步骤来）。args：files（文件路径数组）。返回逐用例 ✓/✗ 报告，失败含失败步骤与期望/实际。**开发收尾只传本次新增 / 修改的用例文件，不要全量跑**——应用大时全套太久，全量验证由用户在「测试管理」抽屉手动触发；用户发来失败用例时同样只重跑失败的那些。用例本身也要随功能同步新增与更新。`;
 
 export default {
   key: "preview",
@@ -99,7 +99,7 @@ export default {
     files: {
       type: "array",
       optional: true,
-      description: "action=run-tests 时可选：只跑指定用例文件（client/test/ 下相对路径），缺省跑全部",
+      description: "action=run-tests 时传：要跑的用例文件（client/test/ 下相对路径）。收尾只传本次新增 / 修改 / 失败的文件，不全量跑",
     },
     appName: {
       type: "string",
@@ -177,7 +177,7 @@ export default {
       });
       return `测试完成：${res.summary}\n${lines.join("\n")}${
         res.summary.includes("失败")
-          ? "\n请根据失败详情修复应用代码或用例，修完再跑 run-tests 直到全绿，再向用户汇报。"
+          ? "\n请根据失败详情修复应用代码或用例，修完再跑 run-tests（files 只传这次失败的用例文件）直到它们全部通过，再向用户汇报。"
           : "\n全部通过。"
       }`;
     }

@@ -3,6 +3,7 @@
 // 把用户偏好夹取到当前模型真正支持的档位——各家思考控制差异大：
 // DeepSeek/GLM/Kimi-k3 是 reasoning_effort 三档、OpenAI gpt-5 系四档
 //（部分不可关）、Qwen 只有 enable_thinking 开关、Anthropic 自适应不可调、
+// Grok grok-4 系不可关（low/medium/high/xhigh，max 映射 xhigh）、
 // GLM-4.x / Kimi-k2.6 只有开与关。
 //
 // 约定档位 id（从弱到强）：off / minimal / low / medium / high / max
@@ -52,6 +53,11 @@ export function effortLevelsFor(provider, model = "") {
       return []; // Claude 4.5+ 自适应思考，兼容层不可调
     case "qwen":
       return ["off", "low"]; // enable_thinking 仅开/关，low=开
+    case "grok":
+      // grok-4 系思考不可关仅调档（low/medium/high/xhigh，平台 max=xhigh；
+      // 不支持 xhigh 的版本服务端自动降为 high）；grok-3 等老模型给通用表
+      if (/^grok-[4-9]/.test(m)) return ["low", "medium", "high", "max"];
+      return GENERIC;
     case "relay":
       // 上游由服务器 key 池决定，无法按模型判定，给宽表（发送前夹取）
       return ["off", "low", "medium", "high", "max"];

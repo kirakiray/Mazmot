@@ -58,11 +58,12 @@ pub(crate) enum Provider {
     Gemini,
     Anthropic,
     Qwen,
+    Grok,
 }
 
 impl Provider {
     /// 全部上游类型（chat 入口的模型名 → 上游识别用）
-    pub(crate) const ALL: [Provider; 7] = [
+    pub(crate) const ALL: [Provider; 8] = [
         Provider::Deepseek,
         Provider::Glm,
         Provider::GlmCoding,
@@ -70,10 +71,11 @@ impl Provider {
         Provider::Gemini,
         Provider::Anthropic,
         Provider::Qwen,
+        Provider::Grok,
     ];
 
     /// OpenAI 兼容上游基址（与 mz/ai/supplier 保持一致；Coding Plan 走订阅端点；
-    /// Gemini / Anthropic 走各自的官方 OpenAI 兼容端点 / 兼容层；
+    /// Gemini / Anthropic / Grok 走各自的官方 OpenAI 兼容端点 / 兼容层；
     /// Qwen 走 DashScope 兼容模式）
     pub(crate) fn upstream_base(&self) -> &'static str {
         match self {
@@ -84,6 +86,7 @@ impl Provider {
             Provider::Gemini => "https://generativelanguage.googleapis.com/v1beta/openai",
             Provider::Anthropic => "https://api.anthropic.com/v1",
             Provider::Qwen => "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            Provider::Grok => "https://api.x.ai/v1",
         }
     }
 
@@ -96,13 +99,14 @@ impl Provider {
             "gemini" => Some(Provider::Gemini),
             "anthropic" => Some(Provider::Anthropic),
             "qwen" => Some(Provider::Qwen),
+            "grok" => Some(Provider::Grok),
             _ => None,
         }
     }
 
     /// 按模型名前缀判定某个 provider 能否服务该模型：
     /// deepseek-* → Deepseek；glm-* → Glm / GlmCoding 都可（Coding Plan 同为 glm 系）；
-    /// gemini-* → Gemini；claude-* → Anthropic；qwen-* → Qwen；
+    /// gemini-* → Gemini；claude-* → Anthropic；qwen-* → Qwen；grok-* → Grok；
     /// gpt-* / chatgpt-* / o1·o3·o4-* → OpenAI
     pub(crate) fn serves_model(&self, model: &str) -> bool {
         if model.starts_with("deepseek") {
@@ -115,6 +119,8 @@ impl Provider {
             *self == Provider::Anthropic
         } else if model.starts_with("qwen") {
             *self == Provider::Qwen
+        } else if model.starts_with("grok") {
+            *self == Provider::Grok
         } else if model.starts_with("gpt")
             || model.starts_with("chatgpt")
             || model.starts_with("o1")
@@ -381,27 +387,31 @@ mod tests {
         assert!(!Provider::Glm.serves_model("deepseek-flash"));
         assert!(!Provider::Deepseek.serves_model("gpt-4o"));
         // 国外三家：gpt/chatgpt/o 系 → OpenAI，gemini-* → Gemini，claude-* → Anthropic；
-        // Qwen：qwen-* → DashScope
+        // Qwen：qwen-* → DashScope；Grok：grok-* → xAI
         assert!(Provider::Openai.serves_model("gpt-5.6"));
         assert!(Provider::Openai.serves_model("chatgpt-4o-latest"));
         assert!(Provider::Openai.serves_model("o4-mini"));
         assert!(Provider::Gemini.serves_model("gemini-3-flash"));
         assert!(Provider::Anthropic.serves_model("claude-sonnet-5-5"));
         assert!(Provider::Qwen.serves_model("qwen3-max"));
+        assert!(Provider::Grok.serves_model("grok-4.7"));
         assert!(!Provider::Gemini.serves_model("gpt-5.6"));
         assert!(!Provider::Openai.serves_model("gemini-3-flash"));
         assert!(!Provider::Anthropic.serves_model("glm-5.3"));
         assert!(!Provider::Qwen.serves_model("gpt-5.6"));
+        assert!(!Provider::Grok.serves_model("gpt-5.6"));
         // chat 入口的任意上游识别
         assert!(Provider::any_serves("gpt-5.6"));
         assert!(Provider::any_serves("claude-haiku-4-5"));
         assert!(Provider::any_serves("qwen3-max"));
+        assert!(Provider::any_serves("grok-4.7"));
         assert!(!Provider::any_serves("llama-3"));
         // provider 字符串解析 / stream_options 兼容标记
         assert_eq!(Provider::parse("openai"), Some(Provider::Openai));
         assert_eq!(Provider::parse("gemini"), Some(Provider::Gemini));
         assert_eq!(Provider::parse("anthropic"), Some(Provider::Anthropic));
         assert_eq!(Provider::parse("qwen"), Some(Provider::Qwen));
+        assert_eq!(Provider::parse("grok"), Some(Provider::Grok));
         assert!(Provider::Openai.supports_stream_options());
         assert!(!Provider::Gemini.supports_stream_options());
         assert!(!Provider::Anthropic.supports_stream_options());

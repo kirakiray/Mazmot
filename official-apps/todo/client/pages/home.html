@@ -163,6 +163,77 @@
     .ai-actions { display: flex; justify-content: flex-end; }
     .ai-note { margin: 0; font-size: 12px; color: var(--md-sys-color-primary); }
     .ai-error { margin: 0; font-size: 12px; color: var(--md-sys-color-error); }
+    /* ===== 图片附件（添加弹窗选图 / 粘贴，列表行缩略图，详情大图） ===== */
+    .img-box { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    /* 选择图片区本身就是 label：点它即打开文件选择（file input 藏在里面） */
+    .img-drop {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px;
+      border: 1px dashed var(--md-sys-color-outline-variant);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .img-drop:hover { border-color: var(--md-sys-color-primary); color: var(--md-sys-color-primary); }
+    .img-drop n-icon { font-size: 1.2em; }
+    .img-input { display: none; }
+    .img-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    /* 草稿缩略图：64px 方块 + 右上角「移除这张图片」 */
+    .thumb { position: relative; }
+    .thumb img {
+      display: block;
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    /* 缩略图 / 详情大图右上角的移除按钮：用原生 button（不用 st-icon-button，
+       免得组件的 40px 尺寸体系在 64px 缩略图上喧宾夺主） */
+    .thumb-del {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: 50%;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+    }
+    .thumb-del:hover { color: var(--md-sys-color-error); border-color: var(--md-sys-color-error); }
+    .thumb-del n-icon { font-size: 14px; }
+    .img-note { margin: 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    /* 列表行里的缩略图：小尺寸、跟着 .body 一起点开详情 */
+    .item .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .item .thumb-sm {
+      display: block;
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    /* 详情弹窗里的图片：等比缩到弹窗宽度内，右上角可移除 */
+    .detail-images { display: flex; flex-direction: column; gap: 10px; }
+    .dimg { position: relative; align-self: flex-start; max-width: 100%; }
+    .dimg img {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 10px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
     /* 窄屏：侧栏转为顶部横向条，单列堆叠；拖拽手柄隐藏，侧栏宽度固定为通栏 */
     @media (max-width: 620px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
@@ -300,8 +371,8 @@
       line-height: 1.3;
       color: var(--md-sys-color-on-surface-variant);
     }
-    /* 行尾操作区：编辑 + 删除两个图标按钮紧凑并排（尺寸统一缩到 34px，与侧栏分组行的 ⋯ 一致），
-       不再用两个 40px 按钮并排去占 92px 宽度 */
+    /* 行尾操作区：只剩删除一个图标按钮（尺寸缩到 34px，与侧栏分组行的 ⋯ 一致）。
+       编辑已并入「任务详情」弹窗（点正文区就能一边看信息一边改），行上不再有铅笔入口 */
     .item-actions {
       flex: none;
       display: flex;
@@ -309,24 +380,6 @@
       gap: 2px;
     }
     .item-actions st-icon-button { font-size: 12px; }
-    /* 编辑按钮平时淡出（与侧栏分组行的 ⋯ 同一套做法）：鼠标悬停该行、键盘聚焦到它时才现形，
-       列表更干净；删除按钮保持常显（主操作，倒计时时还是撤销的唯一抓手）。
-       用 opacity 而不是 display，避免悬停时行内布局跳动；宽度始终占位，文字不会左右挪。 */
-    .item-actions .edit-btn {
-      opacity: 0;
-      transition: opacity 0.15s ease, color 0.15s ease;
-    }
-    .item:hover .edit-btn,
-    .item:focus-within .edit-btn { opacity: 0.75; }
-    .item-actions .edit-btn:hover,
-    .item-actions .edit-btn:focus-within {
-      opacity: 1;
-      color: var(--md-sys-color-primary);
-    }
-    /* 触屏等无 hover 设备：编辑按钮常显（略淡），否则永远看不出这行能编辑 */
-    @media (hover: none) {
-      .item-actions .edit-btn { opacity: 0.7; }
-    }
     .item.done .text {
       text-decoration: line-through;
       color: var(--md-sys-color-on-surface-variant);
@@ -338,11 +391,10 @@
     }
     .item.pending .meta { color: var(--md-sys-color-on-error-container); }
     /* 倒计时（错误容器色）下操作按钮换成 on-error-container，图标在红底上才清晰；
-       这时的「撤销」是用户唯一抓手，编辑按钮也不再隐藏。
+       这时的「撤销」是用户唯一抓手。
        注意：必须直接命中 st-icon-button 宿主——它自带 color（on-surface-variant），
        在父容器上写 color 只会被组件自己的声明盖掉（继承打不过自声明） */
     .item.pending .item-actions st-icon-button { color: var(--md-sys-color-on-error-container); }
-    .item.pending .item-actions .edit-btn { opacity: 1; }
     .item.pending .desc { color: var(--md-sys-color-on-error-container); }
     .item.trash { background: var(--md-sys-color-surface); border: 1px dashed var(--md-sys-color-outline-variant); }
     /* 归档项：与垃圾桶区分开——用实线边框 + 表面色，不做删除线（它只是被收起来了） */
@@ -411,25 +463,60 @@
     .count { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     /* 列表项里的描述摘要按需隐藏 */
     .hidden { display: none !important; }
+    /* 任务详情弹窗：查看与编辑合一——顶部是可直接修改的标题 / 描述，下面是只读元信息 */
     .detail {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 10px;
       min-width: 300px;
       max-width: 460px;
     }
-    .detail-desc {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      line-height: 1.5;
-    }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
-    /* 详情弹窗的编辑区：标题单行 + 描述多行（只给尺寸，不覆盖组件 display，见踩坑 004） */
-    .detail-edit { display: flex; flex-direction: column; gap: 12px; }
-    .detail-edit .edit-title { width: 100%; min-width: 0; }
-    .detail-edit .edit-desc { width: 100%; min-height: 7.5em; }
+    /* ===== 详情弹窗里的富文本编辑区（.rt-*） =====
+       这是一个“迷你富文本编辑器”：框内每行是一个 .rt-line 块，第一个非空行在其后还有内容时
+       套上 .rt-title（加粗加大）——样式就长在编辑区**里面**，不是框下方的预览行。
+       原生 textarea 无法只给某一行换样式，所以用 contenteditable 自己管行结构。 */
+    .rt-box {
+      width: 100%;
+      min-height: 7.5em;
+      padding: 10px 14px;
+      box-sizing: border-box;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 12px;
+      background: var(--md-sys-color-surface);
+      cursor: text;
+      transition: border-color 0.15s ease;
+    }
+    .rt-box:focus-within { border-color: var(--md-sys-color-primary); }
+    .rt-editor {
+      position: relative;
+      outline: none;
+      min-height: 6em;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-surface);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    /* 每行一个块；空行靠 min-height 占住行高（否则光标没地方站） */
+    .rt-editor .rt-line { min-height: 1.5em; }
+    /* 首行标题：就在编辑区里加粗加大（实测 20px / 700，正文 14px / 400） */
+    .rt-editor .rt-line.rt-title {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+    /* 编辑器为空时在上面叠一行占位提示（空行本身仍保留，不然光标无处可放、打不进字） */
+    .rt-editor.is-empty::before {
+      content: attr(data-placeholder);
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      color: var(--md-sys-color-on-surface-variant);
+    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
@@ -549,14 +636,15 @@
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
               <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+              <!-- 图片缩略图：整块在 .body 里，点它同样打开详情弹窗看大图 -->
+              <div class="thumbs" class:hidden="!$data.images.length">
+                <o-fill :value="$data.images" fill-key="id">
+                  <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                </o-fill>
+              </div>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <div class="item-actions">
-              <st-icon-button
-                class="edit-btn"
-                attr:title="$host.editButtonTitle($data)"
-                on:click="$host.openEditDetail($data.id)"
-              ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
               <st-icon-button
                 attr:title="$host.deleteButtonTitle($data)"
                 on:click="$host.handleDeleteClick($data.id)"
@@ -609,15 +697,15 @@
                   <div class="body" on:click="$host.openDetail($data.id)">
                     <span class="text">{{$data.text}}</span>
                     <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+                    <div class="thumbs" class:hidden="!$data.images.length">
+                      <o-fill :value="$data.images" fill-key="id">
+                        <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                      </o-fill>
+                    </div>
                     <span class="meta">{{$host.timeMeta($data)}}</span>
                   </div>
                   <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
                   <div class="item-actions">
-                    <st-icon-button
-                      class="edit-btn"
-                      attr:title="$host.editButtonTitle($data)"
-                      on:click="$host.openEditDetail($data.id)"
-                    ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
                     <st-icon-button
                       attr:title="$host.deleteButtonTitle($data)"
                       on:click="$host.handleDeleteClick($data.id)"
@@ -640,6 +728,12 @@
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
               <span class="desc" class:hidden="!$data.desc">{{$data.desc}}</span>
+              <!-- 图片缩略图：整块在 .body 里，点它同样打开详情弹窗看大图 -->
+              <div class="thumbs" class:hidden="!$data.images.length">
+                <o-fill :value="$data.images" fill-key="id">
+                  <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+                </o-fill>
+              </div>
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <st-button variant="text" on:click="$host.restoreTodo($data.id)">还原</st-button>
@@ -689,23 +783,55 @@
         sync:value="draft"
         placeholder="第一行是标题，换行后写的都是描述…"
       ></st-textarea>
+
+      <!-- 图片附件：点虚线区选图，或直接在弹窗里粘贴（Ctrl/⌘+V）；
+           图片会跟着任务一起保存，也能交给下面的 AI 识别 -->
+      <div class="img-box">
+        <label class="img-drop">
+          <input
+            class="img-input"
+            type="file"
+            accept="image/*"
+            multiple
+            on:change="onPickImages"
+          />
+          <n-icon icon="mdi:image-plus"></n-icon>
+          <span>点击选择图片，或直接粘贴（Ctrl/⌘ + V）</span>
+        </label>
+        <div class="img-grid">
+          <o-fill :value="draftImages" fill-key="id">
+            <div class="thumb">
+              <img attr:src="$data.dataUrl" attr:alt="'附件图片'" />
+              <button
+                class="thumb-del"
+                type="button"
+                title="移除这张图片"
+                on:click="$host.removeDraftImage($data.id)"
+              ><n-icon icon="mdi:close"></n-icon></button>
+            </div>
+          </o-fill>
+        </div>
+        <p class="img-note" class:hidden="!imgNote">{{imgNote}}</p>
+      </div>
+
       <p class="manage-title">{{addGroupHint}}</p>
 
-      <!-- AI 添加：输入一句自然语言描述，AI 生成标题 + 描述回填到上面的输入框 -->
+      <!-- AI 添加：输入一句自然语言描述，AI 生成标题 + 描述回填到上面的输入框；
+           上面粘了图片时，这个按钮会变成「AI 识别图片」，识别图里的文字提取任务 -->
       <div class="ai-box">
-        <p class="ai-head"><n-icon icon="mdi:auto-fix"></n-icon>AI 添加：说说你要做什么，自动生成标题和描述</p>
+        <p class="ai-head"><n-icon icon="mdi:auto-fix"></n-icon>AI 添加：说说你要做什么；粘贴图片后可让 AI 识别图里的文字</p>
         <st-textarea
           class="ai-field"
           rows="2"
           sync:value="aiDraft"
-          placeholder="例如：明天下午三点和客户开会，记得先准备好报价单"
+          placeholder="例如：明天下午三点和客户开会；也可把清单 / 聊天截图粘进弹窗，再点「AI 识别图片」提取成任务"
         ></st-textarea>
         <div class="ai-actions">
           <st-button
             variant="text"
             on:click="generateWithAi"
             attr:disabled="aiDisabled"
-          ><n-icon slot="prefix" icon="mdi:creation"></n-icon>{{aiButtonLabel}}</st-button>
+          ><n-icon slot="prefix" attr:icon="aiButtonIcon"></n-icon>{{aiButtonLabel}}</st-button>
         </div>
         <p class="ai-note" class:hidden="!aiNote">{{aiNote}}</p>
         <p class="ai-error" class:hidden="!aiError">{{aiError}}</p>
@@ -732,14 +858,44 @@
       </div>
     </st-dialog>
 
-    <!-- 任务详情：默认只读，点「编辑」切成可编辑（标题 + 描述）。注意 st-dialog 内不能调
-         $host.xxx()（弹窗内部 $host 不指向页面），所以只读文案都在 openDetail 里预计算好 -->
+    <!-- 任务详情：查看与编辑合并在同一个弹窗里——标题 / 描述直接可改，元信息只读展示，
+         点「保存」写回并关闭弹窗（不再有「只读 ↔ 编辑」两个面孔来回切）。
+         注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
+         所以展示文案都在 openDetail 里预计算成 detail 快照 -->
     <st-dialog sync:open="detailOpen" auto-close>
-      <span slot="headline">{{detailEditing ? '编辑任务' : detail.title}}</span>
+      <span slot="headline">任务详情</span>
 
-      <!-- 只读视图 -->
-      <div class="detail" class:hidden="detailEditing">
-        <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
+      <div class="detail">
+        <!-- 富文本编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
+             但标题样式直接长在框内——第一个非空行在其后还有内容时会加粗加大。
+             行结构由页面自己管（原 textarea 做不到只给首行换样式） -->
+        <div class="rt-box" on:click="onEditorBoxClick">
+          <div
+            class="rt-editor"
+            contenteditable="true"
+            spellcheck="false"
+            data-placeholder="第一行是标题，换行后写的都是描述…"
+            on:input="onEditorInput"
+            on:keydown="onEditorKeydown"
+            on:paste="onEditorPaste"
+            on:compositionstart="onEditorCompositionStart"
+            on:compositionend="onEditorCompositionEnd"
+          ></div>
+        </div>
+        <!-- 任务图片：等比缩到弹窗宽度内，右上角可移除（立即落盘） -->
+        <div class="detail-images" class:hidden="!detail.images.length">
+          <o-fill :value="detail.images" fill-key="id">
+            <div class="dimg">
+              <img attr:src="$data.dataUrl" attr:alt="'任务图片'" />
+              <button
+                class="thumb-del"
+                type="button"
+                title="移除这张图片"
+                on:click="$host.removeDetailImage($data.id)"
+              ><n-icon icon="mdi:close"></n-icon></button>
+            </div>
+          </o-fill>
+        </div>
         <div class="detail-row"><span class="k">分组</span><span>{{detail.groupText}}</span></div>
         <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
         <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
@@ -748,30 +904,9 @@
         <div class="detail-row"><span class="k">删除时间</span><span>{{detail.deletedText}}</span></div>
       </div>
 
-      <!-- 编辑视图：标题单行、描述可多行（回车换行，所以只能用「保存」提交） -->
-      <div class="detail-edit" class:hidden="!detailEditing">
-        <st-input
-          class="edit-title"
-          sync:value="editTitle"
-          placeholder="任务标题（不能为空）"
-        ></st-input>
-        <st-textarea
-          class="edit-desc"
-          rows="4"
-          sync:value="editDesc"
-          placeholder="描述（可留空，可多行）"
-        ></st-textarea>
-      </div>
-
-      <div slot="actions" class:hidden="detailEditing">
+      <div slot="actions">
         <st-button variant="text" on:click="closeDetail">关闭</st-button>
-        <st-button on:click="startEditDetail">
-          <n-icon slot="prefix" icon="mdi:pencil"></n-icon>编辑
-        </st-button>
-      </div>
-      <div slot="actions" class:hidden="!detailEditing">
-        <st-button variant="text" on:click="cancelEditDetail">取消</st-button>
-        <st-button on:click="submitEditDetail" attr:disabled="!editTitle.trim()">保存</st-button>
+        <st-button on:click="submitEditDetail" attr:disabled="!editCanSave">保存</st-button>
       </div>
     </st-dialog>
 
@@ -824,6 +959,11 @@
     // 删除后的倒计时时长：到点后条目才真正进入垃圾桶
     const TRASH_DELAY_MS = 5000;
     const TICK_MS = 200;
+    // 每条待办的图片附件上限；粘贴 / 选图后统一压到最长边 IMAGE_MAX_SIDE、JPEG，
+    // 避免把原图（动辄几 MB）直接塞进存储
+    const MAX_IMAGES = 4;
+    const IMAGE_MAX_SIDE = 1280;
+    const IMAGE_QUALITY = 0.82;
     // AI 生成任务标题 / 描述时给模型的系统提示：只要求返回严格 JSON，便于程序解析
     const AI_SYSTEM_PROMPT =
       "你是一个待办事项整理助手。用户会用一句话描述要做的事，" +
@@ -831,6 +971,20 @@
       "desc 是补充说明（1-3 句、需要分点时用换行符分隔），信息不足时 desc 留空字符串。" +
       "只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块，格式：" +
       '{"title":"…","desc":"…"}';
+    // 带图片时的提示：让模型自己判断「图里有可提取的文字 → 整理成任务」
+    // 还是「图里没有文字 → 作为图片附件带入」（kind = image，标题用一句短语概括图片）
+    const AI_IMAGE_SYSTEM_PROMPT =
+      "你是一个会看图的待办事项整理助手。用户会给你一张或多张图片（可能是清单、聊天记录、" +
+      "便条、文档截图、手写内容，也可能是风景 / 人物 / 实物照片），可能还附带一句文字描述。" +
+      "请判断并只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块，格式：" +
+      '{"kind":"task","title":"…","desc":"…"}\n' +
+      "判断规则：\n" +
+      "1. 图片里有可提取的文字（清单、聊天记录、便条、文档、屏幕截图等）→ kind 取 \"task\"：" +
+      "把其中的待办事项整理成 title（简洁，不超过 20 个字，不要句末标点）与 desc" +
+      "（补充说明 1-3 句，需要分点时用换行符分隔，没有补充就留空字符串）；" +
+      "图里有多件事时合并成一句 title 并在 desc 里逐条列出。\n" +
+      "2. 图片里没有可提取的文字（风景、人物、实物照片等）→ kind 取 \"image\"：" +
+      "title 用一句短语概括这张图（不超过 20 个字），desc 写它的用途或内容描述。";
 
     export default async ({ load }) => {
       const { getStorage } = await load("/nos/storage/main.js");
@@ -874,6 +1028,12 @@
           aiLoading: false,
           aiNote: "",
           aiError: "",
+          // 添加弹窗里的图片草稿：Array<{ id, dataUrl, w, h }>（粘贴 / 选图后压缩而来，
+          // 点「添加」时原样写进任务的 images）
+          draftImages: [],
+          // 是否正在压缩图片 / 图片区提示文案
+          imgBusy: false,
+          imgNote: "",
           // 倒计时刷新用：每次 tick 写入当前时间，驱动界面重算剩余秒数
           nowTick: 0,
           // 彻底删除 / 删除分组的二次确认
@@ -887,19 +1047,16 @@
           confirmGroupId: null,
           // 添加任务的弹窗
           addOpen: false,
-          // 任务详情弹窗：打开时把展示文案全部预计算好
+          // 任务详情弹窗（查看 + 编辑合一）：打开时把只读元信息全部预计算好
           // （st-dialog 内不能调 $host.xxx()，只能读 data 字段，见模板注释）
           detailOpen: false,
-          // 详情弹窗当前展示的任务 id（编辑保存时需要知道改哪一条）
+          // 详情弹窗当前展示的任务 id（保存时据此定位条目）
           detailId: null,
-          // 是否处于编辑模式；编辑草稿（标题 / 描述）
-          detailEditing: false,
-          editTitle: "",
-          editDesc: "",
+          // 弹窗里「标题 + 描述」的多行草稿（与添加弹窗同口径：第一个非空行是标题、其后是描述）
+          editDraft: "",
           detail: {
-            title: "",
-            desc: "",
-            hasDesc: false,
+            // 详情弹窗里的图片快照：Array<{ id, dataUrl }>
+            images: [],
             statusText: "",
             groupText: "",
             createdText: "",
@@ -916,6 +1073,10 @@
           await this.loadGroups();
           await this.loadTodos();
           this.restoreSessionState();
+          // 图片粘贴：监听挂 document（弹窗里 textarea 在页面 shadow 内，
+          // 粘贴事件 composed 冒出来才收得到）；只在添加弹窗开着时接图
+          document.addEventListener("paste", (ev) => this.handlePaste(ev));
+          console.log("[init] 已监听图片粘贴");
         },
 
         proto: {
@@ -1219,6 +1380,25 @@
                   deletedAt: typeof t.deletedAt === "number" ? t.deletedAt : null,
                   // 倒计时不跨刷新恢复：重新打开时把未完成的倒计时取消，避免“隔夜回来发现被删了”
                   pendingDeleteAt: null,
+                  // 图片附件：只认 data:image/ 开头的 dataURL（旧数据没有该字段 → 空数组），
+                  // 超上限的截断，保证模板里的缩略图渲染永远有值
+                  images: Array.isArray(t.images)
+                    ? t.images
+                        .filter(
+                          (im) =>
+                            im &&
+                            typeof im.dataUrl === "string" &&
+                            im.dataUrl.indexOf("data:image/") === 0
+                        )
+                        .slice(0, MAX_IMAGES)
+                        .map((im) => ({
+                          id:
+                            typeof im.id === "string" && im.id
+                              ? im.id
+                              : "i" + Math.random().toString(36).slice(2, 8),
+                          dataUrl: im.dataUrl,
+                        }))
+                    : [],
                 }));
               }
               console.log("[storage] 已读取待办，共", this.todos.length, "项");
@@ -1241,10 +1421,13 @@
             this.draft = "";
             this.addGroupHint =
               "将加入分组：「" + this.groupName(this.draftGroupId) + "」";
-            // AI 区每次都从干净状态开始
+            // AI 区与图片区每次都从干净状态开始
             this.aiDraft = "";
             this.aiNote = "";
             this.aiError = "";
+            this.draftImages = [];
+            this.imgNote = "";
+            this.imgBusy = false;
             this.addOpen = true;
             console.log("[todo] 打开添加弹窗，目标分组 =", this.draftGroupId);
           },
@@ -1255,16 +1438,168 @@
             this.aiDraft = "";
             this.aiNote = "";
             this.aiError = "";
+            this.draftImages = [];
+            this.imgNote = "";
+            this.imgBusy = false;
             console.log("[todo] 关闭添加弹窗（未添加）");
           },
 
-          // ===== AI 添加任务：一句话描述 → 标题 + 描述 =====
+          // ===== 图片附件：选图 / 粘贴 / 压缩 / 移除 =====
+          // 选图入口（label 里藏着的 file input 的 change）
+          onPickImages(ev) {
+            const input = ev && ev.target;
+            const files = input && input.files ? Array.from(input.files) : [];
+            // 清空 value 才能再次选同一张图
+            if (input) input.value = "";
+            if (files.length) {
+              console.log("[img] 选择文件", files.length, "个");
+              this.attachImages(files);
+            }
+          },
+
+          // 粘贴入口（document 级监听，只在添加弹窗开着时接图）。
+          // 剪贴板图片在 clipboardData.items 里（kind: "file"）；没找到图片就什么都不做，
+          // 让浏览器自己处理普通文字粘贴（不 preventDefault）
+          handlePaste(ev) {
+            if (!this.addOpen) return;
+            const dt = ev && ev.clipboardData;
+            if (!dt || !dt.items) return;
+            const files = [];
+            for (const item of Array.from(dt.items)) {
+              if (item.kind !== "file") continue;
+              if (!item.type || item.type.indexOf("image/") !== 0) continue;
+              const f = item.getAsFile ? item.getAsFile() : null;
+              if (f) files.push(f);
+            }
+            if (!files.length) return;
+            // 剪贴板里同时有文字时不要拦掉文字粘贴（否则用户从网页复制图文会丢文字）
+            if (Array.from(dt.types || []).indexOf("text/plain") === -1) {
+              ev.preventDefault();
+            }
+            console.log("[img] 粘贴到", files.length, "张图片");
+            this.attachImages(files);
+          },
+
+          // 把文件列表压成 dataURL 并挂到草稿上；超上限 / 单张失败都只提示不抛错
+          async attachImages(files) {
+            const list = Array.from(files || []);
+            if (!list.length) return;
+            this.imgBusy = true;
+            this.imgNote = "正在处理图片…";
+            let skipped = 0;
+            for (const f of list) {
+              if (this.draftImages.length >= MAX_IMAGES) {
+                skipped += 1;
+                continue;
+              }
+              try {
+                const img = await this.compressImage(f);
+                this.draftImages = [
+                  ...this.draftImages,
+                  {
+                    id:
+                      "i" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                    dataUrl: img.dataUrl,
+                    w: img.w,
+                    h: img.h,
+                  },
+                ];
+                console.log(
+                  "[img] 已加入图片",
+                  img.w + "x" + img.h,
+                  Math.round(img.dataUrl.length / 1024) + "KB"
+                );
+              } catch (err) {
+                skipped += 1;
+                console.error("[img] 处理图片失败", err);
+              }
+            }
+            this.imgBusy = false;
+            this.imgNote = this.draftImages.length
+              ? "已添加 " +
+                this.draftImages.length +
+                " 张图片（最多 " +
+                MAX_IMAGES +
+                " 张）" +
+                (skipped ? "，有 " + skipped + " 张未能加入" : "")
+              : skipped
+              ? "图片处理失败，换一张试试"
+              : "";
+          },
+
+          // 压缩：等比缩到最长边 IMAGE_MAX_SIDE 以内并转 JPEG；先铺白底，
+          // 透明 PNG 转 JPEG 后不会出现黑块
+          compressImage(file) {
+            return new Promise((resolve, reject) => {
+              const url = URL.createObjectURL(file);
+              const el = new Image();
+              el.onload = () => {
+                try {
+                  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(el.width, el.height));
+                  const w = Math.max(1, Math.round(el.width * scale));
+                  const h = Math.max(1, Math.round(el.height * scale));
+                  const canvas = document.createElement("canvas");
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext("2d");
+                  ctx.fillStyle = "#fff";
+                  ctx.fillRect(0, 0, w, h);
+                  ctx.drawImage(el, 0, 0, w, h);
+                  resolve({ dataUrl: canvas.toDataURL("image/jpeg", IMAGE_QUALITY), w, h });
+                } catch (err) {
+                  reject(err);
+                } finally {
+                  URL.revokeObjectURL(url);
+                }
+              };
+              el.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error("图片无法解码"));
+              };
+              el.src = url;
+            });
+          },
+
+          // 草稿里移除一张（缩略图右上角按钮）
+          removeDraftImage(id) {
+            this.draftImages = this.draftImages.filter((im) => im.id !== id);
+            this.imgNote = this.draftImages.length
+              ? "已添加 " + this.draftImages.length + " 张图片（最多 " + MAX_IMAGES + " 张）"
+              : "";
+            console.log("[img] 已移除草稿图片", id, "剩余", this.draftImages.length);
+          },
+
+          // 已保存任务的图片移除（详情弹窗里点缩略图右上角）：立即落盘
+          removeDetailImage(id) {
+            const tid = this.detailId;
+            if (!tid) return;
+            this.todos = this.todos.map((t) =>
+              t.id === tid
+                ? { ...t, images: (t.images || []).filter((im) => im.id !== id) }
+                : t
+            );
+            const updated = this.todos.find((t) => t.id === tid);
+            if (updated) this.detail = this.buildDetail(updated);
+            console.log("[img] 已移除任务图片", id);
+            this.persistTodos();
+          },
+
+          // ===== AI 添加任务：一句话描述 / 图片 → 标题 + 描述 =====
           get aiDisabled() {
-            return this.aiLoading || !String(this.aiDraft || "").trim();
+            const hasText = !!String(this.aiDraft || "").trim();
+            // 正在压缩图片时也不允许发起识别（那会儿图片还没进草稿）
+            return this.aiLoading || this.imgBusy || (!hasText && !this.draftImages.length);
           },
 
           get aiButtonLabel() {
-            return this.aiLoading ? "AI 生成中…" : "AI 生成";
+            if (this.aiLoading) {
+              return this.draftImages.length ? "AI 识别中…" : "AI 生成中…";
+            }
+            return this.draftImages.length ? "AI 识别图片" : "AI 生成";
+          },
+
+          get aiButtonIcon() {
+            return this.draftImages.length ? "mdi:image-search" : "mdi:creation";
           },
 
           // AI 助手按需加载并缓存（预览环境里 /mz/ai/main.js 由能力桥替身接管）
@@ -1292,7 +1627,12 @@
                 const title = String(obj.title || obj.name || "").trim();
                 const desc = String(obj.desc || obj.description || "").trim();
                 if (title || desc) {
-                  return { title: title || desc.split("\n")[0], desc };
+                  return {
+                    // kind = image：图里没有可提取的文字（模型判定），图片作为附件带入
+                    kind: obj.kind === "image" ? "image" : "task",
+                    title: title || desc.split("\n")[0],
+                    desc,
+                  };
                 }
               } catch (err) {
                 console.warn("[ai] 回复不是合法 JSON，回退到多行文本解析", err);
@@ -1304,28 +1644,48 @@
 
           async generateWithAi() {
             const raw = String(this.aiDraft || "").trim();
-            if (!raw || this.aiLoading) return;
+            const imgs = this.draftImages;
+            if (this.aiLoading) return;
+            if (!raw && !imgs.length) return;
             this.aiLoading = true;
             this.aiError = "";
-            this.aiNote = "AI 正在整理标题和描述…";
-            console.log("[ai] 请求生成任务", raw.slice(0, 40));
+            this.aiNote = imgs.length ? "AI 正在识别图片里的文字…" : "AI 正在整理标题和描述…";
+            console.log("[ai] 请求生成任务，文本长度", raw.length, "图片", imgs.length, "张");
             try {
               const assistant = await this.getAssistant();
-              const res = await assistant.chat({
-                messages: [
-                  { role: "system", content: AI_SYSTEM_PROMPT },
-                  { role: "user", content: raw },
-                ],
-              });
+              const messages = [
+                { role: "system", content: imgs.length ? AI_IMAGE_SYSTEM_PROMPT : AI_SYSTEM_PROMPT },
+              ];
+              if (imgs.length) {
+                // 有图片时走多模态：content 用 [文字, 图片…] 数组（OpenAI 兼容格式）
+                const content = [
+                  { type: "text", text: raw || "请识别图片里的内容，整理成待办任务。" },
+                ];
+                for (const im of imgs) {
+                  content.push({ type: "image_url", image_url: { url: im.dataUrl } });
+                }
+                messages.push({ role: "user", content });
+              } else {
+                messages.push({ role: "user", content: raw });
+              }
+              const res = await assistant.chat({ messages });
               const parsed = this.parseAiReply(res && res.content);
               if (!parsed || !parsed.title) throw new Error("AI 返回内容无法解析");
               // 回填到上方输入框：保持“第一行标题、其余为描述”的既有格式，用户可再改
               this.draft = parsed.desc
                 ? parsed.title + "\n" + parsed.desc
                 : parsed.title;
-              this.aiNote = "AI 已生成，确认或改一改再点「添加」";
+              if (!imgs.length) {
+                this.aiNote = "AI 已生成，确认或改一改再点「添加」";
+              } else if (parsed.kind === "image") {
+                this.aiNote = "图片里没有可提取的文字，已作为图片附件带入（点「添加」保存）";
+              } else {
+                this.aiNote = "已从图片文字里提取任务，确认或改一改再点「添加」（图片会一起附上）";
+              }
               console.log(
-                "[ai] 生成完成，标题 =",
+                "[ai] 生成完成，kind =",
+                parsed.kind || "task",
+                "标题 =",
                 parsed.title,
                 "描述长度 =",
                 (parsed.desc || "").length,
@@ -1380,15 +1740,21 @@
                 archivedAt: null,
                 deletedAt: null,
                 pendingDeleteAt: null,
+                // 图片附件：把弹窗里已压缩好的草稿原样带走
+                images: this.draftImages.slice(),
               },
               ...this.todos,
             ];
+            const imgCount = this.draftImages.length;
             this.draft = "";
+            this.draftImages = [];
+            this.imgNote = "";
             console.log(
               "[todo] 新增",
               id,
               parsed.title,
               parsed.desc ? "（含描述）" : "",
+              imgCount ? "（含 " + imgCount + " 张图片）" : "",
               "分组 =",
               this.draftGroupId
             );
@@ -1885,15 +2251,14 @@
             this.persistTodos();
           },
 
-          // ===== 任务详情（只读展示：弹窗里只提供「关闭」） =====
-          // 把一条待办转成详情弹窗的展示对象（文案全在这里算好，模板只读字段）
+          // ===== 任务详情（查看 + 编辑合一：弹窗里直接改标题 / 描述，点「保存」写回） =====
+          // 把一条待办转成详情弹窗的只读元信息（文案全在这里算好，模板只读字段）
           buildDetail(todo) {
             const timeOr = (ts) =>
               typeof ts === "number" ? this.formatTime(ts) : "—";
             return {
-              title: todo.text || "（无标题）",
-              desc: todo.desc || "",
-              hasDesc: !!todo.desc,
+              // 详情弹窗里的图片快照（模板只读字段）
+              images: (todo.images || []).map((im) => ({ id: im.id, dataUrl: im.dataUrl })),
               groupText: this.groupName(todo.groupId),
               statusText: todo.pendingDeleteAt
                 ? "待删除（倒计时中）"
@@ -1911,86 +2276,296 @@
             };
           },
 
+          // 打开详情：既填好只读元信息，也把富文本编辑区预填成当前内容
+          // （草稿取原始 text / desc 拼回“首行标题 + 其余描述”，与创建时同一套格式）
           openDetail(id) {
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) return;
             this.detail = this.buildDetail(todo);
             this.detailId = id;
-            this.detailEditing = false;
+            const draft = todo.desc ? todo.text + "\n" + todo.desc : todo.text || "";
+            this.fillEditor(draft);
             this.detailOpen = true;
             console.log("[detail] 打开详情", id, todo.text);
           },
 
-          // 列表行的铅笔按钮：直接打开详情并进入编辑模式
-          openEditDetail(id) {
-            this.openDetail(id);
-            this.startEditDetail();
-          },
-
           closeDetail() {
             this.detailOpen = false;
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
+            this.detailId = null;
+            this.editDraft = "";
+            this.renderEditor([""]);
             console.log("[detail] 关闭详情");
           },
 
-          // 列表 / 归档行铅笔按钮的 title（图标按钮必须给无障碍名称）
-          editButtonTitle(todo) {
-            return "编辑：" + (todo.text || "（无标题）");
+          // ===== 迷你富文本编辑区（contenteditable） =====
+          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位）；
+          // 第一个非空行在其后还有内容时套 .rt-title（加粗加大）——样式长在框内。
+          // 数据仍只走 editDraft（多行文本），保存时用 parseDraft 拆回 text / desc。
+          editorEl() {
+            const page = document.querySelector("o-page");
+            const root = page && page.shadowRoot;
+            return (root && root.querySelector(".rt-editor")) || null;
           },
 
-          // ===== 编辑已有任务（详情弹窗内的「编辑」） =====
-          // 进入编辑：从待办里取原始 text / desc（不用 detail 快照，它把空标题换成了「（无标题）」）
-          startEditDetail() {
-            const todo = this.todos.find((t) => t.id === this.detailId);
-            if (!todo) {
-              console.error("[detail] 找不到待编辑的任务", this.detailId);
-              return;
+          // 视觉行（块级边界即换行）：从 innerText 读，不依赖 DOM 是否规范
+          editorLines() {
+            const el = this.editorEl();
+            if (!el) return [""];
+            const raw =
+              typeof el.innerText === "string" ? el.innerText : el.textContent || "";
+            return raw.replace(/\r/g, "").split("\n");
+          },
+
+          // 结构是否规整（只有 .rt-line 子元素，行内除 <br> 外没有元素）——
+          // 不规整时才重建，保证普通打字不会动 DOM，光标不跳
+          editorStructureOk() {
+            const el = this.editorEl();
+            if (!el) return true;
+            for (const child of Array.from(el.children)) {
+              if (child.tagName !== "DIV" || !child.classList.contains("rt-line")) {
+                return false;
+              }
+              for (const n of Array.from(child.childNodes)) {
+                if (n.nodeType === 3) continue;
+                if (n.nodeType === 1 && n.tagName === "BR") continue;
+                return false;
+              }
             }
-            this.editTitle = todo.text || "";
-            this.editDesc = todo.desc || "";
-            this.detailEditing = true;
-            console.log("[detail] 进入编辑模式", todo.id, todo.text);
+            return true;
           },
 
-          cancelEditDetail() {
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
-            // 回到只读视图：快照重算一次，保证展示与存储一致
-            const todo = this.todos.find((t) => t.id === this.detailId);
-            if (todo) this.detail = this.buildDetail(todo);
-            console.log("[detail] 取消编辑", this.detailId);
+          // 重建行结构（行数组 → DOM），并同步首行标题样式与空态
+          renderEditor(lines) {
+            const el = this.editorEl();
+            if (!el) return false;
+            const list = lines && lines.length ? lines : [""];
+            el.textContent = "";
+            for (const line of list) {
+              const div = document.createElement("div");
+              div.className = "rt-line";
+              if (line === "") div.appendChild(document.createElement("br"));
+              else div.textContent = line;
+              el.appendChild(div);
+            }
+            this.applyEditorTitleClass(list);
+            el.classList.toggle(
+              "is-empty",
+              list.every((l) => !String(l).trim())
+            );
+            return true;
           },
 
-          // 保存编辑：只改 text / desc（不改分组与各时间戳），成功后回只读视图
+          // 首行标题样式：第一个非空行，且它后面还有非空行时才加粗加大
+          // （只有一行 / 全是空行时不加样式——单行时它就是普通内容）
+          applyEditorTitleClass(lines) {
+            const el = this.editorEl();
+            if (!el) return;
+            const kids = Array.from(el.children);
+            const first = lines.findIndex((l) => String(l).trim());
+            const hasMore =
+              first !== -1 && lines.slice(first + 1).some((l) => String(l).trim());
+            kids.forEach((k, i) => k.classList.toggle("rt-title", hasMore && i === first));
+          },
+
+          // 填充内容（打开弹窗 / 程序侧设置时用）；元素还没就绪就等一帧重试
+          fillEditor(text, tries) {
+            const lines = String(text == null ? "" : text)
+              .replace(/\r/g, "")
+              .split("\n");
+            this.editDraft = lines.join("\n");
+            const ok = this.renderEditor(lines);
+            if (!ok && (tries || 0) < 3) {
+              requestAnimationFrame(() => this.fillEditor(text, (tries || 0) + 1));
+            }
+            return ok;
+          },
+
+          // 把编辑器当前内容同步回 editDraft，并维护标题样式 / 空态 / 结构规整
+          syncEditorDraft() {
+            const el = this.editorEl();
+            const lines = this.editorLines();
+            this.editDraft = lines.join("\n");
+            if (!el) return;
+            el.classList.toggle("is-empty", lines.every((l) => !l.trim()));
+            // 行被删光（剩 0 行）或结构被浏览器改乱时才重建，保住“一个 div = 一行”；
+            // 重建前记下光标，重建后放回原处（普通打字不会走到这里）
+            if (!el.children.length || !this.editorStructureOk()) {
+              const info = this.caretInfo();
+              const list = lines.length ? lines : [""];
+              this.renderEditor(list);
+              if (info && info.lineIndex >= 0) {
+                this.focusEditor(info.lineIndex, info.offset);
+              } else {
+                this.focusEditor(list.length - 1, list[list.length - 1].length);
+              }
+            } else {
+              this.applyEditorTitleClass(lines);
+            }
+          },
+
+          // 当前光标位置（第几行 / 行内第几个字符）；不在编辑器内返回 null
+          caretInfo() {
+            const el = this.editorEl();
+            const sel = window.getSelection ? window.getSelection() : null;
+            if (!el || !sel || !sel.rangeCount) return null;
+            const range = sel.getRangeAt(0);
+            if (!el.contains(range.startContainer)) return null;
+            let node = range.startContainer;
+            if (node.nodeType === 3) node = node.parentElement;
+            let lineEl = node;
+            while (lineEl && lineEl !== el && !lineEl.classList.contains("rt-line")) {
+              lineEl = lineEl.parentElement;
+            }
+            const kids = Array.from(el.children);
+            const lineIndex = lineEl && lineEl !== el ? kids.indexOf(lineEl) : -1;
+            if (lineIndex < 0) return { lineIndex: -1, offset: 0 };
+            let offset = 0;
+            try {
+              const pre = range.cloneRange();
+              pre.selectNodeContents(lineEl);
+              pre.setEnd(range.startContainer, range.startOffset);
+              offset = pre.toString().replace(/\n/g, "").length;
+            } catch (err) {
+              console.warn("[editor] 计算光标偏移失败", err);
+            }
+            return { lineIndex, offset };
+          },
+
+          // 把光标放到第 lineIndex 行的第 offset 个字符处
+          focusEditor(lineIndex, offset) {
+            const el = this.editorEl();
+            if (!el) return;
+            const kids = Array.from(el.children);
+            if (!kids.length) return;
+            const idx = Math.min(Math.max(0, lineIndex || 0), kids.length - 1);
+            const lineEl = kids[idx];
+            const tn = Array.from(lineEl.childNodes).find((n) => n.nodeType === 3);
+            const range = document.createRange();
+            if (tn) {
+              const off = Math.min(Math.max(0, offset || 0), tn.length);
+              range.setStart(tn, off);
+              range.setEnd(tn, off);
+            } else {
+              range.selectNodeContents(lineEl);
+              range.collapse(false);
+            }
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            if (typeof el.focus === "function") el.focus();
+          },
+
+          // 普通输入：只同步草稿与样式，不重建 DOM（光标稳定、不打断输入法）
+          onEditorInput() {
+            if (this._editorComposing) return;
+            this.syncEditorDraft();
+          },
+
+          onEditorCompositionStart() {
+            this._editorComposing = true;
+          },
+
+          onEditorCompositionEnd() {
+            this._editorComposing = false;
+            this.syncEditorDraft();
+          },
+
+          // 回车 = 新起一行（自己拆，不靠浏览器插 <div>/<br>，行结构才能始终可控）；
+          // 输入法组合中的回车（确认候选）不拦
+          onEditorKeydown(ev) {
+            if (ev.isComposing || ev.keyCode === 229) return;
+            if (ev.key !== "Enter") return;
+            ev.preventDefault();
+            const info = this.caretInfo();
+            const lines = this.editorLines();
+            const idx =
+              info && info.lineIndex >= 0
+                ? info.lineIndex
+                : Math.max(0, lines.length - 1);
+            const text = lines[idx] || "";
+            const off = info && info.lineIndex >= 0 ? Math.min(info.offset, text.length) : text.length;
+            const next = [
+              ...lines.slice(0, idx),
+              text.slice(0, off),
+              text.slice(off),
+              ...lines.slice(idx + 1),
+            ];
+            this.editDraft = next.join("\n");
+            this.renderEditor(next);
+            this.focusEditor(idx + 1, 0);
+            console.log("[editor] 回车拆行，现共", next.length, "行");
+          },
+
+          // 粘贴：只要纯文本（不把外部 HTML 带进来），多行则拆成多行
+          onEditorPaste(ev) {
+            const dt = ev.clipboardData;
+            const text = dt && dt.getData ? dt.getData("text/plain") : null;
+            if (text == null) return;
+            ev.preventDefault();
+            const lines = this.editorLines();
+            const info = this.caretInfo();
+            const idx =
+              info && info.lineIndex >= 0
+                ? info.lineIndex
+                : Math.max(0, lines.length - 1);
+            const cur = lines[idx] || "";
+            const off = info && info.lineIndex >= 0 ? Math.min(info.offset, cur.length) : cur.length;
+            const merged = (cur.slice(0, off) + text + cur.slice(off))
+              .replace(/\r/g, "")
+              .split("\n");
+            const next = [...lines.slice(0, idx), ...merged, ...lines.slice(idx + 1)];
+            this.editDraft = next.join("\n");
+            this.renderEditor(next);
+            const endLine = idx + merged.length - 1;
+            this.focusEditor(endLine, merged[merged.length - 1].length);
+            console.log("[editor] 粘贴纯文本，现共", next.length, "行");
+          },
+
+          // 点盒子空白处（padding）也能把光标放回编辑区末尾
+          onEditorBoxClick(ev) {
+            const el = this.editorEl();
+            if (!el || el.contains(ev.target)) return;
+            const lines = this.editorLines();
+            this.focusEditor(lines.length - 1, lines[lines.length - 1].length);
+          },
+
+          // 草稿的解析结果（第一个非空行 = 标题，其余 = 描述）；全空时返回 null
+          get editParsed() {
+            return this.parseDraft(this.editDraft);
+          },
+
+          // 有标题才能保存（与添加弹窗的「添加」禁用口径一致）
+          get editCanSave() {
+            return !!this.editParsed;
+          },
+
+          // 保存：把编辑器内容拆回 text / desc（不动分组、勾选状态与各时间戳），写回后关闭弹窗
           submitEditDetail() {
             const id = this.detailId;
-            const title = String(this.editTitle || "").trim();
-            if (!title) return;
-            const desc = String(this.editDesc || "");
+            // 以编辑器真实内容为准（万一有没同步到草稿的变更）
+            if (this.editorEl()) this.syncEditorDraft();
+            const parsed = this.parseDraft(this.editDraft);
+            if (!parsed) return;
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) {
               console.error("[detail] 保存失败，任务已不存在", id);
               return;
             }
             this.todos = this.todos.map((t) =>
-              t.id === id ? { ...t, text: title, desc } : t
+              t.id === id ? { ...t, text: parsed.title, desc: parsed.desc } : t
             );
-            const updated = this.todos.find((t) => t.id === id);
-            this.detail = this.buildDetail(updated);
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
             console.log(
               "[detail] 已保存编辑",
               id,
               "标题 =",
-              title,
+              parsed.title,
               "描述长度 =",
-              desc.length
+              parsed.desc.length
             );
+            this.detailOpen = false;
+            this.detailId = null;
+            this.editDraft = "";
+            this.renderEditor([""]);
             this.persistTodos();
           },
 
