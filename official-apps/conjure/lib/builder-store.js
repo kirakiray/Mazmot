@@ -3439,6 +3439,17 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       invalidateAgent();
     }
+    // 上一回合已正常收尾（非中断续作）：先清空任务清单再建本回合 Agent。
+    // 清单是「本回合进度」，跨回合沿用会挂着上一轮的全完成清单不动（实测
+    // 第二轮对话面板不更新——注入的旧清单带着「全部 done 不必调用」条款，
+    // 模型正好拿它当跳过 task_list 的理由）；清在 ensureAgent 之前，本回合
+    // 提示词的任务节为空，由基础规则引导模型重建新清单。中断续作
+    // （interrupted）保留清单——暂停/继续的「停在哪一步」展示依赖它
+    if (!state.interrupted && sessionTasksKey()) {
+      applySessionTasks([]);
+      // 待修的运行错误重登记进新清单（提示词错误节声称宿主已登记）
+      if (state.autoErrors.length) syncErrorTasks(state.autoErrors);
+    }
     try {
       await ensureAgent();
     } catch {
@@ -3543,6 +3554,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     // 旧回合的回滚通知已随撤销失效，不带入重发回合
     if (pendingRollback && pendingRollback.appName === state.currentAppName) {
       pendingRollback = null;
+    }
+    // 重发 = 重新驱动本条请求：上一轮清单同步清空（同 send，中断续作除外）
+    if (!state.interrupted && sessionTasksKey()) {
+      applySessionTasks([]);
+      if (state.autoErrors.length) syncErrorTasks(state.autoErrors);
     }
     try {
       await ensureAgent();
