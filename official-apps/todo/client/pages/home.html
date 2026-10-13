@@ -371,8 +371,8 @@
       line-height: 1.3;
       color: var(--md-sys-color-on-surface-variant);
     }
-    /* 行尾操作区：编辑 + 删除两个图标按钮紧凑并排（尺寸统一缩到 34px，与侧栏分组行的 ⋯ 一致），
-       不再用两个 40px 按钮并排去占 92px 宽度 */
+    /* 行尾操作区：只剩删除一个图标按钮（尺寸缩到 34px，与侧栏分组行的 ⋯ 一致）。
+       编辑已并入「任务详情」弹窗（点正文区就能一边看信息一边改），行上不再有铅笔入口 */
     .item-actions {
       flex: none;
       display: flex;
@@ -380,24 +380,6 @@
       gap: 2px;
     }
     .item-actions st-icon-button { font-size: 12px; }
-    /* 编辑按钮平时淡出（与侧栏分组行的 ⋯ 同一套做法）：鼠标悬停该行、键盘聚焦到它时才现形，
-       列表更干净；删除按钮保持常显（主操作，倒计时时还是撤销的唯一抓手）。
-       用 opacity 而不是 display，避免悬停时行内布局跳动；宽度始终占位，文字不会左右挪。 */
-    .item-actions .edit-btn {
-      opacity: 0;
-      transition: opacity 0.15s ease, color 0.15s ease;
-    }
-    .item:hover .edit-btn,
-    .item:focus-within .edit-btn { opacity: 0.75; }
-    .item-actions .edit-btn:hover,
-    .item-actions .edit-btn:focus-within {
-      opacity: 1;
-      color: var(--md-sys-color-primary);
-    }
-    /* 触屏等无 hover 设备：编辑按钮常显（略淡），否则永远看不出这行能编辑 */
-    @media (hover: none) {
-      .item-actions .edit-btn { opacity: 0.7; }
-    }
     .item.done .text {
       text-decoration: line-through;
       color: var(--md-sys-color-on-surface-variant);
@@ -409,11 +391,10 @@
     }
     .item.pending .meta { color: var(--md-sys-color-on-error-container); }
     /* 倒计时（错误容器色）下操作按钮换成 on-error-container，图标在红底上才清晰；
-       这时的「撤销」是用户唯一抓手，编辑按钮也不再隐藏。
+       这时的「撤销」是用户唯一抓手。
        注意：必须直接命中 st-icon-button 宿主——它自带 color（on-surface-variant），
        在父容器上写 color 只会被组件自己的声明盖掉（继承打不过自声明） */
     .item.pending .item-actions st-icon-button { color: var(--md-sys-color-on-error-container); }
-    .item.pending .item-actions .edit-btn { opacity: 1; }
     .item.pending .desc { color: var(--md-sys-color-on-error-container); }
     .item.trash { background: var(--md-sys-color-surface); border: 1px dashed var(--md-sys-color-outline-variant); }
     /* 归档项：与垃圾桶区分开——用实线边框 + 表面色，不做删除线（它只是被收起来了） */
@@ -482,25 +463,60 @@
     .count { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     /* 列表项里的描述摘要按需隐藏 */
     .hidden { display: none !important; }
+    /* 任务详情弹窗：查看与编辑合一——顶部是可直接修改的标题 / 描述，下面是只读元信息 */
     .detail {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 10px;
       min-width: 300px;
       max-width: 460px;
     }
-    .detail-desc {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      line-height: 1.5;
-    }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
-    /* 详情弹窗的编辑区：标题单行 + 描述多行（只给尺寸，不覆盖组件 display，见踩坑 004） */
-    .detail-edit { display: flex; flex-direction: column; gap: 12px; }
-    .detail-edit .edit-title { width: 100%; min-width: 0; }
-    .detail-edit .edit-desc { width: 100%; min-height: 7.5em; }
+    /* ===== 详情弹窗里的富文本编辑区（.rt-*） =====
+       这是一个“迷你富文本编辑器”：框内每行是一个 .rt-line 块，第一个非空行在其后还有内容时
+       套上 .rt-title（加粗加大）——样式就长在编辑区**里面**，不是框下方的预览行。
+       原生 textarea 无法只给某一行换样式，所以用 contenteditable 自己管行结构。 */
+    .rt-box {
+      width: 100%;
+      min-height: 7.5em;
+      padding: 10px 14px;
+      box-sizing: border-box;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 12px;
+      background: var(--md-sys-color-surface);
+      cursor: text;
+      transition: border-color 0.15s ease;
+    }
+    .rt-box:focus-within { border-color: var(--md-sys-color-primary); }
+    .rt-editor {
+      position: relative;
+      outline: none;
+      min-height: 6em;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-surface);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    /* 每行一个块；空行靠 min-height 占住行高（否则光标没地方站） */
+    .rt-editor .rt-line { min-height: 1.5em; }
+    /* 首行标题：就在编辑区里加粗加大（实测 20px / 700，正文 14px / 400） */
+    .rt-editor .rt-line.rt-title {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+    /* 编辑器为空时在上面叠一行占位提示（空行本身仍保留，不然光标无处可放、打不进字） */
+    .rt-editor.is-empty::before {
+      content: attr(data-placeholder);
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      color: var(--md-sys-color-on-surface-variant);
+    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@latest/packages/input/input.html"></l-m>
@@ -630,11 +646,6 @@
             </div>
             <div class="item-actions">
               <st-icon-button
-                class="edit-btn"
-                attr:title="$host.editButtonTitle($data)"
-                on:click="$host.openEditDetail($data.id)"
-              ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
-              <st-icon-button
                 attr:title="$host.deleteButtonTitle($data)"
                 on:click="$host.handleDeleteClick($data.id)"
               ><n-icon attr:icon="$host.deleteButtonIconName($data)"></n-icon></st-icon-button>
@@ -695,11 +706,6 @@
                   </div>
                   <st-button variant="text" on:click="$host.unarchiveTodo($data.id)">取消归档</st-button>
                   <div class="item-actions">
-                    <st-icon-button
-                      class="edit-btn"
-                      attr:title="$host.editButtonTitle($data)"
-                      on:click="$host.openEditDetail($data.id)"
-                    ><n-icon icon="mdi:pencil"></n-icon></st-icon-button>
                     <st-icon-button
                       attr:title="$host.deleteButtonTitle($data)"
                       on:click="$host.handleDeleteClick($data.id)"
@@ -852,14 +858,30 @@
       </div>
     </st-dialog>
 
-    <!-- 任务详情：默认只读，点「编辑」切成可编辑（标题 + 描述）。注意 st-dialog 内不能调
-         $host.xxx()（弹窗内部 $host 不指向页面），所以只读文案都在 openDetail 里预计算好 -->
+    <!-- 任务详情：查看与编辑合并在同一个弹窗里——标题 / 描述直接可改，元信息只读展示，
+         点「保存」写回并关闭弹窗（不再有「只读 ↔ 编辑」两个面孔来回切）。
+         注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
+         所以展示文案都在 openDetail 里预计算成 detail 快照 -->
     <st-dialog sync:open="detailOpen" auto-close>
-      <span slot="headline">{{detailEditing ? '编辑任务' : detail.title}}</span>
+      <span slot="headline">任务详情</span>
 
-      <!-- 只读视图 -->
-      <div class="detail" class:hidden="detailEditing">
-        <p class="detail-desc" class:hidden="!detail.hasDesc">{{detail.desc}}</p>
+      <div class="detail">
+        <!-- 富文本编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
+             但标题样式直接长在框内——第一个非空行在其后还有内容时会加粗加大。
+             行结构由页面自己管（原 textarea 做不到只给首行换样式） -->
+        <div class="rt-box" on:click="onEditorBoxClick">
+          <div
+            class="rt-editor"
+            contenteditable="true"
+            spellcheck="false"
+            data-placeholder="第一行是标题，换行后写的都是描述…"
+            on:input="onEditorInput"
+            on:keydown="onEditorKeydown"
+            on:paste="onEditorPaste"
+            on:compositionstart="onEditorCompositionStart"
+            on:compositionend="onEditorCompositionEnd"
+          ></div>
+        </div>
         <!-- 任务图片：等比缩到弹窗宽度内，右上角可移除（立即落盘） -->
         <div class="detail-images" class:hidden="!detail.images.length">
           <o-fill :value="detail.images" fill-key="id">
@@ -882,30 +904,9 @@
         <div class="detail-row"><span class="k">删除时间</span><span>{{detail.deletedText}}</span></div>
       </div>
 
-      <!-- 编辑视图：标题单行、描述可多行（回车换行，所以只能用「保存」提交） -->
-      <div class="detail-edit" class:hidden="!detailEditing">
-        <st-input
-          class="edit-title"
-          sync:value="editTitle"
-          placeholder="任务标题（不能为空）"
-        ></st-input>
-        <st-textarea
-          class="edit-desc"
-          rows="4"
-          sync:value="editDesc"
-          placeholder="描述（可留空，可多行）"
-        ></st-textarea>
-      </div>
-
-      <div slot="actions" class:hidden="detailEditing">
+      <div slot="actions">
         <st-button variant="text" on:click="closeDetail">关闭</st-button>
-        <st-button on:click="startEditDetail">
-          <n-icon slot="prefix" icon="mdi:pencil"></n-icon>编辑
-        </st-button>
-      </div>
-      <div slot="actions" class:hidden="!detailEditing">
-        <st-button variant="text" on:click="cancelEditDetail">取消</st-button>
-        <st-button on:click="submitEditDetail" attr:disabled="!editTitle.trim()">保存</st-button>
+        <st-button on:click="submitEditDetail" attr:disabled="!editCanSave">保存</st-button>
       </div>
     </st-dialog>
 
@@ -1046,19 +1047,14 @@
           confirmGroupId: null,
           // 添加任务的弹窗
           addOpen: false,
-          // 任务详情弹窗：打开时把展示文案全部预计算好
+          // 任务详情弹窗（查看 + 编辑合一）：打开时把只读元信息全部预计算好
           // （st-dialog 内不能调 $host.xxx()，只能读 data 字段，见模板注释）
           detailOpen: false,
-          // 详情弹窗当前展示的任务 id（编辑保存时需要知道改哪一条）
+          // 详情弹窗当前展示的任务 id（保存时据此定位条目）
           detailId: null,
-          // 是否处于编辑模式；编辑草稿（标题 / 描述）
-          detailEditing: false,
-          editTitle: "",
-          editDesc: "",
+          // 弹窗里「标题 + 描述」的多行草稿（与添加弹窗同口径：第一个非空行是标题、其后是描述）
+          editDraft: "",
           detail: {
-            title: "",
-            desc: "",
-            hasDesc: false,
             // 详情弹窗里的图片快照：Array<{ id, dataUrl }>
             images: [],
             statusText: "",
@@ -2255,15 +2251,12 @@
             this.persistTodos();
           },
 
-          // ===== 任务详情（只读展示：弹窗里只提供「关闭」） =====
-          // 把一条待办转成详情弹窗的展示对象（文案全在这里算好，模板只读字段）
+          // ===== 任务详情（查看 + 编辑合一：弹窗里直接改标题 / 描述，点「保存」写回） =====
+          // 把一条待办转成详情弹窗的只读元信息（文案全在这里算好，模板只读字段）
           buildDetail(todo) {
             const timeOr = (ts) =>
               typeof ts === "number" ? this.formatTime(ts) : "—";
             return {
-              title: todo.text || "（无标题）",
-              desc: todo.desc || "",
-              hasDesc: !!todo.desc,
               // 详情弹窗里的图片快照（模板只读字段）
               images: (todo.images || []).map((im) => ({ id: im.id, dataUrl: im.dataUrl })),
               groupText: this.groupName(todo.groupId),
@@ -2283,86 +2276,296 @@
             };
           },
 
+          // 打开详情：既填好只读元信息，也把富文本编辑区预填成当前内容
+          // （草稿取原始 text / desc 拼回“首行标题 + 其余描述”，与创建时同一套格式）
           openDetail(id) {
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) return;
             this.detail = this.buildDetail(todo);
             this.detailId = id;
-            this.detailEditing = false;
+            const draft = todo.desc ? todo.text + "\n" + todo.desc : todo.text || "";
+            this.fillEditor(draft);
             this.detailOpen = true;
             console.log("[detail] 打开详情", id, todo.text);
           },
 
-          // 列表行的铅笔按钮：直接打开详情并进入编辑模式
-          openEditDetail(id) {
-            this.openDetail(id);
-            this.startEditDetail();
-          },
-
           closeDetail() {
             this.detailOpen = false;
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
+            this.detailId = null;
+            this.editDraft = "";
+            this.renderEditor([""]);
             console.log("[detail] 关闭详情");
           },
 
-          // 列表 / 归档行铅笔按钮的 title（图标按钮必须给无障碍名称）
-          editButtonTitle(todo) {
-            return "编辑：" + (todo.text || "（无标题）");
+          // ===== 迷你富文本编辑区（contenteditable） =====
+          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位）；
+          // 第一个非空行在其后还有内容时套 .rt-title（加粗加大）——样式长在框内。
+          // 数据仍只走 editDraft（多行文本），保存时用 parseDraft 拆回 text / desc。
+          editorEl() {
+            const page = document.querySelector("o-page");
+            const root = page && page.shadowRoot;
+            return (root && root.querySelector(".rt-editor")) || null;
           },
 
-          // ===== 编辑已有任务（详情弹窗内的「编辑」） =====
-          // 进入编辑：从待办里取原始 text / desc（不用 detail 快照，它把空标题换成了「（无标题）」）
-          startEditDetail() {
-            const todo = this.todos.find((t) => t.id === this.detailId);
-            if (!todo) {
-              console.error("[detail] 找不到待编辑的任务", this.detailId);
-              return;
+          // 视觉行（块级边界即换行）：从 innerText 读，不依赖 DOM 是否规范
+          editorLines() {
+            const el = this.editorEl();
+            if (!el) return [""];
+            const raw =
+              typeof el.innerText === "string" ? el.innerText : el.textContent || "";
+            return raw.replace(/\r/g, "").split("\n");
+          },
+
+          // 结构是否规整（只有 .rt-line 子元素，行内除 <br> 外没有元素）——
+          // 不规整时才重建，保证普通打字不会动 DOM，光标不跳
+          editorStructureOk() {
+            const el = this.editorEl();
+            if (!el) return true;
+            for (const child of Array.from(el.children)) {
+              if (child.tagName !== "DIV" || !child.classList.contains("rt-line")) {
+                return false;
+              }
+              for (const n of Array.from(child.childNodes)) {
+                if (n.nodeType === 3) continue;
+                if (n.nodeType === 1 && n.tagName === "BR") continue;
+                return false;
+              }
             }
-            this.editTitle = todo.text || "";
-            this.editDesc = todo.desc || "";
-            this.detailEditing = true;
-            console.log("[detail] 进入编辑模式", todo.id, todo.text);
+            return true;
           },
 
-          cancelEditDetail() {
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
-            // 回到只读视图：快照重算一次，保证展示与存储一致
-            const todo = this.todos.find((t) => t.id === this.detailId);
-            if (todo) this.detail = this.buildDetail(todo);
-            console.log("[detail] 取消编辑", this.detailId);
+          // 重建行结构（行数组 → DOM），并同步首行标题样式与空态
+          renderEditor(lines) {
+            const el = this.editorEl();
+            if (!el) return false;
+            const list = lines && lines.length ? lines : [""];
+            el.textContent = "";
+            for (const line of list) {
+              const div = document.createElement("div");
+              div.className = "rt-line";
+              if (line === "") div.appendChild(document.createElement("br"));
+              else div.textContent = line;
+              el.appendChild(div);
+            }
+            this.applyEditorTitleClass(list);
+            el.classList.toggle(
+              "is-empty",
+              list.every((l) => !String(l).trim())
+            );
+            return true;
           },
 
-          // 保存编辑：只改 text / desc（不改分组与各时间戳），成功后回只读视图
+          // 首行标题样式：第一个非空行，且它后面还有非空行时才加粗加大
+          // （只有一行 / 全是空行时不加样式——单行时它就是普通内容）
+          applyEditorTitleClass(lines) {
+            const el = this.editorEl();
+            if (!el) return;
+            const kids = Array.from(el.children);
+            const first = lines.findIndex((l) => String(l).trim());
+            const hasMore =
+              first !== -1 && lines.slice(first + 1).some((l) => String(l).trim());
+            kids.forEach((k, i) => k.classList.toggle("rt-title", hasMore && i === first));
+          },
+
+          // 填充内容（打开弹窗 / 程序侧设置时用）；元素还没就绪就等一帧重试
+          fillEditor(text, tries) {
+            const lines = String(text == null ? "" : text)
+              .replace(/\r/g, "")
+              .split("\n");
+            this.editDraft = lines.join("\n");
+            const ok = this.renderEditor(lines);
+            if (!ok && (tries || 0) < 3) {
+              requestAnimationFrame(() => this.fillEditor(text, (tries || 0) + 1));
+            }
+            return ok;
+          },
+
+          // 把编辑器当前内容同步回 editDraft，并维护标题样式 / 空态 / 结构规整
+          syncEditorDraft() {
+            const el = this.editorEl();
+            const lines = this.editorLines();
+            this.editDraft = lines.join("\n");
+            if (!el) return;
+            el.classList.toggle("is-empty", lines.every((l) => !l.trim()));
+            // 行被删光（剩 0 行）或结构被浏览器改乱时才重建，保住“一个 div = 一行”；
+            // 重建前记下光标，重建后放回原处（普通打字不会走到这里）
+            if (!el.children.length || !this.editorStructureOk()) {
+              const info = this.caretInfo();
+              const list = lines.length ? lines : [""];
+              this.renderEditor(list);
+              if (info && info.lineIndex >= 0) {
+                this.focusEditor(info.lineIndex, info.offset);
+              } else {
+                this.focusEditor(list.length - 1, list[list.length - 1].length);
+              }
+            } else {
+              this.applyEditorTitleClass(lines);
+            }
+          },
+
+          // 当前光标位置（第几行 / 行内第几个字符）；不在编辑器内返回 null
+          caretInfo() {
+            const el = this.editorEl();
+            const sel = window.getSelection ? window.getSelection() : null;
+            if (!el || !sel || !sel.rangeCount) return null;
+            const range = sel.getRangeAt(0);
+            if (!el.contains(range.startContainer)) return null;
+            let node = range.startContainer;
+            if (node.nodeType === 3) node = node.parentElement;
+            let lineEl = node;
+            while (lineEl && lineEl !== el && !lineEl.classList.contains("rt-line")) {
+              lineEl = lineEl.parentElement;
+            }
+            const kids = Array.from(el.children);
+            const lineIndex = lineEl && lineEl !== el ? kids.indexOf(lineEl) : -1;
+            if (lineIndex < 0) return { lineIndex: -1, offset: 0 };
+            let offset = 0;
+            try {
+              const pre = range.cloneRange();
+              pre.selectNodeContents(lineEl);
+              pre.setEnd(range.startContainer, range.startOffset);
+              offset = pre.toString().replace(/\n/g, "").length;
+            } catch (err) {
+              console.warn("[editor] 计算光标偏移失败", err);
+            }
+            return { lineIndex, offset };
+          },
+
+          // 把光标放到第 lineIndex 行的第 offset 个字符处
+          focusEditor(lineIndex, offset) {
+            const el = this.editorEl();
+            if (!el) return;
+            const kids = Array.from(el.children);
+            if (!kids.length) return;
+            const idx = Math.min(Math.max(0, lineIndex || 0), kids.length - 1);
+            const lineEl = kids[idx];
+            const tn = Array.from(lineEl.childNodes).find((n) => n.nodeType === 3);
+            const range = document.createRange();
+            if (tn) {
+              const off = Math.min(Math.max(0, offset || 0), tn.length);
+              range.setStart(tn, off);
+              range.setEnd(tn, off);
+            } else {
+              range.selectNodeContents(lineEl);
+              range.collapse(false);
+            }
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            if (typeof el.focus === "function") el.focus();
+          },
+
+          // 普通输入：只同步草稿与样式，不重建 DOM（光标稳定、不打断输入法）
+          onEditorInput() {
+            if (this._editorComposing) return;
+            this.syncEditorDraft();
+          },
+
+          onEditorCompositionStart() {
+            this._editorComposing = true;
+          },
+
+          onEditorCompositionEnd() {
+            this._editorComposing = false;
+            this.syncEditorDraft();
+          },
+
+          // 回车 = 新起一行（自己拆，不靠浏览器插 <div>/<br>，行结构才能始终可控）；
+          // 输入法组合中的回车（确认候选）不拦
+          onEditorKeydown(ev) {
+            if (ev.isComposing || ev.keyCode === 229) return;
+            if (ev.key !== "Enter") return;
+            ev.preventDefault();
+            const info = this.caretInfo();
+            const lines = this.editorLines();
+            const idx =
+              info && info.lineIndex >= 0
+                ? info.lineIndex
+                : Math.max(0, lines.length - 1);
+            const text = lines[idx] || "";
+            const off = info && info.lineIndex >= 0 ? Math.min(info.offset, text.length) : text.length;
+            const next = [
+              ...lines.slice(0, idx),
+              text.slice(0, off),
+              text.slice(off),
+              ...lines.slice(idx + 1),
+            ];
+            this.editDraft = next.join("\n");
+            this.renderEditor(next);
+            this.focusEditor(idx + 1, 0);
+            console.log("[editor] 回车拆行，现共", next.length, "行");
+          },
+
+          // 粘贴：只要纯文本（不把外部 HTML 带进来），多行则拆成多行
+          onEditorPaste(ev) {
+            const dt = ev.clipboardData;
+            const text = dt && dt.getData ? dt.getData("text/plain") : null;
+            if (text == null) return;
+            ev.preventDefault();
+            const lines = this.editorLines();
+            const info = this.caretInfo();
+            const idx =
+              info && info.lineIndex >= 0
+                ? info.lineIndex
+                : Math.max(0, lines.length - 1);
+            const cur = lines[idx] || "";
+            const off = info && info.lineIndex >= 0 ? Math.min(info.offset, cur.length) : cur.length;
+            const merged = (cur.slice(0, off) + text + cur.slice(off))
+              .replace(/\r/g, "")
+              .split("\n");
+            const next = [...lines.slice(0, idx), ...merged, ...lines.slice(idx + 1)];
+            this.editDraft = next.join("\n");
+            this.renderEditor(next);
+            const endLine = idx + merged.length - 1;
+            this.focusEditor(endLine, merged[merged.length - 1].length);
+            console.log("[editor] 粘贴纯文本，现共", next.length, "行");
+          },
+
+          // 点盒子空白处（padding）也能把光标放回编辑区末尾
+          onEditorBoxClick(ev) {
+            const el = this.editorEl();
+            if (!el || el.contains(ev.target)) return;
+            const lines = this.editorLines();
+            this.focusEditor(lines.length - 1, lines[lines.length - 1].length);
+          },
+
+          // 草稿的解析结果（第一个非空行 = 标题，其余 = 描述）；全空时返回 null
+          get editParsed() {
+            return this.parseDraft(this.editDraft);
+          },
+
+          // 有标题才能保存（与添加弹窗的「添加」禁用口径一致）
+          get editCanSave() {
+            return !!this.editParsed;
+          },
+
+          // 保存：把编辑器内容拆回 text / desc（不动分组、勾选状态与各时间戳），写回后关闭弹窗
           submitEditDetail() {
             const id = this.detailId;
-            const title = String(this.editTitle || "").trim();
-            if (!title) return;
-            const desc = String(this.editDesc || "");
+            // 以编辑器真实内容为准（万一有没同步到草稿的变更）
+            if (this.editorEl()) this.syncEditorDraft();
+            const parsed = this.parseDraft(this.editDraft);
+            if (!parsed) return;
             const todo = this.todos.find((t) => t.id === id);
             if (!todo) {
               console.error("[detail] 保存失败，任务已不存在", id);
               return;
             }
             this.todos = this.todos.map((t) =>
-              t.id === id ? { ...t, text: title, desc } : t
+              t.id === id ? { ...t, text: parsed.title, desc: parsed.desc } : t
             );
-            const updated = this.todos.find((t) => t.id === id);
-            this.detail = this.buildDetail(updated);
-            this.detailEditing = false;
-            this.editTitle = "";
-            this.editDesc = "";
             console.log(
               "[detail] 已保存编辑",
               id,
               "标题 =",
-              title,
+              parsed.title,
               "描述长度 =",
-              desc.length
+              parsed.desc.length
             );
+            this.detailOpen = false;
+            this.detailId = null;
+            this.editDraft = "";
+            this.renderEditor([""]);
             this.persistTodos();
           },
 
