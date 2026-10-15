@@ -279,9 +279,14 @@
       align-items: center;
       gap: 8px;
     }
+    /* 「添加任务」「任务详情」两个弹窗放大：st-dialog 面板默认宽 min(34.29em, 100%)（≈480px），
+       而这两个弹窗内容多（多行输入 + 图片区 + AI 区 / 编辑区 + 只读元信息），480px 太憋。
+       面板在 shadow 里，只能用原生 ::part(panel) 覆盖宽度；给宿主挂 .dialog-lg 类，
+       不影响分组弹窗 / 二次确认弹窗（它们内容短，保持默认宽度） */
+    .dialog-lg::part(panel) { width: min(760px, 100%); }
     /* 注意：不要在这里覆盖 st-input / st-textarea 的 display（组件默认 inline-flex，内部原生控件靠 flex 撑满），
        只给宽度与最小高度即可，否则真实可输入区域会缩成组件默认宽度 */
-    .dialog-field { width: 100%; min-height: 7.5em; }
+    .dialog-field { width: 100%; min-height: 11em; }
     .list { display: flex; flex-direction: column; gap: 8px; }
     .item {
       position: relative; /* 落点指示线（伪元素）的定位基准 */
@@ -469,18 +474,20 @@
       flex-direction: column;
       gap: 10px;
       min-width: 300px;
-      max-width: 460px;
+      /* 不再限 460px：弹窗面板已放大（.dialog-lg），内容跟着吃满面板宽度 */
+      max-width: 100%;
     }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
-    /* ===== 详情弹窗里的富文本编辑区（.rt-*） =====
-       这是一个“迷你富文本编辑器”：框内每行是一个 .rt-line 块，第一个非空行在其后还有内容时
-       套上 .rt-title（加粗加大）——样式就长在编辑区**里面**，不是框下方的预览行。
-       原生 textarea 无法只给某一行换样式，所以用 contenteditable 自己管行结构。 */
+    /* ===== 详情弹窗里的多行编辑区（.rt-*） =====
+       框内每行是一个 .rt-line 块，行结构由页面自己管（回车拆行、粘贴只取纯文本）。
+       ⚠️ 曾经给「第一个非空行」在框内加粗加大（.rt-line.rt-title）——判定时机与
+       光标 / 输入法的边界情形太多、bug 不断，已整体去掉：现在所有行样式完全一致，
+       编辑区里不做任何行级强调，不要再加回 .rt-title 那套。 */
     .rt-box {
       width: 100%;
-      min-height: 7.5em;
-      padding: 10px 14px;
+      min-height: 11em;
+      padding: 12px 14px;
       box-sizing: border-box;
       border: 1px solid var(--md-sys-color-outline);
       border-radius: 12px;
@@ -492,7 +499,7 @@
     .rt-editor {
       position: relative;
       outline: none;
-      min-height: 6em;
+      min-height: 9em;
       font-size: 14px;
       line-height: 1.5;
       color: var(--md-sys-color-on-surface);
@@ -501,13 +508,6 @@
     }
     /* 每行一个块；空行靠 min-height 占住行高（否则光标没地方站） */
     .rt-editor .rt-line { min-height: 1.5em; }
-    /* 首行标题：就在编辑区里加粗加大（实测 20px / 700，正文 14px / 400） */
-    .rt-editor .rt-line.rt-title {
-      font-size: 20px;
-      font-weight: 700;
-      line-height: 1.35;
-      margin-bottom: 2px;
-    }
     /* 编辑器为空时在上面叠一行占位提示（空行本身仍保留，不然光标无处可放、打不进字） */
     .rt-editor.is-empty::before {
       content: attr(data-placeholder);
@@ -774,8 +774,8 @@
       </div>
     </o-if>
 
-    <!-- 添加任务：弹窗内输入 -->
-    <st-dialog sync:open="addOpen" auto-close>
+    <!-- 添加任务：弹窗内输入（.dialog-lg = 放大面板，让多行输入 / 图片 / AI 区都宽敞些） -->
+    <st-dialog class="dialog-lg" sync:open="addOpen" auto-close>
       <span slot="headline">添加任务</span>
       <st-textarea
         class="dialog-field"
@@ -862,13 +862,13 @@
          点「保存」写回并关闭弹窗（不再有「只读 ↔ 编辑」两个面孔来回切）。
          注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
          所以展示文案都在 openDetail 里预计算成 detail 快照 -->
-    <st-dialog sync:open="detailOpen" auto-close>
+    <st-dialog class="dialog-lg" sync:open="detailOpen" auto-close>
       <span slot="headline">任务详情</span>
 
       <div class="detail">
-        <!-- 富文本编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
-             但标题样式直接长在框内——第一个非空行在其后还有内容时会加粗加大。
-             行结构由页面自己管（原 textarea 做不到只给首行换样式） -->
+        <!-- 编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
+             但**不做行级样式**——所有行样式一致（首行加粗加大那套已因 bug 多而整体去掉）。
+             行结构由页面自己管：回车拆行、粘贴只取纯文本 -->
         <div class="rt-box" on:click="onEditorBoxClick">
           <div
             class="rt-editor"
@@ -2276,7 +2276,7 @@
             };
           },
 
-          // 打开详情：既填好只读元信息，也把富文本编辑区预填成当前内容
+          // 打开详情：既填好只读元信息，也把多行编辑区预填成当前内容
           // （草稿取原始 text / desc 拼回“首行标题 + 其余描述”，与创建时同一套格式）
           openDetail(id) {
             const todo = this.todos.find((t) => t.id === id);
@@ -2297,9 +2297,9 @@
             console.log("[detail] 关闭详情");
           },
 
-          // ===== 迷你富文本编辑区（contenteditable） =====
-          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位）；
-          // 第一个非空行在其后还有内容时套 .rt-title（加粗加大）——样式长在框内。
+          // ===== 多行编辑区（contenteditable） =====
+          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位），**所有行样式一致**
+          //（曾经的首行 .rt-title 加粗加大已因 bug 多整体去掉，不要再加回）。
           // 数据仍只走 editDraft（多行文本），保存时用 parseDraft 拆回 text / desc。
           editorEl() {
             const page = document.querySelector("o-page");
@@ -2334,7 +2334,7 @@
             return true;
           },
 
-          // 重建行结构（行数组 → DOM），并同步首行标题样式与空态
+          // 重建行结构（行数组 → DOM），并同步空态
           renderEditor(lines) {
             const el = this.editorEl();
             if (!el) return false;
@@ -2347,24 +2347,20 @@
               else div.textContent = line;
               el.appendChild(div);
             }
-            this.applyEditorTitleClass(list);
-            el.classList.toggle(
-              "is-empty",
-              list.every((l) => !String(l).trim())
-            );
+            this.applyEditorEmptyClass(list);
             return true;
           },
 
-          // 首行标题样式：第一个非空行，且它后面还有非空行时才加粗加大
-          // （只有一行 / 全是空行时不加样式——单行时它就是普通内容）
-          applyEditorTitleClass(lines) {
+          // 空态类：所有行都空白时给编辑区加 is-empty（占位提示靠它显示）
+          applyEditorEmptyClass(lines) {
             const el = this.editorEl();
             if (!el) return;
-            const kids = Array.from(el.children);
-            const first = lines.findIndex((l) => String(l).trim());
-            const hasMore =
-              first !== -1 && lines.slice(first + 1).some((l) => String(l).trim());
-            kids.forEach((k, i) => k.classList.toggle("rt-title", hasMore && i === first));
+            el.classList.toggle(
+              "is-empty",
+              (lines && lines.length ? lines : [""]).every(
+                (l) => !String(l).trim()
+              )
+            );
           },
 
           // 填充内容（打开弹窗 / 程序侧设置时用）；元素还没就绪就等一帧重试
@@ -2380,7 +2376,7 @@
             return ok;
           },
 
-          // 把编辑器当前内容同步回 editDraft，并维护标题样式 / 空态 / 结构规整
+          // 把编辑器当前内容同步回 editDraft（普通输入只走这里，不重建 DOM、不改行样式）
           syncEditorDraft() {
             const el = this.editorEl();
             const lines = this.editorLines();
@@ -2398,8 +2394,6 @@
               } else {
                 this.focusEditor(list.length - 1, list[list.length - 1].length);
               }
-            } else {
-              this.applyEditorTitleClass(lines);
             }
           },
 
