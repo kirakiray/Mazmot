@@ -1240,9 +1240,14 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
         },
 
         async ready() {
-          // 恢复对话列宽度偏好（480–1280；窄视口由 width:100% 天然收缩，无需回写）
+          // 恢复对话列宽度偏好（480–1280；窄视口由 width:100% 天然收缩，无需回写）。
+          // 存 conjure 空间的 pref:chat-width（跨标签 / 重开持久）；旧值在
+          // sessionStorage（标签页级）的存量标签回落读取一次
           try {
-            const cw = parseInt(sessionStorage.getItem("aib:chat-width"), 10);
+            let cw = parseInt(await selfStore?.getItem("pref:chat-width"), 10);
+            if (!(cw >= 480 && cw <= 1280)) {
+              cw = parseInt(sessionStorage.getItem("aib:chat-width"), 10);
+            }
             if (cw >= 480 && cw <= 1280) this.applyChatWidth(cw);
           } catch {
             /* 忽略 */
@@ -2719,11 +2724,10 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
               if (raf !== null) cancelAnimationFrame(raf);
               this.applyChatWidth(Math.min(maxW, base + dir * latestDx));
               document.body.style.userSelect = "";
-              try {
-                sessionStorage.setItem("aib:chat-width", String(this.chatWidth));
-              } catch {
-                /* 隐私模式静默降级 */
-              }
+              // 列宽持久化到 conjure 空间（跨标签 / 重开沿用）；失败静默降级
+              Promise.resolve(
+                selfStore?.setItem("pref:chat-width", String(this.chatWidth)),
+              ).catch(() => {});
             };
             // 拖动期间禁页面选字（指针划过消息文字不得触发拖选）
             document.body.style.userSelect = "none";
