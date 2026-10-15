@@ -9,7 +9,8 @@
 ```
 conjure/
 ├── index.html          # 入口 HTML：加载 ofa.js + router + senti-ui 主题引导，挂载 o-app
-├── app-config.js       # 应用配置：home 页面路径 + 页面切换动画参数
+├── app-config.js       # 应用配置：home = chat 子路由页（boot 即 parent+child 双层渲染）
+│                       #   + 页面切换动画参数
 ├── app.json            # 应用 manifest（name/version/entry/appConfig 等）
 ├── __app.json          # 应用市场分发元数据（name/icon/desc + files 文件清单）
 ├── AGENTS.md           # AI 代理开发规范（规则自包含）
@@ -30,6 +31,10 @@ conjure/
 │   ├── builder-store.js # 可观察状态仓库：AI 创作/运行的全部业务逻辑（Agent 编排、应用/会话管理、
 │   │                    #   写入目标与本地句柄、消息流水线、持久化）封装为独立运行的状态对象，
 │   │                    #   页面只 subscribe 事件同步视图（见「状态仓库」小节）
+│   ├── store-instance.js # 仓库单例（home / trash 路由页共享）：Core 装载 + createBuilderStore +
+│   │                    #   init（?p=<name> 固定读地址栏）都在引导内完成，模块级缓存 + Promise
+│   │                    #   去重保证栈重建时两页并发引导只创建一次；getSelfStore() 供 home 页
+│   │                    #   偏好读写；builder.sb 用例直连 builder-store.js 不经过本模块
 │   ├── markdown.js     # Markdown 渲染（与 ai-chat 同源副本，代码块带复制按钮）
 │   ├── msg-window.js   # 会话消息反向瀑布流窗口（createMsgWindow）：全量消息（普通数组）+ 渲染窗口
 │   │                   #   （注入的 o-fill stanz 源）双轨——初始只渲染最近 MSG_WINDOW_INIT 条、push 只加尾
@@ -73,9 +78,15 @@ conjure/
 │                        #   （线框快照 canvas 重绘）、tools.sb.html（createTools ctx 接线回归：
 │                        #   preview 的 windows / check-popup / run-tests 三 action 必须拿到注入通道）
 ├── pages/
-│   ├── home.html       # 唯一页面：三段布局（顶栏 / 左会话栏 / 聊天列+右上角浮动任务清单卡片）+ 顶栏功能 Hub 大对话框（预览/版本/测试/资源 + 项目态「应用设置」，只负责视觉与交互，
-│   │                   #   业务全部委托 builder-store）
-│   └── home.css        # 样式（M3 CSS 变量，含应用卡片 / 会话栏 / 滑出面板 / 目标切换器）
+│   ├── home.html       # 父页面（布局壳，常驻）：顶栏 + 会话栏（含回收站子路由入口）+
+│   │                   #   项目抽屉 + 功能 Hub 大对话框（预览/版本/测试/资源 + 项目态「应用设置」）
+│   │                   #   的视觉与交互，`<slot>` 为子路由出口；只负责视觉与交互，业务全部委托
+│   │                   #   builder-store（经 store-instance 单例共享给子页）
+│   ├── chat.html       # 对话子路由页（应用启动首页，export const parent）：消息流 / 输入区 /
+│   │                   #   任务清单面板；样式复用 home.css（类名作用域在各自 shadow 内）；
+│   │                   #   attached 装配 store 订阅（含初始全量镜像）、detached 退订
+│   ├── trash.html      # 回收站子路由页（见「会话回收站」段）：已删会话二级列表 + 只读详情两栏
+│   └── home.css        # 布局壳与对话子页共用样式（M3 CSS 变量；引用带 ?v 缓存戳，改动必须 bump）
 └── test/
     ├── builder.sb.html   # sibyl-test：builder / store 层用例（虚拟空间取自 lib/test-space/）；
     │                      #   各工具包的内置测试在 lib/tools/<tool>/self-test.js +
@@ -88,7 +99,7 @@ conjure/
 
 ## 技术栈
 
-- **ofa.js** 页面模块（`<template page>`），单页应用，无路由跳转
+- **ofa.js** 页面模块（`<template page>`），o-router + o-app **嵌套路由**：`pages/home.html` 是父页面（布局壳：顶栏 + 会话栏 + 抽屉/对话框常驻，`<slot>` 为子路由出口）；`pages/chat.html`（对话，**应用启动首页**）与 `pages/trash.html`（回收站）是声明 `export const parent` 的并列子路由，渲染进壳的 slot；壳经 `routerChange` 维护会话栏回收站入口激活态，点会话/新建在回收站路由下先 `goChatRoute()`（栈深 >1 走 `back()`，直落回收站的栈 `replace` 成 chat 防空栈）。两页经 `lib/store-instance.js` 单例共享同一会话仓库
 - **依赖 URL（自包含规范）**：
   - **ofa.js**：所有文件（含入口 HTML）一律 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`（本地前缀，NoneOS Core Service Worker 拦截），必须带 `#debug`；jsdelivr 完整 URL 仅限仓库根 `index.html` 与 `apps/run-app/` 等 Core 引导入口，本应用内禁止写死
   - **ofa.js router**：`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号）
@@ -276,7 +287,9 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 | `lib/tools/index.js` | 插件注册中心（见「工具插件体系」） |
 | `lib/tools/<tool>/`（11 个包目录） | 十一个工具插件包（create-app / write-file / edit-file / read-file / list-files / read-skill / show-form / preview / web-fetch / web-search / task-list），宿主依赖全走 `ctx`；每包含 index.js（插件）+ self-test.js（内置测试模组）+ README.md + test/<tool>.sb.html（不分发）；插件默认导出可带 `tags`（面板徽标）、`visual`（配套组件模块地址，registry 聚合为 `visualModules` 供页面 `l-m` 声明预载）、`selfTest`（内置测试模组地址，工具详情对话框「运行内置测试」加载）与 `testTags`（测试 iframe 等待注册的元素清单） |
 | `lib/test-space/` | 测试基建包：`virtual-space.js`（统一虚拟空间：内存版 /nos/fs、storage、目录句柄，所有需要 fake 的测试共用）、`self-test-kit.js`（`defineSelfTest` 通用测试基座）、`visual-test-kit.js`（`defineVisualSelfTest` 视觉基座，含组件挂载台）；约定见 `lib/test-space/README.md` |
-| `pages/home.html` | 唯一页面模块（见下节；只负责视觉与交互，业务委托仓库；顶栏应用操作区有发布按钮（预览按钮与备份按钮之间：未发布 `mdi:rocket-launch-outline` / 已发布 `mdi:rocket-launch` 主色高亮 + title 带当前发布版本，`handlePublish` 调仓库 `publishCurrent` 后 toast 反馈；发布态 `publishedInfo` / 防重入 `publishBusy` 随仓库 patch 同步）；备份抽屉的备份条目带「已发布 vX.Y.Z」徽标（`publishedVersion` 非空显示，tertiary 色胶囊）；输入框下方统计行有底部统计胶囊（会话统计 / Token 用量 / 上下文占用，点击开互斥明细面板 `openStat`，`syncStats` 随消息/状态事件聚合；数据缺失时降级显示「统计缺失 / 用量缺失 / 未知」并在面板说明原因——每条 AI 消息的「本轮用量」胶囊同样有降级态 `turnStatsMissing`：有 `turnMs` 无 `usage` 显示「用量缺失」+ 面板解释行（含已收尾耗时）），输入区行右侧有 `st-menu` 选择菜单（模型 / 推理等级 / Key / 窗口，子菜单钻入）；`applyMessageEvent` 时经 `syncCtx`（内部连带 `syncStats`）重算；网页 `document.title` 经 watch `currentAppName` 跟随项目切换：草稿「新项目 - 妙造 Conjure」，项目「项目名 - 妙造 Conjure」（会话不体现在 title 上）；输入框 `attr:placeholder` 走 `inputPlaceholder`，由 `syncInputPlaceholder` 按场景切换：草稿「描述你想生成的应用…」、应用内「向 AI 描述要如何迭代这个应用…」） |
+| `pages/home.html` | 父页面（布局壳，常驻；只负责壳层视觉与交互，业务委托仓库）：顶栏应用操作区有发布按钮（预览按钮与备份按钮之间：未发布 `mdi:rocket-launch-outline` / 已发布 `mdi:rocket-launch` 主色高亮 + title 带当前发布版本，`handlePublish` 调仓库 `publishCurrent` 后 toast 反馈；发布态 `publishedInfo` / 防重入 `publishBusy` 随仓库 patch 同步）；备份条目带「已发布 vX.Y.Z」徽标（`publishedVersion` 非空显示，tertiary 色胶囊）；网页 `document.title` 经 watch `currentAppName` 跟随项目切换：草稿「新项目 - 妙造 Conjure」，项目「项目名 - 妙造 Conjure」；会话栏点击 / 新建在回收站子路由下先 `goChatRoute()` 切回对话；`routerChange` 维护回收站入口激活态 `trashRouteActive`；跨标签感知（BroadcastChannel + `openTabs` 徽标）与刷新拦截（回合中 `beforeunload`）挂在本页（常驻不销毁）；仓库经 `store-instance.js` 单例创建，`ready` 订阅后手动补一次全量状态镜像（init 已在引导内完成，初始状态无事件重放） |
+| `pages/chat.html` | 对话子路由页（应用启动首页，`export const parent`）：消息流 / 输入区 / 右上浮动任务清单面板 / 顶栏以外全部对话交互。输入框下方统计行有底部统计胶囊（会话统计 / Token 用量 / 上下文占用，点击开互斥明细面板 `openStat`，`syncStats` 随消息/状态事件聚合；数据缺失时降级显示并在面板说明原因——每条 AI 消息的「本轮用量」胶囊同样有降级态 `turnStatsMissing`），输入区行右侧有 `st-menu` 选择菜单（模型 / 推理等级 / Key / 窗口，子菜单钻入）；`applyMessageEvent` 时经 `syncCtx`（内部连带 `syncStats`）重算；输入框 `attr:placeholder` 走 `inputPlaceholder`，由 `syncInputPlaceholder` 按场景切换；会话切换时仓库 replace 消息事件驱动窗口重建并自动回底 |
+| `pages/trash.html` | 回收站路由页（见「会话回收站」段）：导航 rail + 已删会话二级列表 + 只读详情三栏；仓库同单例，`attached` 订阅 + 手动初始镜像、`detached` 退订 |
 | `lib/builder-store.js` | `createBuilderStore({ fs, mazmotStore, selfStore, load })` 可观察状态仓库（见「状态仓库」小节） |
 | `lib/remote-preview.js` | 隔离预览编排（`openRemotePreview({ load, appName, files, onStatus, bridgeOrigin })`，`BRIDGE_ORIGIN` 按环境自动选择：本地 `http://localhost:30032` / 线上 `https://c1.dev.mazmot.noneos.com`；协议细节见「隔离预览」小节） |
 | `lib/markdown.js` | Markdown → HTML（代码块头部为语言标签 + ghost 胶囊复制按钮（图标 + 文案，复制成功短暂变为「已复制」主色态），点击经页面 `attached`（根级生命周期）里挂在 `#chatScroll` 上的事件委托处理，`:html` 重渲后依然有效；围栏代码用 highlight.js 做语法高亮——模块加载时顶层 `await import("/npm/@highlightjs/cdn-assets@11.11.1/es/highlight.min.js")`（common 语言集，SW 拦截离线可用），语言可识别按语言高亮、未标注语言自动探测，超 20k 字符或加载失败（无 SW 测试环境）退化为纯转义；token 配色在 `home.css` 用 `light-dark()` 跟随明暗主题） |
@@ -310,7 +323,7 @@ AI 创作 / 运行过程的全部业务逻辑封装在 `createBuilderStore({ fs,
 
 **图片附件（多模态输入）**：输入框直接**粘贴**截图（`on:paste` 读 clipboardData 的 image file）或点 composer-row 右簇的回形针按钮（`#imgPicker` 隐藏 file input，`accept="image/*" multiple`，选完重置 value 便于重选同图）→ `normalizeImage` 规范化为 dataURL（GIF 与 ≤400KB 小图原样保留；超 1280 长边或 400KB 的位图 canvas 缩到 1280 长边 + JPEG 0.85 压缩——请求体与 IndexedDB 都省）→ 待发缩略图 `.attach-row`（每张 56px chip + × 移除，上限 8 张 `MAX_PENDING_IMAGES`，发送中不可添加）→ 随下一条消息发出（`handleSend` 收集 `pendingImages` 传 `store.send(text, images)`，纯图片消息可发——发送按钮 disabled 条件为 `canSend()`：有文本或有待发图）。已发送图片在用户气泡内缩略展示（`.user-imgs`，`msgImages` 兼容老消息无 images 字段），点击 `openImage` 转 blob URL 新开标签看大图（dataURL 顶层导航会被浏览器拦）。
 
-**会话 fork（分支对话）**：聊天由线性会话构成，每条 AI 消息底部的 usage 行旁有「⎇ fork」按钮（`canFork()` 限定已落地会话且非发送中）→ `store.forkSession(id)` 创建分支：当前会话的聊天记录复制截至该消息（含）为新会话（同应用 registry 下新 `sid`，标题为原标题 + `⎇`），Agent 记忆 `thread:<app>:<sid>` 经 `truncateThread` 按完整回合截断复制（fork 点所在回合若因中途停止而未闭合——末条 assistant 仍带 tool_calls——该回合整段舍弃，防悬空 tool_calls 打崩后续请求），随后 `loadSessionById` 切换到新会话，两侧从此各自独立演化。左侧会话列表支持拖拽排序：HTML5 drag 事件（`sessionDragStart/Over/Leave/Drop/End`，拖过项显示上缘指示线），落点调仓库 `reorderSessions(fromId, toId)` 持久化到 registry 的 `sessionOrder`；对话进行中的项 loading 替代删除按钮槽位且不可删除（`deleteSession` 对 `turnKey` 命中的会话兜底拒绝）。**会话栏底部「回收站」入口**（`.side-foot` 垃圾桶按钮 + 数量徽标，0 弱化）：删除的对话不直接销毁——打开回收站对话框（`.trash-dialog`，列表 / 详情双视图）按删除时间倒序列出 `currentAppTrash`，每项可「查看」（只读对话详情：用户气泡原文 + AI 正文复用 `.ai-text` Markdown 排版收紧字号，工具 / 错误 / 压缩折叠单行；`readTrashedMessages` 读取）、「还原」（`restoreTrashedSession`，回到会话列表并切换）、「删除」（彻底删除，两步确认）；底部「清空回收站」同样两步确认。删除操作本体仍走会话条目的两步删除按钮（`confirmingDelSession`）对话计时展示在右侧聊天区：所有消息入桶时统一打上落盘时刻 `ts`（`pushMessage` 补齐）；非 AI 消息 hover 才显示时间（`.msg-ts`），AI 消息的时间与本轮耗时固定在 `ai-foot` 行最右侧（`.ai-time`，如 `17:09:11 · 2分05秒`；本回合被手动停止时左侧多一枚 error 色「已手动停止」徽标 `.ai-stopped`）；usage 行是「本轮用量」小号描边 Chip（`.stat-pill.sm`，`⛁ 用量 X tok` 紧凑总量，开启态同族 secondary-container 高亮），点击弹出明细面板（复用 `.stat-panel` 左对齐变体：提供方 / 模型、缓存命中 %——部分命中四舍五入会到 100 时降位显示 99.9、未缓存输入、缓存读取、输出及「其中推理 X tok」，`openUsageMsgId` 单开互斥、点外部/Esc 收口——统计胶囊与用量 Chip 的 document 级 mousedown 收口（`attached` 挂的 `_docClose`）判定「是否点在锚点内」**必须走 `e.composedPath()` 穿过 `.stat-anchor`**：页面内容在 shadow DOM 里，document 层事件的 target 已被 retarget 成宿主元素，`e.target.closest(".stat-anchor")` 永远命中不了 shadow 内的锚点，会把面板内的每次按下（含面板上选字复制）都误判成点外部直接关面板，已开胶囊再点也会先被关、click 的 toggle 又打开（表现为重复弹起而非切换）；同因由 `openStat` 面板一并适用，Esc 收口（`_docKey`）无 target 不受影响）；回合进行中「生成中…」右侧由页面每秒 `clock` 心跳实时计时（`turnLiveText`，依赖仓库状态 `turnStartTs`，回合结束清零），回合结束后 `send` 收尾把本轮耗时 `turnMs` patch 到回合末条 AI 消息上随会话桶落盘。消息事件（含流式 patch）统一触发 `followScroll`：只要处于底部就持续跟随，手动拉回底部即恢复自动跟随。无 `ts` 的历史消息不显示时间。
+**会话 fork（分支对话）**：聊天由线性会话构成，每条 AI 消息底部的 usage 行旁有「⎇ fork」按钮（`canFork()` 限定已落地会话且非发送中）→ `store.forkSession(id)` 创建分支：当前会话的聊天记录复制截至该消息（含）为新会话（同应用 registry 下新 `sid`，标题为原标题 + `⎇`），Agent 记忆 `thread:<app>:<sid>` 经 `truncateThread` 按完整回合截断复制（fork 点所在回合若因中途停止而未闭合——末条 assistant 仍带 tool_calls——该回合整段舍弃，防悬空 tool_calls 打崩后续请求），随后 `loadSessionById` 切换到新会话，两侧从此各自独立演化。左侧会话列表支持拖拽排序：HTML5 drag 事件（`sessionDragStart/Over/Leave/Drop/End`，拖过项显示上缘指示线），落点调仓库 `reorderSessions(fromId, toId)` 持久化到 registry 的 `sessionOrder`；对话进行中的项 loading 替代删除按钮槽位且不可删除（`deleteSession` 对 `turnKey` 命中的会话兜底拒绝）。**会话回收站（子路由页 `pages/trash.html`）**：删除的对话不直接销毁。会话栏底部「回收站」入口（`.side-foot` 垃圾桶按钮 + 数量徽标，0 弱化）是**子路由导航项**——`goto` 跳转 trash 子页，处于该路由时入口高亮激活态（`trashRouteActive`，`routerChange` 维护）；父壳点会话 / 新建会自动 `goChatRoute()` 切回对话。回收站页为**左右两栏**：左侧已删会话**二级导航列表**（按删除时间倒序，条目点击选中）+ 右侧只读对话详情（用户气泡原文 + AI 正文 Markdown 渲染，工具 / 错误 / 压缩折叠单行，`readTrashedMessages` 读取；头部带「还原」（`restoreTrashedSession`，回到会话列表并切换）/「彻底删除」两步确认操作，列表底部「清空回收站」同样两步确认）。仓库经 `lib/store-instance.js` 单例与父壳共享；本页 `attached` 装配订阅（含初始全量镜像）、`detached` 退订，选中项在列表变化（还原 / 删除 / 其他标签同步）后自动清空。删除操作本体仍走会话条目的两步删除按钮（`confirmingDelSession`）。对话计时展示在右侧聊天区：所有消息入桶时统一打上落盘时刻 `ts`（`pushMessage` 补齐）；非 AI 消息 hover 才显示时间（`.msg-ts`），AI 消息的时间与本轮耗时固定在 `ai-foot` 行最右侧（`.ai-time`，如 `17:09:11 · 2分05秒`；本回合被手动停止时左侧多一枚 error 色「已手动停止」徽标 `.ai-stopped`）；usage 行是「本轮用量」小号描边 Chip（`.stat-pill.sm`，`⛁ 用量 X tok` 紧凑总量，开启态同族 secondary-container 高亮），点击弹出明细面板（复用 `.stat-panel` 左对齐变体：提供方 / 模型、缓存命中 %——部分命中四舍五入会到 100 时降位显示 99.9、未缓存输入、缓存读取、输出及「其中推理 X tok」，`openUsageMsgId` 单开互斥、点外部/Esc 收口——统计胶囊与用量 Chip 的 document 级 mousedown 收口（`attached` 挂的 `_docClose`）判定「是否点在锚点内」**必须走 `e.composedPath()` 穿过 `.stat-anchor`**：页面内容在 shadow DOM 里，document 层事件的 target 已被 retarget 成宿主元素，`e.target.closest(".stat-anchor")` 永远命中不了 shadow 内的锚点，会把面板内的每次按下（含面板上选字复制）都误判成点外部直接关面板，已开胶囊再点也会先被关、click 的 toggle 又打开（表现为重复弹起而非切换）；同因由 `openStat` 面板一并适用，Esc 收口（`_docKey`）无 target 不受影响）；回合进行中「生成中…」右侧由页面每秒 `clock` 心跳实时计时（`turnLiveText`，依赖仓库状态 `turnStartTs`，回合结束清零），回合结束后 `send` 收尾把本轮耗时 `turnMs` patch 到回合末条 AI 消息上随会话桶落盘。消息事件（含流式 patch）统一触发 `followScroll`：只要处于底部就持续跟随，手动拉回底部即恢复自动跟随。无 `ts` 的历史消息不显示时间。
 
 **上下文压缩**：模型实际读到的上下文只来自 Agent 记忆 `thread:*`（checkpointer），显示层 `chat:*` 不参与 prompt——因此压缩只替换记忆、不动聊天记录。仓库 `compressThread(chatKey)`：把 wire 消息拼成对话稿（超长掐头留尾）→ 用 `pickAssistant()` 发一次独立摘要请求（不走 `agent.chat`，系统提示词 `COMPACTION_PROMPT` 要求保留需求/文件清单/决策/待办，≤800 字）→ 新记忆 = 摘要 user 消息 + assistant 确认 + `tailThread(thread, 2)` 最近两个完整回合原文 → 落盘，并在聊天流插入 `role: "compact"` 卡片（`count` 被压缩条数 + `summary` 可展开查看，模板复用 tool-row 折叠样式）。触发两路：① 手动——上下文胶囊明细面板里的「压缩上下文」按钮（`compressFromPanel` → `handleCompress` → `store.compress()`，`compacting` 状态防重入，对话过短/发送中弹 alert 说明）；② 自动——发送前（`send` 内，`ensureAgent` 之后）用 `contextInfo` 估算 `已用 + 本轮输入 ≈ chars/2 + 64`，达到窗口（`setContextWindow` 注入的菜单选定值，页面在 ready/切换时同步）即先压缩再对话，失败仅 console.warn 不阻塞。压缩只在两回合之间发生，chain 每回合收尾的 checkpointer.set 整体覆盖语义不受影响；水位显示要等下一回合的 `context_tokens` 回来才会下降。
 
