@@ -1740,6 +1740,99 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="会话回收站：删除进 trash 可还原，彻底删除 / 清空清数据">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              // 统一虚拟空间：一个应用两条会话，s1 带消息与 Agent 记忆
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [
+                      { id: "s1", title: "A", updatedAt: 1 },
+                      { id: "s2", title: "B", updatedAt: 2 },
+                    ],
+                  },
+                ],
+                "chat:demo:s1": [
+                  { id: 1, role: "user", content: "hi" },
+                  { id: 2, role: "assistant", content: "hello" },
+                ],
+                "thread:demo:s1": [{ role: "user", content: "hi" }],
+              });
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 删除 s1：登记进 trash（附 deletedAt / msgCount）、会话列表移除、
+              // 存储键保留（chat/thread 不删）
+              await store.deleteSession("s1");
+              const reg1 = await fakeStore.getItem("apps-registry");
+              const trash1 = reg1[0].trash || [];
+              const ids1 = store.state.currentAppSessions.map((s) => s.id);
+              const trashView = store.state.currentAppTrash.map((t) => t.id);
+              const msgs = await store.readTrashedMessages("s1");
+
+              // 还原：trash 清空、登记回 sessions、消息原样读回
+              await store.restoreTrashedSession("s1");
+              const reg2 = await fakeStore.getItem("apps-registry");
+              const ids2 = store.state.currentAppSessions.map((s) => s.id);
+              const msgsBack = await fakeStore.getItem("chat:demo:s1");
+
+              // 再删 + 彻底删除：trash 移除、存储键清掉
+              await store.deleteSession("s1");
+              await store.purgeTrashedSession("s1");
+              const reg3 = await fakeStore.getItem("apps-registry");
+              const purgedChat = await fakeStore.getItem("chat:demo:s1");
+
+              // 清空回收站：剩余回收站会话连同存储键一并清除
+              await store.deleteSession("s2");
+              await store.emptyTrash();
+              const reg4 = await fakeStore.getItem("apps-registry");
+              const s2Chat = await fakeStore.getItem("chat:demo:s2");
+
+              const checks = {
+                trashed:
+                  trash1.length === 1 &&
+                  trash1[0].id === "s1" &&
+                  trash1[0].msgCount === 2 &&
+                  typeof trash1[0].deletedAt === "number",
+                sessionRemoved: ids1.join(",") === "s2",
+                trashMirrored: trashView.join(",") === "s1",
+                detailMsgs: msgs.length === 2,
+                restored:
+                  (reg2[0].trash || []).length === 0 &&
+                  ids2.includes("s1") &&
+                  (msgsBack || []).length === 2,
+                purged:
+                  (reg3[0].trash || []).length === 0 &&
+                  (purgedChat === null || purgedChat === undefined),
+                emptied:
+                  (reg4[0].trash || []).length === 0 &&
+                  (s2Chat === null || s2Chat === undefined),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
     <sb-test name="会话计时：duration 字段随会话列表透出">
       <template>
         <script type="module">
@@ -3173,6 +3266,204 @@
               return {
                 assert: Object.values(checks).every(Boolean),
                 content: { checks, files, files2, back },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接口出错自动重试：可重试错误（5xx）倒计时后自动续跑，无需人工干预">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r1Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r1CallN = 0;
+              const r1Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async ({ onStream }) => {
+                    r1CallN++;
+                    if (r1CallN === 1) {
+                      // 首次失败前已有流式输出：重试续写应接在同一个气泡里
+                      onStream({ type: "text", delta: "先写一半" });
+                      throw new Error("Fake API error: 502 Bad Gateway - {}");
+                    }
+                    onStream({ type: "text", delta: "，重试后写完了" });
+                    return {
+                      content: "，重试后写完了",
+                      model: "m",
+                      usage: { prompt_tokens: 4, completion_tokens: 4, total_tokens: 8, context_tokens: 8 },
+                    };
+                  },
+                }),
+              };
+              const r1Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r1Chain : r1Ai,
+              });
+              const r1RetryPatches = [];
+              r1Store.subscribe((e) => {
+                if (e.type === "patch" && "turnRetry" in e.data) {
+                  r1RetryPatches.push(e.data.turnRetry);
+                }
+              });
+              await r1Store.init({});
+              await r1Store.send("做个演示应用");
+
+              const r1Msgs = r1Store.state.messages;
+              const r1LastAi = [...r1Msgs]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                chatCalledTwice: r1CallN === 2,
+                turnDone: r1Store.state.sending === false,
+                sameBubble: r1LastAi?.content === "先写一半，重试后写完了",
+                noErrorText: !String(r1LastAi?.content).includes("出错了"),
+                retryPatchSeen: r1RetryPatches.some(
+                  (r) => r && r.attempt === 1 && r.maxAttempts === 3 && r.remain > 0,
+                ),
+                retryCleared: r1Store.state.turnRetry === null,
+                noErrorCard: !r1Msgs.some((m) => m.role === "error"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r1CallN, content: r1LastAi?.content },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接口出错自动重试：不可重试错误（401 鉴权）立即收尾，不重试不出倒计时">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r2Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r2CallN = 0;
+              const r2Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async () => {
+                    r2CallN++;
+                    throw new Error("Fake API error: 401 Unauthorized - {}");
+                  },
+                }),
+              };
+              const r2Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r2Chain : r2Ai,
+              });
+              const r2RetrySeen = [];
+              r2Store.subscribe((e) => {
+                if (e.type === "patch" && e.data.turnRetry) r2RetrySeen.push(e.data.turnRetry);
+              });
+              await r2Store.init({});
+              await r2Store.send("做个演示应用");
+
+              const r2LastAi = [...r2Store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                calledOnce: r2CallN === 1,
+                turnDone: r2Store.state.sending === false,
+                errorBubble: String(r2LastAi?.content).includes("出错了"),
+                noRetryCountdown: r2RetrySeen.length === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r2CallN, content: r2LastAi?.content },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接口出错自动重试：倒计时等待中点停止，按停止收尾不重试">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r3Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r3CallN = 0;
+              const r3Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async () => {
+                    r3CallN++;
+                    throw new Error("Fake API error: 503 Service Unavailable - {}");
+                  },
+                }),
+              };
+              const r3Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r3Chain : r3Ai,
+              });
+              await r3Store.init({});
+              const r3Sending = r3Store.send("做个演示应用");
+              // 首次倒计时（3 秒）中途停止：1 秒粒度的下一跳检查到 stopped 即退出
+              setTimeout(() => r3Store.stop(), 400);
+              await r3Sending;
+
+              const r3LastAi = [...r3Store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                calledOnce: r3CallN === 1,
+                turnDone: r3Store.state.sending === false,
+                retryCleared: r3Store.state.turnRetry === null,
+                stopReset: r3Store.state.stopRequested === false,
+                noErrorBubble: !String(r3LastAi?.content).includes("出错了"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r3CallN },
               };
             } catch (error) {
               return { assert: false, content: { error: error.message, stack: error.stack } };

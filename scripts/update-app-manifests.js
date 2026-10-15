@@ -9,8 +9,8 @@
 //     也保留手工故意收录的例外文件，如 cloud-drive 的 lib/test/*.sb.html）
 //   - 磁盘有、清单没有 → 按收录规则追加：排除 __app.json、dotfiles、
 //     node_modules、test 目录、*.sb.html、__meta.json、conjure 运行时目录
-//     （backup/ snaps/ conjure-chats/——gitignore 不同步，进清单安装必 404）；
-//     app.json 自动带 CREATED_AT 替换
+//     （backup/ snaps/ conjure-chats/ conjure-chats-trash/——gitignore 不同步，
+//     进清单安装必 404）；app.json 自动带 CREATED_AT 替换
 //   - 清单有、磁盘没有 → 移除并告警（文件已被删除）
 //   - 发生文件增删时，自动把该应用 app.json 的 version 末段 +1
 //     （安装端更新检查靠版本号比对；纯重排 / 格式归一不 bump）
@@ -45,7 +45,12 @@ function shouldInclude(relPath) {
   if (parts.includes('test')) return false;
   if (relPath.endsWith('.sb.html')) return false;
   // conjure 运行时目录（同层漏进应用根时防扩散）：gitignore 不同步，市场安装必 404
-  if (parts.some((p) => p === 'backup' || p === 'snaps' || p === 'conjure-chats')) {
+  if (
+    parts.some(
+      (p) =>
+        p === 'backup' || p === 'snaps' || p === 'conjure-chats' || p === 'conjure-chats-trash',
+    )
+  ) {
     return false;
   }
   if (relPath === '__meta.json' || relPath.endsWith('/__meta.json')) return false;

@@ -27,6 +27,26 @@
   display: flex;
 }
 
+/* 子路由出口容器：grid 把 slotted 子页叠放进同一格（切页动画期间新旧页
+   重叠而非并排——并排会互相挤压、旧页被置 absolute 后盖住会话栏）；
+   position:relative + overflow:hidden 让动画中的旧页只在本区域内平移裁剪，
+   绝不越出中间区盖住左侧会话栏 */
+.route-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+.route-host slot::slotted(o-page) {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .side {
   position: relative; /* 容纳右缘拖拽手柄 */
   display: none;
@@ -102,6 +122,60 @@
   overflow-y: auto;
   padding: 0 8px 12px;
   scrollbar-width: thin;
+}
+
+/* 底部回收站入口：删除的对话进这里（查看 / 还原 / 彻底删除） */
+.side-foot {
+  flex: none;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  padding: 6px 8px;
+}
+
+.trash-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: background-color 120ms ease;
+}
+
+.trash-entry:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+/* 回收站子路由激活态：与导航项一致的高亮 */
+.trash-entry.active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.trash-entry n-icon {
+  font-size: 16px;
+}
+
+/* 数量徽标：0 时弱化不抢视线 */
+.trash-count {
+  margin-left: auto;
+  min-width: 20px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.trash-count.zero {
+  background: transparent;
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 40%, transparent);
 }
 
 .main-col {

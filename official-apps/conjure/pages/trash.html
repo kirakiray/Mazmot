@@ -1,0 +1,530 @@
+<template page>
+  <!-- 会话回收站（嵌套路由子页，export const parent = "./home.html"）：渲染进
+       父页面（布局壳）的 slot——最左侧导航就是父壳的会话栏（回收站入口呈
+       激活态），本页只负责中间区域：左侧已删会话二级导航列表 + 右侧只读对话
+       详情。仓库经 lib/store-instance.js 单例与父壳共享 -->
+  <style>
+    :host {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      overflow: hidden;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+
+    .layout {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      box-sizing: border-box;
+    }
+
+    /* ---- 二级导航：已删会话列表 ---- */
+    .list-col {
+      flex: none;
+      width: 264px;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      border-right: 1px solid
+        color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+      background: var(--md-sys-color-surface-container-low, var(--md-sys-color-surface));
+    }
+
+    .list-head {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid
+        color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+    }
+
+    .list-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .list-sub {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .list-body {
+      flex: 1 1 auto;
+      min-height: 0; /* flex 纵向容器里 overflow 子项必须归零最小尺寸才滚动 */
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      scrollbar-width: thin;
+    }
+
+    .trash-item {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      border: none;
+      background: none;
+      cursor: pointer;
+      text-align: left;
+      padding: 9px 10px;
+      border-radius: 10px;
+      box-sizing: border-box;
+      transition: background-color 120ms ease;
+    }
+
+    .trash-item:hover {
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 5%, transparent);
+    }
+
+    .trash-item.selected {
+      background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+    }
+
+    .trash-item-icon {
+      flex: none;
+      font-size: 18px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .trash-item-main {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .trash-item-title {
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .trash-item-meta {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .list-empty {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+      padding: 24px;
+    }
+
+    .list-empty n-icon {
+      font-size: 28px;
+      opacity: 0.6;
+    }
+
+    .list-foot {
+      flex: none;
+      display: flex;
+      justify-content: flex-end;
+      padding: 8px 10px;
+      border-top: 1px solid
+        color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+    }
+
+    /* ---- 详情（只读对话渲染） ---- */
+    .detail-col {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+
+    .detail-placeholder {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+    }
+
+    .detail-placeholder n-icon {
+      font-size: 34px;
+      opacity: 0.5;
+    }
+
+    .detail-head {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid
+        color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+    }
+
+    .detail-info {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .detail-title {
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .detail-meta {
+      font-size: 11px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .detail-actions {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .detail-actions st-button {
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+
+    .detail-msgs {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 16px 18px 24px;
+      scrollbar-width: thin;
+    }
+
+    .tmsg {
+      font-size: 13px;
+    }
+
+    .tmsg[data-role="user"] {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* 用户气泡：与对话流同色系（primary-container） */
+    .tmsg-bubble {
+      max-width: 72%;
+      box-sizing: border-box;
+      background: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+      border-radius: 14px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .tmsg-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .tmsg-imgs {
+      margin-left: 6px;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    /* AI 正文复用 .ai-text 的 Markdown 排版命名，本页自带收紧版字号行高 */
+    .tmsg-ai {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--md-sys-color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    .tmsg-ai p {
+      margin: 0 0 0.6em;
+    }
+
+    .tmsg-ai p:last-child {
+      margin-bottom: 0;
+    }
+
+    .tmsg-ai pre {
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+      border-radius: 8px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+
+    .tmsg-ai code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .tmsg-line {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .tmsg-err {
+      color: var(--md-sys-color-error);
+    }
+
+    @media (max-width: 900px) {
+      .list-col {
+        width: 216px;
+      }
+    }
+  </style>
+
+  <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
+  <l-m src="/nos/n-icon/n-icon.html"></l-m>
+
+  <div class="layout">
+    <section class="list-col">
+      <div class="list-head">
+        <span class="list-title">回收站</span>
+        <span class="list-sub">{{currentAppDisplay}} 删除的对话，仅本机保留</span>
+      </div>
+      <o-if :value="currentAppTrash.length === 0">
+        <div class="list-empty">
+          <n-icon icon="mdi:trash-can-outline"></n-icon>
+          <span>回收站是空的</span>
+        </div>
+      </o-if>
+      <div class="list-body">
+        <o-fill :value="currentAppTrash" fill-key="id">
+          <button
+            class="trash-item"
+            class:selected="$host.selectedSid === $data.id"
+            on:click="$host.selectTrashItem($data.id)"
+          >
+            <n-icon class="trash-item-icon" icon="mdi:delete-clock-outline"></n-icon>
+            <span class="trash-item-main">
+              <span class="trash-item-title">{{$data.title}}</span>
+              <span class="trash-item-meta">{{$host.trashItemMeta($data)}}</span>
+            </span>
+          </button>
+        </o-fill>
+      </div>
+      <o-if :value="currentAppTrash.length > 0">
+        <div class="list-foot">
+          <st-button variant="text" color="error" on:click="emptyTrash()">
+            {{confirmingEmptyTrash ? '确认清空（不可恢复）' : '清空回收站'}}
+          </st-button>
+        </div>
+      </o-if>
+    </section>
+
+    <section class="detail-col">
+      <o-if :value="!detail">
+        <div class="detail-placeholder">
+          <n-icon icon="mdi:chat-remove-outline"></n-icon>
+          <span>从左侧选择要查看的对话</span>
+        </div>
+      </o-if>
+      <o-if :value="detail">
+        <div class="detail-head">
+          <div class="detail-info">
+            <div class="detail-title">{{$host.detailTitle()}}</div>
+            <div class="detail-meta">{{$host.detailMeta()}}</div>
+          </div>
+          <div class="detail-actions">
+            <st-button variant="text" on:click="restoreSelected()">还原</st-button>
+            <st-button variant="text" color="error" on:click="purgeSelected()">
+              {{confirmingPurge ? '确认彻底删除' : '彻底删除'}}
+            </st-button>
+          </div>
+        </div>
+        <div class="detail-msgs">
+          <o-fill :value="detail ? detail.messages : []" fill-key="id">
+            <div class="tmsg" attr:data-role="$data.role">
+              <o-if :value="$data.role === 'user'">
+                <div class="tmsg-bubble">
+                  <span class="tmsg-text">{{$data.content}}</span>
+                  <o-if :value="$host.msgImages($data).length > 0">
+                    <span class="tmsg-imgs">🖼 ×{{$host.msgImages($data).length}}</span>
+                  </o-if>
+                </div>
+              </o-if>
+              <o-if :value="$data.role === 'assistant'">
+                <div class="tmsg-ai" :html="$host.renderMd($data.content)"></div>
+              </o-if>
+              <o-if :value="$data.role === 'tool'">
+                <div class="tmsg-line">工具调用 · {{$data.name}}</div>
+              </o-if>
+              <o-if :value="$data.role === 'error'">
+                <div class="tmsg-line tmsg-err">{{$data.text}}</div>
+              </o-if>
+              <o-if :value="$data.role === 'compact'">
+                <div class="tmsg-line">已压缩早期消息 ×{{$data.count}}</div>
+              </o-if>
+            </div>
+          </o-fill>
+        </div>
+      </o-if>
+    </section>
+  </div>
+
+  <script>
+    export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布局壳）的 slot
+
+    export default async ({ load }) => {
+      const { renderMarkdown } = await load("../lib/markdown.js");
+      const { getBuilderStore } = await load("../lib/store-instance.js");
+      // 共享仓库单例：正常路径 home 已建好（init 已完成）；刷新直落本页时
+      // 这里完成自举（Core 装载 + init），后续 home 拿到同一份
+      const store = await getBuilderStore();
+      const { default: toast } = await load(
+        "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
+      );
+
+      // 选中项内容卸载：还原 / 彻底删除 / 清空（含其他标签同步）后当前
+      // 选中项已不在列表，清掉选中与详情
+      function clearSelection() {
+        this.selectedSid = "";
+        this.detail = null;
+        this.confirmingPurge = false;
+      }
+
+      return {
+        data: {
+          currentAppName: "",
+          currentAppDisplay: "",
+          currentAppTrash: [], // 已删会话列表（仓库镜像，删除时间倒序）
+          selectedSid: "", // 二级导航选中的回收站会话 id
+          detail: null, // 选中项详情 { session, messages }（只读）
+          confirmingPurge: false, // 彻底删除两步确认
+          confirmingEmptyTrash: false, // 清空回收站两步确认
+        },
+
+        attached() {
+          // home 常驻路由栈且同订一份仓库：本页只镜像自己声明的键
+          this._unsub = store.subscribe((evt) => {
+            if (evt.type !== "patch") return;
+            for (const key of [
+              "currentAppName",
+              "currentAppDisplay",
+              "currentAppTrash",
+            ]) {
+              if (key in evt.data) this[key] = evt.data[key];
+            }
+            // 列表变化（还原 / 删除 / 其他标签同步）后选中项可能已消失
+            if (this.selectedSid && !this.currentAppTrash.some((t) => t.id === this.selectedSid)) {
+              clearSelection.call(this);
+            }
+          });
+          // 单例引导里 init 先于本页订阅完成：手动补一次初始镜像
+          this.currentAppName = store.state.currentAppName;
+          this.currentAppDisplay = store.state.currentAppDisplay;
+          this.currentAppTrash = [...store.state.currentAppTrash];
+        },
+
+        detached() {
+          this._unsub && this._unsub();
+        },
+
+        proto: {
+          trashTime(ts) {
+            if (!ts) return "";
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, "0");
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+          },
+
+          trashItemMeta(t) {
+            const parts = [`删除于 ${this.trashTime(t.deletedAt)}`];
+            if (t.msgCount > 0) parts.push(`${t.msgCount} 条消息`);
+            return parts.join(" · ");
+          },
+
+          detailTitle() {
+            return this.detail?.session?.title || "";
+          },
+
+          detailMeta() {
+            const d = this.detail;
+            if (!d?.session) return "";
+            const parts = [`删除于 ${this.trashTime(d.session.deletedAt)}`];
+            if (d.messages.length) parts.push(`${d.messages.length} 条消息`);
+            return parts.join(" · ");
+          },
+
+          // 图片附件的只读提示（复用 home 的消息图片结构判断）
+          msgImages(m) {
+            return Array.isArray(m?.images) ? m.images : [];
+          },
+
+          renderMd(text) {
+            return renderMarkdown(String(text ?? ""));
+          },
+
+          async selectTrashItem(sid) {
+            if (this.selectedSid === sid) return;
+            const session = this.currentAppTrash.find((t) => t.id === sid);
+            if (!session) return;
+            this.confirmingPurge = false;
+            this.selectedSid = sid;
+            this.detail = { session, messages: [] };
+            const messages = await store.readTrashedMessages(sid);
+            // 读盘 await 期间可能已切换选中 / 列表变化：仍是当前选中才写入
+            if (this.selectedSid === sid) {
+              this.detail = { session, messages };
+            }
+          },
+
+          // 还原回会话列表：仓库会刷新 home 视图数据，返回对话页即见
+          async restoreSelected() {
+            const sid = this.selectedSid;
+            if (!sid) return;
+            clearSelection.call(this);
+            await store.restoreTrashedSession(sid);
+            toast({ message: "已还原到会话列表", color: "success" });
+          },
+
+          async purgeSelected() {
+            if (!this.confirmingPurge) {
+              this.confirmingPurge = true;
+              return;
+            }
+            this.confirmingPurge = false;
+            const sid = this.selectedSid;
+            if (!sid) return;
+            clearSelection.call(this);
+            await store.purgeTrashedSession(sid);
+          },
+
+          async emptyTrash() {
+            if (!this.confirmingEmptyTrash) {
+              this.confirmingEmptyTrash = true;
+              return;
+            }
+            this.confirmingEmptyTrash = false;
+            clearSelection.call(this);
+            await store.emptyTrash();
+          },
+        },
+      };
+    };
+  </script>
+</template>

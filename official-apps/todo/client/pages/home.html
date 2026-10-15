@@ -279,9 +279,14 @@
       align-items: center;
       gap: 8px;
     }
+    /* 「添加任务」「任务详情」两个弹窗放大：st-dialog 面板默认宽 min(34.29em, 100%)（≈480px），
+       而这两个弹窗内容多（多行输入 + 图片区 + AI 区 / 编辑区 + 只读元信息），480px 太憋。
+       面板在 shadow 里，只能用原生 ::part(panel) 覆盖宽度；给宿主挂 .dialog-lg 类，
+       不影响分组弹窗 / 二次确认弹窗（它们内容短，保持默认宽度） */
+    .dialog-lg::part(panel) { width: min(760px, 100%); }
     /* 注意：不要在这里覆盖 st-input / st-textarea 的 display（组件默认 inline-flex，内部原生控件靠 flex 撑满），
        只给宽度与最小高度即可，否则真实可输入区域会缩成组件默认宽度 */
-    .dialog-field { width: 100%; min-height: 7.5em; }
+    .dialog-field { width: 100%; min-height: 11em; }
     .list { display: flex; flex-direction: column; gap: 8px; }
     .item {
       position: relative; /* 落点指示线（伪元素）的定位基准 */
@@ -371,6 +376,12 @@
       line-height: 1.3;
       color: var(--md-sys-color-on-surface-variant);
     }
+    /* 置顶项：左侧一条主题色竖条做区分（用 inset box-shadow 而不是伪元素——
+       伪元素已被拖拽落点指示线占用，见 .item.drop-before::before） */
+    .item.pinned { box-shadow: inset 3px 0 0 0 var(--md-sys-color-primary); }
+    /* 置顶按钮：置顶后变主题色（必须直接命中 st-icon-button 宿主，它自带 color） */
+    .item .pin-btn { color: var(--md-sys-color-on-surface-variant); }
+    .item.pinned .pin-btn { color: var(--md-sys-color-primary); }
     /* 行尾操作区：只剩删除一个图标按钮（尺寸缩到 34px，与侧栏分组行的 ⋯ 一致）。
        编辑已并入「任务详情」弹窗（点正文区就能一边看信息一边改），行上不再有铅笔入口 */
     .item-actions {
@@ -469,18 +480,20 @@
       flex-direction: column;
       gap: 10px;
       min-width: 300px;
-      max-width: 460px;
+      /* 不再限 460px：弹窗面板已放大（.dialog-lg），内容跟着吃满面板宽度 */
+      max-width: 100%;
     }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
-    /* ===== 详情弹窗里的富文本编辑区（.rt-*） =====
-       这是一个“迷你富文本编辑器”：框内每行是一个 .rt-line 块，第一个非空行在其后还有内容时
-       套上 .rt-title（加粗加大）——样式就长在编辑区**里面**，不是框下方的预览行。
-       原生 textarea 无法只给某一行换样式，所以用 contenteditable 自己管行结构。 */
+    /* ===== 详情弹窗里的多行编辑区（.rt-*） =====
+       框内每行是一个 .rt-line 块，行结构由页面自己管（回车拆行、粘贴只取纯文本）。
+       ⚠️ 曾经给「第一个非空行」在框内加粗加大（.rt-line.rt-title）——判定时机与
+       光标 / 输入法的边界情形太多、bug 不断，已整体去掉：现在所有行样式完全一致，
+       编辑区里不做任何行级强调，不要再加回 .rt-title 那套。 */
     .rt-box {
       width: 100%;
-      min-height: 7.5em;
-      padding: 10px 14px;
+      min-height: 11em;
+      padding: 12px 14px;
       box-sizing: border-box;
       border: 1px solid var(--md-sys-color-outline);
       border-radius: 12px;
@@ -492,7 +505,7 @@
     .rt-editor {
       position: relative;
       outline: none;
-      min-height: 6em;
+      min-height: 9em;
       font-size: 14px;
       line-height: 1.5;
       color: var(--md-sys-color-on-surface);
@@ -501,13 +514,6 @@
     }
     /* 每行一个块；空行靠 min-height 占住行高（否则光标没地方站） */
     .rt-editor .rt-line { min-height: 1.5em; }
-    /* 首行标题：就在编辑区里加粗加大（实测 20px / 700，正文 14px / 400） */
-    .rt-editor .rt-line.rt-title {
-      font-size: 20px;
-      font-weight: 700;
-      line-height: 1.35;
-      margin-bottom: 2px;
-    }
     /* 编辑器为空时在上面叠一行占位提示（空行本身仍保留，不然光标无处可放、打不进字） */
     .rt-editor.is-empty::before {
       content: attr(data-placeholder);
@@ -622,6 +628,7 @@
             class="item"
             attr:data-id="$data.id"
             class:done="$data.done"
+            class:pinned="$data.pinnedAt"
             class:pending="$host.isPending($data)"
             class:dragging="$host.isDragging($data.id)"
             class:drop-before="$host.isDropBefore($data.id)"
@@ -645,6 +652,12 @@
               <span class="meta">{{$host.timeMeta($data)}}</span>
             </div>
             <div class="item-actions">
+              <!-- 置顶 / 取消置顶（仅列表视图提供）：置顶后排在列表最前，且只能在置顶项之间拖拽排序 -->
+              <st-icon-button
+                class="pin-btn"
+                attr:title="$host.pinButtonTitle($data)"
+                on:click="$host.togglePin($data.id)"
+              ><n-icon attr:icon="$host.pinButtonIconName($data)"></n-icon></st-icon-button>
               <st-icon-button
                 attr:title="$host.deleteButtonTitle($data)"
                 on:click="$host.handleDeleteClick($data.id)"
@@ -774,8 +787,8 @@
       </div>
     </o-if>
 
-    <!-- 添加任务：弹窗内输入 -->
-    <st-dialog sync:open="addOpen" auto-close>
+    <!-- 添加任务：弹窗内输入（.dialog-lg = 放大面板，让多行输入 / 图片 / AI 区都宽敞些） -->
+    <st-dialog class="dialog-lg" sync:open="addOpen" auto-close>
       <span slot="headline">添加任务</span>
       <st-textarea
         class="dialog-field"
@@ -862,13 +875,13 @@
          点「保存」写回并关闭弹窗（不再有「只读 ↔ 编辑」两个面孔来回切）。
          注意 st-dialog 内不能调 $host.xxx()（弹窗内部 $host 不指向页面），
          所以展示文案都在 openDetail 里预计算成 detail 快照 -->
-    <st-dialog sync:open="detailOpen" auto-close>
+    <st-dialog class="dialog-lg" sync:open="detailOpen" auto-close>
       <span slot="headline">任务详情</span>
 
       <div class="detail">
-        <!-- 富文本编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
-             但标题样式直接长在框内——第一个非空行在其后还有内容时会加粗加大。
-             行结构由页面自己管（原 textarea 做不到只给首行换样式） -->
+        <!-- 编辑区：与「添加任务」同口径（第一个非空行是标题，换行后是描述），
+             但**不做行级样式**——所有行样式一致（首行加粗加大那套已因 bug 多而整体去掉）。
+             行结构由页面自己管：回车拆行、粘贴只取纯文本 -->
         <div class="rt-box" on:click="onEditorBoxClick">
           <div
             class="rt-editor"
@@ -1177,11 +1190,21 @@
             return this.scopeByGroup(this.activeTodos);
           },
 
+          // 列表视图的显示序：**置顶项在前、普通项在后**，各自内部保持数组顺序（稳定排序）。
+          // 注意：这只是「显示序」，todos 数组仍是存储顺序——拖拽换位时由 commitDragDrop
+          // 把新的显示序写回槽位，两边不会互相打架
+          get listTodos() {
+            const list = this.scopedActiveTodos;
+            const pinned = list.filter((t) => !!t.pinnedAt);
+            if (!pinned.length) return list;
+            return pinned.concat(list.filter((t) => !t.pinnedAt));
+          },
+
           get visibleTodos() {
             // 三个视图都跟随左栏分组（选「全部任务」时即全部）
             if (this.inTrashView) return this.scopedTrashTodos;
             if (this.inArchiveView) return this.scopedArchivedTodos;
-            return this.scopedActiveTodos;
+            return this.listTodos;
           },
 
           get remaining() {
@@ -1376,6 +1399,8 @@
                     typeof t.statusChangedAt === "number" ? t.statusChangedAt : null,
                   // 归档：archivedAt 非空 = 已归档（不在列表也不计统计，但未删除）
                   archivedAt: typeof t.archivedAt === "number" ? t.archivedAt : null,
+                  // 置顶：pinnedAt 非空 = 已置顶（列表里排在普通项之前，且只能在置顶项之间拖拽排序）
+                  pinnedAt: typeof t.pinnedAt === "number" ? t.pinnedAt : null,
                   // 删除相关：deletedAt 非空 = 已在垃圾桶；pendingDeleteAt 非空 = 正处于删除倒计时
                   deletedAt: typeof t.deletedAt === "number" ? t.deletedAt : null,
                   // 倒计时不跨刷新恢复：重新打开时把未完成的倒计时取消，避免“隔夜回来发现被删了”
@@ -1738,6 +1763,7 @@
                 createdAt: Date.now(),
                 statusChangedAt: null,
                 archivedAt: null,
+                pinnedAt: null,
                 deletedAt: null,
                 pendingDeleteAt: null,
                 // 图片附件：把弹窗里已压缩好的草稿原样带走
@@ -1762,9 +1788,48 @@
             return true;
           },
 
+          // ===== 置顶 =====
+          // 置顶项排在列表最前（listTodos），且拖拽时**只能在置顶项之间换位**
+          //（普通项同理只能在普通项之间换位，由 dragDropPosition 把落点夹回同类区间保证）
+          isPinned(todo) {
+            return !!todo.pinnedAt;
+          },
+
+          pinButtonIconName(todo) {
+            return todo.pinnedAt ? "mdi:pin" : "mdi:pin-outline";
+          },
+
+          pinButtonTitle(todo) {
+            return todo.pinnedAt
+              ? "取消置顶"
+              : "置顶（置顶的排在列表最前，且只能在置顶项之间拖动排序）";
+          },
+
+          togglePin(id) {
+            const todo = this.todos.find((t) => t.id === id);
+            if (!todo) return;
+            if (todo.pinnedAt) {
+              // 取消置顶：留在原位（pin 时它被挪到了数组头部，于是它成为普通区里的第一条）
+              this.todos = this.todos.map((t) =>
+                t.id === id ? { ...t, pinnedAt: null } : t
+              );
+              console.log("[pin] 取消置顶", id, todo.text);
+            } else {
+              // 置顶：挪到数组头部 → 它成为置顶区里的第一条（显示在列表最上方）
+              const now = Date.now();
+              this.todos = [
+                { ...todo, pinnedAt: now },
+                ...this.todos.filter((t) => t.id !== id),
+              ];
+              console.log("[pin] 已置顶", id, todo.text);
+            }
+            this.persistTodos();
+          },
+
           // ===== 拖拽排序（仅「全部」列表视图）=====
           // 交互模型：拖动过程中**不改变数据**，只显示落点指示线 + 目标行描边；
-          // 松手（pointerup）时才真正把条目插到落点并落盘——避免“边拖边跳”的突兀感
+          // 松手（pointerup）时才真正把条目插到落点并落盘——避免“边拖边跳”的突兀感。
+          // 置顶约束：落点被夹回被拖项的同类区间，所以置顶项只会和置顶项换位、普通项只会和普通项换位
           isDragging(id) {
             return this.draggingId === id;
           },
@@ -1790,9 +1855,8 @@
             const handleEl = ev && ev.target;
             this.draggingId = id;
             let moved = false;
-            // 落点（松手时用）：beforeId = 插到该行之前；afterId = 插到该行之后
-            let dropBeforeId = null;
-            let dropAfterId = null;
+            // 落点（松手时用）：显示序里的插入下标（0..行数）
+            let dropInsertIdx = null;
             console.log("[drag] 开始拖拽", id, source.text);
 
             const onMove = (e) => {
@@ -1801,8 +1865,7 @@
               moved = true;
               this.dropBeforeId = pos.beforeId;
               this.dropAfterId = pos.afterId;
-              dropBeforeId = pos.beforeId;
-              dropAfterId = pos.afterId;
+              dropInsertIdx = pos.insertIdx;
             };
 
             const onEnd = () => {
@@ -1816,7 +1879,7 @@
                 console.log("[drag] 未移动，顺序不变", id);
                 return;
               }
-              this.commitDragDrop(id, dropBeforeId, dropAfterId);
+              this.commitDragDrop(id, dropInsertIdx);
             };
 
             window.addEventListener("pointermove", onMove);
@@ -1824,9 +1887,12 @@
             window.addEventListener("pointercancel", onEnd);
           },
 
-          // 算出指针位置的落点：{ beforeId, afterId }（插到该行之前 / 之后）。
-          // 只比较行的几何位置，**不产生任何坐标**——指示线由目标行自己的伪元素画在行边缘上，
-          // 所以不存在“坐标系不一致导致线跑偏”的问题。
+          // 算出指针位置的落点：{ insertIdx, beforeId, afterId }。
+          //   insertIdx = 显示序（listTodos）里的插入下标（0..行数），松手时用它真正换位
+          //   beforeId / afterId = 只用于视觉指示（线画在该行上边 / 下边，由行自己的伪元素画）
+          // **置顶约束在这里落地**：算出插入点后把它夹回被拖项的同类区间
+          //（置顶项 only 置顶区、普通项 only 普通区），这样两类之间永远拖不进去。
+          // 只比较行的几何位置，**不产生任何坐标**——所以不存在“坐标系不一致导致线跑偏”的问题。
           // 注意：不能用 elementFromPoint（从 document 出发穿不过页面 shadow），
           // 也不能用 itemEl.parentElement 当列表容器——.item 的直接父节点是 <o-fill>（display: contents，rect 全为 0）
           dragDropPosition(clientY, handleEl) {
@@ -1841,61 +1907,84 @@
               const rid = node.getAttribute("data-id");
               if (!rid) continue;
               const r = node.getBoundingClientRect();
-              rows.push({ id: rid, bottom: r.bottom, mid: r.top + r.height / 2 });
+              rows.push({
+                id: rid,
+                pinned: node.classList.contains("pinned"),
+                bottom: r.bottom,
+                mid: r.top + r.height / 2,
+              });
             }
             if (!rows.length) return null;
 
+            // 第一步：按指针所在行的上 / 下半区算出显示序里的插入下标
+            //（上半区 → 插到这行之前；下半区 → 插到下一行之前；末尾下方 → 追加末尾）
+            let at = rows.length;
             for (let i = 0; i < rows.length; i++) {
               const row = rows[i];
-              // 指针在该行上半区 → 插到这行之前（线画在该行上边）
               if (clientY < row.mid) {
-                return { beforeId: row.id, afterId: null };
+                at = i;
+                break;
               }
-              // 指针在该行下半区 → 插到下一行之前（线画在下一行上边）
               if (clientY <= row.bottom) {
-                const next = rows[i + 1];
-                if (next) return { beforeId: next.id, afterId: null };
-                // 已经是最后一行 → 追加到末尾（线画在该行下边）
-                return { beforeId: null, afterId: row.id };
+                at = i + 1;
+                break;
               }
             }
-            // 指针在列表末尾下方 → 追加到末尾
-            return { beforeId: null, afterId: rows[rows.length - 1].id };
+
+            // 第二步：夹回同类区间（置顶项只能在置顶项之间换位，普通项同理）
+            const dragging = this.todos.find((t) => t.id === this.draggingId);
+            const cls = !!(dragging && dragging.pinnedAt);
+            let first = -1;
+            let last = -1;
+            for (let i = 0; i < rows.length; i++) {
+              if (rows[i].pinned === cls) {
+                if (first === -1) first = i;
+                last = i;
+              }
+            }
+            if (first === -1) return null;
+            at = Math.min(Math.max(at, first), last + 1);
+
+            // 第三步：落点线仍画在目标行的边缘上（同类区间内）
+            if (at <= last) {
+              return { insertIdx: at, beforeId: rows[at].id, afterId: null };
+            }
+            return { insertIdx: last + 1, beforeId: null, afterId: rows[last].id };
           },
 
-          // 松手时提交：把条目从当前位置抽出来、插到落点（保证数组顺序 = 显示顺序）
-          commitDragDrop(id, beforeId, afterId) {
-            const from = this.todos.findIndex((t) => t.id === id);
+          // 松手时提交：按「显示序」换位（index 是 listTodos 里的插入下标），
+          // 再把新的显示序写回 todos 数组里“当前范围列表条目”所占的槽位——
+          // 其它条目（其它分组 / 归档 / 垃圾桶）原地不动，也不会被重排。
+          // 置顶约束已在 dragDropPosition 里夹好，这里只做同类区间内的插入
+          commitDragDrop(id, insertIdx) {
+            const list = this.listTodos;
+            const from = list.findIndex((t) => t.id === id);
             if (from === -1) {
               console.error("[drag] 找不到被拖条目", id);
               return false;
             }
-            const next = this.todos.slice();
+            if (typeof insertIdx !== "number") return false;
+            const next = list.slice();
             const [moving] = next.splice(from, 1);
-            // 抽出自身后，原数组下标 > from 的都会左移一位
-            const remap = (origIdx) => (origIdx > from ? origIdx - 1 : origIdx);
-            let insertAt;
-            if (beforeId) {
-              const oi = this.todos.findIndex((t) => t.id === beforeId);
-              insertAt = oi === -1 ? next.length : oi === from ? from : remap(oi);
-            } else if (afterId) {
-              const oi = this.todos.findIndex((t) => t.id === afterId);
-              insertAt = oi === -1 ? next.length : oi === from ? from : remap(oi) + 1;
-            } else {
-              insertAt = next.length;
-            }
-            if (insertAt === from) {
+            // 抽出自身后，原插入下标 > from 的都要左移一位
+            const at = insertIdx > from ? insertIdx - 1 : insertIdx;
+            if (at === from) {
               console.log("[drag] 落点仍是原位，顺序不变", id);
               return false;
             }
-            next.splice(insertAt, 0, moving);
-            this.todos = next;
+            next.splice(at, 0, moving);
+
+            // 槽位回写：把显示序依次填入这些条目原来在 todos 里的位置
+            const ids = new Set(next.map((t) => t.id));
+            const queue = next.slice();
+            this.todos = this.todos.map((t) => (ids.has(t.id) ? queue.shift() : t));
             console.log(
               "[drag] 已放下，",
               id,
               "移到第",
-              insertAt + 1,
-              "位"
+              at + 1,
+              "位",
+              moving.pinnedAt ? "（置顶区）" : "（普通区）"
             );
             this.persistTodos();
             return true;
@@ -2276,7 +2365,7 @@
             };
           },
 
-          // 打开详情：既填好只读元信息，也把富文本编辑区预填成当前内容
+          // 打开详情：既填好只读元信息，也把多行编辑区预填成当前内容
           // （草稿取原始 text / desc 拼回“首行标题 + 其余描述”，与创建时同一套格式）
           openDetail(id) {
             const todo = this.todos.find((t) => t.id === id);
@@ -2297,9 +2386,9 @@
             console.log("[detail] 关闭详情");
           },
 
-          // ===== 迷你富文本编辑区（contenteditable） =====
-          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位）；
-          // 第一个非空行在其后还有内容时套 .rt-title（加粗加大）——样式长在框内。
+          // ===== 多行编辑区（contenteditable） =====
+          // 设计：每行一个 div.rt-line（行内只有文本，空行用 <br> 占位），**所有行样式一致**
+          //（曾经的首行 .rt-title 加粗加大已因 bug 多整体去掉，不要再加回）。
           // 数据仍只走 editDraft（多行文本），保存时用 parseDraft 拆回 text / desc。
           editorEl() {
             const page = document.querySelector("o-page");
@@ -2334,7 +2423,7 @@
             return true;
           },
 
-          // 重建行结构（行数组 → DOM），并同步首行标题样式与空态
+          // 重建行结构（行数组 → DOM），并同步空态
           renderEditor(lines) {
             const el = this.editorEl();
             if (!el) return false;
@@ -2347,24 +2436,20 @@
               else div.textContent = line;
               el.appendChild(div);
             }
-            this.applyEditorTitleClass(list);
-            el.classList.toggle(
-              "is-empty",
-              list.every((l) => !String(l).trim())
-            );
+            this.applyEditorEmptyClass(list);
             return true;
           },
 
-          // 首行标题样式：第一个非空行，且它后面还有非空行时才加粗加大
-          // （只有一行 / 全是空行时不加样式——单行时它就是普通内容）
-          applyEditorTitleClass(lines) {
+          // 空态类：所有行都空白时给编辑区加 is-empty（占位提示靠它显示）
+          applyEditorEmptyClass(lines) {
             const el = this.editorEl();
             if (!el) return;
-            const kids = Array.from(el.children);
-            const first = lines.findIndex((l) => String(l).trim());
-            const hasMore =
-              first !== -1 && lines.slice(first + 1).some((l) => String(l).trim());
-            kids.forEach((k, i) => k.classList.toggle("rt-title", hasMore && i === first));
+            el.classList.toggle(
+              "is-empty",
+              (lines && lines.length ? lines : [""]).every(
+                (l) => !String(l).trim()
+              )
+            );
           },
 
           // 填充内容（打开弹窗 / 程序侧设置时用）；元素还没就绪就等一帧重试
@@ -2380,7 +2465,7 @@
             return ok;
           },
 
-          // 把编辑器当前内容同步回 editDraft，并维护标题样式 / 空态 / 结构规整
+          // 把编辑器当前内容同步回 editDraft（普通输入只走这里，不重建 DOM、不改行样式）
           syncEditorDraft() {
             const el = this.editorEl();
             const lines = this.editorLines();
@@ -2398,8 +2483,6 @@
               } else {
                 this.focusEditor(list.length - 1, list[list.length - 1].length);
               }
-            } else {
-              this.applyEditorTitleClass(lines);
             }
           },
 
