@@ -49,6 +49,10 @@ import {
   detectLocalProject,
   loadProjectChats,
   saveProjectChats,
+  trashProjectChat,
+  restoreProjectChat,
+  removeProjectTrashChat,
+  readProjectTrashChat,
   truncateThread,
   tailThread,
   contextInfo,
@@ -106,6 +110,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     currentAppIcon: "📦",
     currentAppMode: "vfs",
     currentAppSessions: [],
+    currentAppTrash: [], // 当前应用回收站（registry trash 镜像，删除会话进这里）
     currentSessionId: "",
     currentSessionTitle: "", // 当前会话标题（顶栏展示；草稿/无会话为空）
     // 写入目标（草稿阶段偏好）
@@ -728,6 +733,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         busy: turnKey === `chat:${state.currentAppName}:${s.id}`,
         duration: s.duration || 0,
       })),
+      // 回收站：最近删除的排最前
+      currentAppTrash: [...(hit.trash || [])].sort(
+        (a, b) => (b.deletedAt || 0) - (a.deletedAt || 0),
+      ),
     });
   }
 
@@ -845,6 +854,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
       currentAppIcon: "📦",
       currentAppMode: "vfs",
       currentAppSessions: [],
+      currentAppTrash: [],
       currentSessionId: "",
       currentSessionTitle: "",
       sessionTasks: [], // 草稿没有会话实体，清单不可用
@@ -1114,6 +1124,11 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
             sessionBuckets.delete(key);
           }
         }
+        // 回收站里的会话一并清键（应用删除 = 不留任何会话数据）
+        for (const t of hit.trash || []) {
+          await selfStore.removeItem(`chat:${name}:${t.id}`);
+          await selfStore.removeItem(`thread:${name}:${t.id}`);
+        }
         await saveRegistry(reg.filter((a) => a.name !== name));
       }
     } catch (err) {
@@ -1154,6 +1169,22 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     set("currentSessionTitle", title);
   }
 
+  // 本地渠道项目的快照目录句柄（当前应用用闭包句柄，其它从登记记录恢复）
+  async function localChatsHandle(name) {
+    let handle = localRootHandle;
+    if (name !== state.currentAppName || !handle) {
+      handle = await getLocalHandleFromRecord(name);
+    }
+    return handle || null;
+  }
+
+  /* ---------- 会话回收站 ----------
+   * 删除的会话登记进 registry 的 trash 字段（元数据 + deletedAt + msgCount），
+   * chat:/thread: 存储键保留（还原即恢复）；本地渠道的会话快照文件挪进
+   * 项目目录的 conjure-chats-trash/（gitignore 不同步，仅本机保留）。
+   */
+
+  // 删除会话：进回收站（不直接销毁数据，可还原 / 彻底删除）
   async function deleteSession(sid) {
     const name = state.currentAppName;
     // 对话进行中的会话不允许删除（UI 已隐藏删除按钮，这里兜底）
@@ -1161,15 +1192,27 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     const reg = await loadRegistry();
     const hit = reg.find((a) => a.name === name);
     if (!hit) return;
-    hit.sessions = (hit.sessions || []).filter((s) => s.id !== sid);
-    await saveRegistry(reg);
-    if (selfStore) {
-      await selfStore.removeItem(`chat:${name}:${sid}`);
-      await selfStore.removeItem(`thread:${name}:${sid}`);
+    const ses = (hit.sessions || []).find((s) => s.id === sid);
+    if (!ses) return;
+    hit.trash = hit.trash || [];
+    hit.trash.unshift({
+      ...ses,
+      deletedAt: Date.now(),
+      msgCount: ((await selfStore?.getItem(`chat:${name}:${sid}`)) || []).length,
+    });
+    hit.sessions = hit.sessions.filter((s) => s.id !== sid);
+    if (Array.isArray(hit.sessionOrder)) {
+      hit.sessionOrder = hit.sessionOrder.filter((id) => id !== sid);
     }
-    // 本地渠道：从项目快照目录移除该会话的文件（全量同步带孤儿清理）
+    await saveRegistry(reg);
+    // 本地渠道：会话快照文件先挪进回收站目录，再全量同步（孤儿清理会删
+    // conjure-chats/ 里不在册的文件，顺序反了快照就没了）
     const delApp = (await loadRegistry()).find((a) => a.name === name);
-    if (delApp?.mode === "local") await syncLocalProjectChats(name);
+    if (delApp?.mode === "local") {
+      const handle = await localChatsHandle(name);
+      if (handle) await trashProjectChat(handle, sid);
+      await syncLocalProjectChats(name);
+    }
     // 删除的正是正在进行流式回合的会话：中断并丢弃实时桶，防止回合收尾复活它
     if (turnKey === `chat:${name}:${sid}`) {
       stop();
@@ -1185,6 +1228,99 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
         replaceMessages([]);
       }
     }
+  }
+
+  // 还原回收站会话：登记回 sessions、本地快照文件挪回 conjure-chats/，
+  // 成功后切换到该会话
+  async function restoreTrashedSession(sid) {
+    const name = state.currentAppName;
+    if (!name) return;
+    const reg = await loadRegistry();
+    const hit = reg.find((a) => a.name === name);
+    if (!hit) return;
+    const idx = (hit.trash || []).findIndex((t) => t.id === sid);
+    if (idx === -1) return;
+    const { deletedAt, msgCount, ...ses } = hit.trash[idx];
+    hit.trash.splice(idx, 1);
+    hit.sessions = hit.sessions || [];
+    if (!hit.sessions.some((s) => s.id === sid)) hit.sessions.push(ses);
+    await saveRegistry(reg);
+    const app = (await loadRegistry()).find((a) => a.name === name);
+    if (app?.mode === "local") {
+      const handle = await localChatsHandle(name);
+      if (handle) await restoreProjectChat(handle, sid);
+      await syncLocalProjectChats(name);
+    }
+    await reloadApps();
+    await loadSessionById(sid);
+  }
+
+  // 彻底删除回收站会话：清存储键 + 删本地快照文件 + 移出登记
+  async function purgeTrashedSession(sid) {
+    const name = state.currentAppName;
+    if (!name) return;
+    const reg = await loadRegistry();
+    const hit = reg.find((a) => a.name === name);
+    if (!hit) return;
+    hit.trash = (hit.trash || []).filter((t) => t.id !== sid);
+    await saveRegistry(reg);
+    if (selfStore) {
+      await selfStore.removeItem(`chat:${name}:${sid}`);
+      await selfStore.removeItem(`thread:${name}:${sid}`);
+    }
+    const app = (await loadRegistry()).find((a) => a.name === name);
+    if (app?.mode === "local") {
+      const handle = await localChatsHandle(name);
+      if (handle) await removeProjectTrashChat(handle, sid);
+    }
+    await reloadApps();
+  }
+
+  // 清空当前应用的回收站
+  async function emptyTrash() {
+    const name = state.currentAppName;
+    if (!name) return;
+    const reg = await loadRegistry();
+    const hit = reg.find((a) => a.name === name);
+    if (!hit) return;
+    const ids = (hit.trash || []).map((t) => t.id);
+    if (!ids.length) return;
+    hit.trash = [];
+    await saveRegistry(reg);
+    if (selfStore) {
+      for (const sid of ids) {
+        await selfStore.removeItem(`chat:${name}:${sid}`);
+        await selfStore.removeItem(`thread:${name}:${sid}`);
+      }
+    }
+    const app = (await loadRegistry()).find((a) => a.name === name);
+    if (app?.mode === "local") {
+      const handle = await localChatsHandle(name);
+      if (handle) {
+        for (const sid of ids) await removeProjectTrashChat(handle, sid);
+      }
+    }
+    await reloadApps();
+  }
+
+  // 读取回收站会话的消息（对话详情查看）：优先存储键，本地渠道回落项目
+  // 回收站目录的快照文件（浏览器存储被清但项目目录还在的兜底）
+  async function readTrashedMessages(sid) {
+    const name = state.currentAppName;
+    if (!name) return [];
+    if (selfStore) {
+      const msgs = await selfStore.getItem(`chat:${name}:${sid}`);
+      if (Array.isArray(msgs)) return msgs;
+    }
+    const app = (await loadRegistry()).find((a) => a.name === name);
+    if (app?.mode === "local") {
+      const handle = await localChatsHandle(name);
+      if (handle) {
+        const one = await readProjectTrashChat(handle, sid);
+        if (Array.isArray(one?.messages)) return one.messages;
+      }
+    }
+    return [];
   }
 
   /* ---------- 会话 fork（分支） ---------- */
@@ -4077,6 +4213,10 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
     loadSession: loadSessionById,
     deleteApp,
     deleteSession,
+    restoreTrashedSession,
+    purgeTrashedSession,
+    emptyTrash,
+    readTrashedMessages,
     renameSession,
     forkSession,
     compress,

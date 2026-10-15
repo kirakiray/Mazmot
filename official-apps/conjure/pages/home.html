@@ -211,6 +211,16 @@
             </div>
           </o-fill>
         </div>
+        <!-- 底部回收站入口：删除的对话进这里，可查看 / 还原 / 彻底删除 -->
+        <div class="side-foot">
+          <button class="trash-entry" on:click="openTrash()" title="已删除的对话">
+            <n-icon icon="mdi:trash-can-outline"></n-icon>
+            <span>回收站</span>
+            <span class="trash-count" class:zero="currentAppTrash.length === 0">
+              {{currentAppTrash.length}}
+            </span>
+          </button>
+        </div>
         <!-- 拖拽调整会话栏宽度（150–400px） -->
         <div class="side-resize" on:pointerdown="startSideResize($event)" title="拖动调整宽度"></div>
       </aside>
@@ -1970,6 +1980,93 @@
       </div>
     </st-dialog>
 
+    <!-- 会话回收站：删除对话的列表（查看 / 还原 / 彻底删除，后两者两步确认）；
+         详情为只读渲染——用户气泡原文 + AI 正文 Markdown，工具 / 错误 / 压缩
+         记录折叠为单行（完整还原请用「还原」回到会话列表） -->
+    <st-dialog class="trash-dialog" sync:open="trashOpen" auto-close>
+      <o-if :value="trashView === 'list'">
+        <div class="trash-panel">
+          <div class="trash-head">
+            <div class="trash-title">回收站</div>
+            <div class="trash-sub">{{currentAppDisplay}} 删除的对话保留在本机，可还原或彻底删除</div>
+          </div>
+          <o-if :value="currentAppTrash.length === 0">
+            <div class="trash-empty">
+              <n-icon icon="mdi:trash-can-outline"></n-icon>
+              <span>回收站是空的</span>
+            </div>
+          </o-if>
+          <div class="trash-list">
+            <o-fill :value="currentAppTrash" fill-key="id">
+              <div class="trash-item">
+                <n-icon class="trash-item-icon" icon="mdi:delete-clock-outline"></n-icon>
+                <div class="trash-item-main">
+                  <div class="trash-item-title">{{$data.title}}</div>
+                  <div class="trash-item-meta">{{$host.trashItemMeta($data)}}</div>
+                </div>
+                <div class="trash-item-actions">
+                  <st-button variant="text" on:click="$host.viewTrashedSession($data.id)">查看</st-button>
+                  <st-button variant="text" on:click="$host.restoreTrashedSession($data.id)">还原</st-button>
+                  <st-button
+                    variant="text"
+                    color="error"
+                    on:click="$host.purgeTrashedSession($data.id)"
+                    attr:title="$host.confirmingPurge === $data.id ? '再点一次彻底删除，不可恢复' : '彻底删除'"
+                  >{{$host.confirmingPurge === $data.id ? '确认删除' : '删除'}}</st-button>
+                </div>
+              </div>
+            </o-fill>
+          </div>
+          <o-if :value="currentAppTrash.length > 0">
+            <div class="trash-foot">
+              <st-button variant="text" color="error" on:click="emptyTrash()">
+                {{confirmingEmptyTrash ? '确认清空（不可恢复）' : '清空回收站'}}
+              </st-button>
+            </div>
+          </o-if>
+        </div>
+      </o-if>
+      <o-if :value="trashView === 'detail' && trashDetail">
+        <div class="trash-panel trash-detail-panel">
+          <div class="trash-detail-head">
+            <st-icon-button title="返回回收站列表" on:click="closeTrashDetail()">
+              <n-icon icon="mdi:arrow-left"></n-icon>
+            </st-icon-button>
+            <div class="trash-detail-info">
+              <div class="trash-title">{{$host.trashDetailTitle()}}</div>
+              <div class="trash-sub">{{$host.trashDetailMeta()}}</div>
+            </div>
+          </div>
+          <div class="trash-msgs">
+            <o-fill :value="trashDetail ? trashDetail.messages : []" fill-key="id">
+              <div class="tmsg" attr:data-role="$data.role">
+                <o-if :value="$data.role === 'user'">
+                  <div class="tmsg-bubble">
+                    <span class="tmsg-text">{{$data.content}}</span>
+                    <o-if :value="$host.msgImages($data).length > 0">
+                      <span class="tmsg-imgs">🖼 ×{{$host.msgImages($data).length}}</span>
+                    </o-if>
+                  </div>
+                </o-if>
+                <o-if :value="$data.role === 'assistant'">
+                  <div class="tmsg-ai ai-text" :html="$host.renderMd($data.content)"></div>
+                </o-if>
+                <o-if :value="$data.role === 'tool'">
+                  <div class="tmsg-line">工具调用 · {{$data.name}}</div>
+                </o-if>
+                <o-if :value="$data.role === 'error'">
+                  <div class="tmsg-line tmsg-err">{{$data.text}}</div>
+                </o-if>
+                <o-if :value="$data.role === 'compact'">
+                  <div class="tmsg-line">已压缩早期消息 ×{{$data.count}}</div>
+                </o-if>
+              </div>
+            </o-fill>
+          </div>
+        </div>
+      </o-if>
+    </st-dialog>
+
     <!-- 工具详情对话框：点工具列表项弹出；带内置测试的工具（视觉或纯插件）用
          「工具信息 / 内置测试」双 Tab，无内置测试的工具用窄面板、无 Tab。
          测试 Tab：左断言 list，右 iframe 实跑测试（视觉工具挂载被测组件，
@@ -2320,6 +2417,12 @@
           localDirLabel: "",
           permGrantNeeded: false,
           confirmingDelSession: "",
+          currentAppTrash: [], // 当前应用回收站（store 镜像，删除的对话进这里）
+          trashOpen: false, // 会话回收站对话框
+          trashView: "list", // 回收站内容视图："list" | "detail"
+          trashDetail: null, // 详情视图数据 { session, messages }（只读）
+          confirmingPurge: "", // 两步确认彻底删除的回收站会话 id
+          confirmingEmptyTrash: false, // 清空回收站两步确认
           // 会话任务清单（task_list 工具维护，对话右侧面板展示；store 镜像）
           sessionTasks: [],
           tasksPanelOpen: true, // 面板折叠开关（页面级 UI 态，不持久化）
@@ -3985,6 +4088,90 @@
                 el.style.removeProperty("height");
               }
             }
+          },
+
+          // ---- 会话回收站（侧栏底部入口：删除的对话可查看 / 还原 / 彻底删除） ----
+
+          openTrash() {
+            this.trashView = "list";
+            this.trashDetail = null;
+            this.confirmingPurge = "";
+            this.confirmingEmptyTrash = false;
+            this.trashOpen = true;
+          },
+
+          trashTime(ts) {
+            if (!ts) return "";
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, "0");
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+          },
+
+          trashItemMeta(t) {
+            const parts = [`删除于 ${this.trashTime(t.deletedAt)}`];
+            if (t.msgCount > 0) parts.push(`${t.msgCount} 条消息`);
+            return parts.join(" · ");
+          },
+
+          trashDetailTitle() {
+            return this.trashDetail?.session?.title || "";
+          },
+
+          trashDetailMeta() {
+            const d = this.trashDetail;
+            if (!d?.session) return "";
+            const parts = [`删除于 ${this.trashTime(d.session.deletedAt)}`];
+            if (d.messages.length) parts.push(`${d.messages.length} 条消息`);
+            return parts.join(" · ");
+          },
+
+          // 详情只读视图：先切视图（占位空消息）再异步读，读回后若仍停留在这条
+          // 会话的详情页才写入（等待期间用户可能已返回列表 / 关掉对话框）
+          async viewTrashedSession(sid) {
+            const session = this.currentAppTrash.find((t) => t.id === sid);
+            if (!session) return;
+            this.confirmingPurge = "";
+            this.trashDetail = { session, messages: [] };
+            this.trashView = "detail";
+            const messages = await store.readTrashedMessages(sid);
+            if (
+              this.trashOpen &&
+              this.trashView === "detail" &&
+              this.trashDetail?.session?.id === sid
+            ) {
+              this.trashDetail = { session, messages };
+            }
+          },
+
+          closeTrashDetail() {
+            this.trashView = "list";
+            this.trashDetail = null;
+          },
+
+          async restoreTrashedSession(sid) {
+            await store.restoreTrashedSession(sid);
+            this.closeTrashDetail();
+            toast({ message: "已还原到会话列表", color: "success" });
+          },
+
+          async purgeTrashedSession(sid) {
+            if (this.confirmingPurge !== sid) {
+              this.confirmingPurge = sid;
+              return;
+            }
+            this.confirmingPurge = "";
+            await store.purgeTrashedSession(sid);
+            this.closeTrashDetail();
+          },
+
+          async emptyTrash() {
+            if (!this.confirmingEmptyTrash) {
+              this.confirmingEmptyTrash = true;
+              return;
+            }
+            this.confirmingEmptyTrash = false;
+            await store.emptyTrash();
+            this.closeTrashDetail();
           },
 
           // ---- 项目抽屉（左侧滑出）：点击新标签打开；window name 命中已开标签则聚焦不重复开 ----

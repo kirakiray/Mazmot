@@ -104,6 +104,53 @@
   scrollbar-width: thin;
 }
 
+/* 底部回收站入口：删除的对话进这里（查看 / 还原 / 彻底删除） */
+.side-foot {
+  flex: none;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  padding: 6px 8px;
+}
+
+.trash-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: background-color 120ms ease;
+}
+
+.trash-entry:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.trash-entry n-icon {
+  font-size: 16px;
+}
+
+/* 数量徽标：0 时弱化不抢视线 */
+.trash-count {
+  margin-left: auto;
+  min-width: 20px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.trash-count.zero {
+  background: transparent;
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 40%, transparent);
+}
+
 .main-col {
   flex: 1 1 auto;
   min-width: 0;
@@ -3594,6 +3641,200 @@ st-icon-button.published {
   gap: 8px;
   margin-top: 4px;
   flex: none; /* 工具对话框里固定在底部，不参与伸缩 */
+}
+
+/* ---------- 会话回收站对话框（列表 + 只读对话详情双视图） ---------- */
+
+.trash-dialog::part(panel) {
+  width: min(600px, 92vw);
+}
+
+.trash-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box; /* content-box 下 100% + padding 会超出面板触发裁切 */
+  padding: 4px 2px;
+  max-height: min(72vh, 640px);
+}
+
+.trash-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.trash-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.trash-sub {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.trash-empty {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 36px 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+}
+
+.trash-list {
+  flex: 1 1 auto;
+  min-height: 0; /* flex 纵向容器里 overflow 子项必须归零最小尺寸才滚动 */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+}
+
+.trash-item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.trash-item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 5%, transparent);
+}
+
+.trash-item-icon {
+  flex: none;
+  font-size: 18px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.trash-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.trash-item-title {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trash-item-meta {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.trash-item-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.trash-item-actions st-button {
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.trash-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  padding-top: 8px;
+}
+
+/* 详情（只读对话渲染） */
+.trash-detail-panel {
+  gap: 12px;
+}
+
+.trash-detail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trash-detail-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.trash-detail-info .trash-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trash-msgs {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 4px 8px 0;
+  scrollbar-width: thin;
+}
+
+.tmsg {
+  font-size: 13px;
+}
+
+.tmsg[data-role="user"] {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 用户气泡：与对话流同色系（primary-container），尺寸按对话框收紧 */
+.tmsg-bubble {
+  max-width: 86%;
+  box-sizing: border-box;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tmsg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tmsg-imgs {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* AI 正文复用 .ai-text 的整套 Markdown 排版，仅按对话框收紧字号行高 */
+.trash-msgs .ai-text {
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.tmsg-line {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.tmsg-err {
+  color: var(--md-sys-color-error);
 }
 
 /* 列表项「已打开」徽标：该项目已有标签正打开 */

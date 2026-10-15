@@ -634,7 +634,8 @@ export async function syncAppManifest(fs, appName, rootHandle, opts = {}) {
           seg === "test" ||
           seg === "backup" ||
           seg === "snaps" ||
-          seg === "conjure-chats",
+          seg === "conjure-chats" ||
+          seg === "conjure-chats-trash",
       );
   const disk = new Set(
     (await listAppFiles(fs, clean, rootHandle)).filter(include),
@@ -1504,6 +1505,62 @@ const chatSidFile = (sid) => {
   const safe = String(sid || "").replace(/[^a-zA-Z0-9_-]/g, "");
   return safe ? `${safe}.json` : null;
 };
+
+/** 会话回收站快照目录（删除会话的 <sid>.json 挪到这里，gitignore 不同步） */
+export const PROJECT_TRASH_DIR = "conjure-chats-trash";
+
+/** 会话快照文件在两个 chats 目录间移动（先写目标再删源，中断不丢数据）。
+ *  源文件不存在或读写失败返回 false，调用方继续走注册表流程。 */
+async function moveProjectChatFile(rootHandle, sid, fromDir, toDir) {
+  const fname = chatSidFile(sid);
+  if (!fname) return false;
+  try {
+    const src = await rootHandle.get(`${fromDir}/${fname}`);
+    if (!src || src.kind !== "file") return false;
+    const text = await src.text();
+    const dstDir = await rootHandle.get(toDir, { create: "dir" });
+    const dst = await dstDir.get(fname, { create: "file" });
+    await dst.write(text);
+    await src.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 删除会话：把 conjure-chats/<sid>.json 挪进回收站目录（须在全量同步前调用，
+ *  否则孤儿清理会把文件直接删掉） */
+export async function trashProjectChat(rootHandle, sid) {
+  return moveProjectChatFile(rootHandle, sid, PROJECT_CHAT_DIR, PROJECT_TRASH_DIR);
+}
+
+/** 还原会话：把回收站目录的 <sid>.json 挪回 conjure-chats/ */
+export async function restoreProjectChat(rootHandle, sid) {
+  return moveProjectChatFile(rootHandle, sid, PROJECT_TRASH_DIR, PROJECT_CHAT_DIR);
+}
+
+/** 彻底删除：移除回收站目录中的会话快照文件 */
+export async function removeProjectTrashChat(rootHandle, sid) {
+  const fname = chatSidFile(sid);
+  if (!fname) return;
+  try {
+    const f = await rootHandle.get(`${PROJECT_TRASH_DIR}/${fname}`);
+    if (f && f.kind === "file") await f.remove();
+  } catch {}
+}
+
+/** 读取回收站会话的快照（对话详情查看用）；缺失 / 损坏返回 null */
+export async function readProjectTrashChat(rootHandle, sid) {
+  const fname = chatSidFile(sid);
+  if (!fname) return null;
+  try {
+    const f = await rootHandle.get(`${PROJECT_TRASH_DIR}/${fname}`);
+    if (!f || f.kind !== "file") return null;
+    return JSON.parse(await f.text());
+  } catch {
+    return null;
+  }
+}
 
 /** 探测目录是否为既有项目：存在 client/app.json 即是，返回其元数据（否则 null） */
 export async function detectLocalProject(rootHandle) {

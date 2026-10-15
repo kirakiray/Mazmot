@@ -1740,6 +1740,99 @@
         </script>
       </template>
     </sb-test>
+    <sb-test name="会话回收站：删除进 trash 可还原，彻底删除 / 清空清数据">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              // 统一虚拟空间：一个应用两条会话，s1 带消息与 Agent 记忆
+              const fakeStore = createVirtualStorage({
+                "apps-registry": [
+                  {
+                    name: "demo",
+                    displayName: "Demo",
+                    mode: "vfs",
+                    sessions: [
+                      { id: "s1", title: "A", updatedAt: 1 },
+                      { id: "s2", title: "B", updatedAt: 2 },
+                    ],
+                  },
+                ],
+                "chat:demo:s1": [
+                  { id: 1, role: "user", content: "hi" },
+                  { id: 2, role: "assistant", content: "hello" },
+                ],
+                "thread:demo:s1": [{ role: "user", content: "hi" }],
+              });
+              const store = createBuilderStore({
+                fs: null,
+                mazmotStore: null,
+                selfStore: fakeStore,
+                load: async () => ({ getApiKeys: () => [], onApiKeysChange: () => {} }),
+              });
+              await store.init({});
+              await store.selectApp("demo");
+
+              // 删除 s1：登记进 trash（附 deletedAt / msgCount）、会话列表移除、
+              // 存储键保留（chat/thread 不删）
+              await store.deleteSession("s1");
+              const reg1 = await fakeStore.getItem("apps-registry");
+              const trash1 = reg1[0].trash || [];
+              const ids1 = store.state.currentAppSessions.map((s) => s.id);
+              const trashView = store.state.currentAppTrash.map((t) => t.id);
+              const msgs = await store.readTrashedMessages("s1");
+
+              // 还原：trash 清空、登记回 sessions、消息原样读回
+              await store.restoreTrashedSession("s1");
+              const reg2 = await fakeStore.getItem("apps-registry");
+              const ids2 = store.state.currentAppSessions.map((s) => s.id);
+              const msgsBack = await fakeStore.getItem("chat:demo:s1");
+
+              // 再删 + 彻底删除：trash 移除、存储键清掉
+              await store.deleteSession("s1");
+              await store.purgeTrashedSession("s1");
+              const reg3 = await fakeStore.getItem("apps-registry");
+              const purgedChat = await fakeStore.getItem("chat:demo:s1");
+
+              // 清空回收站：剩余回收站会话连同存储键一并清除
+              await store.deleteSession("s2");
+              await store.emptyTrash();
+              const reg4 = await fakeStore.getItem("apps-registry");
+              const s2Chat = await fakeStore.getItem("chat:demo:s2");
+
+              const checks = {
+                trashed:
+                  trash1.length === 1 &&
+                  trash1[0].id === "s1" &&
+                  trash1[0].msgCount === 2 &&
+                  typeof trash1[0].deletedAt === "number",
+                sessionRemoved: ids1.join(",") === "s2",
+                trashMirrored: trashView.join(",") === "s1",
+                detailMsgs: msgs.length === 2,
+                restored:
+                  (reg2[0].trash || []).length === 0 &&
+                  ids2.includes("s1") &&
+                  (msgsBack || []).length === 2,
+                purged:
+                  (reg3[0].trash || []).length === 0 &&
+                  (purgedChat === null || purgedChat === undefined),
+                emptied:
+                  (reg4[0].trash || []).length === 0 &&
+                  (s2Chat === null || s2Chat === undefined),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
     <sb-test name="会话计时：duration 字段随会话列表透出">
       <template>
         <script type="module">
