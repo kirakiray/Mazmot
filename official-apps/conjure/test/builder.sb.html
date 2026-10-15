@@ -3274,5 +3274,203 @@
         </script>
       </template>
     </sb-test>
+
+    <sb-test name="接口出错自动重试：可重试错误（5xx）倒计时后自动续跑，无需人工干预">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r1Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r1CallN = 0;
+              const r1Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async ({ onStream }) => {
+                    r1CallN++;
+                    if (r1CallN === 1) {
+                      // 首次失败前已有流式输出：重试续写应接在同一个气泡里
+                      onStream({ type: "text", delta: "先写一半" });
+                      throw new Error("Fake API error: 502 Bad Gateway - {}");
+                    }
+                    onStream({ type: "text", delta: "，重试后写完了" });
+                    return {
+                      content: "，重试后写完了",
+                      model: "m",
+                      usage: { prompt_tokens: 4, completion_tokens: 4, total_tokens: 8, context_tokens: 8 },
+                    };
+                  },
+                }),
+              };
+              const r1Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r1Chain : r1Ai,
+              });
+              const r1RetryPatches = [];
+              r1Store.subscribe((e) => {
+                if (e.type === "patch" && "turnRetry" in e.data) {
+                  r1RetryPatches.push(e.data.turnRetry);
+                }
+              });
+              await r1Store.init({});
+              await r1Store.send("做个演示应用");
+
+              const r1Msgs = r1Store.state.messages;
+              const r1LastAi = [...r1Msgs]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                chatCalledTwice: r1CallN === 2,
+                turnDone: r1Store.state.sending === false,
+                sameBubble: r1LastAi?.content === "先写一半，重试后写完了",
+                noErrorText: !String(r1LastAi?.content).includes("出错了"),
+                retryPatchSeen: r1RetryPatches.some(
+                  (r) => r && r.attempt === 1 && r.maxAttempts === 3 && r.remain > 0,
+                ),
+                retryCleared: r1Store.state.turnRetry === null,
+                noErrorCard: !r1Msgs.some((m) => m.role === "error"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r1CallN, content: r1LastAi?.content },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接口出错自动重试：不可重试错误（401 鉴权）立即收尾，不重试不出倒计时">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r2Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r2CallN = 0;
+              const r2Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async () => {
+                    r2CallN++;
+                    throw new Error("Fake API error: 401 Unauthorized - {}");
+                  },
+                }),
+              };
+              const r2Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r2Chain : r2Ai,
+              });
+              const r2RetrySeen = [];
+              r2Store.subscribe((e) => {
+                if (e.type === "patch" && e.data.turnRetry) r2RetrySeen.push(e.data.turnRetry);
+              });
+              await r2Store.init({});
+              await r2Store.send("做个演示应用");
+
+              const r2LastAi = [...r2Store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                calledOnce: r2CallN === 1,
+                turnDone: r2Store.state.sending === false,
+                errorBubble: String(r2LastAi?.content).includes("出错了"),
+                noRetryCountdown: r2RetrySeen.length === 0,
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r2CallN, content: r2LastAi?.content },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="接口出错自动重试：倒计时等待中点停止，按停止收尾不重试">
+      <template>
+        <script type="module">
+          import { createBuilderStore } from "../lib/builder-store.js";
+          import {
+            createVirtualFs,
+            createVirtualStorage,
+          } from "../lib/test-space/virtual-space.js";
+          {
+            try {
+              const r3Ai = {
+                getApiKeys: () => [{ id: "k1", provider: "openai", maskedKey: "sk-***" }],
+                getAssistant: () => ({ providerName: "Fake", getModels: async () => ["m"] }),
+                onApiKeysChange: () => {},
+              };
+              let r3CallN = 0;
+              const r3Chain = {
+                tool: (exec, meta) => ({ ...meta, invoke: exec }),
+                createAgent: () => ({
+                  chat: async () => {
+                    r3CallN++;
+                    throw new Error("Fake API error: 503 Service Unavailable - {}");
+                  },
+                }),
+              };
+              const r3Store = createBuilderStore({
+                fs: createVirtualFs(),
+                mazmotStore: createVirtualStorage(),
+                selfStore: createVirtualStorage({ "apps-registry": [] }),
+                load: async (p) =>
+                  String(p).includes("/mz/ai/chain/main.js") ? r3Chain : r3Ai,
+              });
+              await r3Store.init({});
+              const r3Sending = r3Store.send("做个演示应用");
+              // 首次倒计时（3 秒）中途停止：1 秒粒度的下一跳检查到 stopped 即退出
+              setTimeout(() => r3Store.stop(), 400);
+              await r3Sending;
+
+              const r3LastAi = [...r3Store.state.messages]
+                .reverse()
+                .find((m) => m.role === "assistant" && !m.type);
+              const checks = {
+                calledOnce: r3CallN === 1,
+                turnDone: r3Store.state.sending === false,
+                retryCleared: r3Store.state.turnRetry === null,
+                stopReset: r3Store.state.stopRequested === false,
+                noErrorBubble: !String(r3LastAi?.content).includes("出错了"),
+              };
+              return {
+                assert: Object.values(checks).every(Boolean),
+                content: { checks, calls: r3CallN },
+              };
+            } catch (error) {
+              return { assert: false, content: { error: error.message, stack: error.stack } };
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

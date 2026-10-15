@@ -1138,6 +1138,7 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
           pendingImages: [], // 待发送图片附件 [{ id, src }]，随下条消息一起发出
           sending: false,
           stopRequested: false, // 用户点了停止、回合尚未收尾（按钮禁用显示「停止中」）
+          turnRetry: null, // 接口请求自动重试倒计时（仓库同步；null = 无重试进行）
           reasoning: "low", // 推理等级偏好（仓库 patch；off/low/medium/high）
           keyError: "",
           interrupted: false, // 上次回合被硬中断（仓库检测，随 patch 事件镜像）
@@ -2463,11 +2464,14 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
 
 
           // 回合状态文案：随回合最新活动实时切换（写死的「生成中…」反映不了
-          // 工具循环里正在发生什么）——表单挂起 > 执行工具 / 下一轮思考 >
-          // 思考中 > 流式输出。活动从视图消息流末条推导（tool 消息带 pending
-          // 标记；assistant 气泡先出 reasoning 后出 content）
+          // 工具循环里正在发生什么）——接口重试倒计时 > 表单挂起 > 执行工具 /
+          // 下一轮思考 > 思考中 > 流式输出。活动从视图消息流末条推导（tool
+          // 消息带 pending 标记；assistant 气泡先出 reasoning 后出 content）
           turnStatusText() {
             const live = " " + this.turnLiveText();
+            if (this.turnRetry) {
+              return `接口出错，${this.turnRetry.remain} 秒后自动重试（第 ${this.turnRetry.attempt}/${this.turnRetry.maxAttempts} 次），可点停止取消${live}`;
+            }
             if (this.formWaiting()) {
               return "⏸ 已展示表单，等待你提交后继续（计时已暂停）";
             }

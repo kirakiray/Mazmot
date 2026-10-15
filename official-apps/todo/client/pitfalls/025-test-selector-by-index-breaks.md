@@ -34,3 +34,25 @@ if (tb.value !== '任务A') throw new Error(...);   // 实际是 "任务A\n描�
 - 断言多行框里的标题：用 `value.split(String.fromCharCode(10))[0]`（首行）或 `value.indexOf('任务A') === 0`，不要用全等；
 - 需要断言“只有标题”时，**构造无描述的数据**（本项目 `T.addTask(t)` 不传第二参即无描述），别指望已有数据恰好符合形状；
 - 改动输入框结构（单行↔多行、一框↔多框）后，回头扫一遍用例里对该元素的 `value` 断言——同一元素的语义变了，断言的前提往往也跟着变。
+
+## 同源的脆弱假定（第三例）：同一个容器里“只剩一个按钮”也是假定
+
+**症状**：给列表行尾的 `.item-actions` **新增**一个「置顶」按钮后，四个用例里的删除助手
+
+```js
+T.del = (t) => T.click(T.need(t).querySelector('.item-actions st-icon-button'));
+```
+
+（当时确实“只剩一个”，所以看着是语义写法）**静默变成了点置顶按钮**：它不报错、只在后续断言里表现出“条目没进倒计时 / 没进垃圾桶”，极易被当成宿主抖动放过；另一个用例的 `querySelectorAll('.item-actions st-icon-button').length !== 1` 断言则直接挂掉。
+
+**根因**：把“这个容器里只有一个按钮”当成了契约。**这个契约同样是外部 UI 可以打破的**——本轮就是在不改用例的前提下让既有断言失真（应用侧零 bug）。
+
+**正确姿势**：
+- 容器里可能有多个同类按钮时（行尾操作区、`slot="actions"`…），**一律按可访问名称挑**，不要依赖数量或顺序：
+  ```js
+  // 删除按钮：title 必含“删除”（普通态「删除（5 秒后移入垃圾桶）」/ 倒计时态「撤销删除」）
+  const del = Array.from(row.querySelectorAll('.item-actions st-icon-button'))
+    .find((x) => (x.getAttribute('title') || '').indexOf('删除') !== -1);
+  ```
+- **增 / 删 / 改行内按钮后，把 `test/*.json` 扫一遍**（不只是“删按钮”）：先 `grep -n "item-actions" test/*.json` 列出受影响的助手，再逐个改成按 `title` / 文案挑。
+- 同理，断言不要写“操作区里有 N 个按钮”这种硬数字——UI 一增按钮就是假失败；要断言就看具体某个按钮**存在且可访问名称正确**（如 `if (!row.querySelector('.pin-btn')) throw ...`）。
