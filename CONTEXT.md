@@ -70,6 +70,7 @@ Mazmot/
 │   │   ├── settings-user.html    # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
 │   │   ├── settings-certs.html   # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
 │   │   └── settings-webfetch.html # 设置弹窗「联网能力」子页面（通道清单点选固定——默认 auto 按优先级、点行即 setWebFetchChannel 固定、固定后失败不降级；relay 多台时下拉选择 web fetch 用哪台；**自定义 Web Hub 配置入口**——URL + 可选共享令牌输入框，保存/清除即 setCustomEndpoint/clearCustomEndpoint 立即生效，问号链接跳 GitHub 的 server/web-hub-cf/README.md 部署指南；「测试抓取」按钮实测 fetchText 并刷新通道状态）
+│   ├── test/                 # 主业务流程 e2e（boot-flow.sb.html：根入口引导 → 官方应用安装 → conjure/todo 经 /$mazmot-apps 实际运行；写入真实 apps 记录与 mazmot-apps 副本，幂等可重跑，靠清单追加保持在套件最后执行）
 │   └── lib/
 │       ├── install-queue.js        # 引导安装队列：串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）
 │       ├── welcome-plan.js         # 用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）
@@ -463,9 +464,12 @@ npm run static
 
 使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
 
+**主应用 e2e**（[main/test/](main/test/)）
+
+- `http://localhost:30031/main/test/boot-flow.sb.html` — 主业务流程 e2e：真实加载根 index.html 引导挂载 → 经 [install-queue.js](main/lib/install-queue.js) 安装 todo/client 与 conjure → conjure 清单逐文件穿透 `/$mazmot-apps` 命名空间校验完整性（缺文件 / SPA 回退污染即红，正是用户「加载页面模块 …/conjure/client/pages/home.html 失败」报障的回归网）→ 两个应用经运行 URL 实际启动断言首屏渲染。**必须跟在 `_setup/install-nos.sb.html` 之后跑**（完整套件自动满足；单文件跑先 `npm run handshake` 再 `npx sb-test -f _setup/install-nos.sb.html -f main/test/boot-flow.sb.html`）
+
 **主应用工具库测试**（[main/lib/test/](main/lib/test/)）
 
-- `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
 - `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
 - `http://localhost:30031/_setup/install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（**整个测试套件的 Core 前置引导**：`_setup/` 目录名排序在 `apps/`、`bridge/` 等之前，保证 sb-test 生成的清单里它最先执行装好 Core——主应用迁入 `main/` 后原 `apps/main/lib/test/` 路径的字母序红利失效，曾导致 CI 的 run-app-utils/preview-flow 在 Core 就绪前运行而挂掉；清单 test-all.html 为生成物已 gitignore）
 - `http://localhost:30031/mz/test/app-runner.sb.html` — 测试 [app-runner.js](mz/app-runner.js) 的 URL 生成与文件读取
