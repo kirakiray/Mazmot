@@ -62,6 +62,7 @@
    - **编辑区是一个自制的多行编辑区**（`.rt-box > .rt-editor[contenteditable]`）：**每行一个 `.rt-line` 块，所有行样式完全一致**（14px / 400）。**历史坑：曾经给「第一个非空行」在框内加粗加大（`.rt-line.rt-title`，实测 20px / 700），因「什么时候算有第二行内容」的判定与光标 / 输入法边界情形太多、bug 不断，已整体去掉**——`applyEditorTitleClass()` 已删除，换成只维护空态的 `applyEditorEmptyClass()`；**不要再加回 `.rt-title` 那套**。原生 `textarea` 无法只给某一行换样式，所以才用 `contenteditable` 自己管行结构（现在只为「回车拆行 / 粘贴只取纯文本 / 空态保留可编辑空行」服务）。
    - **键盘行为与编辑区一致**：回车**自己拆行**（不靠浏览器插 `<div>/<br>`，行结构才能始终可控），光标落在新行开头；**粘贴只取纯文本**（不让外部 HTML 混进来），文本里带换行就拆成多行；输入法组合期间（`isComposing`）不重排 DOM、不拦回车（不打断中文录入）；点编辑框内边距（`.rt-box` 空白处）也会把光标放回编辑区末尾。内容被删光时会**自动补回一个可编辑空行**（否则光标无处可放、打不进字），空态显示占位提示。
    - **编辑就在这个弹窗里**：打开时编辑区已预填当前内容（首行标题 + 其余描述），直接在框里改 → 「保存」把多行拆回 `text` / `desc` 并**关闭弹窗**（列表与副标题实时同步）、「关闭」丢弃未保存的修改。**没有非空行时不能保存**（「保存」置灰）；保存只改这两项，不影响分组、勾选状态与各时间戳。**三个视图（列表 / 已归档 / 垃圾桶）的条目都走同一个弹窗**，点正文即可看可改（行上已无铅笔入口）。
+   - **完成时间可直接改（已完成任务）**：已勾选完成（含已归档、且不在垃圾桶 / 倒计时中）的任务，详情弹窗里多一行「完成时间」编辑行（**原生 `input[type=datetime-local]`**，值由 JS 写入而非 `attr:value` 绑定），改动（`change`）即时写回 `statusChangedAt` 并落盘；**留空 / 清空一律不改数据、把输入框恢复成原值**（编辑时按退格也会触发 `change`，若直接写 `null` 就会把原记录静默弄丢——用户明确要求“不能把原来的完成时间弄丢”）。行尾常驻一条小字提示：有值时「改动即时保存；留空不会删除原时间」，原本就没有记录时「原数据未记录，可在此补填」（旧数据里有不少 `done=true` 但无时间戳的条目）。归档视图「按完成日 / 按完成周」的分组基准就是它，改完后归档分组与条目副标题的「完成于 …」即时重算。未完成 / 垃圾桶任务不显示这一行（`class:hidden`）。
 10. **垃圾桶**：每条可「还原」或用删除图标（`mdi:delete-outline`）**彻底删除**（二次确认）；底部「清空垃圾桶」（空时禁用）。
 11. **时间信息**：副标题格式 `分组名 · 创建于 MM-DD 时:分`（跨年带年份），倒计时中为 `分组名 · N 秒后移入垃圾桶（点撤销按钮可撤销）`，切换过完成态追加 ` · 完成于 …` / ` · 恢复于 …`；垃圾桶条目显示 `分组名 · 删除于 … · 创建于 …`；旧数据无时间记录显示「创建时间未知」。
 12. **右上「归档已完成」**（与「添加任务」并排在标题栏右侧 `.top-actions` 里，前置 `mdi:archive-arrow-down` 图标，`title` = 「把当前分组里已完成的任务收进归档（不会删除）」）：把**当前分组范围内**已完成的条目收进归档，当前范围内无已完成项时置灰。**作用范围看分组、不看当前视图**，所以它在 `全部 / 已归档 / 垃圾桶` 三个视图下都常驻显示；不是危险操作，所以不用红色。
@@ -145,6 +146,7 @@ client/
 | `detailId` | 详情弹窗当前展示的任务 id（保存时据此定位条目） | `null` |
 | `editDraft` | 详情弹窗编辑区的**多行文本**（视觉行以换行拼接；`openDetail` / `fillEditor` 预填，输入时由 `syncEditorDraft()` 同步）——DOM 里的行结构才是真正的编辑内容，`editDraft` 是它的数据镜像 | `""` |
 | `detail` | 详情弹窗的**只读元信息**快照（字段见下），打开时用 `buildDetail(todo)` 算好 | 空对象（各字段为空串） |
+| `detail.doneEditable` / `detail.doneAtValue` / `detail.doneAtHint` | 详情弹窗「完成时间」编辑行的开关 / 预填值（`datetime-local` 本地时区值）/ 行尾提示文案；仅 `done && !deletedAt && !pendingDeleteAt` 时可编辑 | `false` / `""` / `""` |
 
 `detail` 快照字段（**文案全部预计算**，模板只读字段，原因见踩坑 005）：`{ images, groupText, statusText, createdText, statusChangedText, archivedText, deletedText }`（归档时间未归档时为 `—`；`images` 是 `Array<{id,dataUrl}>` 的拷贝，供详情弹窗渲染大图）。**标题 / 描述不在快照里**——它们是编辑区里的可编辑内容，数据镜像在 `editDraft`（快照只负责只读那半边）。
 
@@ -239,7 +241,10 @@ client/
 | `removeDetailImage(id)` | 移除**已保存任务**的一张图（详情弹窗大图右上角）：改 `todos` → 重算 `detail` 快照 → `persistTodos()`，列表缩略图与详情同步更新 |
 | `parseAiReply(content)` | 模型回复 → `{ kind, title, desc }`：先剥掉可能的 ```json 围栏、取首个 `{` 到末个 `}` 做 `JSON.parse`（兼容 `name` / `description` 字段名；`kind` 只认 `"image"`，其余一律当 `"task"`），失败则把整段回复交给 `parseDraft` 兜底 |
 | `generateWithAi()` | AI 按钮入口（一套逻辑两种形态）：**无图**时按 `AI_SYSTEM_PROMPT` 把文字整理成 JSON；**有图**时改用 `AI_IMAGE_SYSTEM_PROMPT` 并把 user 消息的 `content` 换成 `[{type:"text"}, {type:"image_url", image_url:{url: dataUrl}} …]` 多模态数组（没文字时默认提示语「请识别图片里的内容，整理成待办任务。」）。成功后把 `title + "\n" + desc` 回填 `draft`（保持“首行标题”格式），并按「无图 / 识图文字 / 图片无文字」三种情况写 `aiNote`；失败写入 `aiError`，`finally` 复位 loading |
-| `buildDetail(todo)` | 生成详情弹窗的**只读元信息**对象（图片快照 `images` / 分组 / 状态 / **四个**时间文案均在此算好；状态优先级：倒计时中 → 已在垃圾桶 → 已归档 → 已完成 → 未完成） |
+| `buildDetail(todo)` | 生成详情弹窗的**只读元信息**对象（图片快照 `images` / 分组 / 状态 / **四个**时间文案均在此算好；状态优先级：倒计时中 → 已在垃圾桶 → 已归档 → 已完成 → 未完成）；另算 `doneEditable`（已完成且不在垃圾桶 / 倒计时）与 `doneAtValue`（`toDatetimeLocal(statusChangedAt)`） |
+| `toDatetimeLocal(ts)` | 时间戳 → `datetime-local` 控件的本地时区 value（`YYYY-MM-DDTHH:mm`）；非法值空串 |
+| `doneAtInputEl()` / `syncDoneAtInput(value, tries)` | 取「完成时间」输入框元素（查页面 shadowRoot，未渲染时 `requestAnimationFrame` 重试 3 次）/ 把值写进输入框。**必须用 JS 设 `property`，不能靠 `attr:value` 绑定**：input 的 value 被 JS 改过之后再改 attribute 不再同步到 property，换一条任务打开会残留上一条的值（见 `pitfalls/027`） |
+| `onDoneAtChange(ev)` | 详情弹窗里修改完成时间：解析 `datetime-local` 值并写回 `statusChangedAt` → 重算 `detail` 快照 → 立即落盘；**空值 / 无法解析 / 与原值相同一律不写数据，只把输入框恢复成原值**（避免误清空丢掉原完成时间） |
 | `openDetail(id)` / `closeDetail()` | 打开详情（生成只读元信息快照 + 记 `detailId` + `fillEditor()` 把多行编辑区预填成“首行标题 + 其余描述”） / 关闭详情（清 `detailId`、清 `editDraft` 并把编辑区重置为一个空行，未保存的修改即丢弃） |
 | `submitEditDetail()` | 保存：先用 `syncEditorDraft()` 对齐真实内容，再用 `parseDraft()` 把编辑区拆回 `text` / `desc`（全空不生效），只改这两项（不动分组、`done` 与各时间戳），写回后**关闭弹窗**并 `persistTodos()` |
 | `editorEl()` | 取编辑区元素（`document.querySelector('o-page').shadowRoot.querySelector('.rt-editor')`）——页面里只有一个页面实例，所以直接查宿主；弹窗未渲染时返回 `null` |
@@ -319,6 +324,7 @@ client/
 | `toggle-archive.test.json` | 归档链路 | 勾选完成/恢复、归档已完成只收当前分组范围、已归档视图与详情状态、取消归档回列表、归档项删除后从垃圾桶还原回列表、刷新持久化 |
 | `trash-purge.test.json` | 垃圾桶清理 | 彻底删除二次确认（取消不删 / 确认才删）、清空垃圾桶（条数提示 / 取消 / 确认 / 空时禁用）、刷新落盘 |
 | `archive-group.test.json` | 归档分组 | 说明行是一行短文案 + `st-tooltip`（完整说明在 content 里）且带「?」图标；默认「全部归档」无组头且条目副标题含「完成于」、**不含「归档于」**（归档时间只在详情里）、**按完成时间**分组（4 条同为今天归档、完成跨 3 天 → 3 组；组头带日期星期与条数 / 最新在前 / 组内顺序不变 / 「昨天」条的完成与归档时间对得上）、按完成周分组（组头含年·周·起止 / 总条数不变）、查看方式写 `sessionStorage` 并刷新保持 |
+| `detail-done-at.test.json` | 修改完成时间 | 详情弹窗里已完成任务显示可编辑「完成时间」行（预填 `statusChangedAt`）、修改后立即写回存储与列表副标题、未完成 / 垃圾桶任务不显示该行、已归档任务同样可改并落盘、**清空输入框不会丢掉原完成时间（保留原值并回显）**、**老数据（已完成但无时间戳）显示“原数据未记录、可在此补填”且补填能落盘** |
 | `image-attach.test.json` | 图片附件 | 添加弹窗选图 / 直接粘贴（canvas 压缩成 `data:image/jpeg` 的 64px 缩略图、可移除、上限 4 张）、有图时 AI 按钮变「AI 识别图片」且不靠文本即可点、任务落盘后列表显示 40px 缩略图、详情弹窗显示大图并可移除（立即落盘）、刷新后图片仍在 |
 | `group-scope-views.test.json` | 归档桶跟随分组 | 左栏选中分组后「已归档」「垃圾桶」只显示该分组条目（选「全部任务」才是全部）、视图标签数量 / 底栏计数 / 空状态文案同步跟随；「清空垃圾桶」只清当前分组范围（确认框标题带分组名），不动其它分组 |
 
@@ -370,3 +376,4 @@ client/
 | 024 | `st-tooltip` 的三个要点：`pointerenter` 不冒泡（事件要派发到宿主）、气泡尺寸全用 em（靠宿主 font-size 缩放）、后台标签页验不了悬停 / 聚焦 | `pitfalls/024-st-tooltip-trigger-and-em-sizing.md` |
 | 025 | 用例里的脆弱假定：用下标取行内按钮 / 依赖“这个容器里只有一个按钮”（UI 增删一个按钮就静默错位）、断言写死多行框的整块 `value` | `pitfalls/025-test-selector-by-index-breaks.md` |
 | 026 | 自建 contenteditable 编辑区的四个坑：选区注入顺序、空态不能隐藏行、普通打字不要重建 DOM、行样式只能用 class 表达（本项目已据此**整体移除行级样式**） | `pitfalls/026-contenteditable-editor-traps.md` |
+| 027 | `input[type=datetime-local]` 的值不能用 `attr:value` 绑定：value 被 JS 改过后 attribute 不再同步到 property，换一条数据打开会残留上一个值 | `pitfalls/027-input-value-attr-binding-stale.md` |

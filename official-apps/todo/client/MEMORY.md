@@ -4,6 +4,33 @@
 
 ## 记录
 
+### 2026-10-14 · 修「改完成时间会弄丢原时间」+ 输入框值残留（用户反馈）
+
+- **用户反馈**（附截图，任务 `111111`：状态「已完成」、状态变更「—」、完成时间输入框为空）：「不是啊，你虽然能改完成时间，但是你不能把原来的完成时间弄丢可」。
+- **两个真问题**：
+  1. **清空输入框会把原完成时间写没**：`datetime-local` 在用户按退格 / 选删时就会触发 `change`，原实现把空值当作“清除”写 `null` 并落盘，原记录不可逆丢失。
+  2. **输入框值残留（换任务串值）**：原用 `attr:value` 绑定——input 的 value 一旦被 JS 改过就进入 dirty value 状态，之后改 attribute 不再同步到 property，于是打开“本没有完成时间”的老数据时会**显示上一条的时间**（场景用例直接报 `老数据不应有预填值：2026-10-01T08:30`）。
+- **改了什么**（`pages/home.html`）：
+  - `onDoneAtChange` 重写：空值 / 无法解析 / 与原值相同三种情况一律**不写数据**，只把输入框恢复成原值并打日志「完成时间未修改（原因），保留原值」；只有解析出与原来不同的时间戳才写回 `statusChangedAt` 并 `persistTodos()`。
+  - 新增 `doneAtInputEl()` / `syncDoneAtInput(value, tries)`：弹窗打开时用 **JS 设 property** 填值（未渲染时 `requestAnimationFrame` 重试 3 次）；模板去掉 `attr:value`。
+  - `buildDetail()` 多一个 `doneAtHint`：有值时「改动即时保存；留空不会删除原时间」，原本无记录时「原数据未记录，可在此补填」；行内新增 `.done-at-hint` 小字常驻展示——用户截图里那条 `111111` 就是旧数据（done 但无时间戳），现在打开会明确告诉他“未记录、可补填”，不会误以为数据被弄丢。
+- **验证结论**：用例「修改完成时间」（重写，现覆盖 6 个场景）通过：预填 / 修改落盘 / 列表副标题同步 / **清空后存储值不变且输入框回显原值** / 未完成隐藏 / **老数据提示“未记录”并可补填落盘** / 已归档任务同样可改；控制台 `consoleErrors: 0`。另在正式数据上实地复测截图那条：`111111` → 行可见、输入框空、提示「原数据未记录，可在此补填」，未被写坏。
+- **本回合踩的坑（已沉淀 `pitfalls/027`）**：`input` 的值不能用 `attr:value` 绑定（脏值后 attribute 不同步到 property）；顺带记下“`change` 会在清空时触发，可编辑时间戳的空值不能当清除”。CONTEXT.md 的 `onDoneAtChange` / 方法表 / 使用指南第 9 条 / 用例表与踩坑索引已同步。
+
+---
+
+### 2026-10-14 · 详情弹窗里可修改已完成任务的完成时间（用户需求）
+
+- **用户需求**：「已经checked的项目（包括已归档的），允许在那个弹窗详情里修改完成时间」。
+- **改了什么**（`pages/home.html` + 新用例）：
+  - 详情弹窗在「状态」行下新增**「完成时间」编辑行**（`.done-at-row`，原生 `input[type=datetime-local]`，预填 `statusChangedAt` 的本地时区值）；显示条件 `detail.doneEditable = done && !deletedAt && !pendingDeleteAt`（倒计时中也不给改），未完成 / 垃圾桶任务该行 `hidden`。
+  - 新增 proto：`toDatetimeLocal(ts)`（时间戳 → `datetime-local` value）与 `onDoneAtChange(ev)`（`change` 时写回 `statusChangedAt`，清空输入框置 `null` → 重算 `detail` 快照 → 立即 `persistTodos()`）。`buildDetail()` 多产出 `doneEditable` / `doneAtValue` 两个字段。
+  - **为什么改 `statusChangedAt` 而不新增字段**：完成时刻的唯二消费方——归档「按完成日 / 周」分组（`completedAt()`）与副标题「完成于 …」都读它，改它则两处即时重算，无第二写入路径。
+- **验证结论**：`run-tests` 新用例「修改完成时间」通过（31.3s）：已完成任务预填非空、改成 `2026-10-01T08:30` 后存储 `statusChangedAt` 精确写回、弹窗内同步、列表副标题出现「10-01 08:30」；未完成任务该行 `hidden`；归档任务（`archivedAt` 非空）同样可改并落盘；控制台 `consoleErrors: 0`。跑完核对：`__todo_test_dirty` 已清、`__todo_store_id` / `todo-ui-state` 已移除，正式空间 3 条用户数据完好。
+- **环境备注**：本轮两次 `run-tests` 撞上调试桥抖动（一次 ACK timeout 90s+、一次 `T` 定义丢失是因为忘了重推快照），重推 + 重跑即绿，与历史记录一致（`pitfalls/019` / `020`）。**本回合未踩新坑**（未新建 pitfalls）。
+
+---
+
 ### 2026-10-13 · 任务支持「置顶」，且置顶项只能在置顶项之间拖拽排序（用户需求）
 
 - **用户需求**：「允许给 item 任务添加置顶的功能。置顶后的 item 只能在置顶内的 item 之间拖拽位置。」

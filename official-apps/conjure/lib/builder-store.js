@@ -51,6 +51,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
 
   const res = {
     agent: null, // 缓存的 Agent 实例（ensureAgent 建 / invalidateAgent 失效）
+    agentKeyId: "", // 缓存 Agent 构建时所用的 key id（模型被供应商拒绝时自愈定向清缓存）
     activeModel: "", // 当前 Agent 实际使用的模型标识
     aiModules: null, // /mz/ai 模块缓存
     netModules: null, // /mz/net 联网能力模块缓存（web_fetch 工具与能力桥共用）

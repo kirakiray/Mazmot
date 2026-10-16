@@ -51,6 +51,21 @@ export function pickAutoKey(keys) {
 }
 
 /**
+ * 是否「模型不在可用范围」类错误（HTTP 403 且报文提及模型被拒）：典型场景
+ * 是 relay 上游白名单删减后，本端仍把旧模型名显式传给供应商。这类失败清掉
+ * 过期的模型选择自愈即可，与限流 / 鉴权失败（同样可能是 403）区分开。
+ * @param {Error} error 供应商请求错误（assistant._buildError 产出，报文序列化在 message 里）
+ * @returns {boolean}
+ */
+export function isModelRejectedError(error) {
+  const msg = String(error?.message || "");
+  if (!/API error: 403\b/.test(msg)) return false;
+  return /不在该用户的可用模型范围内|不在可用模型|可用模型范围|not allowed|not permitted|allowed models|model not found/i.test(
+    msg,
+  );
+}
+
+/**
  * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留
  * 回合若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整体丢弃
  * 该回合——悬空的 tool_calls 会让下一次模型请求报错。

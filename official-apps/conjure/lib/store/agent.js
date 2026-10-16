@@ -48,10 +48,11 @@ export function createAgentPart(api) {
       key = pickAutoKey(keys);
     }
 
-    // 模型选择：手动选中的模型优先，但须在已知可用清单里——清单来自
-    // getModels 动态拉取（缓存数组）；拉取失败用内置表校验（缓存 null）；
-    // 尚未拉取过（无缓存，如刷新后恢复的偏好）则不指定模型，relay 供应商
-    // 会自行静默取上游首个可用模型，其余供应商走各自默认
+    // 模型选择：手动选中的模型优先，但必须在已知可用清单里——清单来自
+    // getModels 动态拉取（缓存数组）或内置表（拉取失败，缓存 null）。
+    // 尚未拉取过（无缓存）时不信任恢复的偏好——那可能是上游已删减的旧模型
+    // 名，传出去必撞白名单 403；此时不指定模型，relay 供应商会自行静默取
+    // 上游首个可用模型，其余供应商走各自默认
     const cached = key ? modelOptionsCache.get(key.id) : undefined;
     const knownModels = Array.isArray(cached)
       ? cached.map((o) => o.id)
@@ -59,11 +60,7 @@ export function createAgentPart(api) {
         ? MODEL_OPTIONS[key.provider] || []
         : null;
     let model;
-    if (
-      key &&
-      state.activeModelId &&
-      (knownModels === null || knownModels.includes(state.activeModelId))
-    ) {
+    if (key && state.activeModelId && knownModels?.includes(state.activeModelId)) {
       model = state.activeModelId;
     } else if (key?.provider === "deepseek") {
       model = "deepseek-flash";
@@ -74,7 +71,7 @@ export function createAgentPart(api) {
     } else {
       model = undefined;
     }
-    return { assistant: getAssistant(key?.id), model };
+    return { assistant: getAssistant(key?.id), model, keyId: key?.id || "" };
   };
 
   async function ensureAgent() {
@@ -105,7 +102,8 @@ export function createAgentPart(api) {
         : new chainModules.MemorySaver();
     }
 
-    const { assistant, model } = await pickAssistant();
+    const { assistant, model, keyId } = await pickAssistant();
+    res.agentKeyId = keyId; // 模型被供应商拒绝时（turn 自愈）定向清该 key 的缓存
     res.activeModel = model || assistant.providerName || "";
     set("activeModel", res.activeModel);
     // 写入目标：已选应用随应用记录锁定；草稿阶段跟随目标偏好
@@ -451,11 +449,13 @@ export function createAgentPart(api) {
   // 拉取当前生效 key 的可用模型（getModels，relay 供应商即 /v1/models），
   // 写入 state.modelOptions 供输入区气泡展示。静默自动拉取：进应用 / key 列表
   // 变化（syncApiKeyList）/ 手动切换 key 时都会执行，「自动」模式下解析的是
-  // 自动选择将命中的 key（deepseek 优先，否则第一台），无需用户手动点开菜单
-  async function refreshModelOptions() {
+  // 自动选择将命中的 key（deepseek 优先，否则第一台），无需用户手动点开菜单。
+  // 可传 keyId 定向刷新（模型被供应商拒绝后的自愈：清了该 key 的缓存重拉）
+  async function refreshModelOptions(keyId) {
     const seq = ++modelOptionsSeq;
-    const key = state.activeKeyId
-      ? state.apiKeys.find((k) => k.id === state.activeKeyId)
+    const wantId = keyId || state.activeKeyId;
+    const key = wantId
+      ? state.apiKeys.find((k) => k.id === wantId)
       : pickAutoKey(state.apiKeys);
     if (!key || !res.aiModules?.getAssistant) {
       set("modelOptions", []);
@@ -476,7 +476,14 @@ export function createAgentPart(api) {
         .filter((id) => typeof id === "string" && id)
         .map((id) => ({ id, label: id }));
       modelOptionsCache.set(key.id, list);
-      if (seq === modelOptionsSeq) applyModelOptions(list);
+      if (seq === modelOptionsSeq) {
+        applyModelOptions(list);
+        // 手动选中的模型已从最新清单消失（如 relay 上游白名单删减）：静默
+        // 回「自动」，避免下回合把失效模型名继续显式传给供应商
+        if (state.activeModelId && !list.some((o) => o.id === state.activeModelId)) {
+          await selectModel("");
+        }
+      }
     } catch (err) {
       console.warn("获取模型列表失败，回退内置清单：", err?.message ?? err);
       modelOptionsCache.delete(key.id); // 不缓存失败结果，下次切换重试
@@ -545,6 +552,29 @@ export function createAgentPart(api) {
     }
   }
 
+  // 模型被供应商拒绝（403 不在可用范围，如 relay 上游白名单删减后仍传旧
+  // 模型名）自愈：清掉手动模型选择回「自动」、丢弃该 key 的模型清单缓存
+  // （配合 refreshModelOptions(keyId) 重拉）并失效缓存 Agent。返回是否确有
+  // 清理——既没选模型也无缓存时重试不会变好，调用方不必自愈
+  async function forgetModel(keyId) {
+    const hadSelection = !!state.activeModelId;
+    const hadCache = !!(keyId && modelOptionsCache.has(keyId));
+    if (keyId) modelOptionsCache.delete(keyId);
+    if (hadSelection) {
+      set("activeModelId", "");
+      refreshEffortOptions();
+      if (selfStore) {
+        try {
+          await selfStore.setItem("pref:active-model", "");
+        } catch {
+          /* 存储失败不影响本次会话 */
+        }
+      }
+    }
+    invalidateAgent();
+    return hadSelection || hadCache;
+  }
+
   return {
     ensureEfforts,
     pickAssistant,
@@ -561,6 +591,7 @@ export function createAgentPart(api) {
     syncApiKeyList,
     selectModel,
     selectApiKey,
+    forgetModel,
     API_KEY_LIST_KEY,
   };
 }

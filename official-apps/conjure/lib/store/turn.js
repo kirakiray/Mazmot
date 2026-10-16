@@ -20,6 +20,7 @@ import {
   syncAppManifest,
   createAppBackup,
   pruneAppSnaps,
+  isModelRejectedError,
 } from "../builder.js";
 import { diffLines, diffStat, compactHunks } from "../diff.js";
 
@@ -975,9 +976,11 @@ export function createTurnPart(api) {
       // 增量落盘，续跑与「继续」同语义（wire 可能留下重复 user，无害）。
       // 倒计时经 state.turnRetry 驱动状态行展示，停止按钮随时中断等待。
       // Agent 引用在循环外捕获一次：技能后台同步等流程会在回合中途置空
-      // res.agent（那只为下一回合重建提示词），运行中回合持有自身引用
-      const turnAgent = res.agent;
+      // res.agent（那只为下一回合重建提示词），运行中回合持有自身引用；
+      // 唯一的例外是下方模型被拒自愈——显式重建并接管引用
+      let turnAgent = res.agent;
       let retryAttempt = 0;
+      let modelHealed = false;
       while (true) {
         try {
           await turnAgent.chat({
@@ -992,6 +995,23 @@ export function createTurnPart(api) {
           });
           break;
         } catch (chatError) {
+          // 模型被供应商拒绝（403 不在可用范围，如 relay 上游白名单删减后
+          // 仍传旧模型名）：清掉过期的手动模型选择与该 key 的清单缓存，重建
+          // Agent（不再指定模型，relay 自取上游首个可用）后本回合内重试一次；
+          // 无可清理或重建失败时按原错误收场
+          if (!modelHealed && !abort.stopped && isModelRejectedError(chatError)) {
+            const healed = await api.forgetModel(res.agentKeyId);
+            if (healed) {
+              modelHealed = true;
+              try {
+                await api.refreshModelOptions(res.agentKeyId);
+                turnAgent = await api.ensureAgent();
+                continue;
+              } catch {
+                throw chatError;
+              }
+            }
+          }
           if (
             abort.stopped ||
             retryAttempt >= MAX_CHAT_RETRIES ||

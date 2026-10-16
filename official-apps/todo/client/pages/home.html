@@ -485,6 +485,24 @@
     }
     .detail-row { display: flex; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
     .detail-row .k { flex: none; width: 72px; }
+    /* 完成时间编辑行：仅已完成（含已归档）的任务显示 */
+    .done-at-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    .done-at-row .k { flex: none; width: 72px; }
+    .done-at-row input[type=datetime-local] {
+      flex: 1;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 4px 8px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 8px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      font-size: 13px;
+    }
+    .done-at-row input[type=datetime-local]:focus { outline: none; border-color: var(--md-sys-color-primary); }
+    /* 行内说明：告诉用户留空不会改动原值（避免误以为“清空 = 清除”） */
+    .done-at-row .done-at-hint { flex: none; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
     /* ===== 详情弹窗里的多行编辑区（.rt-*） =====
        框内每行是一个 .rt-line 块，行结构由页面自己管（回车拆行、粘贴只取纯文本）。
        ⚠️ 曾经给「第一个非空行」在框内加粗加大（.rt-line.rt-title）——判定时机与
@@ -911,6 +929,13 @@
         </div>
         <div class="detail-row"><span class="k">分组</span><span>{{detail.groupText}}</span></div>
         <div class="detail-row"><span class="k">状态</span><span>{{detail.statusText}}</span></div>
+        <!-- 完成时间：已完成（含已归档、且不在垃圾桶）的任务可在此修改。
+             留空 / 清空一律不改数据（恢复原值），绝不会把原记录弄丢 -->
+        <div class="done-at-row" class:hidden="!detail.doneEditable">
+          <span class="k">完成时间</span>
+          <input type="datetime-local" on:change="onDoneAtChange" />
+          <span class="done-at-hint">{{detail.doneAtHint}}</span>
+        </div>
         <div class="detail-row"><span class="k">创建时间</span><span>{{detail.createdText}}</span></div>
         <div class="detail-row"><span class="k">状态变更</span><span>{{detail.statusChangedText}}</span></div>
         <div class="detail-row"><span class="k">归档时间</span><span>{{detail.archivedText}}</span></div>
@@ -1076,6 +1101,9 @@
             statusChangedText: "",
             archivedText: "",
             deletedText: "",
+            doneEditable: false,
+            doneAtValue: "",
+            doneAtHint: "",
           },
         },
 
@@ -2345,6 +2373,9 @@
           buildDetail(todo) {
             const timeOr = (ts) =>
               typeof ts === "number" ? this.formatTime(ts) : "—";
+            // 完成时间可编辑的条件：已勾选完成，且不在垃圾桶（倒计时中也不给改，状态随时会变）
+            const doneEditable =
+              !!todo.done && !todo.deletedAt && !todo.pendingDeleteAt;
             return {
               // 详情弹窗里的图片快照（模板只读字段）
               images: (todo.images || []).map((im) => ({ id: im.id, dataUrl: im.dataUrl })),
@@ -2362,7 +2393,66 @@
               statusChangedText: timeOr(todo.statusChangedAt),
               archivedText: timeOr(todo.archivedAt),
               deletedText: timeOr(todo.deletedAt),
+              // 完成时间编辑行：datetime-local 的 value（本地时区 YYYY-MM-DDTHH:mm）
+              doneEditable,
+              doneAtValue: this.toDatetimeLocal(todo.statusChangedAt),
+              // 行内说明：旧数据可能根本没记过完成时间；有值时提醒“留空不改动”
+              doneAtHint:
+                typeof todo.statusChangedAt === "number"
+                  ? "改动即时保存；留空不会删除原时间"
+                  : "原数据未记录，可在此补填",
             };
+          },
+
+          // 时间戳 → datetime-local 控件的 value（本地时区）；非法值返回空串
+          toDatetimeLocal(ts) {
+            if (typeof ts !== "number" || Number.isNaN(new Date(ts).getTime())) return "";
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, "0");
+            return (
+              d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+              "T" + p(d.getHours()) + ":" + p(d.getMinutes())
+            );
+          },
+
+          // 详情弹窗里修改完成时间：写回 statusChangedAt 并立即落盘。
+          // 归档视图「按完成日 / 按完成周」的分组基准就是它，改完后分组会即时重算。
+          // ⚠️ 留空 / 清空一律不做任何修改（不写 null）：编辑时按退格、误选删除都会触发 change，
+          // 直接写 null 会把原来的完成时间静默弄丢且无法撤销；这里改成把输入框恢复成原值。
+          onDoneAtChange(ev) {
+            const id = this.detailId;
+            if (!id) return;
+            const todo = this.todos.find((t) => t.id === id);
+            if (!todo) return;
+            const input = ev && ev.target;
+            const raw = input ? String(input.value || "") : "";
+            const prevTs =
+              typeof todo.statusChangedAt === "number" ? todo.statusChangedAt : null;
+            const restore = (reason) => {
+              if (input) input.value = this.toDatetimeLocal(prevTs);
+              this.detail = this.buildDetail(todo);
+              console.log("[detail] 完成时间未修改（" + reason + "），保留原值", prevTs);
+            };            if (!raw) {
+              restore("输入为空");
+              return;
+            }
+            const parsed = new Date(raw);
+            if (Number.isNaN(parsed.getTime())) {
+              restore("输入无法解析");
+              return;
+            }
+            const ts = parsed.getTime();
+            if (ts === prevTs) {
+              restore("与原值相同");
+              return;
+            }
+            this.todos = this.todos.map((t) =>
+              t.id === id ? { ...t, statusChangedAt: ts } : t
+            );
+            const updated = this.todos.find((t) => t.id === id);
+            if (updated) this.detail = this.buildDetail(updated);
+            console.log("[detail] 修改完成时间", id, raw, "→", ts);
+            this.persistTodos();
           },
 
           // 打开详情：既填好只读元信息，也把多行编辑区预填成当前内容
@@ -2374,6 +2464,8 @@
             this.detailId = id;
             const draft = todo.desc ? todo.text + "\n" + todo.desc : todo.text || "";
             this.fillEditor(draft);
+            // 完成时间输入框用 JS 填（见 syncDoneAtInput 的说明）
+            this.syncDoneAtInput(this.detail.doneAtValue);
             this.detailOpen = true;
             console.log("[detail] 打开详情", id, todo.text);
           },
@@ -2394,6 +2486,33 @@
             const page = document.querySelector("o-page");
             const root = page && page.shadowRoot;
             return (root && root.querySelector(".rt-editor")) || null;
+          },
+
+          // 详情弹窗里「完成时间」输入框元素
+          doneAtInputEl() {
+            const page = document.querySelector("o-page");
+            const root = page && page.shadowRoot;
+            return (
+              (root && root.querySelector(".done-at-row input[type=datetime-local]")) ||
+              null
+            );
+          },
+
+          // 把完成时间写进输入框。
+          // ⚠️ 必须用 JS 设 property，不能靠 attr:value 绑定：input 的 value 一旦被 JS 改过，
+          // attribute 变更就不再同步到 property（脏值标志），换一条任务打开时
+          // 会残留上一条的值（老数据无时间时尤其明显），看起来就像“时间乱了 / 丢了”
+          syncDoneAtInput(value, tries) {
+            const el = this.doneAtInputEl();
+            if (!el) {
+              if ((tries || 0) < 3) {
+                requestAnimationFrame(() =>
+                  this.syncDoneAtInput(value, (tries || 0) + 1)
+                );
+              }
+              return;
+            }
+            el.value = value || "";
           },
 
           // 视觉行（块级边界即换行）：从 innerText 读，不依赖 DOM 是否规范
