@@ -15,6 +15,7 @@
 //   tasks           会话任务清单与预览错误自动同步
 //   tests           场景测试执行与结果持久化
 //   backups         数据备份、回合快照、发布、变更卡 diff 与回滚
+//   locale          locale-text 多语种翻译（开发工具：扫描 / 合并 / 写回）
 //   turn            发送主流程与回合收尾（含流式事件映射）
 //   forms           视觉交互表单（show_form）
 //   init            初始化装配
@@ -42,6 +43,7 @@ import { createPreviewPart } from "./store/preview.js";
 import { createTasksPart } from "./store/tasks.js";
 import { createTestsPart } from "./store/tests.js";
 import { createBackupsPart } from "./store/backups.js";
+import { createLocalePart } from "./store/locale.js";
 import { createTurnPart } from "./store/turn.js";
 import { createFormsPart } from "./store/forms.js";
 import { createInitPart } from "./store/init.js";
@@ -87,6 +89,7 @@ export function createBuilderStore({ fs, mazmotStore, selfStore, load }) {
   Object.assign(api, createTasksPart(api));
   Object.assign(api, createTestsPart(api));
   Object.assign(api, createBackupsPart(api));
+  Object.assign(api, createLocalePart(api));
   Object.assign(api, createTurnPart(api));
   Object.assign(api, createFormsPart(api));
   Object.assign(api, createInitPart(api));

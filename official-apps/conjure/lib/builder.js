@@ -1912,7 +1912,7 @@ export const home = "./pages/home.html";
 
 ### 平台能力（Mazmot 与 NoneOS Core 双层 API）
 生成的应用运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），可用两套系统 API：
-- NoneOS Core（/nos/*）：/nos/storage/main.js 键值存储（见「数据持久化」）、/nos/fs/main.js 文件系统、/nos/user/main.js 用户等；
+- NoneOS Core（/nos/*）：/nos/storage/main.js 键值存储（见「数据持久化」）、/nos/fs/main.js 文件系统、/nos/locale-text/locale-text.html 与 get-locale-text.js 多语言文案（见下方「多语言」节）、/nos/user/main.js 用户等；
 - Mazmot 平台（/mz/*）：/mz/net/main.js 联网抓取与搜索（见下一节）、/mz/ai/main.js 多供应商 AI 对话、/mz/share-mgr.js 应用分享等。
 加载约束与 /nos/* 相同：页面模块顶层禁止 import，必须用页面工厂参数注入的 load 按需加载。API 用法不确定时先 read_skill 查知识库（Mazmot 平台 → mazmot-api，NoneOS Core → noneos-core-docs）。
 
@@ -1948,6 +1948,21 @@ export default async ({ load }) => {
   return { data: { /* 声明模板用到的 data 安全默认值 */ } };
 };
 \`\`\`
+
+### 多语言（NoneOS Core locale-text 方案）
+应用界面文案需要支持多语言时，统一用 NoneOS Core 提供的 locale-text 方案（完整 API 与语言判定规则用 read_skill 查 noneos-core-docs 知识库的 locale-text 章节）。**书写格式固定**，不合格式的条目无法被宿主翻译工具提取：
+- HTML 文案包在 \`<locale-text>\` 组件里，每个语种一个带 lang 属性的子元素（页面先声明 \`<l-m src="/nos/locale-text/locale-text.html"></l-m>\`）：
+\`\`\`html
+<locale-text>
+  <span lang="cn">开始</span>
+  <span lang="en">Get Started</span>
+</locale-text>
+\`\`\`
+- 需要拼接动态值时用 {key} 占位符（HTML 用 data-* 属性传值，JS 用第二参数 vars），**禁止模板字符串插值**——基准文本随变量漂移会导致无法收录进翻译表；脚本动态文案用 getLocaleText（页面内 \`await load("/nos/locale-text/get-locale-text.js")\`）：
+\`\`\`js
+getLocaleText({ cn: "网络请求失败: {msg}", en: "Network failed: {msg}" }, { msg });
+\`\`\`
+- 源码里只写 cn / en 两个语种即可；宿主「工具」面板的「多语种翻译」工具会扫描提取全部条目生成 client/locale-text.json，ja / ko 等其他语种由该 JSON 按基准文本 hash 自动回退提供，无需改源码。文案没包进 <locale-text>、脚本没走 getLocaleText 的不会被收录。
 
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。
