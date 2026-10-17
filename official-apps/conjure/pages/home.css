@@ -187,7 +187,7 @@
 }
 
 /* ---------- 顶栏功能 Hub（90vw × 90vh 居中对话框：底部导航 + 内容页） ----------
- * 六入口（应用设置 / 预览 / 版本 / 测试 / 资源 / 工具）收拢一处；st-dialog 面板尺寸经
+ * 五入口（应用设置 / 预览 / 版本 / 资源 / 工具）收拢一处；st-dialog 面板尺寸经
  * ::part(panel) 覆盖（senti-ui 面板视觉在 shadow part 上） */
 .hub-dialog::part(panel) {
   width: 90vw;
@@ -4781,11 +4781,7 @@ st-icon-button.published {
   }
 }
 
-/* ---------- 多语种翻译对话框（开发工具：locale-text 条目编辑） ---------- */
-
-.locale-dialog::part(panel) {
-  width: min(760px, 92vw);
-}
+/* ---------- 多语种翻译（工具 tab 右侧工作区：locale-text 条目编辑） ---------- */
 
 .locale-panel {
   display: flex;
@@ -4951,51 +4947,27 @@ st-icon-button.published {
   border-color: var(--md-sys-color-primary);
 }
 
-/* ---------- 工具 tab（开发工具：卡片清单，点卡片开对应工具对话框） ---------- */
+/* ---------- 工具 tab（开发工具：左清单 + 右工作区，复用资源页主从布局） ---------- */
 
-.devtools-body {
-  max-width: 860px;
+/* 工作区卡片复用 .tools-detail；locale 面板撑满卡片高度（卡片被列拉伸后
+   条目列表吃剩余空间内部滚动），条目区不再用对话框时代的 56vh 定值 */
+.devtool-detail .locale-panel {
+  height: 100%;
+  box-sizing: border-box;
+  gap: 12px;
 }
 
-.devtools-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.devtool-detail .locale-entries {
+  flex: 1;
+  min-height: 200px;
+  max-height: none;
 }
 
-.devtool-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--md-sys-color-surface-container);
-  cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.1s ease;
-}
-
-.devtool-card:hover {
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.devtool-card:active {
-  transform: scale(0.99);
-}
-
-.devtool-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.devtool-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface);
-}
-
-.devtool-desc {
+/* 项目切换后条目仍是上一项目的扫描结果：提示条引导重新扫描 */
+.locale-stale {
   font-size: 12px;
-  line-height: 1.6;
-  color: var(--md-sys-color-on-surface-variant);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
 }

@@ -1126,7 +1126,7 @@ export function createTurnPart(api) {
       ) {
         api.autoCheckPreview(changedApp);
         // 场景测试不自动跑（用户拍板：回合收尾自动跑体验太密，改为用户在
-        // 测试抽屉点跑 / AI 经 preview action=run-tests 主动跑）
+        // 开发工具的场景测试工作区点跑 / AI 经 preview action=run-tests 主动跑）
       }
       // adoptNewApp 可能把回合迁移到新应用会话，收尾后按最终 turnKey 清忙
       markBusy(res.turnKey, false);
