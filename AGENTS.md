@@ -6,17 +6,19 @@
 
 - **底层架构 (Base Layer)**：基于 `noneos-core` 开发。
   - 涉及文件系统、用户管理及服务通信时，请参考 `noneos-core-docs` 知识库。
-- **应用框架 (Application Layer)**：基于 `ofa.js` 开发。
-  - 进行组件开发、路由配置或状态管理时，请参考 `ofajs-docs` 知识库。
+- **应用框架 (Application Layer)**：基于 `ofa.js` **v5 分支**开发。
+  - 进行组件开发、路由配置或状态管理时，请参考 `ofajs-docs` 知识库；v5 专用文档在 ofa.js 仓库 `.agents/skills/ofajs-docs-v5/`。
+  - 条件与列表渲染用 `o-if` / `o-else-if` / `o-else` / `o-fill`（`x-` 系 v5 起不生效并报弃用错误）；router / scsr 在 `packages/<pkg>/dist/`。
 
 ## 依赖 URL 规范
 
 ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片化。
 
-- **ofa.js**：除 Core 引导入口（根 `index.html` 与 `apps/run-app/` 下所有文件）外一律使用 `/gh/` 本地前缀，见下方「按加载位置区分前缀」。
+- **ofa.js（v5 线）**：统一走 v5 分支——`ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs`，除 Core 引导入口（根 `index.html` 与 `apps/run-app/` 下所有文件）外一律使用 `/gh/` 本地前缀，见下方「按加载位置区分前缀」。
   - 必须带 `#debug`，开发期保留调试信息
-  - 根 `index.html` 与 `apps/run-app/`、`bridge/` 走 jsdelivr 完整 URL，根入口可锁定具体版本（如 `@4.7.1`）；其余入口 / 组件 / 页面模块 / 测试页一律用 `/gh/...@latest`
-- **ofa.js router**：路径 `ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号，跟随主仓库），前缀同样按加载位置区分。
+  - **v5 是分支不是 tag，必须写 `@refs/heads/v5`**：`@v5` 会被 jsdelivr 当 semver 解析而 404；禁止改写成 `@latest`、`@4.7.x` 或无版本裸路径（无版本会解析到 v4 的 `main` 分支）
+  - 根 `index.html` 与 `apps/run-app/`、`bridge/` 走 jsdelivr 完整 URL，其余入口 / 组件 / 页面模块 / 测试页一律用 `/gh/...@refs/heads/v5/...`
+- **ofa.js router（v5 桥接包）**：路径 `ofajs/ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs`，**必须在 ofa.js 之后加载**（桥接包挂接页面已加载的全局 `$`，缺失时报 `ofa.js must be loaded before router`），前缀同样按加载位置区分。
 - **Senti-UI**：统一走 `/gh/ofajs/senti-ui@latest/packages/...`（本地前缀，由 NoneOS Core Service Worker 拦截，离线可用；**始终用 `@latest`，不锁定版本**）；**例外**：根 `index.html` 与 `apps/run-app/`、`bridge/` 下所有文件（含 `apps/run-app/index.html` 的主题引导 `.../packages/boot/st-boot.js`、`run-app.html` / `bridge/bridge.html` 的组件引用）用完整 jsdelivr URL（`https://cdn.jsdelivr.net/gh/ofajs/senti-ui@latest/...`，加载时 SW 可能尚未注册），其余所有文件（含其他入口 HTML 与页面模块）一律 `/gh/`。禁止混用无版本裸路径或其他来源的 senti-ui 资源
 
 ### 按加载位置区分前缀（重要）
@@ -24,14 +26,14 @@ ofa.js / ofa.js router / Senti-UI 的 CDN URL 必须统一，避免版本碎片�
 同一份 ofa.js 仓库资源，**仅根 `index.html` 与 `apps/run-app/`、`bridge/` 下所有文件可用 jsdelivr 完整 URL，其余一律 `/gh/` 本地前缀**：
 
 - **Core 引导入口（仅此三处）**：根目录 [index.html](index.html) 与 [apps/run-app/](apps/run-app/)、[bridge/](bridge/) 下所有文件（含 [run-app.html](apps/run-app/run-app.html)、[bridge/bridge.html](bridge/bridge.html)），使用 `https://cdn.jsdelivr.net/gh/ofajs/...` 完整 URL。
-  - run-app / bridge 是自装 Core 的首访入口，其页面（进度 / 配置 UI）可能在 NoneOS Core SW 注册前渲染，`/gh/`、`/npm/` 本地前缀不可用，因此整个目录统一走 jsdelivr 完整 URL（根入口可锁定具体版本，如 `@4.7.1`）。
+  - run-app / bridge 是自装 Core 的首访入口，其页面（进度 / 配置 UI）可能在 NoneOS Core SW 注册前渲染，`/gh/`、`/npm/` 本地前缀不可用，因此整个目录统一走 jsdelivr 完整 URL（同样统一 `@refs/heads/v5`，不锁 tag / commit）。
   - **根 index.html 例外**：加载前先探测 NoneOS Core SW 是否已接管本页（`navigator.serviceWorker.controller`），已接管则 ofa / router / senti-ui 走 `/gh/` 本地前缀（决策写入 `window.__GH_BASE`），未接管才回退 jsdelivr。
-  - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug`
+  - 例：`https://cdn.jsdelivr.net/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug`
 - **其余所有文件**（`apps/network/index.html`、`official-apps/*/index.html`、模板应用等其他入口 HTML，以及全部页面模块 / 组件模块 / 普通模块 / 测试页）：必须使用 `/gh/`（或 `/npm/`）本地前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net`。
   - 这些入口均先经根引导入口装好 Core 再进入，SW 必定就绪，`/gh/` 可用；入口 HTML 自身的 Core 就绪校验（`await import("/nos/xxx/main.js")`）同样依赖 SW，二者一致。
-  - 例：`/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`、`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`
+  - 例：`/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug`、`/gh/ofajs/ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs`
 
-> ofa.js 仓库资源（`ofa.mjs` / router 等）版本必须统一（入口锁版本、模块用 `@latest`），禁止使用 `cdn.jsdelivr.net/gh/ofajs/ofa.js/dist/ofa.mjs`（无版本）等历史写法；也禁止在页面/组件模块里写死 jsdelivr 完整 URL。
+> ofa.js 仓库资源只有 v5 分支一种写法：核心 `dist/ofa.min.mjs`、router `packages/router/dist/router.min.mjs`，版本标识统一 `@refs/heads/v5`。禁止在页面 / 组件模块里写死 jsdelivr 完整 URL。
 
 ## NoneOS Core 依赖加载
 

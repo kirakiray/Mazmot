@@ -11,7 +11,7 @@
 | 层级 | 技术 | 用途 |
 | ---- | ---- | ---- |
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
-| 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
+| 应用框架 | ofa.js **v5** | 组件/页面模块、路由、状态管理，无需 Node/Webpack；核心 `ofa.js@refs/heads/v5/dist/ofa.min.mjs`，router `ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs` |
 | UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量 |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |

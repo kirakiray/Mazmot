@@ -9,7 +9,7 @@ version: "1.5.8"
 本技能**只讲 Mazmot 自身提供的能力**。底层能力请查对应技能：
 
 - 文件系统（`/nos/fs/main.js`）、用户 / 联机（`/nos/user/main.js`）、P2P 发布（`/nos/publish/*`）、图标（`/nos/n-icon/*`）等 → 查 **noneos-core-docs** 技能。
-- `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能。
+- `<template page>` / `<template component>` / `o-app` / `o-router` / `proto` / `sync:` / `on:click` 等模板语法、路由、状态管理 → 查 **ofajs-docs** 技能（本项目为 v5 分支，v5 文档在 ofa.js 仓库 `.agents/skills/ofajs-docs-v5/`）。
 - 持久化存储 → 查 **noneos-core-docs** 技能的 storage 章节。
 - 测试框架本身 → 查 **sibyl-test** 技能。
 - AI 助手封装（DeepSeek / Kimi / GLM（含 Coding Plan Key）对话、思考模式、流式输出、API Key 管理、AbortSignal 取消）→ 查 [references/ai.md](./references/ai.md)。

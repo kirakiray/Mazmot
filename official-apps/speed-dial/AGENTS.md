@@ -29,10 +29,10 @@
 
 ## 技术栈与数据约定
 
-- **框架**：ofa.js 页面模块（`<template page>`）。**修改任何 `.html` 页面/组件模块前，必须先调用 `Skill` 工具加载 `ofajs-docs`**，确认模板语法后再动手，禁止凭记忆写模板。
+- **框架**：ofa.js 页面模块（`<template page>`）。**修改任何 `.html` 页面/组件模块前，必须先调用 `Skill` 工具加载 `ofajs-docs`**（v5 分支用法见 ofa.js 仓库 `.agents/skills/ofajs-docs-v5/`），确认模板语法后再动手，禁止凭记忆写模板。
 - **依赖 URL（自包含规范）**：
-  - **ofa.js**：所有文件（含入口 HTML）一律用 `/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug`（本地前缀，由 NoneOS Core Service Worker 拦截），必须带 `#debug`，禁止写死 jsdelivr 完整 URL（完整 URL 仅限仓库根 `index.html` 与 `apps/run-app/index.html` 两个 Core 引导入口）。
-  - **ofa.js router**：`/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs`（无版本号）。
+  - **ofa.js**：所有文件（含入口 HTML）一律用 `/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug`（本地前缀，由 NoneOS Core Service Worker 拦截），必须带 `#debug`，禁止写死 jsdelivr 完整 URL（完整 URL 仅限根 `index.html`、`apps/run-app/`、`bridge/` 三个 Core 引导入口）。
+  - **ofa.js router**：`/gh/ofajs/ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs`（v5 桥接包，必须在 ofa.js 之后加载）。
   - **Senti-UI**：本应用已完全改用 senti-ui（`st-*` 组件）。组件统一从 `/gh/ofajs/senti-ui@latest/packages/<component>/<component>.html` 加载（本地前缀，始终用 `@latest`，不锁版本）；命令式工具用 `/gh/ofajs/senti-ui@latest/packages/snackbar/toast.js` 与 `/gh/ofajs/senti-ui@latest/packages/dialog/confirm.js|alert.js|prompt.js`（**default 导出**，`load()` 取值要写 `const { default: toast } = await load(...)`）。禁止引入其他来源的组件资源。
 - **存储**：数据统一存 `/nos/storage/main.js` 的 `getStorage("speed-dial")` 独立空间；**禁止** `localStorage`、禁止塞进默认空间。页面模块内必须 `const load = lm(import.meta); await load("/nos/storage/main.js")` 按需加载，**禁止顶层 `import "/nos/*"`**。
 - **图标**：统一 `<n-icon icon="mdi:xxx">`，页面需声明 `<l-m src="/nos/n-icon/n-icon.html"></l-m>`，禁止直接依赖 `iconify-icon`。

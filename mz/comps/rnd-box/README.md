@@ -12,7 +12,7 @@
 
 ```html
 <script
-  src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug"
+  src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug"
   type="module"
 ></script>
 <script src="/gh/ofajs/senti-ui@latest/packages/boot/st-boot.js"></script>

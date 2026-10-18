@@ -1884,8 +1884,8 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>应用名</title>
-    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
-    <script src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
+    <script src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug" type="module"></script>
+    <script src="/gh/ofajs/ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs" type="module"></script>
     <script src="/gh/ofajs/senti-ui@main/packages/boot/st-boot.js"></script>
     <style>html,body{height:100%;margin:0}</style>
   </head>
