@@ -105,6 +105,12 @@
     }
 
     /* ===== AI Key 表单 ===== */
+    /* 步骤容器：表单卡片与下方会员入口之间留出间距（两者是兄弟节点） */
+    .key-step {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     .form-card {
       padding: 16px;
       border-radius: 16px;
@@ -156,6 +162,65 @@
       gap: 12px;
       justify-content: flex-end;
       flex-wrap: wrap;
+    }
+
+    /* ===== 会员购买入口 ===== */
+    .member-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container),
+        var(--md-sys-color-tertiary-container)
+      );
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .member-icon {
+      flex-shrink: 0;
+      font-size: 24px;
+      color: var(--md-sys-color-primary);
+    }
+    .member-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .member-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .member-desc {
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 1.5;
+      opacity: 0.85;
+    }
+    .member-card st-button {
+      flex-shrink: 0;
+    }
+    /* 会员购买弹窗：内部 o-app 需要确定高度，否则页面撑不开 */
+    .dlg-membership::part(panel) {
+      width: min(620px, 100%);
+    }
+    .membership-body {
+      height: min(640px, 76vh);
+      text-align: start;
+    }
+    .membership-body o-app {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    @media (max-width: 560px) {
+      .member-card {
+        flex-wrap: wrap;
+      }
+      .member-card st-button {
+        width: 100%;
+      }
     }
 
     /* ===== 用途选项 ===== */
@@ -431,6 +496,22 @@
                       </div>
                     </div>
                   </o-if>
+                  <!-- 收费入口：购买会员（点击弹窗内嵌官方会员应用） -->
+                  <div class="member-card">
+                    <n-icon class="member-icon" icon="mdi:crown-outline"></n-icon>
+                    <div class="member-body">
+                      <div class="member-title">
+                        <locale-text><span lang="cn">Mazmot Pro 会员</span><span lang="en">Mazmot Pro membership</span></locale-text>
+                      </div>
+                      <div class="member-desc">
+                        <locale-text><span lang="cn">购买会员，获得内置 AI 额度与全部官方应用。</span><span lang="en">Get built-in AI quota and every official app with a membership.</span></locale-text>
+                      </div>
+                    </div>
+                    <st-button variant="filled" on:click="openMembershipDialog">
+                      <n-icon icon="mdi:crown-outline" slot="prefix"></n-icon>
+                      <locale-text><span lang="cn">购买会员</span><span lang="en">Buy membership</span></locale-text>
+                    </st-button>
+                  </div>
                 </div>
               </o-if>
 
@@ -521,6 +602,20 @@
     </o-if>
   </div>
 
+  <!-- 会员购买弹窗：内嵌官方应用 official-apps/membership（app-config.js 微应用）。
+       关闭时 o-if 销毁 o-app，下次打开回到第一步 -->
+  <st-dialog class="dlg-membership" sync:open="memberDialogOpen" auto-close>
+    <div class="membership-body">
+      <o-if :value="memberDialogOpen">
+        <o-app
+          src="/official-apps/membership/app-config.js"
+          on:membership-purchased="handleMembershipPurchased"
+          on:membership-close="closeMembershipDialog"
+        ></o-app>
+      </o-if>
+    </div>
+  </st-dialog>
+
   <script>
     export default async ({ load }) => {
       // 依赖模块与组件全部经工厂 load 并行加载（替代静态 <l-m> / 串行
@@ -548,6 +643,7 @@
         load("/gh/ofajs/senti-ui@main/packages/button/icon-button.html"),
         load("/gh/ofajs/senti-ui@main/packages/input/input.html"),
         load("/gh/ofajs/senti-ui@main/packages/select/select.html"),
+        load("/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"),
         load("/mz/comps/mascot/mascot.html"),
         load("/nos/n-icon/n-icon.html"),
         load("/nos/locale-text/locale-text.html"),
@@ -693,6 +789,8 @@
           purposeOptions: [],
           pickedApps: [],
           finishing: false,
+          // 会员购买弹窗（内嵌 official-apps/membership 微应用）
+          memberDialogOpen: false,
         },
 
         ready() {
@@ -727,6 +825,7 @@
           // 点击屏幕：打字中 → 立即补全；对话单元完成 → 淡出并进入下一个
           handleScreenClick() {
             if (!this.flowReady || this.transitioning || this.finishing) return;
+            if (this.memberDialogOpen) return;
             if (this.typing) {
               this.finishTyping();
               return;
@@ -881,6 +980,33 @@
             } finally {
               this.keySaving = false;
             }
+          },
+
+          // ===== 会员购买（内嵌官方应用 membership） =====
+
+          openMembershipDialog() {
+            this.memberDialogOpen = true;
+          },
+
+          closeMembershipDialog() {
+            this.memberDialogOpen = false;
+          },
+
+          // 会员应用在验证码通过、本地默认用户改名成功后上抛
+          handleMembershipPurchased(event) {
+            const data = (event && event.data) || {};
+            toast({
+              message: data.username
+                ? getLocaleText({
+                    cn: `会员开通成功，用户名已更新为 ${data.username}`,
+                    en: `Membership activated — username updated to ${data.username}`,
+                  })
+                : getLocaleText({
+                    cn: "会员开通成功",
+                    en: "Membership activated",
+                  }),
+              color: "success",
+            });
           },
 
           // ===== 用途选择步骤 =====
