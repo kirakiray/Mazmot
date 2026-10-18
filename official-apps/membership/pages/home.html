@@ -106,14 +106,15 @@
     .plan-options {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .plan-option {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-      padding: 12px 14px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 64px;
+      padding: 12px 16px;
       border-radius: 16px;
       border: 1px solid var(--md-sys-color-outline-variant);
       background-color: var(--md-sys-color-surface-container-low);
@@ -143,29 +144,77 @@
       align-items: center;
       gap: 6px;
       flex-wrap: wrap;
+      min-width: 0;
     }
     .plan-option-name {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
+      white-space: nowrap;
     }
     .plan-badge {
-      padding: 1px 6px;
+      padding: 0 6px;
       border-radius: 999px;
       font-size: 10px;
       font-weight: 600;
+      line-height: 1.6;
+      white-space: nowrap;
       background-color: var(--md-sys-color-tertiary);
       color: var(--md-sys-color-on-tertiary);
     }
     .plan-option-price {
-      font-size: 22px;
+      flex-shrink: 0;
+      font-size: 20px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
     .plan-option-per {
       margin-left: 4px;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 500;
       opacity: 0.75;
+    }
+
+    /* ===== 会员权益（第 1 步） ===== */
+    .benefits {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container-low);
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .benefits-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .benefit {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .benefit-icon {
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-size: 16px;
+      color: var(--md-sys-color-primary);
+    }
+    .benefit-body {
+      min-width: 0;
+    }
+    .benefit-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .benefit-desc {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
     }
 
     /* ===== 支付（Stripe · 虚拟支付） ===== */
@@ -209,24 +258,24 @@
       line-height: 1.6;
       color: var(--md-sys-color-on-surface-variant);
     }
-    .pay-grid {
+    /* 卡号 / 有效期 / CVC 同排，节省纵向空间（弹窗高度有限）。
+       st-input 默认 min-width 190px，网格里必须显式 min-width: 0 才不会被撑破 */
+    .pay-card-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
       gap: 10px;
     }
-    .pay-amount {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: 12px;
+    .pay-card-grid .field st-input {
+      width: 100%;
+      min-width: 0;
+    }
+    .pay-total {
+      margin-right: auto;
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
-      background-color: var(--md-sys-color-surface-container-high);
     }
-    .pay-amount strong {
-      font-size: 18px;
+    .pay-total strong {
+      font-size: 15px;
       color: var(--md-sys-color-on-surface);
       font-variant-numeric: tabular-nums;
     }
@@ -347,6 +396,19 @@
       flex-wrap: wrap;
     }
 
+    /* 窄屏：套餐与卡信息改为纵向排列，避免挤压 */
+    @media (max-width: 480px) {
+      .plan-options {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .pay-card-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .pay-card-grid .field:first-child {
+        grid-column: 1 / -1;
+      }
+    }
+
     /* ===== 成功页 ===== */
     .success-head {
       display: flex;
@@ -433,41 +495,6 @@
       </o-if>
     </header>
 
-    <!-- 套餐选择只在第 1 步展示，后续步骤靠「应付金额 / 会员方案」回顾 -->
-    <o-if :value="step === 'form'">
-    <section class="plans">
-      <div class="plans-head">
-        <span class="plans-title">
-          <locale-text><span lang="cn">选择套餐</span><span lang="en">Choose a plan</span></locale-text>
-        </span>
-        <span class="plan-perks">{{planPerks}}</span>
-      </div>
-      <div class="plan-options">
-        <button
-          class="plan-option"
-          class:selected="planId === 'monthly'"
-          on:click="pickPlan('monthly')"
-        >
-          <span class="plan-option-top">
-            <span class="plan-option-name">{{monthlyName}}</span>
-          </span>
-          <span class="plan-option-price">{{monthlyPrice}}<span class="plan-option-per">{{monthlyPeriod}}</span></span>
-        </button>
-        <button
-          class="plan-option"
-          class:selected="planId === 'yearly'"
-          on:click="pickPlan('yearly')"
-        >
-          <span class="plan-option-top">
-            <span class="plan-option-name">{{yearlyName}}</span>
-            <span class="plan-badge">{{yearlyBadge}}</span>
-          </span>
-          <span class="plan-option-price">{{yearlyPrice}}<span class="plan-option-per">{{yearlyPeriod}}</span></span>
-        </button>
-      </div>
-    </section>
-    </o-if>
-
     <div class="steps">
       <div
         class="step-item"
@@ -499,8 +526,23 @@
       </div>
     </div>
 
-    <!-- ===== 步骤 1：邮箱 / 用户名 / 绑定邮箱 ===== -->
+    <!-- ===== 步骤 1：会员权益 + 邮箱 / 用户名 ===== -->
     <o-if :value="step === 'form'">
+      <section class="benefits">
+        <div class="benefits-title">
+          <n-icon icon="mdi:diamond-stone"></n-icon>
+          <locale-text><span lang="cn">购买会员后拥有</span><span lang="en">Included with membership</span></locale-text>
+        </div>
+        <o-fill :value="benefits" fill-key="icon">
+          <div class="benefit">
+            <n-icon class="benefit-icon" attr:icon="$data.icon"></n-icon>
+            <div class="benefit-body">
+              <div class="benefit-title">{{$data.title}}</div>
+              <div class="benefit-desc">{{$data.desc}}</div>
+            </div>
+          </div>
+        </o-fill>
+      </section>
       <section class="card">
         <h2 class="card-title">
           <locale-text><span lang="cn">第 1 步 · 邮箱与用户名</span><span lang="en">Step 1 · Email and username</span></locale-text>
@@ -591,6 +633,37 @@
         <h2 class="card-title">
           <locale-text><span lang="cn">第 3 步 · 支付</span><span lang="en">Step 3 · Payment</span></locale-text>
         </h2>
+        <div class="plans">
+          <div class="plans-head">
+            <span class="plans-title">
+              <locale-text><span lang="cn">选择套餐</span><span lang="en">Choose a plan</span></locale-text>
+            </span>
+            <span class="plan-perks">{{planPerks}}</span>
+          </div>
+          <div class="plan-options">
+            <button
+              class="plan-option"
+              class:selected="planId === 'monthly'"
+              on:click="pickPlan('monthly')"
+            >
+              <span class="plan-option-top">
+                <span class="plan-option-name">{{monthlyName}}</span>
+              </span>
+              <span class="plan-option-price">{{monthlyPrice}}<span class="plan-option-per">{{monthlyPeriod}}</span></span>
+            </button>
+            <button
+              class="plan-option"
+              class:selected="planId === 'yearly'"
+              on:click="pickPlan('yearly')"
+            >
+              <span class="plan-option-top">
+                <span class="plan-option-name">{{yearlyName}}</span>
+                <span class="plan-badge">{{yearlyBadge}}</span>
+              </span>
+              <span class="plan-option-price">{{yearlyPrice}}<span class="plan-option-per">{{yearlyPeriod}}</span></span>
+            </button>
+          </div>
+        </div>
         <div class="pay-method">
           <n-icon class="pay-method-icon" icon="mdi:credit-card-outline"></n-icon>
           <div class="pay-method-body">
@@ -605,21 +678,17 @@
             </div>
           </div>
         </div>
-        <div class="pay-amount">
-          <span><locale-text><span lang="cn">应付金额</span><span lang="en">Amount due</span></locale-text></span>
-          <strong>{{payAmountText}}</strong>
-        </div>
-        <div class="field">
-          <label class="field-label"><locale-text><span lang="cn">卡号</span><span lang="en">Card number</span></locale-text></label>
-          <st-input
-            sync:value="cardNumber"
-            maxlength="19"
-            inputmode="numeric"
-            attr:placeholder="cardNumberPlaceholder"
-            on:input="onCardInput"
-          ></st-input>
-        </div>
-        <div class="pay-grid">
+        <div class="pay-card-grid">
+          <div class="field">
+            <label class="field-label"><locale-text><span lang="cn">卡号</span><span lang="en">Card number</span></locale-text></label>
+            <st-input
+              sync:value="cardNumber"
+              maxlength="19"
+              inputmode="numeric"
+              attr:placeholder="cardNumberPlaceholder"
+              on:input="onCardInput"
+            ></st-input>
+          </div>
           <div class="field">
             <label class="field-label"><locale-text><span lang="cn">有效期</span><span lang="en">Expiry</span></locale-text></label>
             <st-input
@@ -646,6 +715,10 @@
           <span>{{payMockHint}}</span>
         </div>
         <div class="actions">
+          <span class="pay-total">
+            <locale-text><span lang="cn">应付</span><span lang="en">Total</span></locale-text>
+            <strong>{{payAmountText}}</strong>
+          </span>
           <st-button variant="text" on:click="backToCode">
             <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
             <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
@@ -732,6 +805,7 @@
       const {
         DEFAULT_PLAN_ID,
         PLAN_PERKS,
+        MEMBER_BENEFITS,
         getPlan,
         MOCK_PAYMENT,
         checkVerifyCode,
@@ -795,14 +869,21 @@
         en: PLAN_PERKS.en.join(" · "),
       });
 
+      // 会员权益（第 1 步展示「购买后拥有什么」）
+      const benefits = MEMBER_BENEFITS.map((item) => ({
+        icon: item.icon,
+        title: getLocaleText(item.title),
+        desc: getLocaleText(item.desc),
+      }));
+
       // 套餐文案：两档套餐是固定选项（数量固定，直接展开成 data 字段）
       const monthlyPlan = getPlan("monthly");
       const yearlyPlan = getPlan("yearly");
       const planText = {
-        monthlyName: getLocaleText(monthlyPlan.name),
+        monthlyName: getLocaleText(monthlyPlan.shortName),
         monthlyPrice: `$${monthlyPlan.priceUSD}`,
         monthlyPeriod: getLocaleText(monthlyPlan.period),
-        yearlyName: getLocaleText(yearlyPlan.name),
+        yearlyName: getLocaleText(yearlyPlan.shortName),
         yearlyPrice: `$${yearlyPlan.priceUSD}`,
         yearlyPeriod: getLocaleText(yearlyPlan.period),
         yearlyBadge: yearlyPlan.badge ? getLocaleText(yearlyPlan.badge) : "",
@@ -813,6 +894,7 @@
           step: "form",
           planId: DEFAULT_PLAN_ID,
           planPerks,
+          benefits,
           ...planText,
 
           // 已有会员记录（来自本地存储，纯展示）

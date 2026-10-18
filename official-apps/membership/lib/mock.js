@@ -8,6 +8,7 @@ export const MEMBER_PLANS = [
   {
     id: "monthly",
     name: { cn: "Mazmot Pro 月度会员", en: "Mazmot Pro Monthly" },
+    shortName: { cn: "月度会员", en: "Monthly" },
     priceUSD: 10,
     period: { cn: "/ 月", en: "/ month" },
     durationDays: 30,
@@ -15,6 +16,7 @@ export const MEMBER_PLANS = [
   {
     id: "yearly",
     name: { cn: "Mazmot Pro 年度会员", en: "Mazmot Pro Yearly" },
+    shortName: { cn: "年度会员", en: "Yearly" },
     priceUSD: 100,
     period: { cn: "/ 年", en: "/ year" },
     durationDays: 365,
@@ -25,11 +27,39 @@ export const MEMBER_PLANS = [
 /** 默认选中下标第一项（月度） */
 export const DEFAULT_PLAN_ID = MEMBER_PLANS[0].id;
 
-/** 套餐权益（mock，两种套餐共用） */
+/** 套餐权益（mock，两档套餐共用；支付步骤的一行摘要） */
 export const PLAN_PERKS = {
-  cn: ["全部官方应用", "AI 开发额度", "优先技术支持"],
-  en: ["All official apps", "AI builder quota", "Priority support"],
+  cn: ["默认 AI 使用量", "更大的转发流量", "新功能优先使用"],
+  en: ["Default AI quota", "Larger relay traffic", "Priority features"],
 };
+
+/** 会员权益明细（mock）：第 1 步展示「购买后拥有什么」 */
+export const MEMBER_BENEFITS = [
+  {
+    icon: "mdi:brain",
+    title: { cn: "默认额度的 AI 使用量", en: "Default AI usage quota" },
+    desc: {
+      cn: "开通即分配可直接使用的 AI 调用额度，不用自己配 Key。",
+      en: "A built-in AI quota you can use right away — no API key setup.",
+    },
+  },
+  {
+    icon: "mdi:server-network",
+    title: { cn: "更大的服务器转发流量", en: "Larger relay traffic" },
+    desc: {
+      cn: "更高的中转流量上限，长对话与批量任务不易触顶。",
+      en: "A higher relay cap for long conversations and batch tasks.",
+    },
+  },
+  {
+    icon: "mdi:rocket-launch-outline",
+    title: { cn: "优先使用 Mazmot 新功能", en: "Priority access to new features" },
+    desc: {
+      cn: "例如点对点互联等能力，会员优先开放。",
+      en: "Capabilities such as P2P interconnection open to members first.",
+    },
+  },
+];
 
 /**
  * 按 id 取套餐；未知 id 回退默认套餐（月度）。
