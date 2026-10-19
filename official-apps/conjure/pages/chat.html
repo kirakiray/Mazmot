@@ -419,8 +419,13 @@
                       </span>
                     </span>
                   </button>
-                  <o-if :value="$data.open">
-                    <div class="tool-body">
+                  <!-- 折叠动画：外壳常驻 grid 0fr↔1fr 过渡；内容首次点开后保持
+                       挂载（toolBodyOn）——收起过渡期间内容还在才能看着收起，
+                       重复开合也不必重挂；未点开过的卡片零渲染成本 -->
+                  <div class="tool-body-wrap" class:open="$data.open">
+                    <div class="tool-body-clip">
+                      <o-if :value="$host.toolBodyOn($data)">
+                        <div class="tool-body">
                       <div class="tool-section">
                         <div class="tool-label">参数</div>
                         <pre class="tool-code">{{$data.args}}</pre>
@@ -466,8 +471,10 @@
                           </div>
                         </div>
                       </o-if>
+                        </div>
+                      </o-if>
                     </div>
-                  </o-if>
+                  </div>
                 </div>
               </o-if>
 
@@ -483,9 +490,13 @@
                     <span class="compact-title">已压缩 {{$data.count}} 条历史记忆</span>
                     <span class="compact-hint">点击查看摘要</span>
                   </button>
-                  <o-if :value="$data.open">
-                    <div class="compact-body">{{$data.summary}}</div>
-                  </o-if>
+                  <div class="tool-body-wrap" class:open="$data.open">
+                    <div class="tool-body-clip">
+                      <o-if :value="$host.toolBodyOn($data)">
+                        <div class="compact-body">{{$data.summary}}</div>
+                      </o-if>
+                    </div>
+                  </div>
                 </div>
               </o-if>
 
@@ -2651,7 +2662,18 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
 
 
           toggleTool(id) {
+            // 记住点开过的工具/压缩卡：折叠动画要求内容在收起过渡期间保持
+            // 挂载（toolBodyOn），首次点开才挂载、之后常驻不重挂
+            this._toolOpened = this._toolOpened || new Set();
+            this._toolOpened.add(id);
             store.toggleTool(id);
+          },
+
+
+          // 折叠动画配套：点开过的卡内容保持挂载（外壳 grid 0fr 收起时内容
+          // 还在才能看着收起）；没点开过的卡不渲染主体，零渲染成本
+          toolBodyOn(m) {
+            return !!m.open || !!this._toolOpened?.has(m.id);
           },
 
 
