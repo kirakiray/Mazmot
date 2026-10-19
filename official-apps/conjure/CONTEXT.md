@@ -95,7 +95,8 @@ conjure/
 │   └── test/           # lib 层纯逻辑单测（无 Core 依赖）：remote-preview.sb.html
 │                        #   （describeDevice UA 短标签 / 窗口清单 API）、thumb-paint.sb.html
 │                        #   （线框快照 canvas 重绘）、tools.sb.html（createTools ctx 接线回归：
-│                        #   preview 的 windows / check-popup / run-tests 三 action 必须拿到注入通道）、
+│                        #   preview 的 windows / check-popup / run-tests 三 action 必须拿到注入通道；
+│                        #   run-tests 用例另验 files 归一（顶层 / args.files / 单字符串）与缺省拒跑）、
 │                        #   locale-tool.sb.html（locale-text 提取 / 合并 / 冗余识别）
 ├── pages/
 │   ├── home.html       # 父页面（布局壳，常驻）：顶栏 + 会话栏（含回收站子路由入口）+
@@ -262,7 +263,7 @@ AI 生成的应用**不在主域运行**：预览按钮（顶栏 + 新应用落�
 
 - **用例格式**：`client/test/<功能名>.test.json` = `{ name（≤12 字短功能名，细节放 desc）, desc?, steps: [...] }`；步骤动作 `click`（选择器）/ `type`（{selector,value}）/ `press`（键名）/ `wait`（毫秒数，或 {selector|code, timeoutMs?, absent?} 轮询等条件——异步渲染优先）/ `eval`（**异步函数体**：宿主包装为 `(async (T) => {...})(globalThis.__T)`，抛错或 return false 即失败；**共享上下文 T** 跨步骤传递辅助函数与状态，reload 后随页面重置——AI 不必逐步重复定义工具函数）/ `reload`（重载应用页）/ `expect`（{text+contains|equals} / {count+equals} / {consoleErrors 最大新增数}）。`test/` 目录被 `__app.json` 清单排除规则与 `listAppFiles` 过滤，不随市场发布。
 - **执行器**（`lib/test-runner.js`，宿主侧）：`listTestCases`（读目录解析清单）/ `parseTestFile` + `validateSteps`（格式校验，可读错误）/ `runTestCases`——**逐步映射到已有 dbg 指令**（click/type/text/eval/wait，全部穿 shadow DOM），不在应用页注入 runner；`reload` 由宿主特殊处理（`eval location.reload()` → 轮询 `status` 等调试代理回线）；控制台错误断言取 `status.meta.errors` 差值。步骤失败即中止该用例并记录失败步骤；**连接自愈**：失败匹配投递类错误（ACK timeout / 无响应）且提供了 `recover` 时，重推预览 + 等回线后重试该用例一次（断言失败不重试）。
-- **触发入口（同一执行路径 `runTests`）**：① AI——`preview` 工具 `action=run-tests`（可选 `files` 数组；结果为逐用例 ✓/✗ 报告 + 失败步骤详情，超时 180s）；② 用户——Hub「开发工具」tab 的场景测试工作区（底部导航「开发工具」或顶栏扳手按钮进入，左侧清单选中「场景测试」；右侧：用例清单 + ▶ 跑全部 + 单用例重跑 + 失败详情 + **「修复失败用例（N）」按钮**，上次结果按应用持久化在 `test-results:<app>`；选中时 `refreshTests` 刷新索引）。修复按钮仅在有失败结果时显示：点击经 `buildTestFixMessage`（lib/builder.js 纯函数）把失败内容（用例名 / 文件 / 失败步骤与期望实际）组成一条对话自动发出（`fixFailedTests` → `send`），由这个专门的修复回合接手，提示词约定修完只重跑失败的用例文件；发出后 Hub 自动收起。**回合收尾不自动跑**（用户拍板：自动跑体验太密；`autoRunTests` 已删除），测试只经这两个入口触发。**提示词约定收尾只跑本次新增 / 修改的用例文件**（files 参数；全量跑太久，用户拍板）——全量验证由用户在工作区手动点「▶ 跑全部」。**连接预检**：执行前先 `status` 探活（`previewOnline` 亮标可能陈旧），探活失败即重推最新代码。**逐条实时反馈**：`runTestCases` 每条用例完成即经 `onCaseResult` 回调把结果回填 `state.testResults`（工作区图标 ✓/✗ 逐条点亮、显示耗时），跑完全量再做一次整体替换（自愈重试终态为准）；`onProgress` 带 `file`，正在跑的用例在工作区转 spinner 高亮。
+- **触发入口（同一执行路径 `runTests`）**：① AI——`preview` 工具 `action=run-tests`（**files 必填**：只跑本次新增 / 修改 / 失败的用例文件；结果为逐用例 ✓/✗ 报告 + 失败步骤详情，超时 180s）；② 用户——Hub「开发工具」tab 的场景测试工作区（底部导航「开发工具」或顶栏扳手按钮进入，左侧清单选中「场景测试」；右侧：用例清单 + ▶ 跑全部 + 单用例重跑 + 失败详情 + **「修复失败用例（N）」按钮**，上次结果按应用持久化在 `test-results:<app>`；选中时 `refreshTests` 刷新索引）。修复按钮仅在有失败结果时显示：点击经 `buildTestFixMessage`（lib/builder.js 纯函数）把失败内容（用例名 / 文件 / 失败步骤与期望实际）组成一条对话自动发出（`fixFailedTests` → `send`），由这个专门的修复回合接手，提示词约定修完只重跑失败的用例文件；发出后 Hub 自动收起。**回合收尾不自动跑**（用户拍板：自动跑体验太密；`autoRunTests` 已删除），测试只经这两个入口触发。**AI 只跑改动对应用例（硬约束，双层落地）**：工具层——schema 把 files 声明为顶层必填参数，exec 兼容顶层 files / 嵌套 args.files / 单字符串三种传法并归一成数组，**缺省（未传）直接拒跑并引导**，不再兜底全量（历史 bug：exec 只读 `args.files`，模型按 schema 传顶层 files 被静默丢弃 → `files?.length` 为假无条件全量 14 条，实测「加个小功能每回合全量跑 6-8 分钟」）；提示词层——SYSTEM_PROMPT「场景测试」节禁止顺手回归无关用例（全量回归由用户手动触发），用例只测本功能、步骤克制（10 步以内、禁止把无关功能的操作流程塞进用例当铺垫，前置状态用 eval 直接注入）。**连接预检**：执行前先 `status` 探活（`previewOnline` 亮标可能陈旧），探活失败即重推最新代码。**逐条实时反馈**：`runTestCases` 每条用例完成即经 `onCaseResult` 回调把结果回填 `state.testResults`（工作区图标 ✓/✗ 逐条点亮、显示耗时），跑完全量再做一次整体替换（自愈重试终态为准）；`onProgress` 带 `file`，正在跑的用例在工作区转 spinner 高亮。
 - **结果与回流**：`state.testResults`（file → 结果含失败步骤）/ `testLastRun`（全量摘要，随应用切换从持久化还原）；失败行写 `autoErrors`（`[测试] 用例名：原因`）回流下回合修复；最后一个带改动的回合的变更卡头部展示「测试 全绿 ✓ / N ✗」chip（`showTestChip`）。
 
 

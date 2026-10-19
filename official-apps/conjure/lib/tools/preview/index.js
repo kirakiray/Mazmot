@@ -84,7 +84,7 @@ const DESCRIPTION = `在隔离预览窗口上执行操作（预览窗口在隔�
 - wait：轮询等待条件成立（200ms 间隔），避免异步渲染未完成就断言。args：selector（元素出现；absent=true 改等消失）或 code（返回真值的 JS 表达式，支持 await）二选一、timeoutMs（默认 10000）。
 - eval：执行任意 JS 并返回序列化结果（支持 await；末句表达式自动成为返回值）。args：code。预置 $ / $$、$deep / $$deep（穿 shadow DOM 深度查询）、$wait、$rect。读应用内部状态、调其方法做深度诊断。
 - screenshot：真实像素截图（JPEG），图片展示给用户。每次会弹一次屏幕授权框（在预览窗口选「当前标签页」），截完自动停止共享。args：selector（可选裁剪）、maxSide（默认 1280）、quality（默认 0.72）。手机等远程设备上需对方现场点授权。
-- run-tests：跑应用 client/test/ 下的 .test.json 场景用例（宿主逐步驱动应用页执行 click/type/断言，自动重载/清场按用例步骤来）。args：files（文件路径数组）。返回逐用例 ✓/✗ 报告，失败含失败步骤与期望/实际。**开发收尾只传本次新增 / 修改的用例文件，不要全量跑**——应用大时全套太久，全量验证由用户在「测试管理」抽屉手动触发；用户发来失败用例时同样只重跑失败的那些。用例本身也要随功能同步新增与更新。`;
+- run-tests：跑应用 client/test/ 下的 .test.json 场景用例（宿主逐步驱动应用页执行 click/type/断言，自动重载/清场按用例步骤来）。files 必填（顶层参数，文件路径数组）。返回逐用例 ✓/✗ 报告，失败含失败步骤与期望/实际。**只传本次新增 / 修改 / 失败的用例文件，禁止跑全部**——全量验证由用户在「开发工具 → 场景测试」里手动触发；用户发来失败用例时同样只重跑失败的那些。用例本身也要随功能同步新增与更新。`;
 
 export default {
   key: "preview",
@@ -98,8 +98,7 @@ export default {
     },
     files: {
       type: "array",
-      optional: true,
-      description: "action=run-tests 时传：要跑的用例文件（client/test/ 下相对路径）。收尾只传本次新增 / 修改 / 失败的文件，不全量跑",
+      description: "action=run-tests 时必填（顶层参数）：要跑的用例文件（client/test/ 下相对路径数组）。只传本次新增 / 修改 / 失败的文件，禁止跑全部——全量验证由用户在「开发工具 → 场景测试」手动触发",
     },
     appName: {
       type: "string",
@@ -118,7 +117,7 @@ export default {
       description: "操作专属参数对象（各 action 的参数见工具描述）",
     },
   },
-  async exec({ action, appName, winId = "", args = {} }, ctx) {
+  async exec({ action, appName, winId = "", files, args = {} }, ctx) {
     if (!ACTIONS.includes(action)) {
       return `未知 action：${action}（可用：${ACTIONS.join(" / ")}）`;
     }
@@ -160,7 +159,21 @@ export default {
     // 结果为结构化报告——失败含用例名 / 失败步骤 / 期望与实际，模型据此修复
     if (action === "run-tests") {
       if (typeof ctx.runTests !== "function") return unavailable();
-      const res = await ctx.runTests(args.files);
+      // files 兼容两种传法：顶层 files（schema 声明的形态）或 args.files。
+      // 此前只读 args.files，模型按 schema 传顶层 files 时被静默丢弃 →
+      // 无条件全量跑（实测踩坑：加个小功能每回合全量 14 条用例）。
+      // 单个字符串也归一成数组；缺省不再兜底全量——全量验证归用户
+      const picked = Array.isArray(files)
+        ? files
+        : typeof files === "string" && files.trim()
+          ? [files.trim()]
+          : Array.isArray(args?.files)
+            ? args.files
+            : [];
+      if (!picked.length) {
+        return "请通过顶层 files 参数传要跑的用例文件（client/test/ 下相对路径数组，只传本次新增 / 修改 / 失败的那些）。不要用 run-tests 跑全部——全量验证由用户在「开发工具 → 场景测试」里手动触发。";
+      }
+      const res = await ctx.runTests(picked);
       if (!res)
         return "测试执行失败（错误详情已记入对话错误卡片或错误横幅），请检查预览窗口状态后重试。";
       if (res.noTests) {

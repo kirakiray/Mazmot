@@ -58,5 +58,63 @@
         </script>
       </template>
     </sb-test>
+
+    <sb-test name="preview run-tests - files 参数归一与缺省拒跑">
+      <template>
+        <script type="module">
+          import { createTools } from "../tools/index.js";
+          {
+            // 记录每次 exec 转发给 ctx.runTests 的 files
+            const received = [];
+            const tools = createTools({
+              tool: (exec, meta) => ({ exec, meta }),
+              fs: {},
+              openPreview: async () => ({ url: "http://x" }),
+              previewDebug: async () => ({ result: "stub", meta: {} }),
+              runTests: async (files) => {
+                received.push(files);
+                return { ok: true, summary: "1 通过 / 0 失败", results: [] };
+              },
+            });
+            const preview = tools.preview;
+
+            // 顶层 files（schema 声明的形态，曾因只读 args.files 被丢弃 → 全量跑）
+            const topRes = await preview.exec({
+              action: "run-tests",
+              files: ["test/search-task.test.json"],
+            });
+            // 嵌套 args.files（操作专属参数对象形态）
+            await preview.exec({
+              action: "run-tests",
+              args: { files: ["test/a.test.json", "test/b.test.json"] },
+            });
+            // 单个字符串归一成数组
+            await preview.exec({ action: "run-tests", files: "test/one.test.json" });
+            // 缺省（模型没传 files）：拒跑并引导，绝不全量
+            const noneRes = await preview.exec({ action: "run-tests" });
+            const emptyRes = await preview.exec({ action: "run-tests", files: [] });
+
+            const checks = {
+              topLevel: JSON.stringify(received[0]) === JSON.stringify(["test/search-task.test.json"]),
+              nested:
+                JSON.stringify(received[1]) ===
+                JSON.stringify(["test/a.test.json", "test/b.test.json"]),
+              stringNormalized:
+                JSON.stringify(received[2]) === JSON.stringify(["test/one.test.json"]),
+              noneRejected:
+                received.length === 3 &&
+                noneRes.includes("files") &&
+                noneRes.includes("开发工具"),
+              emptyRejected: emptyRes.includes("files"),
+              summaryPassed: topRes.includes("1 通过 / 0 失败"),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, received, noneRes: noneRes.slice(0, 80) },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
   </body>
 </html>

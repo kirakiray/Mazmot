@@ -4,6 +4,22 @@
 
 ## 记录
 
+### 2026-10-14 · 新增任务搜索（用户需求：搜索到对应 item 就显示出来）
+
+- **用户需求**：①「待办清单里面，添加搜索功能，可以搜索到对应的 item 可以显示出来」；② 看到首版后反馈「搜索框不要那么宽，做小一点，放到垃圾桶那一排的最右侧」。
+- **改了什么**（`pages/home.html` 单文件 + 新用例）：
+  - **UI**：新增 `.toolbar` 行（`display:flex; justify-content:space-between; flex-wrap:wrap`）包裹「筛选按钮组（全部/已归档/垃圾桶）」与右侧 `.search-bar`——**搜索框紧凑（190px 宽 / 13px 字号 / 前置 `mdi:magnify` / placeholder「搜索任务…」，只给 `width`·`min-width`·`font-size`，不碰组件 `display`）**，旁边是「找到 N 项」提示与清除按钮（搜索时才显）。
+  - **数据**：`data` 新增 `searchText`；新增 getter `searchKeyword`（trim + 小写）、`searching`、`searchedActiveTodos` / `searchedArchivedTodos` / `searchedTrashTodos`、`searchHint`；新增方法 `matchKeyword(todo)`（标题或描述子串命中，忽略大小写）、`onSearchChange()`（埋点日志 `[search]`）、`clearSearch()`。
+  - **接线**：`visibleTodos` 三个分支改读 `searched*`；`archiveGroups` 改读 `searchedArchivedTodos`（按完成日/周分组在过滤后的集合上重算）；垃圾桶列表的 `o-fill` 从 `scopedTrashTodos` 改为 `visibleTodos`（**这样搜索也能作用于垃圾桶视图**，见踩坑 022 同类教训）。
+  - **`emptyText` 从 data 字段改成 getter**：搜索中→「没有符合「xxx」的任务，换个关键词试试」，否则保持原逻辑；`updateEmptyText()` 已删除，`setView` / `setGroup` / `deleteGroup` / `restoreSessionState` 里的调用一并去掉。
+  - **搜索时隐藏拖拽手柄**（`.drag-handle` 加 `class:hidden="$host.searching"`）：过滤后的可见顺序与 `todos` 槽位不再一一对应，`commitDragDrop()` 的槽位回写会算错位，干脆不给拖。
+- **设计决策**：① **只在显示层过滤**——统计、侧栏分组计数、视图标签数量、「归档已完成」范围全读 `scoped*` 不变，所以“搜到 1 条但底栏仍写共 3 项”是预期行为；② 搜索作用于**当前分组 + 当前视图**（与三个视图的既有口径一致），不另设“全局搜索”模式；③ 搜索词**不进存储也不进会话状态**，刷新即清空（避免“打开应用只剩几条”的困惑）；④ 空间不够时 `.toolbar` 换行而不是把搜索框再做大。
+- **验证结论**（preview 实测，正式数据 2 条）：`.toolbar` 内搜索框实测 **190×37、真实输入区 140px**、与按钮组 top 差 1.4px（同一行）、右边缘与 `.main` 齐；未搜索时「找到 N 项」与清除按钮 `display:none`、拖拽手柄 `display:flex`；搜「111」→ 只剩 1 条、提示「找到 1 项」、手柄 `display:none`；搜「zzz不存在zzz」→ 0 条 + 空状态「没有符合「zzz不存在zzz」的任务，换个关键词试试」；清空 → 恢复 2 条、提示与按钮重新隐藏、手柄恢复；硬刷新后搜索词为空（不持久化）。
+- **测试**：新增 `client/test/search-task.test.json`（name「搜索任务」，含布局断言：搜索框在 `.toolbar` 内、真实输入区 80–240px、与按钮组同行且在右侧）：**首跑通过（54.8s）**。
+- **已知环境问题（与本次改动无关）**：`action=run-tests` 依旧忽略 `files` 参数跑全套，每轮随机 1 个用例在 reload 后报 `eval 等待结果超时（30000ms）`（本轮两轮分别中招「图片附件」「垃圾桶清理」）；另「归档分组」一轮报「刷新后应仍显示周分组，实际 0」——**手动验证已确认非回归**：把 `sessionStorage` 置为 `{view:'archived',archiveGroup:'week'}` 后 reload，标签「按完成周」仍为 `filled` 选中态（组数为 0 是因为当时数据里没有归档条目），属宿主并发调度抖动（`pitfalls/019` / `023`）。
+- **未实测的点**：窄屏（≤620px）下 `.toolbar` 换行后的观感——预览窗口宽度固定，`.toolbar` 已有 `flex-wrap: wrap` 兼顾。
+- **本回合未踩新坑**（未新建 pitfalls）。
+
 ### 2026-10-14 · 修「改完成时间会弄丢原时间」+ 输入框值残留（用户反馈）
 
 - **用户反馈**（附截图，任务 `111111`：状态「已完成」、状态变更「—」、完成时间输入框为空）：「不是啊，你虽然能改完成时间，但是你不能把原来的完成时间弄丢可」。

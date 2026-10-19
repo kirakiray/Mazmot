@@ -4,7 +4,7 @@
 
 ## 一句话定位
 
-一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除，宽度可拖拽 150–300px，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述，**还能带图片：选图或直接粘贴截图，压缩后随任务一起保存**；也能让 **AI 根据一句自然语言描述自动生成标题与描述**，**粘了图片时 AI 会改为识别图里的文字提取成任务，图里没有文字就把图片作为附件带入**）、勾选完成、**点任务打开「任务详情」弹窗（看信息与改标题 / 描述都在同一个窗口里，不用切换模式）**、**拖拽调整顺序（置顶项只能与置顶项互换、普通项只能与普通项互换）**、**置顶 / 取消置顶**（置顶项排在列表最前）、删除（5 秒倒计时后才进垃圾桶）、按视图筛选（**全部 / 已归档 / 垃圾桶**，三个视图都跟随左栏选中分组）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱——归档箱内还能按「**全部归档 / 按完成日 / 按完成周**」切换查看方式（按任务的**完成时间**分组：按完成日按本地日期、按完成周按 ISO 周）。每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
+一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除，宽度可拖拽 150–300px，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述，**还能带图片：选图或直接粘贴截图，压缩后随任务一起保存**；也能让 **AI 根据一句自然语言描述自动生成标题与描述**，**粘了图片时 AI 会改为识别图里的文字提取成任务，图里没有文字就把图片作为附件带入**）、勾选完成、**点任务打开「任务详情」弹窗（看信息与改标题 / 描述都在同一个窗口里，不用切换模式）**、**拖拽调整顺序（置顶项只能与置顶项互换、普通项只能与普通项互换）**、**置顶 / 取消置顶**（置顶项排在列表最前）、删除（5 秒倒计时后才进垃圾桶）、**按关键词搜索（任务区右侧的小搜索框，匹配标题或描述、忽略大小写，只过滤显示不动数据）**、按视图筛选（**全部 / 已归档 / 垃圾桶**，三个视图都跟随左栏选中分组）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱——归档箱内还能按「**全部归档 / 按完成日 / 按完成周**」切换查看方式（按任务的**完成时间**分组：按完成日按本地日期、按完成周按 ISO 周）。每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
 
 ## 使用指南
 
@@ -32,7 +32,13 @@
    - **图片附件（同弹窗中部）**：一条虚线区「点击选择图片，或直接粘贴（Ctrl/⌘ + V）」（`label.img-drop` 里藏着 `input.img-input[type=file][accept=image/*][multiple]`，点它即打开系统文件选择；也能直接在弹窗里粘贴截图——粘贴监听挂在 `document` 上，只在添加弹窗开着时接图）。图片经 canvas 等比压到最长边 1280px、转 JPEG（质量 0.82，先铺白底，透明 PNG 不会变黑块）后进草稿；弹窗里以 64px 缩略图展示、右上角小圆按钮（`mdi:close`）移除当张，下方提示「已添加 N 张图片（最多 4 张）」。单条任务最多 4 张（`MAX_IMAGES`），超出的忽略并提示「有 N 张未能加入」。点「添加」时草稿里的图片原样写进任务的 `images`。
    - **AI 识别图片（同一弹窗下半部分，有图时自动启用）**：上面粘了 / 选了图片时，AI 按钮自动换成「AI 识别图片」（`mdi:image-search`），且不需要文字描述也能点。它以多模态消息把 `[文字, 图片…]` 一起发给模型，由模型判断：图里有可提取的文字（清单 / 聊天记录 / 便条 / 文档截图 / 手写内容）→ 整理成 `title` + `desc` 回填，提示「已从图片文字里提取任务…（图片会一起附上）」；图里没有文字（风景 / 人物 / 实物照片）→ 模型返回 `kind: "image"` 并给一句短语作标题，提示「图片里没有可提取的文字，已作为图片附件带入」。识别中按钮为「AI 识别中…」并禁用；图片压缩中按钮也禁用（避免图还没进草稿就发起识别）。
    - **AI 添加（同一个弹窗的下半部分）**：用一句自然语言描述要做的事（如「明天下午三点和客户开会，记得先准备报价单」）→ 点「AI 生成」（前置 `mdi:creation` 图标）→ 调平台 AI（`/mz/ai/main.js`）让模型输出 `{title, desc}`，**自动回填到上面的多行输入框**（标题首行 + 描述在后），用户改一改再点「添加」；描述框为空时按钮禁用，请求中按钮变「AI 生成中…」并禁用，成功后提示「AI 已生成，确认或改一改再点「添加」」，失败则在弹窗内红字显示原因且输入内容不丢。若弹窗里已经有图片，同一个按钮会换成「AI 识别图片」并走多模态识别，见下一条。
-6. **视图筛选**：`全部 / 已归档 / 垃圾桶` 按钮组（已归档前置 `mdi:archive-arrow-down`、垃圾桶前置 `mdi:delete-outline` 图标，后两个标签带数量），与左栏分组叠加生效。
+6. **视图筛选与搜索（同一行 `.toolbar`）**：左侧是 `全部 / 已归档 / 垃圾桶` 按钮组（已归档前置 `mdi:archive-arrow-down`、垃圾桶前置 `mdi:delete-outline` 图标，后两个标签带数量），与左栏分组叠加生效；**最右侧是紧凑的小搜索框**（190px 宽、13px 字号、前置 `mdi:magnify`、placeholder「搜索任务…」）。
+   - **搜索口径**：关键词去掉首尾空白、转小写后与任务的**标题（`text`）或描述（`desc`）**做子串匹配（不区分大小写），任一命中即算匹配；输入即过滤（`sync:value` + `on:change` 打日志）。
+   - **作用范围 = 当前分组 + 当前视图**：三个视图（全部 / 已归档 / 垃圾桶）都被搜索过滤；归档视图的「按完成日 / 按完成周」分组在过滤后的集合上重新分桶。
+   - **只在显示层过滤**：统计「N 项未完成 · 共 M 项」、侧栏分组计数、视图标签数量、「归档已完成」的作用范围、归档底栏计数都**不受搜索影响**（它们读 `scoped*`，搜索只改 `searched*`），所以“搜到 1 条但底栏仍写共 3 项”是预期行为。
+   - 搜索中在搜索框右侧显示「找到 N 项」与清除按钮（`mdi:close`，`title`「清除搜索」）；无匹配时列表为空并显示「没有符合「xxx」的任务，换个关键词试试」。
+   - **搜索期间隐藏拖拽手柄**（`.drag-handle` 带 `class:hidden="$host.searching"`）：过滤后的可见顺序与 `todos` 槽位不再一一对应，`commitDragDrop()` 的槽位回写会算错位置，因此干脆不给拖。
+   - 搜索词**不进存储、也不进会话状态**：刷新后回到空（未搜索），这是有意的（避免“打开应用只剩几条”的困惑）。
    - **全部**：列表（未归档、未删除的条目，含已完成与未完成两种）。
    - **已归档**：任务在这个视图里「收起来」——**不在列表显示、不计入统计与侧栏分组计数**，但数据没被删。每条可「取消归档」（回到原分组，勾选状态保留，由 `unarchiveTodo()`）或删除（走列表同款的 5 秒倒计时 → 垃圾桶）。**归档视图跟随左栏分组**（与列表视图同一口径）：左栏选中某分组时只显示该分组的归档，选「全部任务」时才是所有分组的归档。
      - **顶部说明行是一行短文案 + 末尾一个「?」图标**（`p.trash-tip.archive-tip` + `st-tooltip`）：可见文案只有「归档的任务不计入统计，也不在列表里显示」，完整的细则（取消归档 / 删除 / 跟随分组 / 按完成时间划分）放在 `st-tooltip` 的 `content` 里，悬浮或键盘聚焦「?」时弹出。**改回一整段长文案会被用户再抱怨一次**（原版 3 行长段落占掉一大块版面，用户反馈「太繁琐」）；短文案已覆盖最关键的语义，提示只是补充，因此触屏无悬停也不丢关键信息。
@@ -79,7 +85,7 @@ client/
 ├── app.json         # 应用元信息（name=todo、displayName=待办清单、icon=✅）
 ├── pages/
 │   └── home.html    # 唯一页面模块：样式 + 模板 + 脚本（全部逻辑在此）
-└── test/            # 场景测试（防迭代回归）：12 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
+└── test/            # 场景测试（防迭代回归）：13 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
 ```
 
 （`pitfalls/` 为踩坑库，`backup/` 为系统自动备份目录，均不属于运行时资源。）
@@ -134,7 +140,8 @@ client/
 | `draftImages` | 添加弹窗里的图片草稿 `Array<{id,dataUrl,w,h}>`（粘贴 / 选图后压缩而来，点「添加」时原样写进任务 `images`） | `[]` |
 | `imgBusy` | 是否正在压缩图片（压缩中禁用 AI 按钮，避免图还没进草稿就发起识别） | `false` |
 | `imgNote` | 图片区提示（「已添加 N 张图片（最多 4 张）」等，空串时整行隐藏） | `""` |
-| `emptyText` | 空视图提示文案（按 `view` + `groupFilter` 由 `updateEmptyText()` 生成） | 全部视图的提示语 |
+| `searchText` | 搜索关键词（`sync:value` 双向绑定）；空串 = 未搜索 | `""` |
+| ~~`emptyText`~~ | **已从 data 改成 proto getter**（见下面「计算属性」表）：搜索词 / 视图 / 分组一变文案就要变，靠手动调 `updateEmptyText()` 容易漏 | — |
 | `nowTick` | 倒计时刷新用的当前时间戳；每次 tick 写入以驱动界面重算剩余秒数 | `0` |
 | `confirmOpen` | 二次确认对话框 `st-dialog` 的 `sync:open` 绑定 | `false` |
 | `confirmTitle` / `confirmText` | 确认框标题与正文 | `""` |
@@ -165,7 +172,11 @@ client/
 | `archiveGroups` | 「已归档」视图的渲染数据：`all` 模式返回**一组** `{ key:"all", showHead:false, todos: scopedArchivedTodos }`（组头隐藏 → 等价平铺）；`day` / `week` 模式按 **`archiveBucket(completedAt(t))`**（即完成时刻）分组、**最新一组在前**，每组 `{ key, label, showHead:true, countText:"N 项", todos }`。两种模式共用同一个 `o-fill`，不必维护两套条目模板 |
 | `scopedActiveTodos` | 当前分组范围内的列表条目（`groupFilter = "all"` 时等于 `activeTodos`），列表 / 统计 / **归档已完成**都基于它 |
 | `listTodos` | **列表视图的显示序**：`scopedActiveTodos` 里置顶项在前、普通项在后，各自内部保持数组顺序（稳定排序；没有置顶项时原样返回同一个数组）。拖拽排序的落点 / 换位都以它为基准 |
-| `visibleTodos` | 当前视图要渲染的列表：`trash` → `scopedTrashTodos`、`archived` → `scopedArchivedTodos`、其余 → `listTodos`（**三个视图统一跟随分组**） |
+| `visibleTodos` | 当前视图要渲染的列表：`trash` → `searchedTrashTodos`、`archived` → `searchedArchivedTodos`、其余 → `searchedActiveTodos`（**三个视图统一跟随分组 + 搜索关键词**） |
+| `searchKeyword` / `searching` | 关键词（去首尾空白 + 转小写）/ 是否处于搜索中（驱动「找到 N 项」、清除按钮、拖拽手柄隐藏） |
+| `searchedActiveTodos` / `searchedArchivedTodos` / `searchedTrashTodos` | 列表 / 归档 / 垃圾桶三份数据在 `listTodos` / `scopedArchivedTodos` / `scopedTrashTodos` 基础上叠加 `matchKeyword()` 过滤的结果（未搜索时原样返回） |
+| `searchHint` | 搜索区里的文字「找到 N 项」（N = `visibleTodos.length`） |
+| `emptyText` | 空状态文案（**getter**，不再是 data 字段）：处于搜索中 → 「没有符合「xxx」的任务，换个关键词试试」；否则按 `view` + `groupFilter` 输出原来的文案（垃圾桶空 / 归档箱空 / 分组空 / 首屏提示） |
 | `remaining` | `scopedActiveTodos` 中未完成数量 |
 | `doneCount` | `scopedActiveTodos` 中已完成数量（同时决定「归档已完成」是否禁用） |
 | `draftGroupId` | 新任务将归入的分组：浏览某分组时即该分组，否则默认分组 |
@@ -212,6 +223,10 @@ client/
 - **「全部归档」不用单独一套模板**：`archiveGroups` 在 `all` 模式下返回「一组 + `showHead:false`」，组头用 `class:hidden="!$data.showHead"` 隐藏，条目模板与分组模式完全共用（少维护一套一模一样的行结构）。
 - **说明行用 `st-tooltip` 收纳长文案**（引入 `<l-m src="/gh/ofajs/senti-ui@latest/packages/tooltip/tooltip.html"></l-m>`）：可见的只有一行短文案，末尾的 `span.help-btn`（`n-icon mdi:help-circle-outline`、`tabindex="0"`、`role="img"` + `aria-label`）是提示触发器，完整说明放在 `st-tooltip` 的 `content` 属性里（内容是**静态字符串，不涉及任何绑定**，因此放在 `o-if` 里也没有 $host 相关的坑）。
   尺寸上：**气泡的 padding / 字号 / max-width 全是 em**，直接给 `st-tooltip` 打 `font-size: 14px` 把气泡正文提到 12px（默认继承说明行的 12px → 气泡只有 10.28px、宽 206px，读长句太憋）；触发图标用 `1.07em` 折回 15px 与 12px 文案齐高。组件 shadow 里没有 `part`，只能这样从宿主缩放，**别用 `::part`**——样式不会生效。改触发器 / 验证提示时的两个陷阱见踩坑 024。
+- **筛选按钮组与搜索区同处一行 `.toolbar`**（`display:flex; justify-content:space-between; flex-wrap:wrap`）：左侧 `st-button-group`（三个视图按钮），右侧 `.search-bar`（`margin-left:auto`；内含 `st-input.search-field`（**190px 宽 / 13px 字号，只给 width / min-width / font-size**，不覆盖组件的 `display`，见踩坑 004，`prefix` 槽放 `mdi:magnify`）+ `.search-count`（「找到 N 项」，`!searching` 时 `class:hidden`）+ 清除 `st-icon-button`（`font-size: 12px`））。**不要改回单独占一整行的通栏搜索框**（用户明确要求“做小一点、放到垃圾桶那一排的最右侧”；实测小搜索框 190×37、真实输入区 140px、与按钮组 top 差 1.4px、右边缘与 `.main` 齐）。
+- **搜索只在显示层过滤**：数据层仍只有 `todos`；`searchedActiveTodos` / `searchedArchivedTodos` / `searchedTrashTodos` 三个 getter 在 `listTodos` / `scoped*` 之上叠 `matchKeyword()`，`visibleTodos` 与 `archiveGroups` 改读它们。**统计 / 分组计数 / 标签徒标 / 「归档已完成」范围一律仍读 `scoped*`**（否则搜索会改掉它们语义，同踩坑 022 那类“同一视图两个数据源”的陷阱，改这里时两边一起看）。
+- **搜索期间禁用拖拽**：`.drag-handle` 带 `class:hidden="$host.searching"`——过滤后的可见序与 `todos` 槽位不再一一对应，`commitDragDrop()` 的槽位回写会错位。
+- **`emptyText` 是 getter 而不是 data 字段**：以前靠 `setView` / `setGroup` / `deleteGroup` / `restoreSessionState` 手动调 `updateEmptyText()`，加搜索后容易漏调；改成 getter 后搜索词一变文案自动响应。**`updateEmptyText()` 已删除，不要再加回来**。
 - **三个视图的模板结构**：`全部`（`.item`：拖拽手柄 `.drag-handle` + `st-checkbox` + `.body` + `.item-actions`（**置顶 + 删除**两个按钮））——**三个视图的 `.body` 内部结构一致**：`.text`（标题）→ `.desc`（描述摘要）→ `.thumbs`（`o-fill :value="$data.images"` 渲染 40px 缩略图 `.thumb-sm`）→ `.meta`（时间副标题），缩略图块用 `class:hidden="!$data.images.length"` 控显隐、`已归档`（`.item.archived`：用 `.arch` 包一个 `n-icon icon="mdi:archive-arrow-down"` 占住勾选框位置（行高与其它视图一致）+ `.body` + 「取消归档」`st-button` + `.item-actions`）、`垃圾桶`（`.item.trash`：`.body` + 「还原」+ 彻底删除）。**三套列表各自一个 `o-fill`**，且**都绑过滤后的 getter**：列表视图 `visibleTodos`、归档视图 `archiveGroups`（内部用 `scopedArchivedTodos`）、垃圾桶视图 `scopedTrashTodos`。改数据范围时要三处一起看——本项目就漏过垃圾桶那一处（底栏计数已过滤、列表还是全量，见踩坑 022）。共用 `.list` / `.item` 基础样式；空状态 `isListEmpty` 与 `{{emptyText}}` 在三套之外只写一次（数组成空就显一个，不会重叠）。
 
 ### 时间显示（proto 方法）
@@ -274,7 +289,7 @@ client/
 | `archiveBucket(ts)` | 一个**完成时刻**（由 `completedAt()` 给出）归到哪个分组 → `{ key, label }`：`day` 模式 `key="dYYYY-MM-DD"`、label「10-10 周六」；`week` 模式 `key="wYYYY-MM-DD"`（该周周一）、label「2026 年第 41 周 · 10-05 ~ 10-11」；`ts` 非数字时返回 `{ key:"0-unknown", label:"完成时间未知" }`（排在最后） |
 | `isoWeek(ts)` | ISO 周序号：取该周**周四**所在的年份 + `Math.ceil` 出的周数（跨年周不至于算错） |
 | `requestDeleteGroup(id)` / `deleteGroup(id)` | 删除分组：前者弹二次确认，后者真正执行（任务移入默认分组并落盘） |
-| `updateEmptyText()` | 按当前 `view` + `groupFilter` 生成空状态文案 |
+| `updateEmptyText()` | **已删除**（空状态文案已改成 `emptyText` getter，搜索词 / 视图 / 分组一变自动重算） |
 | `scopeByGroup(list)` | 按当前选中分组过滤一个条目数组（`groupFilter = "all"` 时原样返回）；`scopedActiveTodos` / `scopedArchivedTodos` / `scopedTrashTodos` 三个 getter 都走它，保证三个视图口径一致 |
 | `confirmAction()` | 确认弹窗统一入口：按 `confirmKind` 分发「彻底删除」与「删除分组」；`target === "ALL"`（清空垃圾桶）时按 `emptyTrash()` 当时记下的 `_purgeScope` 只清该分组范围 |
 | `restoreTodo(id)` | 从垃圾桶还原：清 `deletedAt` / `pendingDeleteAt`，**并清 `archivedAt`**（归档项被删后又还原，应回列表而非回归档箱） |
@@ -301,7 +316,7 @@ client/
 - **改动数据**：`addTodo` / `toggleTodo` / `togglePin` / `archiveDone` / `unarchiveTodo` / `restoreTodo` / `commitDragDrop` / `confirmAction` / `deleteGroup` 都会重建 `this.todos` 后调 `persistTodos()` 写回存储；模板由 ofa 响应式更新。`startPendingDelete` / `cancelPendingDelete` / 倒计时到点也会落盘（`pendingDeleteAt` 不跨刷新恢复，但 `deletedAt` 会）。
 - **拖拽排序**：按住某行手柄 `pointerdown` → `startDrag(ev, id)` 置 `draggingId` 并把 `pointermove` / `pointerup` / `pointercancel` 挂到 `window`；每次 `pointermove` 调 `dragDropPosition(clientY, 手柄元素)` 算出落点（显示序插入下标 + 夹回同类区间），**只更新 `dropBeforeId` / `dropAfterId`（行边缘的指示线）并把下标存进闭包**——`todos` 在整个拖动过程中不变；`pointerup` / `pointercancel` 时移除监听、清掉落点提示，**真的移动过才** 调 `commitDragDrop(id, insertIdx)`（在 `listTodos` 上 splice 提出来、插回去、写回槽位、`persistTodos()`）；落点即原位则只打日志、不动数据。
 - **置顶 / 取消置顶**：行尾置顶按钮 `on:click="$host.togglePin($data.id)"` → `togglePin()`：置顶时把该条挪到 `todos` 头部并写 `pinnedAt = now`（于是它成为置顶区最上面一条），取消置顶只清 `pinnedAt`（它留在数组头部 → 成为普通区最前一条）→ `persistTodos()`；列表视图的显示序由 `listTodos` 重算，行上的 `.item.pinned` 竖条与按钮图标 / `title` 随 `$data.pinnedAt` 响应式更新。
-- **筛选**：`setView(value)` 只改 `view` 与 `emptyText`，`visibleTodos` 随之重算，不动数据，并把会话状态写入 `sessionStorage`。三个视图的数据源都过 `scopeByGroup()`，所以**切换分组会同时改变三个视图的内容**（列表、归档、垃圾桶的计数 / 徒标 / 底栏 / 空状态都跟着变）。
+- **筛选与搜索**：`setView(value)` / `setGroup(id)` 只改 `view` / `groupFilter`（空状态文案由 `emptyText` getter 自动重算）；搜索框 `sync:value="searchText"` → `searchKeyword`（trim + 小写）→ `searched*` 系列 getter → `visibleTodos` / `archiveGroups` → 列表重渲染；清除按钮走 `clearSearch()`。搜索**不写存储、不写会话状态**，也不改 `todos` 里的任何字段。三个视图的数据源都过 `scopeByGroup()`，所以**切换分组会同时改变三个视图的内容**（列表、归档、垃圾桶的计数 / 徒标 / 底栏 / 空状态都跟着变）。
 - **删除倒计时（核心机制）**：`handleDeleteClick(id)` 判分支——无 `pendingDeleteAt` 则 `startPendingDelete`（写入 `pendingDeleteAt`、写一次 `nowTick`、`startTicker()`），已有则 `cancelPendingDelete`（置 `null`）。`startTicker()` 用自终止的 `setTimeout` 链（`_tickId`，步长 `TICK_MS`）：每步写 `nowTick` 驱动界面刷新剩余秒数，把 `now - pendingDeleteAt >= TRASH_DELAY_MS` 的条目改为 `deletedAt = Date.now()` 并落盘；**没有倒计时条目时不再调度下一步**，不会留下常驻定时器。
 - **彻底删除 / 删除分组**：`purgeTodo(id)` / `emptyTrash()` / `requestDeleteGroup(id)` 都只设置 `confirmKind` + 目标（`purgeTarget` 或 `confirmGroupId`）与确认文案、打开 `st-dialog`（此阶段不删任何东西）；只有 `confirmAction()` 才真正执行并落盘，`closeConfirm()` 则取消。
 - **时间记录**：`addTodo` 写入 `createdAt`；`toggleTodo` 每次切换写入 `statusChangedAt`；两者都随 `persistTodos()` 落盘。
@@ -310,7 +325,7 @@ client/
 
 ## 场景测试（`client/test/*.test.json`）
 
-用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。12 个用例一文件一主流程，文件名即功能名：
+用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。13 个用例一文件一主流程，文件名即功能名（注：本机宿主会忽略 `files` 参数跑全套，报告里随机一条 reload 后超时 / 断言失败属已知抖动，重跑即绿）：
 
 | 文件 | name | 覆盖内容 |
 | ---- | ---- | -------- |
@@ -327,6 +342,7 @@ client/
 | `detail-done-at.test.json` | 修改完成时间 | 详情弹窗里已完成任务显示可编辑「完成时间」行（预填 `statusChangedAt`）、修改后立即写回存储与列表副标题、未完成 / 垃圾桶任务不显示该行、已归档任务同样可改并落盘、**清空输入框不会丢掉原完成时间（保留原值并回显）**、**老数据（已完成但无时间戳）显示“原数据未记录、可在此补填”且补填能落盘** |
 | `image-attach.test.json` | 图片附件 | 添加弹窗选图 / 直接粘贴（canvas 压缩成 `data:image/jpeg` 的 64px 缩略图、可移除、上限 4 张）、有图时 AI 按钮变「AI 识别图片」且不靠文本即可点、任务落盘后列表显示 40px 缩略图、详情弹窗显示大图并可移除（立即落盘）、刷新后图片仍在 |
 | `group-scope-views.test.json` | 归档桶跟随分组 | 左栏选中分组后「已归档」「垃圾桶」只显示该分组条目（选「全部任务」才是全部）、视图标签数量 / 底栏计数 / 空状态文案同步跟随；「清空垃圾桶」只清当前分组范围（确认框标题带分组名），不动其它分组 |
+| `search-task.test.json` | 搜索任务 | 搜索框在筛选按钮同一行最右侧且是小尺寸（190px）；按标题 / 按描述 / 忽略大小写匹配；命中数提示与清除按钮的显隐；搜索时拖拽手柄隐藏、统计不受影响；无匹配的空状态文案；已归档与垃圾桶视图内搜索均生效且不改底栏计数 / 标签数量；刷新后搜索词不保留 |
 
 ### 用例写法约定（本项目）
 
