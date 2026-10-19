@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>membership lib/checkout.js 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="邮箱 / 用户名校验与服务端口径一致">
+      <template>
+        <script type="module">
+          import { isValidEmail, isValidUsername } from "../checkout.js";
+          {
+            const emailOk = ["a@b.co", "e2e.member+tag@example.com"].every(isValidEmail);
+            const emailBad = ["", "abc", "a@b", "a @b.co"].some(isValidEmail);
+            const nameOk = ["abc", "e2e_user-01", "A1B2C3"].every(isValidUsername);
+            const nameBad = ["ab", "has space", "中文名", "a".repeat(21)].some(isValidUsername);
+            return {
+              assert: emailOk && !emailBad && nameOk && !nameBad,
+              content: { emailOk, emailBad, nameOk, nameBad },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="邮箱脱敏保留域名">
+      <template>
+        <script type="module">
+          import { maskEmail } from "../checkout.js";
+          {
+            const masked = maskEmail("abcdef@gmail.com");
+            const single = maskEmail("a@x.io");
+            const invalid = maskEmail("no-at-sign");
+            return {
+              assert:
+                masked === "ab***@gmail.com" &&
+                single === "a***@x.io" &&
+                invalid === "no-at-sign",
+              content: { masked, single, invalid },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="Stripe 测试卡校验：16 位 + MM/YY + 3-4 位 CVC">
+      <template>
+        <script type="module">
+          import { isValidMockCard } from "../checkout.js";
+          {
+            const testCard = { number: "4242 4242 4242 4242", expiry: "12/34", cvc: "123" };
+            const noSpace = isValidMockCard({ ...testCard, number: "4242424242424242" });
+            const badNumber = isValidMockCard({ ...testCard, number: "4242" });
+            const badExpiry = isValidMockCard({ ...testCard, expiry: "12-34" });
+            const badCvc = isValidMockCard({ ...testCard, cvc: "12" });
+            return {
+              assert:
+                isValidMockCard(testCard) &&
+                noSpace &&
+                !badNumber &&
+                !badExpiry &&
+                !badCvc,
+              content: { ok: isValidMockCard(testCard), noSpace, badNumber, badExpiry, badCvc },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="金额 / 周期 / 日期格式化">
+      <template>
+        <script type="module">
+          import { priceText, periodText, formatDate } from "../checkout.js";
+          {
+            const cents = priceText(1000);
+            const centsDecimal = priceText(1050);
+            const month = periodText("month");
+            const year = periodText("year");
+            const date = formatDate(new Date(2026, 0, 1).getTime() / 1000);
+            return {
+              assert:
+                cents === "$10" &&
+                centsDecimal === "$10.50" &&
+                month === "/ 月" &&
+                year === "/ 年" &&
+                date === "2026-01-01" &&
+                formatDate(0) === "—",
+              content: { cents, centsDecimal, month, year, date },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="邀请码可解出服务端地址">
+      <template>
+        <script type="module">
+          import { inviteServerUrl } from "../checkout.js";
+          {
+            const encode = (obj) =>
+              btoa(JSON.stringify(obj))
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_")
+                .replace(/=+$/, "");
+            const code = encode({ u: "http://127.0.0.1:47901", k: "stx-demo" });
+            return {
+              assert:
+                inviteServerUrl(code) === "http://127.0.0.1:47901" &&
+                inviteServerUrl("not-a-code") === "",
+              content: { code, url: inviteServerUrl(code) },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

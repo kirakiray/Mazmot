@@ -458,6 +458,32 @@
        图标再用 em 折算回 15px 左右，与 12px 文案齐高 */
     .archive-tip st-tooltip { font-size: 14px; }
     .archive-tip .help-btn n-icon { font-size: 1.07em; }
+    /* ===== 搜索（关键词匹配标题 / 描述，只过滤当前分组 + 当前视图的显示内容） ===== */
+    /* 视图筛选与搜索同处一行：左侧筛选按钮组，右侧靠右的**小**搜索框 */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .search-bar {
+      margin-left: auto;
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    /* 搜索框：小尺寸（只给 width / min-width / font-size，不覆盖 st-input 的 display，见踩坑 004） */
+    .search-field { width: 190px; min-width: 0; font-size: 13px; }
+    .search-field n-icon { font-size: 1.1em; color: var(--md-sys-color-on-surface-variant); }
+    .search-count {
+      flex: none;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .search-bar st-icon-button { font-size: 12px; }
     .empty {
       text-align: center;
       padding: 36px 0;
@@ -627,15 +653,35 @@
       </div>
     </div>
 
-    <st-button-group>
-      <st-button attr:variant="view === 'all' ? 'filled' : 'text'" on:click="setView('all')">全部</st-button>
-      <st-button attr:variant="view === 'archived' ? 'filled' : 'text'" on:click="setView('archived')">
-        <n-icon slot="prefix" icon="mdi:archive-arrow-down"></n-icon>已归档{{archiveBadge}}
-      </st-button>
-      <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">
-        <n-icon slot="prefix" icon="mdi:delete-outline"></n-icon>垃圾桶{{trashBadge}}
-      </st-button>
-    </st-button-group>
+    <!-- 筛选按钮组 + 搜索框同一行：搜索在右侧、尺寸小巧，不单独占一整行 -->
+    <div class="toolbar">
+      <st-button-group>
+        <st-button attr:variant="view === 'all' ? 'filled' : 'text'" on:click="setView('all')">全部</st-button>
+        <st-button attr:variant="view === 'archived' ? 'filled' : 'text'" on:click="setView('archived')">
+          <n-icon slot="prefix" icon="mdi:archive-arrow-down"></n-icon>已归档{{archiveBadge}}
+        </st-button>
+        <st-button attr:variant="view === 'trash' ? 'filled' : 'text'" on:click="setView('trash')">
+          <n-icon slot="prefix" icon="mdi:delete-outline"></n-icon>垃圾桶{{trashBadge}}
+        </st-button>
+      </st-button-group>
+
+      <!-- 搜索：输入关键词即时过滤当前分组 + 当前视图里的条目（标题或描述命中即算匹配）。
+           只在显示层过滤，不改数据、不影响统计 / 分组计数 / 标签数量 -->
+      <div class="search-bar">
+        <st-input
+          class="search-field"
+          sync:value="searchText"
+          placeholder="搜索任务…"
+          on:change="onSearchChange"
+        ><n-icon slot="prefix" icon="mdi:magnify"></n-icon></st-input>
+        <span class="search-count" class:hidden="!searching">{{searchHint}}</span>
+        <st-icon-button
+          attr:title="'清除搜索'"
+          class:hidden="!searching"
+          on:click="clearSearch"
+        ><n-icon icon="mdi:close"></n-icon></st-icon-button>
+      </div>
+    </div>
 
 
     <!-- 列表视图（全部）：勾选 / 倒计时删除 -->
@@ -652,8 +698,10 @@
             class:drop-before="$host.isDropBefore($data.id)"
             class:drop-after="$host.isDropAfter($data.id)"
           >
+            <!-- 搜索过滤时隐藏拖拽手柄：可见顺序与 todos 槽位不再一致，拖动会算错落点 -->
             <span
               class="drag-handle"
+              class:hidden="$host.searching"
               attr:title="$host.dragHandleTitle($data)"
               on:pointerdown="$host.startDrag($event, $data.id)"
             ><n-icon icon="mdi:drag-vertical"></n-icon></span>
@@ -754,7 +802,8 @@
     <o-if :value="inTrashView">
       <p class="trash-tip">垃圾桶里的条目不再计入统计；可随时「还原」，或彻底删除（彻底删除会二次确认）。左栏选中某个分组时，这里只显示该分组的条目（选「全部任务」即全部）。</p>
       <div class="list">
-        <o-fill :value="scopedTrashTodos" fill-key="id">
+        <!-- 用 visibleTodos（= 当前分组 + 搜索过滤后的垃圾桶条目）：搜索同样作用于垃圾桶视图 -->
+        <o-fill :value="visibleTodos" fill-key="id">
           <div class="item trash">
             <div class="body" on:click="$host.openDetail($data.id)">
               <span class="text">{{$data.text}}</span>
@@ -1039,7 +1088,9 @@
           draft: "",
           view: "all",
           todos: [],
-          emptyText: "这里还什么都没有，添加第一件事吧 🎉",
+          // 搜索关键词（标题 / 描述命中即算匹配）；空串 = 不过滤。
+          // 只在显示层过滤（不改数据、不进存储、不跨刷新保留），清空即恢复全部
+          searchText: "",
           // 分组：groups 为分组表；groupFilter 为 "all" 或分组 id
           groups: [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME }],
           groupFilter: "all",
@@ -1165,6 +1216,66 @@
             return this.scopeByGroup(this.trashTodos);
           },
 
+          // ===== 搜索（显示层过滤） =====
+          // 关键词：去首尾空白 + 忽略大小写；空串即“未搜索”
+          get searchKeyword() {
+            return String(this.searchText || "").trim().toLowerCase();
+          },
+
+          get searching() {
+            return this.searchKeyword.length > 0;
+          },
+
+          // 一条任务是否命中关键词：标题或描述任一包含即命中（不区分大小写）
+          matchKeyword(todo) {
+            const kw = this.searchKeyword;
+            if (!kw) return true;
+            const text = String(todo.text || "").toLowerCase();
+            const desc = String(todo.desc || "").toLowerCase();
+            return text.indexOf(kw) !== -1 || desc.indexOf(kw) !== -1;
+          },
+
+          // 搜索只在**显示层**过滤：以下三个 getter 与 scoped* 一一对应，
+          // 所以统计 / 分组计数 / 视图标签数量 / 「归档已完成」的作用范围都不受搜索影响
+          get searchedActiveTodos() {
+            const list = this.listTodos;
+            return this.searching ? list.filter((t) => this.matchKeyword(t)) : list;
+          },
+
+          get searchedArchivedTodos() {
+            const list = this.scopedArchivedTodos;
+            return this.searching ? list.filter((t) => this.matchKeyword(t)) : list;
+          },
+
+          get searchedTrashTodos() {
+            const list = this.scopedTrashTodos;
+            return this.searching ? list.filter((t) => this.matchKeyword(t)) : list;
+          },
+
+          // 搜索框旁的提示：命中条数
+          get searchHint() {
+            return "找到 " + this.visibleTodos.length + " 项";
+          },
+
+          onSearchChange() {
+            console.log(
+              "[search] 关键词 =",
+              this.searchKeyword || "（空）",
+              "，命中",
+              this.visibleTodos.length,
+              "项（视图 =",
+              this.view,
+              "，分组 =",
+              this.groupFilter,
+              "）"
+            );
+          },
+
+          clearSearch() {
+            this.searchText = "";
+            console.log("[search] 已清除搜索关键词");
+          },
+
           // 视图标签上的数量跟着分组走，与视图里实际显示的条数保持一致
           get trashBadge() {
             return this.scopedTrashTodos.length
@@ -1189,12 +1300,12 @@
                   label: "",
                   showHead: false,
                   countText: "",
-                  todos: this.scopedArchivedTodos,
+                  todos: this.searchedArchivedTodos,
                 },
               ];
             }
             const buckets = new Map();
-            for (const t of this.scopedArchivedTodos) {
+            for (const t of this.searchedArchivedTodos) {
               // 分组基准是「完成时刻」而不是归档时刻：归档可能在完成后过很久才做，
               // 按完成日 / 完成周归组才能对上「哪天做完的」这个直觉
               const b = this.archiveBucket(this.completedAt(t));
@@ -1229,10 +1340,10 @@
           },
 
           get visibleTodos() {
-            // 三个视图都跟随左栏分组（选「全部任务」时即全部）
-            if (this.inTrashView) return this.scopedTrashTodos;
-            if (this.inArchiveView) return this.scopedArchivedTodos;
-            return this.listTodos;
+            // 三个视图都跟随左栏分组（选「全部任务」时即全部），并叠加搜索关键词过滤
+            if (this.inTrashView) return this.searchedTrashTodos;
+            if (this.inArchiveView) return this.searchedArchivedTodos;
+            return this.searchedActiveTodos;
           },
 
           get remaining() {
@@ -1367,7 +1478,6 @@
             if (["all", "day", "week"].includes(saved.archiveGroup)) {
               this.archiveGroupMode = saved.archiveGroup;
             }
-            this.updateEmptyText();
             console.log(
               "[ui] 已恢复会话状态，筛选 =",
               this.view,
@@ -2792,7 +2902,6 @@
           setGroup(id) {
             this.groupFilter = id;
             console.log("[group] 切换分组过滤 →", id, this.groupName(id));
-            this.updateEmptyText();
             this.saveSessionState();
           },
 
@@ -2901,39 +3010,46 @@
             console.log("[group] 已删除分组", id, "，移入默认分组的任务", moved, "项");
             this.persistGroups();
             this.persistTodos();
-            this.updateEmptyText();
           },
 
-          // 空状态文案：按当前筛选 + 分组生成
-          updateEmptyText() {
+          // 空状态文案：按当前搜索词 + 筛选视图 + 分组生成。
+          // 用 getter 而不是 data 字段：搜索词一变文案要跟着变（以前靠 updateEmptyText() 手动刷，
+          // 加搜索后容易漏调）
+          get emptyText() {
+            if (this.searching) {
+              return (
+                "没有符合「" +
+                String(this.searchText || "").trim() +
+                "」的任务，换个关键词试试"
+              );
+            }
             // 归档 / 垃圾桶视图也跟随分组，空状态文案要带上分组名，
             // 否则用户会以为“归档全丢了”，其实是当前分组里没有
-            const gName = this.groupFilter === "all" ? "" : "「" + this.groupName(this.groupFilter) + "」的";
+            const gName =
+              this.groupFilter === "all" ? "" : "「" + this.groupName(this.groupFilter) + "」的";
             if (this.view === "trash") {
-              this.emptyText =
+              return (
                 gName + "垃圾桶是空的 🗑" +
-                (this.groupFilter === "all" ? "" : "，切到「全部任务」可以看到所有分组的条目");
-              return;
+                (this.groupFilter === "all" ? "" : "，切到「全部任务」可以看到所有分组的条目")
+              );
             }
             if (this.view === "archived") {
-              this.emptyText =
+              return (
                 gName +
                 "归档箱是空的 📦 勾选已完成的任务，再点右上角「归档已完成」就会收进这里" +
-                (this.groupFilter === "all" ? "" : "；左栏选「全部任务」可查看所有分组的归档");
-              return;
+                (this.groupFilter === "all" ? "" : "；左栏选「全部任务」可查看所有分组的归档")
+              );
             }
             if (this.groupFilter !== "all") {
               const name = this.groupName(this.groupFilter);
-              this.emptyText = "「" + name + "」里还没有任务，点右上角添加吧";
-              return;
+              return "「" + name + "」里还没有任务，点右上角添加吧";
             }
-            this.emptyText = "左侧选个分组，或者在「全部任务」里查看所有事项 🎉";
+            return "左侧选个分组，或者在「全部任务」里查看所有事项 🎉";
           },
 
           setView(value) {
             console.log("[todo] 切换筛选", value);
             this.view = value;
-            this.updateEmptyText();
             this.saveSessionState();
           },
         },

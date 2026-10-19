@@ -67,114 +67,40 @@
       color: var(--md-sys-color-on-tertiary-container);
       white-space: nowrap;
     }
-    .status-line {
+
+    /* ===== 会员状态（来自服务端） ===== */
+    .status-card {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 12px;
-      padding: 8px 12px;
-      border-radius: 12px;
-      font-size: 12px;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 16px;
       background-color: var(--md-sys-color-secondary-container);
       color: var(--md-sys-color-on-secondary-container);
     }
-
-    /* ===== 套餐选择 ===== */
-    .plans {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .plans-head {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .plans-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-    .plan-perks {
-      font-size: 11px;
-      line-height: 1.6;
-      color: var(--md-sys-color-on-surface-variant);
-      opacity: 0.85;
-    }
-    .plan-options {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .plan-option {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      min-height: 64px;
-      padding: 12px 16px;
-      border-radius: 16px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      background-color: var(--md-sys-color-surface-container-low);
-      color: var(--md-sys-color-on-surface);
-      font: inherit;
-      text-align: start;
-      cursor: pointer;
-      box-sizing: border-box;
-      transition:
-        background-color 0.15s,
-        border-color 0.15s;
-    }
-    .plan-option:hover {
-      background-color: var(--md-sys-color-surface-container);
-    }
-    .plan-option.selected {
-      border-color: var(--md-sys-color-primary);
-      background: linear-gradient(
-        135deg,
-        var(--md-sys-color-primary-container),
-        var(--md-sys-color-tertiary-container)
-      );
-      color: var(--md-sys-color-on-primary-container);
-    }
-    .plan-option-top {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-      min-width: 0;
-    }
-    .plan-option-name {
-      font-size: 14px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .plan-badge {
-      padding: 0 6px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 600;
-      line-height: 1.6;
-      white-space: nowrap;
-      background-color: var(--md-sys-color-tertiary);
-      color: var(--md-sys-color-on-tertiary);
-    }
-    .plan-option-price {
+    .status-card n-icon {
       flex-shrink: 0;
-      font-size: 20px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
+      font-size: 22px;
     }
-    .plan-option-per {
-      margin-left: 4px;
+    .status-body {
+      flex: 1;
+      min-width: 0;
       font-size: 12px;
-      font-weight: 500;
-      opacity: 0.75;
+      line-height: 1.6;
+    }
+    .status-title {
+      font-weight: 600;
+    }
+    .status-sub {
+      opacity: 0.85;
+      word-break: break-all;
+    }
+    .status-sub.error {
+      color: var(--md-sys-color-error);
+      opacity: 1;
     }
 
-    /* ===== 会员权益（第 1 步） ===== */
+    /* ===== 权益 ===== */
     .benefits {
       display: flex;
       flex-direction: column;
@@ -203,9 +129,6 @@
       font-size: 16px;
       color: var(--md-sys-color-primary);
     }
-    .benefit-body {
-      min-width: 0;
-    }
     .benefit-title {
       font-size: 12px;
       font-weight: 600;
@@ -215,69 +138,6 @@
       font-size: 11px;
       line-height: 1.6;
       color: var(--md-sys-color-on-surface-variant);
-    }
-
-    /* ===== 支付（Stripe · 虚拟支付） ===== */
-    .pay-method {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid var(--md-sys-color-primary);
-      background-color: var(--md-sys-color-surface-container);
-    }
-    .pay-method-icon {
-      flex-shrink: 0;
-      font-size: 22px;
-      color: var(--md-sys-color-primary);
-    }
-    .pay-method-body {
-      flex: 1;
-      min-width: 0;
-    }
-    .pay-method-name {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--md-sys-color-on-surface);
-    }
-    .pay-method-badge {
-      padding: 1px 6px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 600;
-      background-color: var(--md-sys-color-primary-container);
-      color: var(--md-sys-color-on-primary-container);
-    }
-    .pay-method-desc {
-      margin-top: 2px;
-      font-size: 11px;
-      line-height: 1.6;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-    /* 卡号 / 有效期 / CVC 同排，节省纵向空间（弹窗高度有限）。
-       st-input 默认 min-width 190px，网格里必须显式 min-width: 0 才不会被撑破 */
-    .pay-card-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
-      gap: 10px;
-    }
-    .pay-card-grid .field st-input {
-      width: 100%;
-      min-width: 0;
-    }
-    .pay-total {
-      margin-right: auto;
-      font-size: 12px;
-      color: var(--md-sys-color-on-surface-variant);
-    }
-    .pay-total strong {
-      font-size: 15px;
-      color: var(--md-sys-color-on-surface);
-      font-variant-numeric: tabular-nums;
     }
 
     /* ===== 步骤条 ===== */
@@ -396,17 +256,160 @@
       flex-wrap: wrap;
     }
 
-    /* 窄屏：套餐与卡信息改为纵向排列，避免挤压 */
-    @media (max-width: 480px) {
-      .plan-options {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .pay-card-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      }
-      .pay-card-grid .field:first-child {
-        grid-column: 1 / -1;
-      }
+    /* ===== 套餐 ===== */
+    .plans {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .plans-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .plans-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .plan-perks {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.85;
+    }
+    .plan-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .plan-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 64px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+      box-sizing: border-box;
+      transition:
+        background-color 0.15s,
+        border-color 0.15s;
+    }
+    .plan-option:hover {
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .plan-option.selected {
+      border-color: var(--md-sys-color-primary);
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container),
+        var(--md-sys-color-tertiary-container)
+      );
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .plan-option-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .plan-option-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .plan-badge {
+      padding: 0 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.6;
+      white-space: nowrap;
+      background-color: var(--md-sys-color-tertiary);
+      color: var(--md-sys-color-on-tertiary);
+    }
+    .plan-option-price {
+      flex-shrink: 0;
+      font-size: 20px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .plan-option-per {
+      margin-left: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0.75;
+    }
+
+    /* ===== 支付 ===== */
+    .pay-method {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--md-sys-color-primary);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .pay-method-icon {
+      flex-shrink: 0;
+      font-size: 22px;
+      color: var(--md-sys-color-primary);
+    }
+    .pay-method-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .pay-method-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .pay-method-badge {
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background-color: var(--md-sys-color-primary-container);
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .pay-method-desc {
+      margin-top: 2px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .pay-card-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
+      gap: 10px;
+    }
+    .pay-card-grid .field st-input {
+      width: 100%;
+      min-width: 0;
+    }
+    .pay-total {
+      margin-right: auto;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .pay-total strong {
+      font-size: 15px;
+      color: var(--md-sys-color-on-surface);
+      font-variant-numeric: tabular-nums;
     }
 
     /* ===== 成功页 ===== */
@@ -460,6 +463,28 @@
       font-size: 11px;
       color: var(--md-sys-color-on-surface-variant);
     }
+    .invite-code {
+      font-family: monospace;
+      font-size: 10px;
+      line-height: 1.5;
+      word-break: break-all;
+      color: var(--md-sys-color-on-surface-variant);
+      background-color: var(--md-sys-color-surface-container-high);
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+
+    @media (max-width: 480px) {
+      .plan-options {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .pay-card-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .pay-card-grid .field:first-child {
+        grid-column: 1 / -1;
+      }
+    }
   </style>
 
   <l-m src="/gh/ofajs/senti-ui@main/packages/input/input.html"></l-m>
@@ -478,22 +503,43 @@
           <div class="brand-text">
             <h1><locale-text><span lang="cn">会员中心</span><span lang="en">Membership</span></locale-text></h1>
             <p class="sub">
-              <locale-text><span lang="cn">绑定邮箱、验证身份并支付后即可开通会员；套餐、验证码、支付与邮箱都是本地模拟数据，不会发起网络请求。</span><span lang="en">Bind an email, verify it and pay to unlock membership. Plan, code, payment and emails are local mock data — no network requests.</span></locale-text>
+              <locale-text><span lang="cn">验证码与支付由 Synchratex 服务端处理（演示环境为 mock），成功后自动配置中转 key。</span><span lang="en">Verification and payment are handled by the Synchratex server (mock in this demo). Your relay key is configured automatically.</span></locale-text>
             </p>
           </div>
         </div>
         <span class="mock-badge">
           <n-icon icon="mdi:flask-outline"></n-icon>
-          <locale-text><span lang="cn">演示模式</span><span lang="en">Demo</span></locale-text>
+          <locale-text><span lang="cn">服务端演示</span><span lang="en">Server demo</span></locale-text>
         </span>
       </div>
-      <o-if :value="hasMembership">
-        <div class="status-line">
-          <n-icon icon="mdi:check-decagram-outline"></n-icon>
-          <span>{{currentMembershipText}}</span>
-        </div>
-      </o-if>
     </header>
+
+    <!-- 已有会员（服务端 binding） -->
+    <o-if :value="hasBinding">
+      <div class="status-card">
+        <n-icon icon="mdi:check-decagram-outline"></n-icon>
+        <div class="status-body">
+          <div class="status-title">{{boundPlanName}}</div>
+          <div class="status-sub">{{boundStatusText}}</div>
+          <div class="status-sub" class:error="!localKeyBound">
+            <o-if :value="localKeyBound">
+              <locale-text><span lang="cn">中转 key 已在本地 AI 配置中。</span><span lang="en">Relay key is already in your local AI config.</span></locale-text>
+            </o-if>
+            <o-if :value="!localKeyBound">
+              <locale-text><span lang="cn">本机没有找到这个中转 key，可一键找回并重新绑定。</span><span lang="en">The relay key is missing on this device — restore it in one click.</span></locale-text>
+            </o-if>
+          </div>
+        </div>
+        <st-button
+          variant="outlined"
+          attr:disabled="rebinding"
+          on:click="rebindKey"
+        >
+          <n-icon icon="mdi:key-plus" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">找回 key</span><span lang="en">Restore key</span></locale-text>
+        </st-button>
+      </div>
+    </o-if>
 
     <div class="steps">
       <div
@@ -526,17 +572,17 @@
       </div>
     </div>
 
-    <!-- ===== 步骤 1：会员权益 + 邮箱 / 用户名 ===== -->
+    <!-- ===== 步骤 1：邮箱 / 用户名 ===== -->
     <o-if :value="step === 'form'">
       <section class="benefits">
         <div class="benefits-title">
           <n-icon icon="mdi:diamond-stone"></n-icon>
           <locale-text><span lang="cn">购买会员后拥有</span><span lang="en">Included with membership</span></locale-text>
         </div>
-        <o-fill :value="benefits" fill-key="icon">
+        <o-fill :value="benefits" fill-key="title">
           <div class="benefit">
             <n-icon class="benefit-icon" attr:icon="$data.icon"></n-icon>
-            <div class="benefit-body">
+            <div>
               <div class="benefit-title">{{$data.title}}</div>
               <div class="benefit-desc">{{$data.desc}}</div>
             </div>
@@ -573,9 +619,14 @@
           </o-if>
         </div>
         <div class="actions">
-          <st-button color="primary" attr:disabled="!formValid" on:click="goVerify">
+          <st-button color="primary" attr:disabled="!formValid || sending" on:click="goCode">
             <n-icon icon="mdi:email-fast-outline" slot="prefix"></n-icon>
-            <locale-text><span lang="cn">下一步，获取验证码</span><span lang="en">Next, send code</span></locale-text>
+            <o-if :value="!sending">
+              <locale-text><span lang="cn">下一步，获取验证码</span><span lang="en">Next, send code</span></locale-text>
+            </o-if>
+            <o-if :value="sending">
+              <locale-text><span lang="cn">发送中...</span><span lang="en">Sending...</span></locale-text>
+            </o-if>
           </st-button>
         </div>
       </section>
@@ -590,7 +641,7 @@
         <p class="card-desc">{{codeSentText}}</p>
         <div class="mock-code">
           <n-icon icon="mdi:flask-outline"></n-icon>
-          <span>{{mockCodeText}}</span>
+          <span>{{mockCodeHint}}</span>
         </div>
         <div class="field">
           <label class="field-label"><locale-text><span lang="cn">验证码</span><span lang="en">Verification code</span></locale-text></label>
@@ -610,11 +661,7 @@
             <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
             <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
           </st-button>
-          <st-button
-            color="primary"
-            attr:disabled="verifying || !code"
-            on:click="verifyCode"
-          >
+          <st-button color="primary" attr:disabled="verifying || !code" on:click="verifyCode">
             <n-icon icon="mdi:arrow-right" slot="prefix"></n-icon>
             <o-if :value="!verifying">
               <locale-text><span lang="cn">验证并继续支付</span><span lang="en">Verify and continue</span></locale-text>
@@ -627,7 +674,7 @@
       </section>
     </o-if>
 
-    <!-- ===== 步骤 3：Stripe 模拟支付 ===== -->
+    <!-- ===== 步骤 3：套餐 + 支付 ===== -->
     <o-if :value="step === 'pay'">
       <section class="card">
         <h2 class="card-title">
@@ -635,9 +682,7 @@
         </h2>
         <div class="plans">
           <div class="plans-head">
-            <span class="plans-title">
-              <locale-text><span lang="cn">选择套餐</span><span lang="en">Choose a plan</span></locale-text>
-            </span>
+            <span class="plans-title"><locale-text><span lang="cn">选择套餐</span><span lang="en">Choose a plan</span></locale-text></span>
             <span class="plan-perks">{{planPerks}}</span>
           </div>
           <div class="plan-options">
@@ -653,14 +698,14 @@
             </button>
             <button
               class="plan-option"
-              class:selected="planId === 'yearly'"
-              on:click="pickPlan('yearly')"
+              class:selected="planId === 'annual'"
+              on:click="pickPlan('annual')"
             >
               <span class="plan-option-top">
-                <span class="plan-option-name">{{yearlyName}}</span>
-                <span class="plan-badge">{{yearlyBadge}}</span>
+                <span class="plan-option-name">{{annualName}}</span>
+                <span class="plan-badge">{{annualBadge}}</span>
               </span>
-              <span class="plan-option-price">{{yearlyPrice}}<span class="plan-option-per">{{yearlyPeriod}}</span></span>
+              <span class="plan-option-price">{{annualPrice}}<span class="plan-option-per">{{annualPeriod}}</span></span>
             </button>
           </div>
         </div>
@@ -674,7 +719,7 @@
               </span>
             </div>
             <div class="pay-method-desc">
-              <locale-text><span lang="cn">当前仅支持 Stripe 支付；其它支付方式暂未开放。</span><span lang="en">Stripe is the only payment method for now — others are not available yet.</span></locale-text>
+              <locale-text><span lang="cn">当前仅支持 Stripe 支付；由服务端模拟扣款，不会真实收款。</span><span lang="en">Stripe only for now; the charge is simulated server-side.</span></locale-text>
             </div>
           </div>
         </div>
@@ -723,11 +768,7 @@
             <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
             <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
           </st-button>
-          <st-button
-            color="primary"
-            attr:disabled="paying || !payValid"
-            on:click="payNow"
-          >
+          <st-button color="primary" attr:disabled="paying || !payValid" on:click="payNow">
             <n-icon icon="mdi:lock-outline" slot="prefix"></n-icon>
             <o-if :value="!paying">
               <span>{{payButtonText}}</span>
@@ -740,7 +781,7 @@
       </section>
     </o-if>
 
-    <!-- ===== 步骤 4：购买成功 + 用户信息 ===== -->
+    <!-- ===== 步骤 4：完成 ===== -->
     <o-if :value="step === 'done'">
       <section class="card">
         <div class="success-head">
@@ -750,7 +791,7 @@
               <locale-text><span lang="cn">购买成功</span><span lang="en">Purchase complete</span></locale-text>
             </h2>
             <p class="card-desc">
-              <locale-text><span lang="cn">会员已开通，本地默认用户的用户名已同步更新。</span><span lang="en">Membership is active and your local default user has been renamed.</span></locale-text>
+              <locale-text><span lang="cn">会员已开通，中转 key 已写入本地 AI 配置，用户名也已同步。</span><span lang="en">Membership is active, the relay key is saved in your local AI config and your username was updated.</span></locale-text>
             </p>
           </div>
         </div>
@@ -758,10 +799,18 @@
         <div class="kv-list">
           <div class="kv"><span class="k"><locale-text><span lang="cn">会员方案</span><span lang="en">Plan</span></locale-text></span><span class="v">{{donePlanName}}</span></div>
           <div class="kv"><span class="k"><locale-text><span lang="cn">支付金额</span><span lang="en">Amount</span></locale-text></span><span class="v">{{doneAmountText}}</span></div>
+          <div class="kv"><span class="k"><locale-text><span lang="cn">访问服务器</span><span lang="en">Server</span></locale-text></span><span class="v">{{doneServerText}}</span></div>
           <div class="kv"><span class="k"><locale-text><span lang="cn">绑定邮箱</span><span lang="en">Bound email</span></locale-text></span><span class="v">{{doneEmail}}</span></div>
-          <div class="kv"><span class="k"><locale-text><span lang="cn">支付方式</span><span lang="en">Payment</span></locale-text></span><span class="v">{{donePaymentText}}</span></div>
           <div class="kv"><span class="k"><locale-text><span lang="cn">有效期至</span><span lang="en">Valid until</span></locale-text></span><span class="v">{{doneExpireText}}</span></div>
           <div class="kv"><span class="k"><locale-text><span lang="cn">订单号</span><span lang="en">Order ID</span></locale-text></span><span class="v">{{doneOrderId}}</span></div>
+        </div>
+
+        <div class="user-block">
+          <div class="user-title">
+            <n-icon icon="mdi:key-chain-variant"></n-icon>
+            <locale-text><span lang="cn">中转 key（已保存到本地）</span><span lang="en">Relay key (saved locally)</span></locale-text>
+          </div>
+          <div class="invite-code">{{doneInviteCode}}</div>
         </div>
 
         <div class="user-block">
@@ -785,6 +834,10 @@
         </div>
 
         <div class="actions">
+          <st-button variant="text" on:click="copyInviteCode">
+            <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">复制邀请码</span><span lang="en">Copy invite code</span></locale-text>
+          </st-button>
           <st-button color="primary" on:click="finish">
             <n-icon icon="mdi:check" slot="prefix"></n-icon>
             <locale-text><span lang="cn">完成</span><span lang="en">Done</span></locale-text>
@@ -800,25 +853,31 @@
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
       );
-      const { getStorage } = await load("/nos/storage/main.js");
       const { getUser } = await load("/nos/user/main.js");
+      const ai = await load("/mz/ai/main.js");
+      const api = await load("../lib/server-api.js");
       const {
-        DEFAULT_PLAN_ID,
-        PLAN_PERKS,
-        MEMBER_BENEFITS,
-        getPlan,
-        MOCK_PAYMENT,
-        checkVerifyCode,
-        createMockMembership,
-        formatDate,
         isValidEmail,
         isValidUsername,
         isValidMockCard,
         maskEmail,
-      } = await load("../lib/mock.js");
+        priceText,
+        periodText,
+        formatDate,
+        inviteServerUrl,
+      } = await load("../lib/checkout.js");
 
-      const memberStore = getStorage("mazmot-membership");
-      const MEMBERSHIP_KEY = "current";
+      const MOCK_CARD = {
+        number: "4242 4242 4242 4242",
+        expiry: "12/34",
+        cvc: "123",
+      };
+
+      // 服务端套餐拿不到时的兜底（价格口径与 server/plans.rs 一致）
+      const FALLBACK_PLANS = [
+        { id: "monthly", price_cents: 1000, billing_interval: "month", savings_cents: 0 },
+        { id: "annual", price_cents: 10000, billing_interval: "year", savings_cents: 2000 },
+      ];
 
       const L10N = {
         emailPlaceholder: { cn: "请输入邮箱地址", en: "Enter your email address" },
@@ -827,8 +886,8 @@
           en: "3-20 letters, digits, underscores or dashes",
         },
         emailHint: {
-          cn: "验证码会发送到该邮箱；验证通过后，这个邮箱就与你的会员绑定。",
-          en: "The code goes to this address — once verified, this email is bound to your membership.",
+          cn: "验证码由服务端发到这个邮箱；验证通过后，这个邮箱就与会员绑定。",
+          en: "The server sends the code to this address; once verified it is bound to your membership.",
         },
         usernameHint: {
           cn: "验证通过后，会用它改写本地默认用户的用户名。",
@@ -840,66 +899,106 @@
           en: "Username must be 3-20 letters, digits, underscores or dashes",
         },
         codePlaceholder: { cn: "请输入 6 位验证码", en: "Enter the 6-digit code" },
-        mockCodeText: {
-          cn: "演示验证码固定为 111111",
-          en: "Demo verification code is always 111111",
-        },
-        wrongCode: {
-          cn: "验证码不正确，演示验证码是 111111",
-          en: "Wrong code. The demo code is 111111",
-        },
         cardNumberPlaceholder: { cn: "4242 4242 4242 4242", en: "4242 4242 4242 4242" },
         cardExpiryPlaceholder: { cn: "MM/YY", en: "MM/YY" },
         cardCvcPlaceholder: { cn: "CVC", en: "CVC" },
         payMockHint: {
-          cn: "演示环境：Stripe 为虚拟支付，不会真实扣款；测试卡已预填，可直接支付。",
-          en: "Demo: Stripe payment is simulated — no real charge. The test card is prefilled, just pay.",
+          cn: "服务端 mock 支付：测试卡已预填，不会真实扣款。",
+          en: "Server-side mock payment: test card prefilled, no real charge.",
         },
         copyUserIdTitle: { cn: "复制用户 ID", en: "Copy user ID" },
         userIdCopied: { cn: "用户 ID 已复制", en: "User ID copied" },
         copyFailed: { cn: "复制失败，请手动复制", en: "Copy failed, please copy manually" },
+        inviteCopied: { cn: "邀请码已复制", en: "Invite code copied" },
+        keyRestored: { cn: "中转 key 已找回并保存", en: "Relay key restored and saved" },
+        keyAlready: { cn: "中转 key 已保存在本地", en: "Relay key is already saved locally" },
+        serverError: { cn: "服务端错误：{msg}", en: "Server error: {msg}" },
+        networkError: {
+          cn: "无法连接 Synchratex 服务端：{msg}",
+          en: "Cannot reach the Synchratex server: {msg}",
+        },
       };
-      const t = (key) => {
+      const t = (key, params) => {
         const item = L10N[key];
-        return item ? getLocaleText(item) : key;
+        if (!item) return key;
+        let text = getLocaleText(item);
+        if (params) {
+          for (const [name, value] of Object.entries(params)) {
+            text = text.replaceAll(`{${name}}`, String(value));
+          }
+        }
+        return text;
+      };
+
+      const planName = (id, fallback) => {
+        if (id === "monthly") {
+          return getLocaleText({ cn: "Mazmot Pro 月度会员", en: "Mazmot Pro Monthly" });
+        }
+        if (id === "annual") {
+          return getLocaleText({ cn: "Mazmot Pro 年度会员", en: "Mazmot Pro Yearly" });
+        }
+        return fallback || id;
       };
 
       const planPerks = getLocaleText({
-        cn: PLAN_PERKS.cn.join(" · "),
-        en: PLAN_PERKS.en.join(" · "),
+        cn: "默认 AI 使用量 · 更大的转发流量 · 新功能优先使用",
+        en: "Default AI quota · Larger relay traffic · Priority features",
       });
 
-      // 会员权益（第 1 步展示「购买后拥有什么」）
-      const benefits = MEMBER_BENEFITS.map((item) => ({
-        icon: item.icon,
-        title: getLocaleText(item.title),
-        desc: getLocaleText(item.desc),
-      }));
-
-      // 套餐文案：两档套餐是固定选项（数量固定，直接展开成 data 字段）
-      const monthlyPlan = getPlan("monthly");
-      const yearlyPlan = getPlan("yearly");
-      const planText = {
-        monthlyName: getLocaleText(monthlyPlan.shortName),
-        monthlyPrice: `$${monthlyPlan.priceUSD}`,
-        monthlyPeriod: getLocaleText(monthlyPlan.period),
-        yearlyName: getLocaleText(yearlyPlan.shortName),
-        yearlyPrice: `$${yearlyPlan.priceUSD}`,
-        yearlyPeriod: getLocaleText(yearlyPlan.period),
-        yearlyBadge: yearlyPlan.badge ? getLocaleText(yearlyPlan.badge) : "",
-      };
+      const benefits = [
+        {
+          icon: "mdi:brain",
+          title: getLocaleText({ cn: "默认额度的 AI 使用量", en: "Default AI usage quota" }),
+          desc: getLocaleText({
+            cn: "开通即分配可直接使用的 AI 调用额度，不用自己配 Key。",
+            en: "A built-in AI quota you can use right away — no API key setup.",
+          }),
+        },
+        {
+          icon: "mdi:server-network",
+          title: getLocaleText({ cn: "更大的服务器转发流量", en: "Larger relay traffic" }),
+          desc: getLocaleText({
+            cn: "更高的中转流量上限，长对话与批量任务不易触顶。",
+            en: "A higher relay cap for long conversations and batch tasks.",
+          }),
+        },
+        {
+          icon: "mdi:rocket-launch-outline",
+          title: getLocaleText({ cn: "优先使用 Mazmot 新功能", en: "Priority access to new features" }),
+          desc: getLocaleText({
+            cn: "例如点对点互联等能力，会员优先开放。",
+            en: "Capabilities such as P2P interconnection open to members first.",
+          }),
+        },
+      ];
 
       return {
         data: {
           step: "form",
-          planId: DEFAULT_PLAN_ID,
-          planPerks,
-          benefits,
-          ...planText,
+          serverName: "Synchratex",
+          userId: "",
 
-          // 已有会员记录（来自本地存储，纯展示）
-          hasMembership: false,
-          currentMembershipText: "",
+          // 服务端绑定信息（找回）
+          hasBinding: false,
+          boundPlanName: "",
+          boundStatusText: "",
+          boundInviteCode: "",
+          localKeyBound: false,
+          rebinding: false,
+
+          // 套餐（价格来自 /api/plans）
+          plans: FALLBACK_PLANS,
+          planId: "monthly",
+          planPerks,
+          monthlyName: planName("monthly"),
+          annualName: planName("annual"),
+          monthlyPrice: "$10",
+          annualPrice: "$100",
+          monthlyPeriod: getLocaleText({ cn: "/ 月", en: "/ month" }),
+          annualPeriod: getLocaleText({ cn: "/ 年", en: "/ year" }),
+          annualBadge: "",
+          payAmountText: "$10",
+          payButtonText: getLocaleText({ cn: "支付 $10（模拟）", en: "Pay $10 (mock)" }),
 
           // 步骤 1
           email: "",
@@ -911,24 +1010,22 @@
           emailError: "",
           usernameError: "",
           formValid: false,
+          sending: false,
 
           // 步骤 2
+          ticketId: "",
+          mockCode: "",
+          mockCodeHint: "",
           code: "",
           codePlaceholder: t("codePlaceholder"),
           codeError: "",
           codeSentText: "",
-          mockCodeText: t("mockCodeText"),
           verifying: false,
 
-          // 步骤 3：支付（Stripe 虚拟支付）
-          payAmountText: `$${getPlan(DEFAULT_PLAN_ID).priceUSD}`,
-          payButtonText: getLocaleText({
-            cn: `支付 $${getPlan(DEFAULT_PLAN_ID).priceUSD}（模拟）`,
-            en: `Pay $${getPlan(DEFAULT_PLAN_ID).priceUSD} (mock)`,
-          }),
-          cardNumber: MOCK_PAYMENT.testCard.number,
-          cardExpiry: MOCK_PAYMENT.testCard.expiry,
-          cardCvc: MOCK_PAYMENT.testCard.cvc,
+          // 步骤 3
+          cardNumber: MOCK_CARD.number,
+          cardExpiry: MOCK_CARD.expiry,
+          cardCvc: MOCK_CARD.cvc,
           cardNumberPlaceholder: t("cardNumberPlaceholder"),
           cardExpiryPlaceholder: t("cardExpiryPlaceholder"),
           cardCvcPlaceholder: t("cardCvcPlaceholder"),
@@ -936,66 +1033,157 @@
           payValid: true,
           paying: false,
 
-          // 步骤 3
+          // 步骤 4
           donePlanName: "",
           doneAmountText: "",
+          doneServerText: "",
           doneEmail: "",
           doneExpireText: "",
           doneOrderId: "",
-          donePaymentText: "",
+          doneInviteCode: "",
           doneUsername: "",
           doneUserId: "",
           copyUserIdTitle: t("copyUserIdTitle"),
+
+          benefits,
         },
 
         async ready() {
-          await this.loadCurrentMembership();
+          await this.loadUser();
+          await this.loadPlans();
+          await this.loadBinding();
         },
 
         proto: {
-          async loadCurrentMembership() {
-            try {
-              const record = await memberStore.getItem(MEMBERSHIP_KEY);
-              if (!record || !record.expireAt) return;
-              this.hasMembership = true;
-              const planName = getLocaleText(getPlan(record.planId).name);
-              this.currentMembershipText = getLocaleText(
-                {
-                  cn: `当前会员：${planName}，有效期至 ${formatDate(record.expireAt)}`,
-                  en: `Current membership: ${planName}, valid until ${formatDate(record.expireAt)}`,
-                },
-              );
-              // 预填上次绑定的邮箱与用户名，方便再次购买
-              if (record.email) this.email = record.email;
-              if (record.username) this.username = record.username;
-              if (record.planId) {
-                this.planId = getPlan(record.planId).id;
-                this.syncPayAmount();
-              }
-              this.refreshFormValid();
-            } catch (err) {
-              console.warn("[membership] 读取本地会员记录失败：", err);
-            }
-          },
-
-          pickPlan(planId) {
-            this.planId = getPlan(planId).id;
+          applyPlans(list) {
+            const plans = (list && list.length ? list : FALLBACK_PLANS).filter(
+              (plan) => plan.id === "monthly" || plan.id === "annual",
+            );
+            this.plans = plans.length ? plans : FALLBACK_PLANS;
+            const monthly = this.plans.find((plan) => plan.id === "monthly") || FALLBACK_PLANS[0];
+            const annual = this.plans.find((plan) => plan.id === "annual") || FALLBACK_PLANS[1];
+            this.monthlyPrice = priceText(monthly.price_cents, "USD");
+            this.annualPrice = priceText(annual.price_cents, "USD");
+            this.monthlyPeriod = periodText(monthly.billing_interval);
+            this.annualPeriod = periodText(annual.billing_interval);
+            this.annualBadge = annual.savings_cents
+              ? getLocaleText({
+                  cn: `省 ${priceText(annual.savings_cents, "USD")}`,
+                  en: `Save ${priceText(annual.savings_cents, "USD")}`,
+                })
+              : "";
             this.syncPayAmount();
           },
 
-          // 应付金额 / 支付按钮文案跟随所选套餐
           syncPayAmount() {
-            const amount = getPlan(this.planId).priceUSD;
-            this.payAmountText = `$${amount}`;
+            const plan = this.plans.find((item) => item.id === this.planId) || this.plans[0];
+            const amount = priceText(plan.price_cents, "USD");
+            this.payAmountText = amount;
             this.payButtonText = getLocaleText({
-              cn: `支付 $${amount}（模拟）`,
-              en: `Pay $${amount} (mock)`,
+              cn: `支付 ${amount}（模拟）`,
+              en: `Pay ${amount} (mock)`,
             });
           },
 
+          pickPlan(id) {
+            if (id !== "monthly" && id !== "annual") return;
+            this.planId = id;
+            this.syncPayAmount();
+          },
+
+          async loadUser() {
+            try {
+              const user = await getUser("default");
+              const info = await user.getInfo();
+              this.userId = info.subject || user.userId || "";
+              if (info.username) this.doneUsername = info.username;
+            } catch (err) {
+              console.error("[membership] 读取本地用户失败：", err);
+            }
+          },
+
+          async loadPlans() {
+            try {
+              const { status, data } = await api.plans();
+              if (status === 200 && data && Array.isArray(data.plans)) {
+                this.applyPlans(data.plans);
+              }
+            } catch (err) {
+              console.warn("[membership] 读取套餐失败，使用兜底价格：", err);
+            }
+          },
+
+          localKeyExists(code) {
+            if (!code) return false;
+            return ai
+              .getApiKeys()
+              .some((key) => key.provider === "relay" && key.apiKey === code);
+          },
+
+          async loadBinding() {
+            if (!this.userId) return;
+            try {
+              const { status, data } = await api.binding(this.userId);
+              if (status !== 200 || !data || !data.bound) return;
+              this.hasBinding = true;
+              this.boundPlanName = planName(data.member.planId, data.member.planName);
+              this.boundStatusText = getLocaleText({
+                cn: `绑定邮箱 ${data.member.email} · 有效期至 ${formatDate(data.member.expiresAt)}`,
+                en: `Bound to ${data.member.email} · valid until ${formatDate(data.member.expiresAt)}`,
+              });
+              this.boundInviteCode = data.relay.inviteCode;
+              this.localKeyBound = this.localKeyExists(this.boundInviteCode);
+              if (!this.email) this.email = data.member.email;
+              if (!this.username) this.username = data.member.username;
+              this.refreshFormValid();
+            } catch (err) {
+              console.warn("[membership] 查询会员绑定失败（服务端未启动？）：", err);
+            }
+          },
+
+          async rebindKey() {
+            if (this.rebinding) return;
+            if (!this.userId) {
+              toast({ message: t("networkError", { msg: "无本地用户" }), color: "error" });
+              return;
+            }
+            this.rebinding = true;
+            try {
+              const { status, data } = await api.binding(this.userId);
+              if (status !== 200 || !data || !data.bound) {
+                toast({
+                  message: t("serverError", { msg: "服务端没有这个会员的绑定" }),
+                  color: "error",
+                });
+                return;
+              }
+              this.boundInviteCode = data.relay.inviteCode;
+              const saved = this.saveRelayKey(data.relay.inviteCode);
+              this.localKeyBound = true;
+              toast({
+                message: saved ? t("keyRestored") : t("keyAlready"),
+                color: "success",
+              });
+            } catch (err) {
+              toast({ message: t("networkError", { msg: err.message || err }), color: "error" });
+            } finally {
+              this.rebinding = false;
+            }
+          },
+
+          saveRelayKey(inviteCode) {
+            if (!inviteCode) return false;
+            if (this.localKeyExists(inviteCode)) return false;
+            const serverUrl = inviteServerUrl(inviteCode);
+            ai.saveKey(inviteCode, "relay", {
+              serverName: this.serverName,
+              ...(serverUrl ? { serverUrl } : {}),
+            });
+            return true;
+          },
+
           refreshFormValid() {
-            this.formValid =
-              isValidEmail(this.email) && isValidUsername(this.username);
+            this.formValid = isValidEmail(this.email) && isValidUsername(this.username);
           },
 
           onEmailInput(event) {
@@ -1010,31 +1198,53 @@
             this.refreshFormValid();
           },
 
-          goVerify() {
+          validateForm() {
             this.emailError = "";
             this.usernameError = "";
+            if (!isValidEmail(this.email)) this.emailError = t("emailInvalid");
+            if (!isValidUsername(this.username)) this.usernameError = t("usernameInvalid");
+            this.refreshFormValid();
+            return !this.emailError && !this.usernameError;
+          },
 
-            let valid = true;
-            if (!isValidEmail(this.email)) {
-              this.emailError = t("emailInvalid");
-              valid = false;
+          async goCode() {
+            if (this.sending) return;
+            if (!this.validateForm()) return;
+            if (!this.userId) {
+              await this.loadUser();
             }
-            if (!isValidUsername(this.username)) {
-              this.usernameError = t("usernameInvalid");
-              valid = false;
+            this.sending = true;
+            try {
+              const { status, data } = await api.sendCode({
+                email: this.email.trim(),
+                username: this.username.trim(),
+                mazmotUserId: this.userId,
+                planId: this.planId,
+              });
+              if (status === 200 && data && data.ok) {
+                this.ticketId = data.ticketId;
+                this.mockCode = data.mockCode || "";
+                this.mockCodeHint = getLocaleText({
+                  cn: `服务端返回的演示验证码：${this.mockCode}`,
+                  en: `Demo code returned by the server: ${this.mockCode}`,
+                });
+                this.code = "";
+                this.codeError = "";
+                this.codeSentText = getLocaleText({
+                  cn: `验证码已由服务端发送至 ${maskEmail(this.email)}（演示环境不会真的发信）。`,
+                  en: `The server sent a code to ${maskEmail(this.email)} (nothing is really sent in this demo).`,
+                });
+                this.step = "code";
+              } else {
+                this.emailError =
+                  (data && data.error && data.error.message) ||
+                  t("serverError", { msg: `HTTP ${status}` });
+              }
+            } catch (err) {
+              this.emailError = t("networkError", { msg: err.message || err });
+            } finally {
+              this.sending = false;
             }
-            if (!valid) {
-              this.refreshFormValid();
-              return;
-            }
-
-            this.code = "";
-            this.codeError = "";
-            this.codeSentText = getLocaleText({
-              cn: `验证码已发送至 ${maskEmail(this.email.trim())}（演示环境不会真的发信）。`,
-              en: `A code was sent to ${maskEmail(this.email.trim())} (nothing is really sent in this demo).`,
-            });
-            this.step = "code";
           },
 
           onCodeInput(event) {
@@ -1049,23 +1259,19 @@
 
           async verifyCode() {
             if (this.verifying) return;
-            if (!checkVerifyCode(this.code)) {
-              this.codeError = t("wrongCode");
-              return;
-            }
             this.verifying = true;
             try {
-              // 邮箱验证通过（模拟发信不会真的发码）：进入 Stripe 支付步骤
-              this.paying = false;
-              this.payValid = isValidMockCard({
-                number: this.cardNumber,
-                expiry: this.cardExpiry,
-                cvc: this.cardCvc,
-              });
-              this.syncPayAmount();
-              this.step = "pay";
+              const { status, data } = await api.confirmCode(this.ticketId, this.code.trim());
+              if (status === 200 && data && data.ok) {
+                this.codeError = "";
+                this.step = "pay";
+              } else {
+                this.codeError =
+                  (data && data.error && data.error.message) ||
+                  t("serverError", { msg: `HTTP ${status}` });
+              }
             } catch (err) {
-              console.error("[membership] 进入支付失败：", err);
+              this.codeError = t("networkError", { msg: err.message || err });
             } finally {
               this.verifying = false;
             }
@@ -1083,7 +1289,6 @@
             });
           },
 
-          // 模拟 Stripe 扣款成功 → 更新本地默认用户 → 写入会员记录 → 成功页
           async payNow() {
             if (this.paying) return;
             this.payValid = isValidMockCard({
@@ -1095,61 +1300,69 @@
 
             this.paying = true;
             try {
-              // 虚拟支付：仅等待一小段时间模拟 Stripe 处理，不发网络请求
-              await new Promise((resolve) => setTimeout(resolve, 900));
+              const { status, data } = await api.checkout(this.ticketId, this.planId);
+              if (status !== 200 || !data || !data.ok) {
+                toast({
+                  message:
+                    (data && data.error && data.error.message) ||
+                    t("serverError", { msg: `HTTP ${status}` }),
+                  color: "error",
+                });
+                return;
+              }
 
-              // 支付成功：拿默认用户，把用户名改成这里填写的值
-              const user = await getUser("default");
-              await user.updateInfo({ username: this.username.trim() });
-              const info = await user.getInfo();
+              const inviteCode = data.relay.inviteCode;
+              const serverUrl = data.relay.serverUrl || inviteServerUrl(inviteCode);
+              const info = await api.serverInfo(serverUrl);
+              if (info && info.name) this.serverName = info.name;
+              this.saveRelayKey(inviteCode);
 
-              const purchase = createMockMembership({
-                planId: this.planId,
-                email: this.email.trim(),
-                username: this.username.trim(),
-              });
-              await memberStore.setItem(MEMBERSHIP_KEY, purchase);
+              // 本地默认用户名与服务端记录对齐（失败不影响已经成功的购买）
+              try {
+                const user = await getUser("default");
+                await user.updateInfo({ username: data.member.username });
+                const latest = await user.getInfo();
+                this.doneUserId = latest.subject || user.userId || this.userId;
+                this.doneUsername = latest.username || data.member.username;
+              } catch (err) {
+                console.warn("[membership] 同步本地用户名失败：", err);
+                this.doneUserId = this.userId;
+                this.doneUsername = data.member.username;
+              }
 
-              this.donePlanName = getLocaleText(purchase.planName);
-              this.doneAmountText = `$${purchase.priceUSD}`;
-              this.doneEmail = purchase.email;
-              this.doneExpireText = formatDate(purchase.expireAt);
-              this.doneOrderId = purchase.orderId;
-              this.donePaymentText = getLocaleText({
-                cn: "Stripe（模拟）",
-                en: "Stripe (mock)",
-              });
-              this.doneUsername = info.username || this.username.trim();
-              this.doneUserId = info.subject || user.userId || "";
-              this.hasMembership = true;
-              this.currentMembershipText = getLocaleText({
-                cn: `当前会员：${this.donePlanName}，有效期至 ${formatDate(purchase.expireAt)}`,
-                en: `Current membership: ${this.donePlanName}, valid until ${formatDate(purchase.expireAt)}`,
+              this.donePlanName = planName(data.member.planId, data.member.planName);
+              this.doneAmountText = priceText(data.order.amountCents, data.order.currency);
+              this.doneServerText = serverUrl;
+              this.doneEmail = data.member.email;
+              this.doneExpireText = formatDate(data.member.expiresAt);
+              this.doneOrderId = data.order.id;
+              this.doneInviteCode = inviteCode;
+              this.hasBinding = true;
+              this.boundPlanName = this.donePlanName;
+              this.boundInviteCode = inviteCode;
+              this.localKeyBound = true;
+              this.boundStatusText = getLocaleText({
+                cn: `绑定邮箱 ${data.member.email} · 有效期至 ${this.doneExpireText}`,
+                en: `Bound to ${data.member.email} · valid until ${this.doneExpireText}`,
               });
               this.step = "done";
 
               this.emit("membership-purchased", {
                 data: {
-                  planId: purchase.planId,
-                  priceUSD: purchase.priceUSD,
-                  email: purchase.email,
+                  planId: data.member.planId,
+                  priceUSD: data.order.amountCents / 100,
+                  email: data.member.email,
                   username: this.doneUsername,
                   userId: this.doneUserId,
-                  orderId: purchase.orderId,
-                  expireAt: purchase.expireAt,
+                  orderId: data.order.id,
+                  expireAt: data.member.expiresAt,
+                  inviteCode,
                 },
                 bubbles: true,
                 composed: true,
               });
             } catch (err) {
-              console.error("[membership] 支付/开通失败：", err);
-              toast({
-                message: getLocaleText(
-                  { cn: "支付失败：{msg}", en: "Payment failed: {msg}" },
-                  { msg: err.message || err },
-                ),
-                color: "error",
-              });
+              toast({ message: t("networkError", { msg: err.message || err }), color: "error" });
             } finally {
               this.paying = false;
             }
@@ -1160,6 +1373,16 @@
             try {
               await navigator.clipboard.writeText(this.doneUserId);
               toast({ message: t("userIdCopied"), color: "success" });
+            } catch (err) {
+              toast({ message: t("copyFailed"), color: "error" });
+            }
+          },
+
+          async copyInviteCode() {
+            if (!this.doneInviteCode) return;
+            try {
+              await navigator.clipboard.writeText(this.doneInviteCode);
+              toast({ message: t("inviteCopied"), color: "success" });
             } catch (err) {
               toast({ message: t("copyFailed"), color: "error" });
             }
