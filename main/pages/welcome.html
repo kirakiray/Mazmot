@@ -203,7 +203,7 @@
     }
     /* 会员购买弹窗：内部 o-app 需要确定高度，否则页面撑不开 */
     .dlg-membership::part(panel) {
-      width: min(620px, 100%);
+      width: min(760px, 100%);
     }
     .membership-body {
       height: min(700px, 80vh);
@@ -610,7 +610,7 @@
         <o-app
           src="/official-apps/membership/app-config.js"
           on:membership-purchased="handleMembershipPurchased"
-          on:membership-close="closeMembershipDialog"
+          on:membership-close="handleMembershipClose"
         ></o-app>
       </o-if>
     </div>
@@ -629,6 +629,7 @@
         { loadOfficialAppMeta },
         plan,
         { enqueueOfficialInstalls },
+        { membershipHandoff },
       ] = await Promise.all([
         load("/nos/storage/main.js"),
         load("/nos/locale-text/get-locale-text.js"),
@@ -638,6 +639,7 @@
         load("../lib/official-app-writer.js"),
         load("../lib/welcome-plan.js"),
         load("../lib/install-queue.js"),
+        load("../lib/membership-handoff.js"),
         // 组件依赖（替代原静态 <l-m>，与模块并行预载）
         load("/gh/ofajs/senti-ui@main/packages/button/button.html"),
         load("/gh/ofajs/senti-ui@main/packages/button/icon-button.html"),
@@ -988,13 +990,11 @@
             this.memberDialogOpen = true;
           },
 
-          closeMembershipDialog() {
-            this.memberDialogOpen = false;
-          },
-
-          // 会员应用在验证码通过、本地默认用户改名成功后上抛
+          // 会员应用在下单成功后上抛（含邀请码与服务器命名）：只提示并存下
+          // 待交接数据；真正回填在用户点「完成」关闭弹窗时（handleMembershipClose）。
           handleMembershipPurchased(event) {
             const data = (event && event.data) || {};
+            this._pendingPurchase = data || null;
             toast({
               message: data.username
                 ? getLocaleText({
@@ -1007,6 +1007,37 @@
                   }),
               color: "success",
             });
+          },
+
+          // 点「完成」关闭弹窗：回填邀请码并落库推进。邀请码刚由服务端签发、
+          // 会员应用已写入本地 AI 配置，这里跳过网络校验（saveKeyFlow 的
+          // testApiKey 曾因瞬时网络失败把流程卡在 Key 步骤），直接本地落库，
+          // 保证「完成」后必然进入用途步骤。
+          handleMembershipClose() {
+            this.memberDialogOpen = false;
+            const handoff = membershipHandoff(this._pendingPurchase || {}, {
+              keyReady: this.keyReady,
+              keySaving: this.keySaving,
+            });
+            this._pendingPurchase = null;
+            if (!handoff) return;
+            this.provider = handoff.provider;
+            ai.saveKey(handoff.key, handoff.provider, {
+              serverName: handoff.serverName,
+              serverUrl: handoff.serverUrl,
+            });
+            this.keyInput = "";
+            this.keyReady = true;
+            this.mascotState = ""; // Key 自动配置完成，吉祥物苏醒
+            toast({
+              message: getLocaleText({
+                cn: "中转 Key 已自动配置",
+                en: "Relay key configured automatically",
+              }),
+              color: "success",
+            });
+            this._purposeMsgKey = "keySaved";
+            this.enterUnit(UNIT_INDEX.purpose);
           },
 
           // ===== 用途选择步骤 =====

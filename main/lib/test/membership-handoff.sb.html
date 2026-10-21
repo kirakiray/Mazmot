@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>membership-handoff 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <h1>membership-handoff 单元测试</h1>
+    <p>
+      会员购买完成 → 欢迎引导 Key 步骤的交接纯函数：邀请码格式校验、回填条件守卫。
+      口径：邀请码 = URL-safe Base64 的 JSON `{"k": bearkey, "u": 服务器地址}`。
+    </p>
+
+    <sb-test name="decodeInvitePayload：合法 / 非法">
+      <template>
+        <script type="module">
+          import { decodeInvitePayload } from "../membership-handoff.js";
+          {
+            const valid =
+              "eyJrIjoic3R4LXJPWU0wS3NkQk92dDFHR1FabUtqQ3RKQjdNaVVsUFJnIiwidSI6Imh0dHA6Ly8xMjcuMC4wLjE6NDc5MDEifQ";
+            const decoded = decodeInvitePayload(valid);
+            const invalid = [
+              "",
+              null,
+              "not-base64!!!",
+              btoa(JSON.stringify({ u: "http://x" })), // 缺 k
+              btoa(JSON.stringify({ k: "stx-x" })), // 缺 u
+              btoa("plain text"),
+            ].every((code) => decodeInvitePayload(code) === null);
+            // URL-safe 变体（- 与 _）也要能解
+            const urlSafeSrc = JSON.stringify({ k: "stx-a-b_c", u: "http://h:1" });
+            const urlSafe = btoa(urlSafeSrc)
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=+$/, "");
+            const urlSafeDecoded = decodeInvitePayload(urlSafe);
+            return {
+              assert:
+                !!decoded &&
+                decoded.k === "stx-rOYM0KsdBOvt1GGQZmKjCtJB7MiUlPRg" &&
+                decoded.u === "http://127.0.0.1:47901" &&
+                invalid &&
+                !!urlSafeDecoded &&
+                urlSafeDecoded.k === "stx-a-b_c",
+              content: { decoded, invalid, urlSafeDecoded },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="membershipHandoff：合法购买 → 回填动作">
+      <template>
+        <script type="module">
+          import { membershipHandoff } from "../membership-handoff.js";
+          {
+            const inviteCode =
+              "eyJrIjoic3R4LXJPWU0wS3NkQk92dDFHR1FabUtqQ3RKQjdNaVVsUFJnIiwidSI6Imh0dHA6Ly8xMjcuMC4wLjE6NDc5MDEifQ";
+            const handoff = membershipHandoff(
+              { inviteCode, serverName: "Synchratex" },
+              { keyReady: false, keySaving: false },
+            );
+            return {
+              assert:
+                !!handoff &&
+                handoff.provider === "relay" &&
+                handoff.key === inviteCode &&
+                handoff.serverName === "Synchratex" &&
+                handoff.serverUrl === "http://127.0.0.1:47901",
+              content: handoff,
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="membershipHandoff：守卫（无码 / 已有 Key / 保存中 / 码非法）">
+      <template>
+        <script type="module">
+          import { membershipHandoff } from "../membership-handoff.js";
+          {
+            const inviteCode =
+              "eyJrIjoic3R4LXJPWU0wS3NkQk92dDFHR1FabUtqQ3RKQjdNaVVsUFJnIiwidSI6Imh0dHA6Ly8xMjcuMC4wLjE6NDc5MDEifQ";
+            const noCode =
+              membershipHandoff({}, { keyReady: false, keySaving: false }) === null;
+            const keyReady =
+              membershipHandoff(
+                { inviteCode },
+                { keyReady: true, keySaving: false },
+              ) === null;
+            const keySaving =
+              membershipHandoff(
+                { inviteCode },
+                { keyReady: false, keySaving: true },
+              ) === null;
+            const badCode =
+              membershipHandoff(
+                { inviteCode: "garbage" },
+                { keyReady: false, keySaving: false },
+              ) === null;
+            // 缺 state 视为可回填（welcome 挂载早期字段都有默认值，容错）
+            const noState = membershipHandoff({ inviteCode }, null)?.provider === "relay";
+            return {
+              assert: noCode && keyReady && keySaving && badCode && noState,
+              content: { noCode, keyReady, keySaving, badCode, noState },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

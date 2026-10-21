@@ -9,7 +9,7 @@
     }
 
     .wrap {
-      max-width: 560px;
+      max-width: 720px;
       margin: 0 auto;
       padding: 16px 16px 20px;
       display: flex;
@@ -834,10 +834,6 @@
         </div>
 
         <div class="actions">
-          <st-button variant="text" on:click="copyInviteCode">
-            <n-icon icon="mdi:content-copy" slot="prefix"></n-icon>
-            <locale-text><span lang="cn">复制邀请码</span><span lang="en">Copy invite code</span></locale-text>
-          </st-button>
           <st-button color="primary" on:click="finish">
             <n-icon icon="mdi:check" slot="prefix"></n-icon>
             <locale-text><span lang="cn">完成</span><span lang="en">Done</span></locale-text>
@@ -1357,6 +1353,7 @@
                   orderId: data.order.id,
                   expireAt: data.member.expiresAt,
                   inviteCode,
+                  serverName: this.serverName || "",
                 },
                 bubbles: true,
                 composed: true,
@@ -1373,16 +1370,6 @@
             try {
               await navigator.clipboard.writeText(this.doneUserId);
               toast({ message: t("userIdCopied"), color: "success" });
-            } catch (err) {
-              toast({ message: t("copyFailed"), color: "error" });
-            }
-          },
-
-          async copyInviteCode() {
-            if (!this.doneInviteCode) return;
-            try {
-              await navigator.clipboard.writeText(this.doneInviteCode);
-              toast({ message: t("inviteCopied"), color: "success" });
             } catch (err) {
               toast({ message: t("copyFailed"), color: "error" });
             }

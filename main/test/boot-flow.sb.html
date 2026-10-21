@@ -77,7 +77,8 @@
                 frame.style.cssText =
                   "width:1100px;height:720px;border:1px solid #ccc;margin:8px 0;";
                 frame.src = src;
-                $("#frame-slot").appendChild(frame);
+                // ofa v5 的 $() 返回 stanz 包装，不代理 appendChild，这里必须用原生 DOM
+                document.getElementById("frame-slot").appendChild(frame);
                 const errors = [];
                 frame.addEventListener("load", () => {
                   try {
@@ -134,6 +135,21 @@
               },
             };
 
+            // 头部 ofa.js 是 deferred module：/gh/ 经 Core SW 走网络，执行可能晚于
+            // sb-test 组件开始跑用例（首次运行需联网编译拉取，尤甚）。等 window.$
+            // 就绪再挂 iframe，否则 $ is not defined（本文件此前从未跑通过的根因）。
+            const dollarReady = await (async () => {
+              const started = Date.now();
+              while (typeof window.$ === "undefined") {
+                if (Date.now() - started > 30000) return false;
+                await new Promise((r) => setTimeout(r, 200));
+              }
+              return true;
+            })();
+            if (!dollarReady) {
+              return { assert: false, content: { step: "ofa-load", hint: "window.$ 30s 未就绪（/gh/ 拉取 ofa.js 失败）" } };
+            }
+
             const bootFrame = window.__e2e.mountFrame("/index.html");
 
             // 首屏标记：welcome-done 已写的环境直接 replace 进 apps 列表页
@@ -173,6 +189,125 @@
                 hint: domHit.ok
                   ? "ok"
                   : "index.html 引导未渲染出首屏：检查 Core 安装 / 主应用页面模块加载",
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="欢迎引导 UI 走完进入应用列表（跳过 Key，不走购买流程）">
+      <template>
+        <script type="module">
+          {
+            // 保证走首启路径：清掉 welcome-done 后重新挂根入口。
+            // 用例只覆盖「引导 UI → 应用列表」，不经过会员购买。
+            const { getStorage } = await import("/nos/storage/main.js");
+            const storage = getStorage("mazmot");
+            await storage.removeItem("welcome-done");
+
+            const frame = window.__e2e.mountFrame("/index.html");
+
+            const deepAll = (doc) => {
+              const out = [];
+              const walk = (root) => {
+                if (!root || !root.querySelectorAll) return;
+                for (const el of root.querySelectorAll("*")) {
+                  out.push(el);
+                  if (el.shadowRoot) walk(el.shadowRoot);
+                }
+              };
+              walk(doc);
+              return out;
+            };
+            const doc0 = () => {
+              try {
+                return frame.contentDocument;
+              } catch (err) {
+                return null;
+              }
+            };
+            const hasText = (re) =>
+              hasTextDoc(doc0(), re);
+            const hasTextDoc = (doc, re) =>
+              !!doc && deepAll(doc).some(
+                (e) => e.children.length === 0 && re.test((e.textContent || "").trim()),
+              );
+            const clickText = (re) => {
+              const doc = doc0();
+              const el = doc && deepAll(doc).find(
+                (e) => e.children.length === 0 && re.test((e.textContent || "").trim()),
+              );
+              if (!el) return false;
+              let t = el;
+              while (t && t !== doc.body && !(t.tagName === "BUTTON" || t.tagName === "ST-BUTTON")) {
+                t = t.parentElement;
+              }
+              (t || el).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+              return true;
+            };
+            const waitText = async (re, timeoutMs) => {
+              const started = Date.now();
+              for (;;) {
+                if (hasText(re)) return true;
+                if (Date.now() - started > timeoutMs) return false;
+                await new Promise((r) => setTimeout(r, 300));
+              }
+            };
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            // 首屏：欢迎开场对话
+            const first = await window.__e2e.waitMarker(frame, ".stage .bubble", 45000);
+            if (!first.ok) {
+              return { assert: false, content: { step: "first-screen", first } };
+            }
+
+            // 连点屏幕推进对话，直到 Key 步骤出现（跳过按钮 或「已有可用 Key」分支）
+            const atKey = await (async () => {
+              const started = Date.now();
+              for (;;) {
+                if (hasText(/跳过，暂不配置|Skip for now|usable AI Key|已有可用/)) return true;
+                const stage = deepAll(doc0()).find(
+                  (e) => e.classList && e.classList.contains("stage"),
+                );
+                if (stage) stage.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                if (Date.now() - started > 60000) return false;
+                await sleep(400);
+              }
+            })();
+            if (!atKey) return { assert: false, content: { step: "key" } };
+            await sleep(600); // 等交互 UI（uiReady）渲染出来
+
+            // 跳过 Key（若环境已有可用 Key 则点「下一步」分支），都不走购买
+            const skipped = clickText(/跳过，暂不配置|Skip for now/);
+            const nexted = skipped || clickText(/下一步|Next/);
+            const atPurpose = nexted && await waitText(/直接使用现成的应用|Use ready-made apps/, 20000);
+
+            // 选用途 1（直接用现成应用，无需 Key）
+            let picked = false;
+            if (atPurpose) {
+              picked = clickText(/直接使用现成的应用|Use ready-made apps/);
+            }
+            const atApps =
+              picked && await waitText(/完成，进入 Mazmot|Finish and Enter Mazmot/, 20000);
+
+            // 完成引导：写 welcome-done → replace 进应用列表（安装转后台队列）
+            if (!atApps) return { assert: false, content: { atKey, atPurpose, picked, atApps } };
+            clickText(/完成，进入 Mazmot|Finish and Enter Mazmot/);
+            const listed = await window.__e2e.waitMarker(frame, ".container .header", 60000);
+            const welcomeDone = await storage.getItem("welcome-done");
+
+            return {
+              assert: listed.ok && !!welcomeDone,
+              content: {
+                atKey,
+                skipped,
+                nexted,
+                atPurpose,
+                picked,
+                atApps,
+                listed,
+                welcomeDone: welcomeDone || null,
               },
             };
           }
