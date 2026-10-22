@@ -4,7 +4,7 @@
 
 ## 一句话定位
 
-一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除，宽度可拖拽 150–300px，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述，**还能带图片：选图或直接粘贴截图，压缩后随任务一起保存**；也能让 **AI 根据一句自然语言描述自动生成标题与描述**，**粘了图片时 AI 会改为识别图里的文字提取成任务，图里没有文字就把图片作为附件带入**）、勾选完成、**点任务打开「任务详情」弹窗（看信息与改标题 / 描述都在同一个窗口里，不用切换模式）**、**拖拽调整顺序（置顶项只能与置顶项互换、普通项只能与普通项互换）**、**置顶 / 取消置顶**（置顶项排在列表最前）、删除（5 秒倒计时后才进垃圾桶）、**按关键词搜索（任务区右侧的小搜索框，匹配标题或描述、忽略大小写，只过滤显示不动数据）**、按视图筛选（**全部 / 已归档 / 垃圾桶**，三个视图都跟随左栏选中分组）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱——归档箱内还能按「**全部归档 / 按完成日 / 按完成周**」切换查看方式（按任务的**完成时间**分组：按完成日按本地日期、按完成周按 ISO 周）。每条任务记录并展示创建时间与最近一次状态变更时间。数据保存在本机（NoneOS 存储），关掉再回来还在。
+一个单页的轻量待办清单：**左侧固定侧栏管理分组**（新建 / 改名 / 删除 / **标记颜色**，宽度可拖拽 150–300px，每个分组带一个颜色圆点、没有颜色的分组启动时自动分配随机色，选哪个分组就只看 / 创建哪个分组的任务）；右侧任务区**吃满剩余宽度**：添加（支持标题 + 多行描述，**还能带图片：选图或直接粘贴截图，压缩后随任务一起保存**；也能让 **AI 根据一句自然语言描述自动生成标题与描述**，**粘了图片时 AI 会改为识别图里的文字提取成任务，图里没有文字就把图片作为附件带入**）、**把任务挪到别的分组（行尾「移动到其他分组」按钮）**、勾选完成、**点任务打开「任务详情」弹窗（看信息与改标题 / 描述都在同一个窗口里，不用切换模式）**、**拖拽调整顺序（置顶项只能与置顶项互换、普通项只能与普通项互换）**、**置顶 / 取消置顶**（置顶项排在列表最前）、删除（5 秒倒计时后才进垃圾桶）、**按关键词搜索（任务区右侧的小搜索框，匹配标题或描述、忽略大小写，只过滤显示不动数据）**、按视图筛选（**全部 / 已归档 / 垃圾桶**，三个视图都跟随左栏选中分组）、右上「归档已完成」（把已完成的任务收进归档）；带一个可还原 / 可彻底删除的垃圾桶（彻底删除需二次确认）和一个可「取消归档」的归档箱——归档箱内还能按「**全部归档 / 按完成日 / 按完成周**」切换查看方式（按任务的**完成时间**分组：按完成日按本地日期、按完成周按 ISO 周）。每条任务记录并展示创建时间与最近一次状态变更时间；**在「全部任务」视图下，每条任务的副标题前还会用一个颜色圆点标出它所属分组的颜色**。数据保存在本机（NoneOS 存储），关掉再回来还在。
 
 ## 使用指南
 
@@ -18,8 +18,10 @@
 2. **切换分组**：上方列表依次是「全部任务」+ 各分组，每行右侧是本分组的任务数（不计垃圾桶）；**点分组的名字（或计数）就只在这个分组里看和创建任务**，当前选中项高亮。
    - 每行**行高统一 42px**（由 ⋯ 按钮的 34px 与 `.gname` 的 `min-height: 34px` 共同决定），且 `.gname` 用 `align-self: stretch` **撑满整行**——行的垂直内边距已从 `.gitem` 移到 `.gname`，所以**文字上方 / 下方的留白也都在点击区内**（历史 bug：`.gname` 只有 28px 高而行高 42px，上下各约 7px 点不动，用户反馈“item 偏上和下的地方点击不了”）。
    - **所有行（含「全部任务」）的计数右边缘对齐**：「全部任务」是虚拟项、没有 ⋯ 菜单，用等宽（34px）的占位元素 `.gmenu-ghost` 撑出相同位置（历史 bug：没有占位时它的计数比下面各行向右突出 38px，看着突兀）。
+   - **分组颜色点（名字左边）**：每个真实分组行的 `.gname` 前有一个 10px 圆点（`.gdot`，颜色取 `groups[i].color`）；**老数据没有颜色的分组，启动时会自动分配一个随机色并落盘**，新建分组也自带随机色（色相尽量避开已有分组，见 `randomGroupColor()`）。「全部任务」是虚拟项没有颜色，用等宽的 `.gdot-ghost` 占位，保证各行名字左边缘对齐（与计数对齐同源，别让它错位）。点圆点也能切分组。圆点与名字之间给 4px `margin-right`（加上容器 `gap: 4px` 共 8px 留白）——**加在圆点 / ghost 上、不改容器 `gap`**，免得连带 `gcount` 与 ⋯ 之间的间距一起变大；`.gdot-ghost` 必须同样带这个 `margin-right`，否则「全部任务」与其他行的名字左边缘不再对齐。
 3. **行内「⋯」菜单（重命名 / 删除）**：每个**真实分组行**的最右侧有一个 ⋯ 图标按钮（`n-icon icon="mdi:dots-horizontal"`，`title` 为「分组操作：xxx」），点开是下拉菜单（`st-menu`）：
    - 「重命名」→ 打开**改名弹窗**（输入框预填原名、按钮为「保存」，取消不改名）；
+   - 「颜色」→ 打开**分组颜色弹窗**（标题「分组颜色：「xxx」」）：顶部是当前颜色预览，下面 10 个预设色块（点一下即时生效并关闭弹窗）+ 一个「随机颜色」按钮（避开其它分组的色相）。颜色只影响显示（左栏圆点、以及「全部任务」视图里任务上的颜色点），不改任务数据；
    - 「删除」→ 二次确认后组内任务自动移入「默认」；**「默认」分组的「删除」置灰**。
    两个菜单项各带前置图标（重命名 `mdi:pencil` / 删除 `mdi:delete-outline`，放在 `st-menu-item` 的 `prefix` 槽）：禁用态的「删除」由组件自带的 `.item { opacity: 0.38 }` 让图标与文字**一起**变淡，不用额外写禁用样式。
    这个 ⋯ 按钮平时隐藏，**鼠标悬停 / 当前选中 / 键盘聚焦该行时淡入**（触屏等无 hover 设备始终可见，见 `@media (hover: none)`）。列表顶部的「全部任务」是虚拟项（不可改名 / 删除），没有这个按钮；侧栏也**没有底部操作区**（改名、删除都已收进行内菜单）。
@@ -59,7 +61,8 @@
    - 拖拽的**显示序基准是 `listTodos`（置顶在前）**：拖动过程中不改数据，松手时按显示序 splice 换位、再把新显示序写回 `todos` 的槽位（其它分组 / 归档 / 垃圾桶条目原地不动）。
    - 实现要点（详情见「页面骨架」）：手柄 `touch-action: none`、pointerdown 后监听挂 `window`、**落点判定用逐行 `getBoundingClientRect()` 比较**（不用 `elementFromPoint`，它穿不过页面 shadow；找列表容器用 `closest('.list')`，**不能用 `parentElement`**——它是 rect 全 0 的 `<o-fill>`，见踩坑 016），每个 `.item` 带 `attr:data-id` 供反查。
    - 拖拽**不会自动碌动列表**（长列表要先把目标区域滚进视口再拖）。
-8. **勾选 / 置顶 / 删除（倒计时）**：左侧 `st-checkbox`（22px）勾选完成（文字加删除线变灰）；行尾操作区 `.item-actions` 里是**置顶 + 删除两个图标按钮**（各 **34px**，与侧栏分组行 ⋯ 同规格）——**行上的铅笔编辑按钮已去掉**（编辑并入「任务详情」弹窗，点正文区即可改，见第 9 条）。
+8. **勾选 / 置顶 / 删除（倒计时）**：左侧 `st-checkbox`（22px）勾选完成（文字加删除线变灰）；行尾操作区 `.item-actions` 里是**移动 + 置顶 + 删除三个图标按钮**（各 **34px**，与侧栏分组行 ⋯ 同规格）——**行上的铅笔编辑按钮已去掉**（编辑并入「任务详情」弹窗，点正文区即可改，见第 9 条）。
+   - **移动到其他分组**（行尾**第一个**按钮，`mdi:folder-move-outline`，`title`「移动到其他分组：xxx」）：点击弹出**居中浮层**「把「xxx」移到哪个分组？」——按 `groups` 列出全部分组（当前所在分组右侧标「当前分组」），点某个分组即把这条移过去并落盘（**不动完成状态 / 置顶 / 各时间戳**，见 `moveTodo()`）；点遮罩或「取消」只关闭浮层。**未完成的事项尤其常用这个入口**，不过列表视图里所有条目都提供。
    - **置顶 / 取消置顶**（行尾**第一个**按钮）：图标 `mdi:pin-outline` ↔ `mdi:pin`，`title` 为「置顶（置顶的排在列表最前，且只能在置顶项之间拖动排序）」/「取消置顶」。置顶后该行排到**列表最前**（置顶区），行左侧出现一条**主题色竖条**（`.item.pinned`）作为状态标记；取消置顶后它落到**普通区的最前**，按钮图标与 title 复原。状态与顺序都落盘，刷新后保持。**只有「全部」列表视图提供置顶按钮**（归档 / 垃圾桶视图不提供，归档 / 垃圾桶里也不需要）。多个置顶项之间是「**最近置顶的在最上**」（置顶时该条被挪到数组头部，而显示序取置顶项的数组顺序）。
    - **删除**（行尾**第二个**按钮）：点一下（关闭图标 `mdi:close`）开始 **5 秒倒计时**（整行变错误容器色、副标题逐秒倒计时、图标变撤销图标 `mdi:reply`），倒计时中再点即撤销，倒计时结束自动进垃圾桶。
 9. **查看与编辑是同一个弹窗（「任务详情」）**：点任务正文区（标题/描述/缩略图/时间那块）打开弹窗——**信息与编辑在同一个窗口里，不再有「只读 ↔ 编辑」两副面孔来回切**。弹窗自上而下：**编辑区是一个多行编辑区**（与「添加任务」同一套口径：第一个非空行是标题、换行后的内容是描述，**但编辑区里不做任何行级样式**——所有行都是普通正文，见下）→ **任务图片（大图，右上角可移除，立即落盘）** → 只读元信息（分组、状态、创建 / 状态变更 / **归档** / 删除时间）；底部只有「关闭」+「**保存**」。列表里的描述只显两行摘要。
@@ -70,7 +73,7 @@
    - **编辑就在这个弹窗里**：打开时编辑区已预填当前内容（首行标题 + 其余描述），直接在框里改 → 「保存」把多行拆回 `text` / `desc` 并**关闭弹窗**（列表与副标题实时同步）、「关闭」丢弃未保存的修改。**没有非空行时不能保存**（「保存」置灰）；保存只改这两项，不影响分组、勾选状态与各时间戳。**三个视图（列表 / 已归档 / 垃圾桶）的条目都走同一个弹窗**，点正文即可看可改（行上已无铅笔入口）。
    - **完成时间可直接改（已完成任务）**：已勾选完成（含已归档、且不在垃圾桶 / 倒计时中）的任务，详情弹窗里多一行「完成时间」编辑行（**原生 `input[type=datetime-local]`**，值由 JS 写入而非 `attr:value` 绑定），改动（`change`）即时写回 `statusChangedAt` 并落盘；**留空 / 清空一律不改数据、把输入框恢复成原值**（编辑时按退格也会触发 `change`，若直接写 `null` 就会把原记录静默弄丢——用户明确要求“不能把原来的完成时间弄丢”）。行尾常驻一条小字提示：有值时「改动即时保存；留空不会删除原时间」，原本就没有记录时「原数据未记录，可在此补填」（旧数据里有不少 `done=true` 但无时间戳的条目）。归档视图「按完成日 / 按完成周」的分组基准就是它，改完后归档分组与条目副标题的「完成于 …」即时重算。未完成 / 垃圾桶任务不显示这一行（`class:hidden`）。
 10. **垃圾桶**：每条可「还原」或用删除图标（`mdi:delete-outline`）**彻底删除**（二次确认）；底部「清空垃圾桶」（空时禁用）。
-11. **时间信息**：副标题格式 `分组名 · 创建于 MM-DD 时:分`（跨年带年份），倒计时中为 `分组名 · N 秒后移入垃圾桶（点撤销按钮可撤销）`，切换过完成态追加 ` · 完成于 …` / ` · 恢复于 …`；垃圾桶条目显示 `分组名 · 删除于 … · 创建于 …`；旧数据无时间记录显示「创建时间未知」。
+11. **时间信息**：副标题格式 `分组名 · 创建于 MM-DD 时:分`（跨年带年份），倒计时中为 `分组名 · N 秒后移入垃圾桶（点撤销按钮可撤销）`，切换过完成态追加 ` · 完成于 …` / ` · 恢复于 …`；垃圾桶条目显示 `分组名 · 删除于 … · 创建于 …`；旧数据无时间记录显示「创建时间未知」。**在「全部任务」视图（左栏选「全部任务」+ 列表视图）下，副标题前多一个 8px 小圆点，颜色 = 该任务所属分组的颜色**（由 `showGroupColor` 控制；选中具体分组、或进了归档 / 垃圾桶视图就不显示——那些地方同屏的分组都一样或另有含义）。
 12. **右上「归档已完成」**（与「添加任务」并排在标题栏右侧 `.top-actions` 里，前置 `mdi:archive-arrow-down` 图标，`title` = 「把当前分组里已完成的任务收进归档（不会删除）」）：把**当前分组范围内**已完成的条目收进归档，当前范围内无已完成项时置灰。**作用范围看分组、不看当前视图**，所以它在 `全部 / 已归档 / 垃圾桶` 三个视图下都常驻显示；不是危险操作，所以不用红色。
 13. **底部栏**：`全部` 视图只显示当前分组范围内的「N 项未完成 · 共 M 项」（归档入口已移到右上，底栏不再有按钮）；`已归档` 视图显示「已归档 N 项」；`垃圾桶` 视图显示「垃圾桶 N 项」+「清空垃圾桶」。
 
@@ -85,7 +88,7 @@ client/
 ├── app.json         # 应用元信息（name=todo、displayName=待办清单、icon=✅）
 ├── pages/
 │   └── home.html    # 唯一页面模块：样式 + 模板 + 脚本（全部逻辑在此）
-└── test/            # 场景测试（防迭代回归）：13 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
+└── test/            # 场景测试（防迭代回归）：15 个 *.test.json 用例 + 可选本地回放驱动 _driver.js
 ```
 
 （`pitfalls/` 为踩坑库，`backup/` 为系统自动备份目录，均不属于运行时资源。）
@@ -100,7 +103,8 @@ client/
 > 另有**会话状态**（当前筛选 + 选中分组）不进 NoneOS 存储，而是存在浏览器的 `sessionStorage` 键 `"todo-ui-state"`（值 `{ view, groupFilter, archiveGroup }`，其中 `archiveGroup` 是归档视图的查看方式，见 `archiveGroupMode`）。这是经用户明确要求的**豁免**（项目约定数据一律进 `/nos/storage`）：`sessionStorage` 的会话语义正好是「刷新保留、关标签页重置」。详见 MEMORY.md 的豁免记录，**不要把它「修正」回 `/nos/storage`**——那会变成关掉再打开也留在旧分组（超出用户预期）。
 - 图片附件常量：`MAX_IMAGES = 4`（单条任务的图片数上限）、`IMAGE_MAX_SIDE = 1280`（压缩后最长边 px）、`IMAGE_QUALITY = 0.82`（转 JPEG 的质量）。
 - `ui` 值：`{ sideWidth: number }` —— 分组侧栏宽度（px）。读取时用 `clampSideWidth()` 收敛到 150–300（非法 / 缺失回默认 190）；常量 `SIDE_MIN_W = 150` / `SIDE_MAX_W = 300` / `SIDE_DEFAULT_W = 190`。
-- `groups` 值：`Array<{ id: string, name: string }>`，**首项固定为默认分组** `{ id: "default", name: "默认" }`；常量 `DEFAULT_GROUP_ID = "default"` / `DEFAULT_GROUP_NAME = "默认"`。新分组 id 为 `"g" + Date.now().toString(36) + random`。读取时过滤掉非法项；若不含 `default` 则自动在头部补上（旧数据没有 `groups` 键时也走这条，于是开局就有一个「默认」分组）。
+- `groups` 值：`Array<{ id: string, name: string, color: string }>`，**首项固定为默认分组** `{ id: "default", name: "默认" }`；常量 `DEFAULT_GROUP_ID = "default"` / `DEFAULT_GROUP_NAME = "默认"`。新分组 id 为 `"g" + Date.now().toString(36) + random`。读取时过滤掉非法项；若不含 `default` 则自动在头部补上（旧数据没有 `groups` 键时也走这条，于是开局就有一个「默认」分组）。
+- `color`：分组的**标签色**（`"hsl(307, 62%, 52%)"` 这类随机色，或色板里的 `"#81c784"`）。**这是用户数据（不是界面主题色）**：界面 chrome 仍只用 M3 变量，它只用于左栏圆点与「全部任务」视图里任务副标题的颜色点。**没颜色的分组会在 `loadGroups()` 里自动补一个随机色并回写存储**（`randomGroupColor()`：HSL 固定 62% 饱和度 / 52% 明度，色相尽量避开已有分组）；新建分组同样自带随机色。
 - `todos` 值：`Array<Todo>`，`Todo = { id, text, desc, groupId, done, createdAt, statusChangedAt, archivedAt, pinnedAt, deletedAt, pendingDeleteAt, images }`（时间字段均为 `number|null`），新增项置于数组首位。
 - **数组顺序 ≠ 显示顺序**（自「置顶」功能起）：`todos` 是**存储顺序**，列表视图的**显示序**由 getter `listTodos` 给出（置顶项在前、普通项在后，各自内部保持数组顺序）。两者靠「拖拽提交时按显示序换位、再写回槽位」保持同步（见 `commitDragDrop()`），所以**不要假设 `todos` 的先后就是眼睛看到的先后**；归档 / 垃圾桶视图仍直接用 `todos` 顺序。
 - `archivedAt`：归档时刻；非空 = 已归档（不在列表显示、不计入统计与分组计数、不参与「全部」视图，但仍属于原分组，`groupId` 不变）。旧数据没有该字段，读取时补 `null`。条目只在「已归档」视图可见，取消归档则置回 `null`。**归档与垃圾桶是两个互斥维度**（`archivedAt` / `deletedAt` 可先后置位）：归档项可再被删入垃圾桶，从垃圾桶还原时 `restoreTodo` 会**一并清掉 `archivedAt`**，让它回到列表而不是回归档箱。
@@ -128,6 +132,11 @@ client/
 | `groupDraft` | 「新建 / 改名分组」弹窗输入框值（两种模式共用，`sync:value` 双向绑定） | `""` |
 | `editingGroupId` | 正在改名的分组 id；`null` = 新建模式（决定弹窗标题与按钮文案「创建 / 保存」） | `null` |
 | `groupDialogOpen` | 「新建 / 改名分组」弹窗 `st-dialog` 的 `sync:open` 绑定 | `false` |
+| `colorDialogOpen` | 分组颜色弹窗的 `sync:open` 绑定 | `false` |
+| `colorTargetId` / `colorCurrent` | 正在改色的分组 id / 它当前的颜色（供弹窗预览与色块选中态 `class:active`） | `null` / `""` |
+| `moveOpen` | 「移动到其他分组」浮层的开关（模板用 `class:hidden="!moveOpen"`，**不用 `o-if`**：根级元素的绑定要能直接读 data） | `false` |
+| `moveTodoId` / `moveTodoText` | 正在移动的任务 id / 标题（浮层标题用） | `null` / `""` |
+| `moveTransfers` | 浮层里的分组选项：`Array<{ id, name, color, hint, todoId }>`，`openMove()` 时一次性算好（`hint` 为「当前分组」或空串） | `[]` |
 | `sideWidth` | 分组侧栏宽度（px），`150–300`，写入 `ui` 键记忆 | `190` |
 | `resizing` | 是否正在拖拽侧栏宽度（拖拽中给 `.shell` 加 `resizing` 类以禁用文本选中） | `false` |
 | `draggingId` | 正在拖拽排序的条目 id（`null` = 没在拖）；驱动 `.item.dragging` 与 `.shell.dragging` | `null` |
@@ -201,7 +210,9 @@ client/
 - **分组行的 `on:click` 绑在 `.gname` 与 `.gcount` 上而不是整行 `.gitem` 上**：这样行内的 ⋯ 菜单点下去不会顺带切分组，**不需要依赖 `stopPropagation`**（ofa 事件委托对 stopPropagation 不可靠）。行名区够大（`.gname` 撑满行高、含上下留白）+ 计数也接受点击，已经覆盖了行的整个左半部分；只剩右侧 34px 的 ⋯ 按钮区（它就是按钮本身，本就不该切分组）与「全部任务」行同位置的 `.gmenu-ghost` 占位点不动。后续若还想把点击区域扩到整行，必须处理“点行内按钮又切分组”的副作用，不要直接改回去。
 - **行内四列结构**（从「全部任务」行与 `o-fill` 分组行两处对照看）：`.gname`（flex:1、可点）→ `.gcount`（可点）→ **第三列**：真实分组是 `st-menu > st-icon-button.gmenu`（34×34，平时 opacity 0 / 悬停与选中淡入），「全部任务」行是等宽的 `.gmenu-ghost`（34×34、不可点，只为对齐）。**改任一处宽度时两边要一起改**，否则计数会再次错位。
 - **行内 ⋯ 的尺寸与显隐**：`st-icon-button` 只给 `font-size: 12px`（em 等比缩到 34px，实测 34.3×34.3），图标用 `n-icon` 且**不给它写 width/height**（见踩坑 009）；显隐靠 `.gitem:hover .gmenu` / `.gitem.active .gmenu` / `.gitem:focus-within .gmenu` 淡入，外加 `@media (hover: none)` 兜底（后台标签页量不到 `:hover`，见踩坑 010）。
-- **行内菜单用 `st-menu`**：`<st-menu><st-icon-button slot="trigger" …></st-icon-button><st-menu-item>…</st-menu-item></st-menu>`；`st-menu-item` 在 light DOM，所以 `o-fill` 里的 `$host.方法($data.id)` 绑定正常（实测「重命名」/「删除」都命中正确分组）。`open` 是 ofa data 不是标签属性；面板关闭时菜单项仍在 light DOM（rect 为 0）——自测陷阱见踩坑 010。
+- **行内菜单用 `st-menu`**：`<st-menu><st-icon-button slot="trigger" …></st-icon-button><st-menu-item>…</st-menu-item></st-menu>`；`st-menu-item` 在 light DOM，所以 `o-fill` 里的 `$host.方法($data.id)` 绑定正常（实测「重命名」/「删除」都命中正确分组）。`open` 是 ofa data 不是标签属性；面板关闭时菜单项仍在 light DOM（rect 为 0）——自测陷阱见踩坑 010。菜单现在是**三项：重命名 / 颜色 / 删除**（颜色用 `mdi:palette`，`disabled` 只在「删除」上用）。
+- **「移动到其他分组」用自建的居中浮层，没用 `st-dialog`**：`.move-mask`（`position: fixed` + `.hidden` 控制显隐）+ `.move-backdrop`（点它关闭）+ `.move-pop`，里面是一个**页面根级的 `o-fill :value="moveTransfers"`**。原因：`st-dialog` 内部 `$host` 不指向页面（踩坑 005），而这里既要循环分组又要回调 `$host.moveTodo(...)`；选项在 `openMove()` 时一次性算进 `moveTransfers`（**不在 `:value` 里调方法**，避免每次渲染又生成新数组）。遮罩与面板是兄弟节点，所以点面板不会误触遮罩的 `on:click`（**不靠 `stopPropagation`**）。
+- **分组颜色只用内联 `:style.background` 表达**：侧栏圆点 `:style.background="$data.color"`、任务副标题前的点 `:style.background="$host.groupColorOf($data.groupId)"`、颜色弹窗的预览 `:style.background="colorCurrent"`。色板是**静态的 10 个 `.swatch`（行内 `style="background:#xxxxxx"`）**，写在模板里而不走 `o-fill`——弹窗内不能调 `$host`，静态色块最稳（点色块用根级裸方法名 `on:click="pickGroupColor('#e57384')"`，与 `setArchiveGroupMode('all')` 同一写法）。
 - **页面内功能图标已全部走 NoneOS Core 的 `n-icon`**（`<l-m src="/nos/n-icon/n-icon.html"></l-m>`，Iconify 集名语法如 `mdi:pencil`），不用 emoji：颜色自动继承 `currentColor`、可随主题变化。落位：h1 前置 `mdi:check-circle-outline`（`h1 n-icon { font-size: 1em; color: var(--md-sys-color-primary) }`）；「添加任务」「新建分组」用 `st-button` 的 `prefix` 槽放 `mdi:plus`、筛选栏垃圾桶用 `mdi:delete-outline`（统一 `st-button n-icon { font-size: 1.15em }` 与 14px 文字齐高，实测 16.1px）；分组行 ⋯ 菜单的两个 `st-menu-item` 也用 `prefix` 槽放图标（`mdi:pencil` / `mdi:delete-outline`，`st-menu-item n-icon { font-size: 1.15em }`，实测 16.1px、菜单项 106×37）；列表删除按钮的图标名由 `deleteButtonIconName()` 给（`mdi:close` / `mdi:reply`）、垃圾桶「彻底删除」用 `mdi:delete-outline`；图片相关图标：选图区 `mdi:image-plus`、AI 识别按钮 `mdi:image-search`（由 `aiButtonIcon` getter 给）、缩略图移除按钮 `mdi:close`（该按钮是原生 `<button>`，所以 `n-icon` 需写 `font-size: 14px`，不受 `st-icon-button` 的 `::slotted` 规则约束）。仍是 emoji 的只剩**文案**里的装饰（空状态提示 🎉 等），不是功能图标。**放进 `st-icon-button` 时不要给 `n-icon` 写 `width/height/font-size`**——它会吃组件自带的 `::slotted { font-size: 1.571em }`，再叠加就撑出按钮（见踩坑 009）。图标按需从 `api.iconify.design` 取并持久化缓存在 `getStorage("n-icon")`（本环境实测可直连、硬刷新约 100ms 出图）。
 - **拖拽排序（引导式，松手才换位）**：`.item` 首位是手柄 `.drag-handle`（`font-size: 20px`、图标 `mdi:drag-vertical`、`touch-action: none` 防触屏拖动变成滚页、`cursor: grab`；`opacity: 0.45` → `.item:hover` 时 1，`@media (hover: none)` 常显 0.8）。手柄 `on:pointerdown="$host.startDrag($event, $data.id)"`（模板里用 `$event` 传事件对象）。**拖动中不改 `todos`**，只写两个 data 字段驱动引导：`dropBeforeId` / `dropAfterId`（对应模板 `class:drop-before` / `class:drop-after`）；被拖行靠 `.item.dragging`（`opacity 0.4` + `inset` 描边，**位置不动**）标识。**换位只在 pointerup 时发生**（`commitDragDrop()` 一次 splice + 落盘）。手柄在 `.body` 之外，所以点 / 拖手柄都不会误开详情弹窗。
 - **拖拽的显示序基准是 `listTodos`、并且受置顶约束**：`todos` 是存储序，眼睛看到的先后是 `listTodos`（置顶在前）。因此 `dragDropPosition()` 先用指针位置算出**显示序里的插入下标**，再用 `classList.contains('pinned')` 找出行里的同类区间把它夹回去（置顶项只能在置顶项之间、普通项同理）；`commitDragDrop()` 也在 `listTodos` 上 splice，最后把新显示序按**槽位**写回 `todos`（`new Set(ids)` + 队列 `shift()` 逐个替换，其它分组 / 归档 / 垃圾桶条目原地不动）。**不要再改回“在 `todos` 上按 beforeId/afterId 绝对下标换算”的写法**（置顶后它与显示序不再一致）。
@@ -276,6 +287,11 @@ client/
 | `onEditorPaste(ev)` | 粘贴只取 `text/plain`（挡住外部 HTML），多行则按换行拆成多行插入到光标处 |
 | `onEditorBoxClick(ev)` | 点 `.rt-box` 的内边距等空白处时，把光标放回编辑区末尾（点编辑区内部时交回浏览器默认行为） |
 | `groupName(id)` / `groupCountText(id)` / `isGroupActive(id)` | 分组名（找不到回「默认」） / 分组内任务数（**归档与垃圾桶都不计**，与统计口径一致） / 是否为当前选中分组（供侧栏高亮） |
+| `hueOfColor(color)` / `randomGroupColor(used)` | 解析一个颜色的色相（hsl / #rrggbb，解不了返回 `null`，仅用于自动分配时避让步色相） / 生成随机分组色（`hsl(H, 62%, 52%)`，传入已用颜色时色相差 < 26 就换一个） |
+| `groupColorOf(id)` / `groupColorButtonTitle(group)` / `get showGroupColor` | 取分组颜色（缺失回落 `#90a4ae`，模板内联样式直接用） / 左栏圆点的 `title` / 是否在任务副标题前显示分组颜色点（仅「全部任务」+ 列表视图） |
+| `get colorDialogTitle` / `openGroupColor(id)` / `closeGroupColor()` | 颜色弹窗标题「分组颜色：「xxx」」 / 打开（记 `colorTargetId` + `colorCurrent`，**弹窗内不能调 `$host`**，所以当前颜色先算进 data） / 关闭 |
+| `setGroupColor(color)` / `pickGroupColor(color)` / `applyRandomGroupColor()` | 写回某个分组的颜色并 `persistGroups()` / 色板选色（生效后关弹窗） / 「随机颜色」（避开其它分组色相） |
+| `moveButtonTitle(todo)` / `openMove(id)` / `closeMove()` / `moveTodo(todoId, groupId)` | 「移动到其他分组」按钮的 `title` / 打开浮层（算好 `moveTransfers`，标出当前分组） / 关闭浮层（清空三个字段） / 真正改 `groupId` 并 `persistTodos()`（不动完成态、置顶与时间戳；同组点击只关浮层） |
 | `setGroup(id)` | 切换选中分组（重算空状态文案 + 保存会话状态） |
 | `openAddGroup()` / `openRenameGroup(id)` / `closeGroupDialog()` | 打开「新建分组」弹窗（清空草稿） / 打开「改名」弹窗（预填原名） / 取消关闭（清空草稿与编辑态） |
 | `groupMenuTitle(name)` | 分组行 ⋯ 按钮的 `title` 文案（图标按钮无文字，必须给无障碍名称） |
@@ -325,7 +341,7 @@ client/
 
 ## 场景测试（`client/test/*.test.json`）
 
-用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。13 个用例一文件一主流程，文件名即功能名（注：本机宿主会忽略 `files` 参数跑全套，报告里随机一条 reload 后超时 / 断言失败属已知抖动，重跑即绿）：
+用宿主 preview 工具的 `action=run-tests` 跑（**新增 / 修改重要功能后必须跑到全绿**）；用例本身随功能一起维护。15 个用例一文件一主流程，文件名即功能名（注：传 `files` 时只跑指定文件，本轮实测有效；若遇宿主报「测试执行失败」则改跑全套，报告里随机一条 reload 后超时属已知抖动，重跑即绿）：
 
 | 文件 | name | 覆盖内容 |
 | ---- | ---- | -------- |
@@ -343,6 +359,8 @@ client/
 | `image-attach.test.json` | 图片附件 | 添加弹窗选图 / 直接粘贴（canvas 压缩成 `data:image/jpeg` 的 64px 缩略图、可移除、上限 4 张）、有图时 AI 按钮变「AI 识别图片」且不靠文本即可点、任务落盘后列表显示 40px 缩略图、详情弹窗显示大图并可移除（立即落盘）、刷新后图片仍在 |
 | `group-scope-views.test.json` | 归档桶跟随分组 | 左栏选中分组后「已归档」「垃圾桶」只显示该分组条目（选「全部任务」才是全部）、视图标签数量 / 底栏计数 / 空状态文案同步跟随；「清空垃圾桶」只清当前分组范围（确认框标题带分组名），不动其它分组 |
 | `search-task.test.json` | 搜索任务 | 搜索框在筛选按钮同一行最右侧且是小尺寸（190px）；按标题 / 按描述 / 忽略大小写匹配；命中数提示与清除按钮的显隐；搜索时拖拽手柄隐藏、统计不受影响；无匹配的空状态文案；已归档与垃圾桶视图内搜索均生效且不改底栏计数 / 标签数量；刷新后搜索词不保留 |
+| `move-group.test.json` | 移动分组 | 行尾有「移动到其他分组」按钮（title 正确）；浮层列出全部分组、当前分组标「当前分组」、标题带任务名；选另一个分组后归属 / 副标题 / 侧栏计数同步、浮层关闭、分组变更落盘且不动完成 / 删除 / 归档状态；再次打开时当前分组标记跟随、「取消」只关浮层不改数据 |
+| `group-color.test.json` | 分组颜色 | 没有颜色的分组自动分配随机色且落盘、新建分组自带与已有分组不同的随机色、「全部任务」行用 `.gdot-ghost` 占位对齐；「全部任务」视图里任务副标题前有颜色点且与分组色一致、选中具体分组时隐藏；⋯ 菜单「颜色」弹窗（标题 / 10 个预设色）、选「绿色」后圆点与任务颜色点同步且 `groups[].color` 落盘、「随机颜色」换成另一个颜色 |
 
 ### 用例写法约定（本项目）
 
@@ -354,6 +372,7 @@ client/
 - **断言写在 eval 里**（抛错即失败），只保留 `expect.consoleErrors: 0` 交给宿主；**不要用 `expect.count` 数 `.item`**——宿主深查（`$`）会穿进 `st-menu` 等组件 shadow 命中同名 `.item`（踩坑 014）。
 - **交互统一走 T 的辅助函数**：`st-button` 必须点到内部原生 button（踩坑 008），所以不用原始 `click` 步骤、也不写裸 `document.click()`；选择器都限定在页面 shadowRoot 内。
 - **行内按钮一律用语义选择器，禁止用下标（`...[1]`）选，也不依赖“这个位置只有一个按钮”的假定**：本轮给行尾操作区加了一个置顶按钮，四个用例里 `T.del` 写的 `T.need(t).querySelector('.item-actions st-icon-button')`（首个匹配就是删除）立刻变成了点置顶按钮（不报错、行为错），edit-task 的 `length !== 1` 断言也挂了。统一写 `Array.from(row.querySelectorAll('.item-actions st-icon-button')).find((x) => (x.getAttribute('title') || '').indexOf('删除') !== -1)` 这类**按 `title` / 文案挑**的写法（见 `pitfalls/025`）。
+- **按文案找按钮必须带容器前缀（弹窗关闭后按钮仍在 light DOM）**：`T.btn('取消')` 是在整个页面 shadowRoot 里找第一个文本为「取消」的 `st-button`，而本项目多个弹窗（添加 / 分组 / 详情 / 二次确认）都有「取消」——模板顺序上靠前的是**添加弹窗**里那个，于是“点取消应关浮层”的断言假失败。写法：弹窗内用 `T.dlgBtn(文案)`（先锁定 `[open]` 的弹窗），自建浮层用 `T.byText('.move-actions st-button', '取消')`（见 `pitfalls/028`）。
 - **断言不要写死元素结构 / 整块值**：编辑区从「两框」合并成「一个多行框」、后来再换成 contenteditable 富文本区，每换一次就有一个用例的旧断言挂掉（归档链路里 `tb.value !== '任务A'` 那条因该任务带描述而不成立）。规则：**断言只看语义，不看元素类型与整块文本**——编辑区首行就写 `ed.children[0].textContent.trim()`，要多行文本就 `Array.from(ed.children).map(...)`，不要用 `value` / `innerText` 的全等比较；需要「只有一行」的数据就自己构造（`T.addTask(t)` 不传第二参）。同源教训见 `pitfalls/025`。
 - **每个 `reload` 之后跟一个宿主侧数值等待 `{"wait": 1500}`**（让页面重载 + 调试代理重注入完成）：**不要把选择器 wait 紧跟在 `reload` 后面**——那时页面正在重载，指令投递会失败（宿主报 `ACK timeout after 4 retries`）或条件永远查不到（报 `wait 等待结果超时`）。长等待（倒计时 5–6 秒）也**单独占一个数值 wait 步骤**，不要与其它 eval 混在一条指令里（见踩坑 019）。
 - **就绪轮询写在 eval 里、锚点用常驻节点**：`T.ready(sel, ms)` 在页面侧轮询（间隔 100ms），锚点选渲染后必然存在的容器——本项目用 `.shell`；**不要用 `.item` / `.gitem.active` 这类依赖数据的节点做就绪锚点**（已归档 / 垃圾桶 / 清空后列表合法为空，这种守卫永远不会满足）。需要"等某个数据节点出现"时，先用 `.shell` 等就绪再断言数据。
@@ -393,3 +412,4 @@ client/
 | 025 | 用例里的脆弱假定：用下标取行内按钮 / 依赖“这个容器里只有一个按钮”（UI 增删一个按钮就静默错位）、断言写死多行框的整块 `value` | `pitfalls/025-test-selector-by-index-breaks.md` |
 | 026 | 自建 contenteditable 编辑区的四个坑：选区注入顺序、空态不能隐藏行、普通打字不要重建 DOM、行样式只能用 class 表达（本项目已据此**整体移除行级样式**） | `pitfalls/026-contenteditable-editor-traps.md` |
 | 027 | `input[type=datetime-local]` 的值不能用 `attr:value` 绑定：value 被 JS 改过后 attribute 不再同步到 property，换一条数据打开会残留上一个值 | `pitfalls/027-input-value-attr-binding-stale.md` |
+| 028 | 用例里按文案 `T.btn('取消')` 会点到**隐藏弹窗里的同名按钮**：弹窗关闭时它的按钮仍在 light DOM，按文案直找会命中错的那些 | `pitfalls/028-hidden-dialog-buttons-share-text.md` |

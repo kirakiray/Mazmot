@@ -257,6 +257,76 @@
       line-height: 1.6;
     }
 
+    .terms-field {
+      margin-top: 4px;
+    }
+    .agree-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--md-sys-color-on-surface);
+      user-select: none;
+    }
+    .agree-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      accent-color: var(--md-sys-color-primary);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .agree-text {
+      cursor: pointer;
+    }
+    .terms-link {
+      color: var(--md-sys-color-primary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
+    }
+    .terms-link:hover {
+      opacity: 0.8;
+    }
+
+    .dlg-terms::part(panel) {
+      max-width: min(680px, 92vw);
+    }
+    .terms-body {
+      padding: 18px 20px;
+      max-height: min(70vh, 560px);
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.8;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .terms-heading {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 4px;
+      font-size: 15px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .terms-updated {
+      margin: 0 0 12px;
+      font-size: 11px;
+    }
+    .terms-sec h3 {
+      margin: 14px 0 4px;
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface);
+    }
+    .terms-sec p {
+      margin: 0;
+    }
+    .terms-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
     .actions {
       display: flex;
       align-items: center;
@@ -499,6 +569,7 @@
   <l-m src="/gh/ofajs/senti-ui@main/packages/input/input.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/button/icon-button.html"></l-m>
+  <l-m src="/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"></l-m>
   <l-m src="/nos/n-icon/n-icon.html"></l-m>
   <l-m src="/nos/locale-text/locale-text.html"></l-m>
 
@@ -613,6 +684,30 @@
           <div class="field-hint">{{emailHint}}</div>
           <o-if :value="emailError">
             <div class="field-error">{{emailError}}</div>
+          </o-if>
+        </div>
+        <div class="field terms-field">
+          <div class="agree-row">
+            <input
+              type="checkbox"
+              id="agree-check"
+              data-testid="agree-checkbox"
+              on:change="onAgreeChange"
+            />
+            <label for="agree-check" class="agree-text">
+              <locale-text>
+                <span lang="cn">我已阅读并同意</span>
+                <span lang="en">I have read and agree to the</span>
+              </locale-text>
+            </label>
+            <a
+              class="terms-link"
+              data-testid="terms-link"
+              on:click="openTermsDialog"
+            ><locale-text><span lang="cn">《用户使用条款》</span><span lang="en">Terms of Use</span></locale-text></a>
+          </div>
+          <o-if :value="agreeError">
+            <div class="field-error">{{agreeError}}</div>
           </o-if>
         </div>
         <div class="actions">
@@ -843,6 +938,118 @@
     </o-if>
   </main>
 
+  <!-- 用户使用条款：勾选处下划线链接打开的详细条款 -->
+  <st-dialog class="dlg-terms" sync:open="termsOpen">
+    <div class="terms-body" data-testid="terms-dialog">
+      <h2 class="terms-heading">
+        <n-icon icon="mdi:file-document-outline"></n-icon>
+        <locale-text><span lang="cn">用户使用条款</span><span lang="en">Terms of Use</span></locale-text>
+      </h2>
+      <p class="terms-updated">
+        <locale-text>
+          <span lang="cn">请在购买前仔细阅读本条款。勾选同意即表示您已理解并接受本条款的全部内容。</span>
+          <span lang="en">Please read these Terms carefully before purchasing. Checking the box means you have understood and accepted all of them.</span>
+        </locale-text>
+      </p>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">一、服务性质</span><span lang="en">1. Nature of the Service</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">本会员服务（含 AI 中转、额度分配等能力）按「现状」提供。服务可能依赖第三方上游模型或网络资源，其可用性、准确性与输出内容不受我们控制；我们不对服务的持续性、无错误或满足特定目的作任何明示或默示的担保。您因使用模型输出（包括但不限于代码、文本、建议）而产生的任何后果，由您自行判断并承担责任。</span>
+            <span lang="en">The membership service (including AI relay and quota allocation) is provided "as is". It may depend on third-party upstream models and network resources whose availability, accuracy, and output are beyond our control. We make no express or implied warranty of uninterrupted service, error-free operation, or fitness for a particular purpose. You are solely responsible for how you use model output (including code, text, and advice) and for any consequences.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">二、合法使用与用户责任</span><span lang="en">2. Lawful Use and Your Responsibility</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">您承诺仅在合法范围内使用本服务，遵守您所在司法辖区的适用法律，不得将服务用于任何违法违规活动（包括但不限于侵害他人权利、生成或传播违法信息、恶意攻击、绕过安全措施等）。您对自身使用行为及其结果承担全部责任；因您违反本条给他人或服务运营方造成损失的，由您自行承担并负责解决。</span>
+            <span lang="en">You agree to use the service only for lawful purposes and in compliance with applicable law in your jurisdiction. You must not use it for any illegal activity (including infringing others' rights, generating or spreading unlawful content, malicious attacks, or bypassing security measures). You bear full responsibility for your own use; any loss you cause to others or to the operator through violation is yours to bear and resolve.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">三、账户与绑定</span><span lang="en">3. Account and Binding</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">会员与您的邮箱及本机用户身份绑定，一人一码。您应妥善保管账户与邀请码，不得出租、出借、出售或与他人共用；频繁切换绑定账户、绕开限制或滥用改绑机制将被限制、暂停或终止服务。您需对自己账户下的全部活动负责。</span>
+            <span lang="en">Membership is bound to your email and local user identity, one code per person. Keep your account and invite code safe; do not rent, lend, sell, or share them. Frequently switching bound accounts, circumventing limits, or abusing the rebinding mechanism may lead to restriction, suspension, or termination. You are responsible for all activity under your account.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">四、额度与公平使用</span><span lang="en">4. Quota and Fair Use</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">会员额度、转发流量等资源仅限个人正常使用，不得通过脚本刷量、多账户套取、转售或对外提供代理等方式滥用。对超出正常使用模式的账户，我们有权限流、暂停或终止服务，并可依情况决定是否退还相应费用。</span>
+            <span lang="en">Quota and relay traffic are for personal, normal use only. Scripted bulk requests, multi-account farming, resale, or acting as a proxy for others is abuse. We may throttle, suspend, or terminate such accounts and decide at our discretion whether any fee is refundable.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">五、付费与退款</span><span lang="en">5. Payment and Refunds</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">会员费按所选套餐在购买时支付。服务即时生效，会员期内一般不予退款；因服务完全不可用等极端情形，可联系运营方协商处理，是否退费及金额由运营方合理裁量。演示环境中支付为模拟扣款，不产生真实交易。</span>
+            <span lang="en">The membership fee is paid at purchase for the selected plan. The service takes effect immediately and is generally non-refundable during the term. In extreme cases such as total service unavailability, contact the operator; whether and how much to refund is at the operator's reasonable discretion. In the demo environment, payment is simulated and involves no real transaction.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">六、免责与责任限制</span><span lang="en">6. Disclaimer and Limitation of Liability</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">在适用法律允许的最大范围内：对因使用或无法使用本服务导致的任何间接、附带、特殊或后果性损失（包括但不限于数据丢失、业务中断、利润损失），我们不承担责任；我们对您的累计赔偿责任以您实际支付的会员费为上限。您因违反本条款导致他人向服务运营方索赔的，您应负责赔偿并使运营方免受损害。</span>
+            <span lang="en">To the maximum extent permitted by applicable law: we are not liable for any indirect, incidental, special, or consequential loss arising from use of or inability to use the service (including data loss, business interruption, or lost profits); our aggregate liability to you is capped at the membership fee you actually paid. If your violation leads to third-party claims against the operator, you shall indemnify and hold the operator harmless.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">七、服务变更与终止</span><span lang="en">7. Changes and Termination</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">我们可能因技术、成本或合规原因调整、暂停部分或全部服务。对已付费会员，重大变更将尽力提前公告；因您违规而被终止服务的，剩余期不予补偿。</span>
+            <span lang="en">We may adjust, suspend, or discontinue part or all of the service for technical, cost, or compliance reasons. For paying members, material changes will be announced in advance where practicable; no compensation is due for accounts terminated for violation.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">八、条款变更</span><span lang="en">8. Changes to These Terms</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">我们可能不时更新本条款，更新后在服务页面公布即生效。您在条款变更后继续使用服务，视为接受更新后的条款；不接受的可停止使用并可联系运营方处理未到期会员。</span>
+            <span lang="en">We may update these Terms from time to time; updates take effect once published on the service page. Continuing to use the service after an update means you accept the updated Terms. If you do not accept them, stop using the service and contact the operator about your unexpired membership.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <section class="terms-sec">
+        <h3><locale-text><span lang="cn">九、争议解决与其他</span><span lang="en">9. Disputes and Miscellaneous</span></locale-text></h3>
+        <p>
+          <locale-text>
+            <span lang="cn">因本条款或服务产生的争议，双方应先友好协商解决；协商不成的，提交服务运营方所在地有管辖的机构处理。本条款部分内容被认定无效的，不影响其余部分的效力。本条款与服务的最终解释权，在适用法律允许的范围内归服务运营方所有。</span>
+            <span lang="en">Disputes arising from these Terms or the service shall first be resolved through friendly negotiation; failing that, they shall be submitted to the competent authority where the operator is located. If any provision is held invalid, the rest remains in effect. To the extent permitted by applicable law, the operator reserves the right of final interpretation of these Terms and the service.</span>
+          </locale-text>
+        </p>
+      </section>
+
+      <div class="terms-actions">
+        <st-button color="primary" on:click="closeTermsDialog">
+          <locale-text><span lang="cn">我已阅读</span><span lang="en">Got it</span></locale-text>
+        </st-button>
+      </div>
+    </div>
+  </st-dialog>
+
   <script>
     export default async ({ load }) => {
       const { getLocaleText } = await load("/nos/locale-text/get-locale-text.js");
@@ -886,6 +1093,10 @@
           en: "The code is sent to this email; once verified, the email is bound to your membership.",
         },
         emailInvalid: { cn: "邮箱格式不正确", en: "Invalid email address" },
+        agreeRequired: {
+          cn: "请先阅读并同意《用户使用条款》",
+          en: "Please read and agree to the Terms of Use first",
+        },
 
         codePlaceholder: { cn: "请输入 6 位验证码", en: "Enter the 6-digit code" },
         cardNumberPlaceholder: { cn: "4242 4242 4242 4242", en: "4242 4242 4242 4242" },
@@ -996,6 +1207,9 @@
           emailHint: t("emailHint"),
           emailError: "",
           formValid: false,
+          agreed: false,
+          agreeError: "",
+          termsOpen: false,
           sending: false,
 
           // 步骤 2
@@ -1185,9 +1399,26 @@
             return !this.emailError;
           },
 
+          onAgreeChange(event) {
+            this.agreed = !!event.target.checked;
+            if (this.agreed) this.agreeError = "";
+          },
+
+          openTermsDialog() {
+            this.termsOpen = true;
+          },
+
+          closeTermsDialog() {
+            this.termsOpen = false;
+          },
+
           async goCode() {
             if (this.sending) return;
             if (!this.validateForm()) return;
+            if (!this.agreed) {
+              this.agreeError = t("agreeRequired");
+              return;
+            }
             if (!this.userId) {
               await this.loadUser();
             }

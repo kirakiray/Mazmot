@@ -127,6 +127,23 @@
       height: 34px;
     }
     .gitem.active .gcount { color: var(--md-sys-color-on-primary-container); }
+    /* 分组颜色点：这是分组的「标签色」，颜色值属于**用户数据**（data.groups[i].color），
+       不是界面主题色——界面 chrome 仍只用 M3 变量，这里只为把用户选的颜色显示出来。
+       数据缺失时回落到 outline-variant */
+    .gitem .gdot {
+      flex: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline-variant);
+      /* 与分组名之间留出一点呼吸（容器 gap 是 4px，这里再加 4px 共 8px）；
+         只给圆点加、不改容器 gap，免得连带计数 / ⋯ 之间的间距一起变大 */
+      margin-right: 4px;
+      cursor: pointer;
+    }
+    /* 「全部任务」是虚拟分组、没有颜色，用同尺寸占位撑出一样的位置，
+       否则下面各行的分组名会比它右移 14px；间距与 .gdot 保持一致 */
+    .gitem .gdot-ghost { flex: none; width: 10px; height: 10px; margin-right: 4px; }
     /* item 右侧的「⋯ 更多」菜单（st-menu 的 trigger）：改 font-size 等比缩到约 34px；
        平时隐藏，鼠标悬停 / 当前选中 / 键盘聚焦该行时淡入（触屏无 hover，始终可见）。
        n-icon 的颜色/尺寸跟着 st-icon-button 走（组件自带 ::slotted 规则：font-size 1.571em、
@@ -376,6 +393,16 @@
       line-height: 1.3;
       color: var(--md-sys-color-on-surface-variant);
     }
+    /* 「全部任务」视图里的副标题：前面多一个所属分组的颜色圆点，和文案同排 */
+    .item .meta.meta-colored { display: flex; align-items: center; gap: 6px; }
+    .item .meta .meta-text { min-width: 0; word-break: break-word; }
+    .item .gdot-item {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--md-sys-color-outline-variant);
+    }
     /* 置顶项：左侧一条主题色竖条做区分（用 inset box-shadow 而不是伪元素——
        伪元素已被拖拽落点指示线占用，见 .item.drop-before::before） */
     .item.pinned { box-shadow: inset 3px 0 0 0 var(--md-sys-color-primary); }
@@ -484,6 +511,91 @@
       color: var(--md-sys-color-on-surface-variant);
     }
     .search-bar st-icon-button { font-size: 12px; }
+    /* ===== 「移动到其他分组」浮层 =====
+       刻意不用 st-dialog：弹窗内部的 $host 不指向页面实例（踩坑 005），
+       而这里要用 o-fill 循环分组并回调页面方法，放在页面根级最稳妥 */
+    .move-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .move-backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--md-sys-color-scrim, rgba(0, 0, 0, 0.32));
+      opacity: 0.32;
+    }
+    .move-pop {
+      position: relative;
+      z-index: 1;
+      width: min(360px, 100%);
+      max-height: min(70vh, 460px);
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+      box-shadow: 0 10px 30px -8px var(--md-sys-color-shadow, rgba(0, 0, 0, 0.5));
+    }
+    .move-title { margin: 0; font-size: 14px; font-weight: 600; word-break: break-word; }
+    .move-list { display: flex; flex-direction: column; gap: 4px; }
+    .move-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 10px;
+      border: none;
+      border-radius: 10px;
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface);
+      font: inherit;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .move-item:hover {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+    }
+    .move-item .move-name { flex: 1; min-width: 0; word-break: break-word; }
+    .move-item .move-hint { flex: none; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    .move-actions { display: flex; justify-content: flex-end; }
+    /* ===== 分组颜色设置弹窗（预设色板）=====
+       色板里的色值同属「用户可选的分组标签色」，写在模板的行内 style 上 */
+    .color-panel { display: flex; flex-direction: column; gap: 12px; }
+    .color-panel-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .color-preview {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+    .swatch {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+    }
+    .swatch:hover { transform: scale(1.08); }
+    .swatch.active { border-color: var(--md-sys-color-on-surface); }
     .empty {
       text-align: center;
       padding: 36px 0;
@@ -589,12 +701,20 @@
       <div class="glist">
         <!-- 根级绑定用裸方法名（$host 只在 o-fill 等子作用域里可用，见踩坑 006） -->
         <div class="gitem" class:active="isGroupActive('all')">
+          <span class="gdot-ghost" aria-hidden="true"></span>
           <span class="gname" on:click="setGroup('all')">全部任务</span>
           <span class="gcount" on:click="setGroup('all')">{{allCountText}}</span>
           <span class="gmenu-ghost" aria-hidden="true"></span>
         </div>
         <o-fill :value="groups" fill-key="id">
           <div class="gitem" class:active="$host.isGroupActive($data.id)">
+            <!-- 分组颜色点（点它也切分组，不依赖 stopPropagation） -->
+            <span
+              class="gdot"
+              :style.background="$data.color"
+              on:click="$host.setGroup($data.id)"
+              attr:title="$host.groupColorButtonTitle($data)"
+            ></span>
             <span class="gname" on:click="$host.setGroup($data.id)">{{$data.name}}</span>
             <span class="gcount" on:click="$host.setGroup($data.id)">{{$host.groupCountText($data.id)}}</span>
             <!-- 行右侧的「更多」菜单：重命名 / 删除（默认分组的删除置灰） -->
@@ -606,6 +726,10 @@
               ><n-icon icon="mdi:dots-horizontal"></n-icon></st-icon-button>
               <st-menu-item on:click="$host.openRenameGroup($data.id)"
                 ><n-icon slot="prefix" icon="mdi:pencil"></n-icon>重命名</st-menu-item
+              >
+              <!-- 颜色：打开色板给这个分组标一个颜色 -->
+              <st-menu-item on:click="$host.openGroupColor($data.id)"
+                ><n-icon slot="prefix" icon="mdi:palette"></n-icon>颜色</st-menu-item
               >
               <st-menu-item
                 attr:disabled="$host.isDefaultGroup($data.id)"
@@ -715,9 +839,24 @@
                   <img class="thumb-sm" attr:src="$data.dataUrl" attr:alt="'附件图片'" />
                 </o-fill>
               </div>
-              <span class="meta">{{$host.timeMeta($data)}}</span>
+              <!-- 副标题：在「全部任务」视图下额外标出所属分组的颜色（小圆点） -->
+              <span class="meta meta-colored">
+                <span
+                  class="gdot-item"
+                  class:hidden="!$host.showGroupColor"
+                  :style.background="$host.groupColorOf($data.groupId)"
+                  aria-hidden="true"
+                ></span>
+                <span class="meta-text">{{$host.timeMeta($data)}}</span>
+              </span>
             </div>
             <div class="item-actions">
+              <!-- 移动到其他分组（仅列表视图）：点开分组列表，选一个就把这条挪过去 -->
+              <st-icon-button
+                class="move-btn"
+                attr:title="$host.moveButtonTitle($data)"
+                on:click="$host.openMove($data.id)"
+              ><n-icon icon="mdi:folder-move-outline"></n-icon></st-icon-button>
               <!-- 置顶 / 取消置顶（仅列表视图提供）：置顶后排在列表最前，且只能在置顶项之间拖拽排序 -->
               <st-icon-button
                 class="pin-btn"
@@ -997,6 +1136,61 @@
       </div>
     </st-dialog>
 
+    <!-- 移动到其他分组：居中浮层（点遮罩或「取消」关闭，点某个分组即移过去） -->
+    <div class="move-mask" class:hidden="!moveOpen">
+      <div class="move-backdrop" on:click="closeMove"></div>
+      <div class="move-pop">
+        <p class="move-title">把「{{moveTodoText}}」移到哪个分组？</p>
+        <div class="move-list">
+          <o-fill :value="moveTransfers" fill-key="id">
+            <button
+              class="move-item"
+              type="button"
+              on:click="$host.moveTodo($data.todoId, $data.id)"
+            >
+              <span class="gdot" :style.background="$data.color" aria-hidden="true"></span>
+              <span class="move-name">{{$data.name}}</span>
+              <span class="move-hint">{{$data.hint}}</span>
+            </button>
+          </o-fill>
+        </div>
+        <div class="move-actions">
+          <st-button variant="text" on:click="closeMove">取消</st-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分组颜色：预设色板 + 随机颜色（点色块即时生效并读关闭弹窗） -->
+    <st-dialog sync:open="colorDialogOpen" auto-close>
+      <span slot="headline">{{colorDialogTitle}}</span>
+      <div class="color-panel">
+        <div class="color-panel-head">
+          <span class="color-preview" :style.background="colorCurrent"></span>
+          <span>当前颜色（点下面的色块即可更换）</span>
+        </div>
+        <div class="swatches">
+          <button class="swatch" type="button" title="红色" style="background:#e57373" class:active="colorCurrent === '#e57373'" on:click="pickGroupColor('#e57373')"></button>
+          <button class="swatch" type="button" title="粉色" style="background:#f06292" class:active="colorCurrent === '#f06292'" on:click="pickGroupColor('#f06292')"></button>
+          <button class="swatch" type="button" title="紫色" style="background:#ba68c8" class:active="colorCurrent === '#ba68c8'" on:click="pickGroupColor('#ba68c8')"></button>
+          <button class="swatch" type="button" title="靛蓝" style="background:#7986cb" class:active="colorCurrent === '#7986cb'" on:click="pickGroupColor('#7986cb')"></button>
+          <button class="swatch" type="button" title="天蓝" style="background:#4fc3f7" class:active="colorCurrent === '#4fc3f7'" on:click="pickGroupColor('#4fc3f7')"></button>
+          <button class="swatch" type="button" title="青色" style="background:#4db6ac" class:active="colorCurrent === '#4db6ac'" on:click="pickGroupColor('#4db6ac')"></button>
+          <button class="swatch" type="button" title="绿色" style="background:#81c784" class:active="colorCurrent === '#81c784'" on:click="pickGroupColor('#81c784')"></button>
+          <button class="swatch" type="button" title="橙色" style="background:#ffb74d" class:active="colorCurrent === '#ffb74d'" on:click="pickGroupColor('#ffb74d')"></button>
+          <button class="swatch" type="button" title="棕色" style="background:#a1887f" class:active="colorCurrent === '#a1887f'" on:click="pickGroupColor('#a1887f')"></button>
+          <button class="swatch" type="button" title="灰色" style="background:#90a4ae" class:active="colorCurrent === '#90a4ae'" on:click="pickGroupColor('#90a4ae')"></button>
+        </div>
+        <div class="ai-actions">
+          <st-button variant="text" on:click="applyRandomGroupColor"
+            ><n-icon slot="prefix" icon="mdi:dice-multiple"></n-icon>随机颜色</st-button
+          >
+        </div>
+      </div>
+      <div slot="actions">
+        <st-button variant="text" on:click="closeGroupColor">关闭</st-button>
+      </div>
+    </st-dialog>
+
     <!-- 彻底删除的二次确认 -->
     <st-dialog sync:open="confirmOpen" auto-close>
       <span slot="headline">{{confirmTitle}}</span>
@@ -1091,8 +1285,8 @@
           // 搜索关键词（标题 / 描述命中即算匹配）；空串 = 不过滤。
           // 只在显示层过滤（不改数据、不进存储、不跨刷新保留），清空即恢复全部
           searchText: "",
-          // 分组：groups 为分组表；groupFilter 为 "all" 或分组 id
-          groups: [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME }],
+          // 分组：groups 为分组表（每项 { id, name, color }）；groupFilter 为 "all" 或分组 id
+          groups: [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME, color: "" }],
           groupFilter: "all",
           groupDraft: "",
           editingGroupId: null,
@@ -1109,6 +1303,16 @@
           dropAfterId: null,
           // 新建 / 改名分组的弹窗
           groupDialogOpen: false,
+          // 分组颜色设置弹窗：正在改色的分组 id / 它当前的颜色（供预览与色块选中态）
+          colorDialogOpen: false,
+          colorTargetId: null,
+          colorCurrent: "",
+          // 「移动到其他分组」浮层：开关 / 目标任务 id 与标题 / 可选的转移项
+          // （转移项在 openMove 里一次性算好：Array<{ id, name, color, hint, todoId }>）
+          moveOpen: false,
+          moveTodoId: null,
+          moveTodoText: "",
+          moveTransfers: [],
           // 添加弹窗里提示“这条会加进哪个分组”
           addGroupHint: "",
           // AI 添加：自然语言描述草稿 / 是否正在请求 / 结果或错误提示
@@ -1491,19 +1695,48 @@
           async loadGroups() {
             try {
               const saved = await store.getItem(GROUPS_KEY);
-              const list = Array.isArray(saved)
-                ? saved
-                    .filter((g) => g && typeof g.id === "string" && g.id)
-                    .map((g) => ({ id: String(g.id), name: String(g.name || "未命名") }))
-                : [];
+              const raw = Array.isArray(saved) ? saved : [];
+              // 已经用上的颜色（自动分配时尽量错开色相，两个分组不要同色）
+              const used = raw
+                .map((g) => (g && typeof g.color === "string" ? g.color.trim() : ""))
+                .filter(Boolean);
+              let needPersist = false;
+              const list = raw
+                .filter((g) => g && typeof g.id === "string" && g.id)
+                .map((g) => {
+                  let color =
+                    typeof g.color === "string" && g.color.trim() ? g.color.trim() : "";
+                  if (!color) {
+                    // 老分组没有颜色：自动补一个随机色（并回写存储）
+                    color = this.randomGroupColor(used);
+                    used.push(color);
+                    needPersist = true;
+                  }
+                  return { id: String(g.id), name: String(g.name || "未命名"), color };
+                });
               if (!list.some((g) => g.id === DEFAULT_GROUP_ID)) {
-                list.unshift({ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME });
+                list.unshift({
+                  id: DEFAULT_GROUP_ID,
+                  name: DEFAULT_GROUP_NAME,
+                  color: this.randomGroupColor(used),
+                });
+                needPersist = true;
               }
               this.groups = list;
               console.log("[group] 已读取分组，共", this.groups.length, "个");
+              if (needPersist) {
+                console.log("[group] 有分组缺少颜色，已自动分配随机色");
+                this.persistGroups();
+              }
             } catch (err) {
               console.error("[group] 读取分组失败", err);
-              this.groups = [{ id: DEFAULT_GROUP_ID, name: DEFAULT_GROUP_NAME }];
+              this.groups = [
+                {
+                  id: DEFAULT_GROUP_ID,
+                  name: DEFAULT_GROUP_NAME,
+                  color: this.randomGroupColor([]),
+                },
+              ];
             }
           },
 
@@ -2899,6 +3132,172 @@
             return this.groupFilter === id;
           },
 
+          // ===== 分组颜色 =====
+          // 取一个颜色的色相（用于自动分配时避让）；解析不了返回 null
+          hueOfColor(color) {
+            const s = String(color || "").trim();
+            const hsl = s.match(/^hsl\(\s*([\d.]+)/i);
+            if (hsl) return Number(hsl[1]) % 360;
+            const hex = s.match(/^#([0-9a-f]{6})$/i);
+            if (!hex) return null;
+            const r = parseInt(hex[1].slice(0, 2), 16) / 255;
+            const g = parseInt(hex[1].slice(2, 4), 16) / 255;
+            const b = parseInt(hex[1].slice(4, 6), 16) / 255;
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            if (max === min) return null;
+            const d = max - min;
+            let h;
+            if (max === r) h = ((g - b) / d) % 6;
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            return Math.round(h * 60 + 360) % 360;
+          },
+
+          // 随机分组色：HSL 固定饱和度 / 明度（浅色底上都能认出来），
+          // 并尽量避开已有颜色的色相，不让两个分组长得一样
+          randomGroupColor(used) {
+            const taken = (Array.isArray(used) ? used : this.groups.map((g) => g.color))
+              .map((c) => this.hueOfColor(c))
+              .filter((h) => h !== null);
+            let hue = Math.floor(Math.random() * 360);
+            for (let i = 0; i < 24; i += 1) {
+              const clash = taken.some((h) => {
+                const diff = Math.abs(h - hue);
+                return Math.min(diff, 360 - diff) < 26;
+              });
+              if (!clash) break;
+              hue = (hue + 47 + Math.floor(Math.random() * 40)) % 360;
+            }
+            return "hsl(" + hue + ", 62%, 52%)";
+          },
+
+          // 一个分组的颜色（数据缺失时回落成中性色，模板里直接用）
+          groupColorOf(id) {
+            const g = this.groups.find((x) => x.id === id);
+            return (g && g.color) || "#90a4ae";
+          },
+
+          groupColorButtonTitle(group) {
+            return "分组颜色：" + (group.name || "") + "（点「⋯ → 颜色」可以改）";
+          },
+
+          get showGroupColor() {
+            return this.view === "all" && this.groupFilter === "all";
+          },
+
+          get colorDialogTitle() {
+            if (!this.colorTargetId) return "分组颜色";
+            return "分组颜色：「" + this.groupName(this.colorTargetId) + "」";
+          },
+
+          openGroupColor(id) {
+            const g = this.groups.find((x) => x.id === id);
+            if (!g) return;
+            this.colorTargetId = id;
+            this.colorCurrent = g.color || "";
+            this.colorDialogOpen = true;
+            console.log("[color] 打开分组颜色设置", id, g.name, g.color);
+          },
+
+          closeGroupColor() {
+            this.colorDialogOpen = false;
+            this.colorTargetId = null;
+            console.log("[color] 关闭分组颜色设置");
+          },
+
+          // 落盘一个分组的新颜色（不动名字与任务）
+          setGroupColor(color) {
+            const id = this.colorTargetId;
+            if (!id || !color) return;
+            const g = this.groups.find((x) => x.id === id);
+            if (!g) return;
+            this.groups = this.groups.map((x) => (x.id === id ? { ...x, color } : x));
+            this.colorCurrent = color;
+            console.log("[color] 分组", id, g.name, "颜色 →", color);
+            this.persistGroups();
+          },
+
+          // 色板选色：生效即关弹窗
+          pickGroupColor(color) {
+            this.setGroupColor(color);
+            this.colorDialogOpen = false;
+            this.colorTargetId = null;
+          },
+
+          // 随机颜色（避开其它分组已用的色相）
+          applyRandomGroupColor() {
+            const id = this.colorTargetId;
+            if (!id) return;
+            const others = this.groups.filter((g) => g.id !== id).map((g) => g.color);
+            this.pickGroupColor(this.randomGroupColor(others));
+          },
+
+          // ===== 移动到其他分组 =====
+          moveButtonTitle(todo) {
+            return "移动到其他分组：" + (todo.text || "（无标题）");
+          },
+
+          openMove(id) {
+            const todo = this.todos.find((t) => t.id === id);
+            if (!todo) return;
+            this.moveTodoId = id;
+            this.moveTodoText = todo.text || "（无标题）";
+            // 选项一次性算好（模板里只读字段，避免 o-fill 每次渲染都调方法）
+            this.moveTransfers = this.groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              color: g.color || "",
+              hint: g.id === todo.groupId ? "当前分组" : "",
+              todoId: id,
+            }));
+            this.moveOpen = true;
+            console.log(
+              "[move] 打开移动分组浮层",
+              id,
+              todo.text,
+              "当前分组 =",
+              todo.groupId
+            );
+          },
+
+          closeMove() {
+            this.moveOpen = false;
+            this.moveTodoId = null;
+            this.moveTodoText = "";
+            this.moveTransfers = [];
+            console.log("[move] 关闭移动分组浮层");
+          },
+
+          // 把一条任务换到另一个分组（不动完成状态 / 置顶 / 各时间戳）
+          moveTodo(todoId, groupId) {
+            const todo = this.todos.find((t) => t.id === todoId);
+            if (!todo) {
+              console.error("[move] 找不到任务", todoId);
+              return;
+            }
+            if (todo.groupId === groupId) {
+              console.log("[move] 已在该分组，无需移动", todoId, groupId);
+              this.closeMove();
+              return;
+            }
+            this.todos = this.todos.map((t) =>
+              t.id === todoId ? { ...t, groupId } : t
+            );
+            console.log(
+              "[move] 已移动",
+              todoId,
+              todo.text,
+              "→",
+              this.groupName(groupId),
+              "(",
+              groupId,
+              ")"
+            );
+            this.closeMove();
+            this.persistTodos();
+          },
+
           setGroup(id) {
             this.groupFilter = id;
             console.log("[group] 切换分组过滤 →", id, this.groupName(id));
@@ -2961,7 +3360,8 @@
               }
               const id =
                 "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-              this.groups = [...this.groups, { id, name }];
+              // 新分组自带一个随机颜色（与已有分组色相尽量错开）
+              this.groups = [...this.groups, { id, name, color: this.randomGroupColor() }];
               console.log("[group] 新建分组", id, name);
             }
             this.groupDraft = "";
