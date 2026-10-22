@@ -151,15 +151,20 @@
     .step-item {
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
       flex: 1;
       min-width: 0;
+      position: relative;
     }
+    /* 连线画在前一项中心与本项中心之间（两项均分宽度，±20px 避开序号圆点） */
     .step-item + .step-item::before {
       content: "";
-      width: 12px;
+      position: absolute;
+      top: 50%;
+      left: calc(-50% + 20px);
+      right: calc(50% + 20px);
       height: 1px;
-      flex-shrink: 0;
       background-color: var(--md-sys-color-outline-variant);
     }
     .step-num {
@@ -291,12 +296,14 @@
     }
 
     .dlg-terms::part(panel) {
-      max-width: min(680px, 92vw);
+      /* 面板 shadow 内是 width: min(34.29em,100%)，必须用 width（非 max-width）覆盖 */
+      width: min(800px, 94vw);
     }
+    /* 弹窗体不滚动：标题固定 + 条文区滚动 + 底部按钮固定 */
     .terms-body {
-      padding: 18px 20px;
-      max-height: min(70vh, 560px);
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      max-height: min(78vh, 640px);
       font-size: 12px;
       line-height: 1.8;
       color: var(--md-sys-color-on-surface-variant);
@@ -305,13 +312,21 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      margin: 0 0 4px;
+      margin: 18px 20px 4px;
       font-size: 15px;
       color: var(--md-sys-color-on-surface);
+      flex-shrink: 0;
     }
     .terms-updated {
-      margin: 0 0 12px;
+      margin: 0 20px 10px;
       font-size: 11px;
+      flex-shrink: 0;
+    }
+    .terms-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0 20px;
     }
     .terms-sec h3 {
       margin: 14px 0 4px;
@@ -324,7 +339,11 @@
     .terms-actions {
       display: flex;
       justify-content: flex-end;
-      margin-top: 14px;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 12px 20px 16px;
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      flex-shrink: 0;
     }
 
     .actions {
@@ -952,6 +971,7 @@
         </locale-text>
       </p>
 
+      <div class="terms-scroll">
       <section class="terms-sec">
         <h3><locale-text><span lang="cn">一、服务性质</span><span lang="en">1. Nature of the Service</span></locale-text></h3>
         <p>
@@ -1041,10 +1061,14 @@
           </locale-text>
         </p>
       </section>
+      </div>
 
       <div class="terms-actions">
-        <st-button color="primary" on:click="closeTermsDialog">
-          <locale-text><span lang="cn">我已阅读</span><span lang="en">Got it</span></locale-text>
+        <st-button variant="text" on:click="closeTermsDialog">
+          <locale-text><span lang="cn">取消</span><span lang="en">Cancel</span></locale-text>
+        </st-button>
+        <st-button color="primary" on:click="agreeTermsDialog">
+          <locale-text><span lang="cn">同意</span><span lang="en">Agree</span></locale-text>
         </st-button>
       </div>
     </div>
@@ -1410,6 +1434,15 @@
 
           closeTermsDialog() {
             this.termsOpen = false;
+          },
+
+          agreeTermsDialog() {
+            this.termsOpen = false;
+            this.agreed = true;
+            this.agreeError = "";
+            // 勾选框无双向绑定，弹窗内点「同意」时同步勾上
+            const box = this.shadow.$("#agree-check");
+            if (box) box.ele.checked = true;
           },
 
           async goCode() {
