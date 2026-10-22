@@ -247,6 +247,15 @@
       line-height: 1.6;
       color: var(--md-sys-color-error);
     }
+    .rebind-notice {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background-color: var(--md-sys-color-tertiary-container);
+      color: var(--md-sys-color-on-tertiary-container);
+      font-size: 12px;
+      line-height: 1.6;
+    }
 
     .actions {
       display: flex;
@@ -548,7 +557,7 @@
         class:done="step !== 'form'"
       >
         <span class="step-num">1</span>
-        <span><locale-text><span lang="cn">邮箱与用户名</span><span lang="en">Email & name</span></locale-text></span>
+        <span><locale-text><span lang="cn">邮箱</span><span lang="en">Email</span></locale-text></span>
       </div>
       <div
         class="step-item"
@@ -591,7 +600,7 @@
       </section>
       <section class="card">
         <h2 class="card-title">
-          <locale-text><span lang="cn">第 1 步 · 邮箱与用户名</span><span lang="en">Step 1 · Email and username</span></locale-text>
+          <locale-text><span lang="cn">第 1 步 · 邮箱</span><span lang="en">Step 1 · Email</span></locale-text>
         </h2>
         <div class="field">
           <label class="field-label"><locale-text><span lang="cn">邮箱</span><span lang="en">Email</span></locale-text></label>
@@ -604,18 +613,6 @@
           <div class="field-hint">{{emailHint}}</div>
           <o-if :value="emailError">
             <div class="field-error">{{emailError}}</div>
-          </o-if>
-        </div>
-        <div class="field">
-          <label class="field-label"><locale-text><span lang="cn">用户名</span><span lang="en">Username</span></locale-text></label>
-          <st-input
-            sync:value="username"
-            attr:placeholder="usernamePlaceholder"
-            on:input="onUsernameInput"
-          ></st-input>
-          <div class="field-hint">{{usernameHint}}</div>
-          <o-if :value="usernameError">
-            <div class="field-error">{{usernameError}}</div>
           </o-if>
         </div>
         <div class="actions">
@@ -638,6 +635,9 @@
         <h2 class="card-title">
           <locale-text><span lang="cn">第 2 步 · 验证邮箱</span><span lang="en">Step 2 · Verify email</span></locale-text>
         </h2>
+        <o-if :value="rebindNotice">
+          <div class="rebind-notice" data-testid="rebind-notice">{{rebindNotice}}</div>
+        </o-if>
         <p class="card-desc">{{codeSentText}}</p>
         <div class="mock-code">
           <n-icon icon="mdi:flask-outline"></n-icon>
@@ -788,10 +788,10 @@
           <n-icon icon="mdi:check-decagram"></n-icon>
           <div>
             <h2 class="card-title">
-              <locale-text><span lang="cn">购买成功</span><span lang="en">Purchase complete</span></locale-text>
+              <span>{{doneTitle}}</span>
             </h2>
             <p class="card-desc">
-              <locale-text><span lang="cn">会员已开通，中转 key 已写入本地 AI 配置，用户名也已同步。</span><span lang="en">Membership is active, the relay key is saved in your local AI config and your username was updated.</span></locale-text>
+              <locale-text><span lang="cn">会员已开通，中转 key 已写入本地 AI 配置。</span><span lang="en">Membership is active and the relay key is saved in your local AI config.</span></locale-text>
             </p>
           </div>
         </div>
@@ -876,24 +876,17 @@
       ];
 
       const L10N = {
-        emailPlaceholder: { cn: "请输入邮箱地址", en: "Enter your email address" },
-        usernamePlaceholder: {
-          cn: "3-20 位字母、数字、下划线或短横线",
-          en: "3-20 letters, digits, underscores or dashes",
+        rebindNotice: {
+          cn: "该邮箱已绑定过其他 Mazmot 账户。重新提交验证码完成绑定后，会员将过户到当前账户，旧账户的绑定同时失效。",
+          en: "This email is already bound to another Mazmot account. Submit the code to rebind it — membership moves to the current account and the old binding becomes invalid.",
         },
+        emailPlaceholder: { cn: "请输入邮箱地址", en: "Enter your email address" },
         emailHint: {
           cn: "验证码由服务端发到这个邮箱；验证通过后，这个邮箱就与会员绑定。",
-          en: "The server sends the code to this address; once verified it is bound to your membership.",
+          en: "The code is sent to this email; once verified, the email is bound to your membership.",
         },
-        usernameHint: {
-          cn: "验证通过后，会用它改写本地默认用户的用户名。",
-          en: "After verification this becomes your local default user's username.",
-        },
-        emailInvalid: { cn: "请输入有效的邮箱地址", en: "Enter a valid email address" },
-        usernameInvalid: {
-          cn: "用户名需为 3-20 位字母、数字、下划线或短横线",
-          en: "Username must be 3-20 letters, digits, underscores or dashes",
-        },
+        emailInvalid: { cn: "邮箱格式不正确", en: "Invalid email address" },
+
         codePlaceholder: { cn: "请输入 6 位验证码", en: "Enter the 6-digit code" },
         cardNumberPlaceholder: { cn: "4242 4242 4242 4242", en: "4242 4242 4242 4242" },
         cardExpiryPlaceholder: { cn: "MM/YY", en: "MM/YY" },
@@ -981,6 +974,7 @@
           boundInviteCode: "",
           localKeyBound: false,
           rebinding: false,
+          rebindNotice: "",
 
           // 套餐（价格来自 /api/plans）
           plans: FALLBACK_PLANS,
@@ -998,13 +992,9 @@
 
           // 步骤 1
           email: "",
-          username: "",
           emailPlaceholder: t("emailPlaceholder"),
-          usernamePlaceholder: t("usernamePlaceholder"),
           emailHint: t("emailHint"),
-          usernameHint: t("usernameHint"),
           emailError: "",
-          usernameError: "",
           formValid: false,
           sending: false,
 
@@ -1036,6 +1026,7 @@
           doneEmail: "",
           doneExpireText: "",
           doneOrderId: "",
+          doneTitle: "",
           doneInviteCode: "",
           doneUsername: "",
           doneUserId: "",
@@ -1130,7 +1121,6 @@
               this.boundInviteCode = data.relay.inviteCode;
               this.localKeyBound = this.localKeyExists(this.boundInviteCode);
               if (!this.email) this.email = data.member.email;
-              if (!this.username) this.username = data.member.username;
               this.refreshFormValid();
             } catch (err) {
               console.warn("[membership] 查询会员绑定失败（服务端未启动？）：", err);
@@ -1179,7 +1169,7 @@
           },
 
           refreshFormValid() {
-            this.formValid = isValidEmail(this.email) && isValidUsername(this.username);
+            this.formValid = isValidEmail(this.email);
           },
 
           onEmailInput(event) {
@@ -1188,19 +1178,11 @@
             this.refreshFormValid();
           },
 
-          onUsernameInput(event) {
-            this.username = event.target.value;
-            this.usernameError = "";
-            this.refreshFormValid();
-          },
-
           validateForm() {
             this.emailError = "";
-            this.usernameError = "";
             if (!isValidEmail(this.email)) this.emailError = t("emailInvalid");
-            if (!isValidUsername(this.username)) this.usernameError = t("usernameInvalid");
             this.refreshFormValid();
-            return !this.emailError && !this.usernameError;
+            return !this.emailError;
           },
 
           async goCode() {
@@ -1213,12 +1195,12 @@
             try {
               const { status, data } = await api.sendCode({
                 email: this.email.trim(),
-                username: this.username.trim(),
                 mazmotUserId: this.userId,
                 planId: this.planId,
               });
               if (status === 200 && data && data.ok) {
                 this.ticketId = data.ticketId;
+                this.rebindNotice = data.rebind ? t("rebindNotice") : "";
                 this.mockCode = data.mockCode || "";
                 this.mockCodeHint = getLocaleText({
                   cn: `服务端返回的演示验证码：${this.mockCode}`,
@@ -1260,6 +1242,11 @@
               const { status, data } = await api.confirmCode(this.ticketId, this.code.trim());
               if (status === 200 && data && data.ok) {
                 this.codeError = "";
+                if (data.rebound) {
+                  // 改绑：确认即过户完成，无需支付，直达完成页
+                  this.applyReboundDone(data);
+                  return;
+                }
                 this.step = "pay";
               } else {
                 this.codeError =
@@ -1275,6 +1262,45 @@
 
           backToCode() {
             this.step = "code";
+          },
+
+          // 改绑确认完成：会员已过户到当前账户（无新订单），邀请码不变，
+          // 写回本地 AI 配置后直达完成页。
+          applyReboundDone(data) {
+            const member = data.member || {};
+            const relay = data.relay || {};
+            this.doneTitle = getLocaleText({
+              cn: "重新绑定成功",
+              en: "Rebind complete",
+            });
+            this.donePlanName = planName(member.planId, "");
+            this.doneAmountText = "—";
+            this.doneServerText = relay.serverUrl || inviteServerUrl(relay.inviteCode);
+            this.doneEmail = member.email;
+            this.doneExpireText = formatDate(member.expiresAt);
+            this.doneOrderId = "—";
+            this.doneInviteCode = relay.inviteCode;
+            this.hasBinding = true;
+            this.boundPlanName = this.donePlanName;
+            this.boundInviteCode = relay.inviteCode;
+            this.localKeyBound = this.saveRelayKey(relay.inviteCode);
+            this.boundStatusText = getLocaleText({
+              cn: `绑定邮箱 ${member.email} · 有效期至 ${this.doneExpireText}`,
+              en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
+            });
+            this.step = "done";
+            this.emit("membership-purchased", {
+              data: {
+                planId: member.planId,
+                email: member.email,
+                username: member.username || "",
+                userId: this.userId,
+                inviteCode: relay.inviteCode,
+                serverName: this.serverName || "",
+              },
+              bubbles: true,
+              composed: true,
+            });
           },
 
           onCardInput() {
@@ -1313,19 +1339,13 @@
               if (info && info.name) this.serverName = info.name;
               this.saveRelayKey(inviteCode);
 
-              // 本地默认用户名与服务端记录对齐（失败不影响已经成功的购买）
-              try {
-                const user = await getUser("default");
-                await user.updateInfo({ username: data.member.username });
-                const latest = await user.getInfo();
-                this.doneUserId = latest.subject || user.userId || this.userId;
-                this.doneUsername = latest.username || data.member.username;
-              } catch (err) {
-                console.warn("[membership] 同步本地用户名失败：", err);
-                this.doneUserId = this.userId;
-                this.doneUsername = data.member.username;
-              }
+              this.doneUserId = this.userId;
+              this.doneUsername = data.member.username;
 
+              this.doneTitle = getLocaleText({
+                cn: "购买成功",
+                en: "Purchase complete",
+              });
               this.donePlanName = planName(data.member.planId, data.member.planName);
               this.doneAmountText = priceText(data.order.amountCents, data.order.currency);
               this.doneServerText = serverUrl;
