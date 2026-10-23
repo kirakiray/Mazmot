@@ -151,20 +151,20 @@
     .step-item {
       display: flex;
       align-items: center;
-      justify-content: center;
       gap: 6px;
       flex: 1;
       min-width: 0;
-      position: relative;
     }
-    /* 连线画在前一项中心与本项中心之间（两项均分宽度，±20px 避开序号圆点） */
+    /* 末项不占弹性份额，避免右侧留空导致连线拉太长 */
+    .step-item:last-child {
+      flex: 0 0 auto;
+    }
+    /* 连线是夹在「上一步内容」与「本步圆圈」之间的弹性元素，天然不会压到圆圈 */
     .step-item + .step-item::before {
       content: "";
-      position: absolute;
-      top: 50%;
-      left: calc(-50% + 20px);
-      right: calc(50% + 20px);
       height: 1px;
+      flex: 1;
+      min-width: 16px;
       background-color: var(--md-sys-color-outline-variant);
     }
     .step-num {
@@ -225,6 +225,18 @@
       border-radius: 10px;
       font-size: 12px;
       background-color: var(--md-sys-color-surface-container);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+
+    .resend-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: 28px;
+      margin-top: -4px;
+    }
+    .resend-wait {
+      font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
 
@@ -602,14 +614,16 @@
           <div class="brand-text">
             <h1><locale-text><span lang="cn">会员中心</span><span lang="en">Membership</span></locale-text></h1>
             <p class="sub">
-              <locale-text><span lang="cn">验证码与支付由 Synchratex 服务端处理（演示环境为 mock），成功后自动配置中转 key。</span><span lang="en">Verification and payment are handled by the Synchratex server (mock in this demo). Your relay key is configured automatically.</span></locale-text>
+              <locale-text><span lang="cn">验证码与支付由 Synchratex 服务端处理，成功后自动配置中转 key。</span><span lang="en">Verification and payment are handled by the Synchratex server. Your relay key is configured automatically.</span></locale-text>
             </p>
           </div>
         </div>
-        <span class="mock-badge">
-          <n-icon icon="mdi:flask-outline"></n-icon>
-          <locale-text><span lang="cn">服务端演示</span><span lang="en">Server demo</span></locale-text>
-        </span>
+        <o-if :value="isLocalDemo">
+          <span class="mock-badge">
+            <n-icon icon="mdi:flask-outline"></n-icon>
+            <locale-text><span lang="cn">服务端演示</span><span lang="en">Server demo</span></locale-text>
+          </span>
+        </o-if>
       </div>
     </header>
 
@@ -629,14 +643,17 @@
             </o-if>
           </div>
         </div>
-        <st-button
-          variant="outlined"
-          attr:disabled="rebinding"
-          on:click="rebindKey"
-        >
-          <n-icon icon="mdi:key-plus" slot="prefix"></n-icon>
-          <locale-text><span lang="cn">找回 key</span><span lang="en">Restore key</span></locale-text>
-        </st-button>
+        <!-- 本机已有 key（登录/购买时已自动写入）就不需要手动找回，按钮仅在其缺失时出现 -->
+        <o-if :value="!localKeyBound">
+          <st-button
+            variant="outlined"
+            attr:disabled="rebinding"
+            on:click="rebindKey"
+          >
+            <n-icon icon="mdi:key-plus" slot="prefix"></n-icon>
+            <locale-text><span lang="cn">找回 key</span><span lang="en">Restore key</span></locale-text>
+          </st-button>
+        </o-if>
       </div>
     </o-if>
 
@@ -753,9 +770,21 @@
           <div class="rebind-notice" data-testid="rebind-notice">{{rebindNotice}}</div>
         </o-if>
         <p class="card-desc">{{codeSentText}}</p>
-        <div class="mock-code">
-          <n-icon icon="mdi:flask-outline"></n-icon>
-          <span>{{mockCodeHint}}</span>
+        <o-if :value="mockCodeHint">
+          <div class="mock-code">
+            <n-icon icon="mdi:flask-outline"></n-icon>
+            <span>{{mockCodeHint}}</span>
+          </div>
+        </o-if>
+        <div class="resend-row">
+          <o-if :value="resendLeft > 0">
+            <span class="resend-wait"><locale-text><span lang="cn">{{resendLeft}} 秒后可重新发送</span><span lang="en">Resend available in {{resendLeft}}s</span></locale-text></span>
+          </o-if>
+          <o-if :value="!resendLeft">
+            <st-button variant="text" attr:disabled="sending" on:click="resendCode">
+              <locale-text><span lang="cn">重新发送验证码</span><span lang="en">Resend code</span></locale-text>
+            </st-button>
+          </o-if>
         </div>
         <div class="field">
           <label class="field-label"><locale-text><span lang="cn">验证码</span><span lang="en">Verification code</span></locale-text></label>
@@ -1076,6 +1105,11 @@
 
   <script>
     export default async ({ load }) => {
+      // 「服务端演示」徽标只在本地调试地址展示（页面静态伺服 + 后端均为本机时），
+      // 部署到正式域名后自动消失
+      const isLocalDemo = ["localhost", "127.0.0.1", "[::1]"].includes(
+        location.hostname,
+      );
       const { getLocaleText } = await load("/nos/locale-text/get-locale-text.js");
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
@@ -1271,12 +1305,22 @@
           copyUserIdTitle: t("copyUserIdTitle"),
 
           benefits,
+
+          isLocalDemo,
+          resendLeft: 0,
         },
 
         async ready() {
           await this.loadUser();
           await this.loadPlans();
           await this.loadBinding();
+        },
+
+        detached() {
+          if (this._resendTimer) {
+            clearInterval(this._resendTimer);
+            this._resendTimer = null;
+          }
         },
 
         proto: {
@@ -1463,19 +1507,7 @@
                 planId: this.planId,
               });
               if (status === 200 && data && data.ok) {
-                this.ticketId = data.ticketId;
-                this.rebindNotice = data.rebind ? t("rebindNotice") : "";
-                this.mockCode = data.mockCode || "";
-                this.mockCodeHint = getLocaleText({
-                  cn: `服务端返回的演示验证码：${this.mockCode}`,
-                  en: `Demo code returned by the server: ${this.mockCode}`,
-                });
-                this.code = "";
-                this.codeError = "";
-                this.codeSentText = getLocaleText({
-                  cn: `验证码已由服务端发送至 ${maskEmail(this.email)}（演示环境不会真的发信）。`,
-                  en: `The server sent a code to ${maskEmail(this.email)} (nothing is really sent in this demo).`,
-                });
+                this.applySendResult(data);
                 this.step = "code";
               } else {
                 this.emailError =
@@ -1487,6 +1519,50 @@
             } finally {
               this.sending = false;
             }
+          },
+
+          // 发码成功后的共用收口（首次发送与重新发送共用）
+          applySendResult(data) {
+            this.ticketId = data.ticketId;
+            this.rebindNotice = data.rebind ? t("rebindNotice") : "";
+            this.mockCode = data.mockCode || "";
+            // 只有 mock 模式（服务端回传 mockEmail/mockCode）才展示演示码气泡
+            this.mockCodeHint = this.mockCode
+              ? getLocaleText({
+                  cn: `服务端返回的演示验证码：${this.mockCode}`,
+                  en: `Demo code returned by the server: ${this.mockCode}`,
+                })
+              : "";
+            this.code = "";
+            this.codeError = "";
+            this.codeSentText = this.mockCode
+              ? getLocaleText({
+                  cn: `验证码已由服务端发送至 ${maskEmail(this.email)}（演示环境不会真的发信）。`,
+                  en: `The server sent a code to ${maskEmail(this.email)} (nothing is really sent in this demo).`,
+                })
+              : getLocaleText({
+                  cn: `验证码邮件已发送至 ${maskEmail(this.email)}，请查收（没收到可看看垃圾箱）。`,
+                  en: `A verification email was sent to ${maskEmail(this.email)}. If you don't see it, check the spam folder.`,
+                });
+            this.startResendCountdown();
+          },
+
+          // 重发倒计时（服务端冷却 60s，前端同步展示）
+          startResendCountdown() {
+            if (this._resendTimer) clearInterval(this._resendTimer);
+            this.resendLeft = 60;
+            this._resendTimer = setInterval(() => {
+              this.resendLeft = Math.max(0, this.resendLeft - 1);
+              if (this.resendLeft === 0) {
+                clearInterval(this._resendTimer);
+                this._resendTimer = null;
+              }
+            }, 1000);
+          },
+
+          async resendCode() {
+            if (this.resendLeft > 0 || this.sending) return;
+            await this.goCode();
           },
 
           onCodeInput(event) {
