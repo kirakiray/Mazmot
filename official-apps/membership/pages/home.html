@@ -144,7 +144,8 @@
     .steps {
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      gap: 12px;
       font-size: 12px;
       color: var(--md-sys-color-on-surface-variant);
     }
@@ -152,19 +153,14 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      flex: 1;
-      min-width: 0;
+      flex-shrink: 0;
     }
-    /* 末项不占弹性份额，避免右侧留空导致连线拉太长 */
-    .step-item:last-child {
-      flex: 0 0 auto;
-    }
-    /* 连线是夹在「上一步内容」与「本步圆圈」之间的弹性元素，天然不会压到圆圈 */
+    /* 每段连线固定 50px，简单可靠 */
     .step-item + .step-item::before {
       content: "";
+      width: 50px;
       height: 1px;
-      flex: 1;
-      min-width: 16px;
+      flex-shrink: 0;
       background-color: var(--md-sys-color-outline-variant);
     }
     .step-num {
@@ -272,6 +268,23 @@
       color: var(--md-sys-color-on-tertiary-container);
       font-size: 12px;
       line-height: 1.6;
+    }
+
+    .unavailable-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background-color: var(--md-sys-color-error-container);
+      color: var(--md-sys-color-on-error-container);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .unavailable-banner n-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
     }
 
     .terms-field {
@@ -627,6 +640,14 @@
       </div>
     </header>
 
+    <!-- 服务不可用横幅：连不上服务器 / 邮件或支付服务异常（502）时显示 -->
+    <o-if :value="serviceUnavailable">
+      <div class="unavailable-banner" data-testid="unavailable-banner">
+        <n-icon icon="mdi:alert-circle-outline"></n-icon>
+        <span>{{serviceUnavailable}}</span>
+      </div>
+    </o-if>
+
     <!-- 已有会员（服务端 binding） -->
     <o-if :value="hasBinding">
       <div class="status-card">
@@ -823,6 +844,14 @@
         <h2 class="card-title">
           <locale-text><span lang="cn">第 3 步 · 支付</span><span lang="en">Step 3 · Payment</span></locale-text>
         </h2>
+        <o-if :value="waitingPayment">
+          <div class="rebind-notice" data-testid="pay-waiting">
+            <locale-text>
+              <span lang="cn">已打开 Stripe 支付页面，完成支付后本页会自动检测并进入下一步。若浏览器拦截了新窗口，请允许弹窗后重试。</span>
+              <span lang="en">The Stripe checkout window has been opened. This page will detect your payment automatically. If the popup was blocked, allow popups and try again.</span>
+            </locale-text>
+          </div>
+        </o-if>
         <div class="plans">
           <div class="plans-head">
             <span class="plans-title"><locale-text><span lang="cn">选择套餐</span><span lang="en">Choose a plan</span></locale-text></span>
@@ -1104,7 +1133,7 @@
   </st-dialog>
 
   <script>
-    export default async ({ load }) => {
+    export default async ({ load, query }) => {
       // 「服务端演示」徽标只在本地调试地址展示（页面静态伺服 + 后端均为本机时），
       // 部署到正式域名后自动消失
       const isLocalDemo = ["localhost", "127.0.0.1", "[::1]"].includes(
@@ -1154,6 +1183,18 @@
         agreeRequired: {
           cn: "请先阅读并同意《用户使用条款》",
           en: "Please read and agree to the Terms of Use first",
+        },
+        unavailableNetwork: {
+          cn: "暂时无法购买：无法连接会员服务，请检查网络后稍后再试。",
+          en: "Purchases are unavailable right now: cannot reach the membership server. Please try again later.",
+        },
+        unavailableEmail: {
+          cn: "暂时无法购买：验证码邮件服务不可用（可能已达发送额度），请稍后再试或联系管理员。",
+          en: "Purchases are unavailable right now: the verification-email service is unavailable (quota may be exceeded). Please try again later or contact the admin.",
+        },
+        unavailablePay: {
+          cn: "暂时无法购买：支付服务不可用，请稍后再试或联系管理员。",
+          en: "Purchases are unavailable right now: the payment service is unavailable. Please try again later or contact the admin.",
         },
 
         codePlaceholder: { cn: "请输入 6 位验证码", en: "Enter the 6-digit code" },
@@ -1308,10 +1349,18 @@
 
           isLocalDemo,
           resendLeft: 0,
+          waitingPayment: false,
+          serviceUnavailable: "",
         },
 
         async ready() {
           await this.loadUser();
+          // Stripe 收银台支付完成后跳回本页（?pay=return）：支付页 → 轮询绑定等 webhook 发货
+          if (query && query.pay === "return" && this.step === "form") {
+            this.step = "pay";
+            this.waitingPayment = true;
+            this.startPollBinding();
+          }
           await this.loadPlans();
           await this.loadBinding();
         },
@@ -1321,6 +1370,7 @@
             clearInterval(this._resendTimer);
             this._resendTimer = null;
           }
+          this.stopPollBinding();
         },
 
         proto: {
@@ -1507,14 +1557,23 @@
                 planId: this.planId,
               });
               if (status === 200 && data && data.ok) {
+                this.serviceUnavailable = "";
                 this.applySendResult(data);
                 this.step = "code";
               } else {
-                this.emailError =
-                  (data && data.error && data.error.message) ||
-                  t("serverError", { msg: `HTTP ${status}` });
+                console.error("[membership] 发送验证码失败", { url: "POST /api/membership/verify/send", status, data });
+                // 502 = 服务端发码失败（邮件服务不可用 / 上游额度超限等），整页提示不可购买
+                if (status === 502) {
+                  this.serviceUnavailable = t("unavailableEmail");
+                } else {
+                  this.emailError =
+                    (data && data.error && data.error.message) ||
+                    t("serverError", { msg: `HTTP ${status}` });
+                }
               }
             } catch (err) {
+              console.error("[membership] 发送验证码失败（网络层，服务器可能未启动或不可达）", err);
+              this.serviceUnavailable = t("unavailableNetwork");
               this.emailError = t("networkError", { msg: err.message || err });
             } finally {
               this.sending = false;
@@ -1589,11 +1648,13 @@
                 }
                 this.step = "pay";
               } else {
+                console.error("[membership] 验证码校验失败", { url: "POST /api/membership/verify/confirm", status, data });
                 this.codeError =
                   (data && data.error && data.error.message) ||
                   t("serverError", { msg: `HTTP ${status}` });
               }
             } catch (err) {
+              console.error("[membership] 验证码校验失败（网络层，服务器可能不可达）", err);
               this.codeError = t("networkError", { msg: err.message || err });
             } finally {
               this.verifying = false;
@@ -1651,6 +1712,89 @@
             });
           },
 
+          // ===== Stripe 真实支付：轮询绑定等 webhook 发货 =====
+
+          // 每 3s 查一次绑定状态；webhook 发货成功后 binding 即可查到会员。
+          // 上限 100 次（约 5 分钟），超时提示未检测到支付。
+          startPollBinding() {
+            this.stopPollBinding();
+            let ticks = 0;
+            this._pollTimer = setInterval(async () => {
+              ticks++;
+              if (ticks > 100) {
+                this.stopPollBinding();
+                this.waitingPayment = false;
+                toast({
+                  message: getLocaleText({
+                    cn: "暂未检测到支付成功，若已完成支付请稍后重进本页。",
+                    en: "No successful payment detected yet. If you've paid, please reopen this page later.",
+                  }),
+                  color: "error",
+                });
+                return;
+              }
+              try {
+                const { status, data } = await api.binding(this.userId);
+                if (status === 200 && data && data.bound) {
+                  this.stopPollBinding();
+                  this.waitingPayment = false;
+                  this.applyStripeDone(data);
+                }
+              } catch (err) {
+                // 轮询期间的瞬时网络错误忽略，下一轮再试
+              }
+            }, 3000);
+          },
+
+          stopPollBinding() {
+            if (this._pollTimer) {
+              clearInterval(this._pollTimer);
+              this._pollTimer = null;
+            }
+          },
+
+          // webhook 已发货：binding 拿到会员 + 邀请码，收口进完成页
+          applyStripeDone(data) {
+            const member = data.member || {};
+            const relay = data.relay || {};
+            const inviteCode = relay.inviteCode;
+            const serverUrl = relay.serverUrl || inviteServerUrl(inviteCode);
+            this.saveRelayKey(inviteCode);
+
+            this.doneTitle = getLocaleText({ cn: "购买成功", en: "Purchase complete" });
+            this.donePlanName = planName(member.planId, "");
+            this.doneAmountText = this.planId === "annual" ? this.annualPrice : this.monthlyPrice;
+            this.doneServerText = serverUrl;
+            this.doneEmail = member.email;
+            this.doneExpireText = formatDate(member.expiresAt);
+            this.doneOrderId = "—";
+            this.doneInviteCode = inviteCode;
+            this.doneUserId = this.userId;
+            this.doneUsername = this.doneUsername || member.username;
+            this.hasBinding = true;
+            this.boundPlanName = this.donePlanName;
+            this.boundInviteCode = inviteCode;
+            this.localKeyBound = true;
+            this.boundStatusText = getLocaleText({
+              cn: `绑定邮箱 ${member.email} · 有效期至 ${this.doneExpireText}`,
+              en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
+            });
+            this.step = "done";
+
+            this.emit("membership-purchased", {
+              data: {
+                planId: member.planId,
+                email: member.email,
+                username: this.doneUsername,
+                userId: this.userId,
+                inviteCode,
+                serverName: this.serverName || "",
+              },
+              bubbles: true,
+              composed: true,
+            });
+          },
+
           async payNow() {
             if (this.paying) return;
             this.payValid = isValidMockCard({
@@ -1664,12 +1808,26 @@
             try {
               const { status, data } = await api.checkout(this.ticketId, this.planId);
               if (status !== 200 || !data || !data.ok) {
+                console.error("[membership] 下单失败", { url: "POST /api/membership/checkout", status, data });
+                // 502 = 创建支付会话失败（Stripe 不可用 / 配置缺失等），整页提示不可购买
+                if (status === 502) {
+                  this.serviceUnavailable = t("unavailablePay");
+                }
                 toast({
                   message:
                     (data && data.error && data.error.message) ||
                     t("serverError", { msg: `HTTP ${status}` }),
                   color: "error",
                 });
+                return;
+              }
+
+              // stripe 模式：checkout 只创建支付会话——打开 Stripe 收银台，
+              // 支付结果由服务端 webhook 异步发货，本页轮询绑定状态等生效
+              if (data.pending && data.checkoutUrl) {
+                this.waitingPayment = true;
+                this.startPollBinding();
+                window.open(data.checkoutUrl, "_blank");
                 return;
               }
 
@@ -1719,6 +1877,8 @@
                 composed: true,
               });
             } catch (err) {
+              console.error("[membership] 下单失败（网络层，服务器可能不可达）", err);
+              this.serviceUnavailable = t("unavailableNetwork");
               toast({ message: t("networkError", { msg: err.message || err }), color: "error" });
             } finally {
               this.paying = false;
