@@ -4,7 +4,7 @@
 // 支付是服务端 mock Stripe；本模块只负责请求与错误归一化，不在前端写死业务数据。
 //
 // 服务端地址约定：
-// - 本地（localhost / 127.0.0.1 / [::1]）默认 http://127.0.0.1:47901（synchratex-server 的默认端口）；
+// - 本地（localhost / 127.0.0.1 / [::1]）默认 http://127.0.0.1:47901（Synchratex 服务端本地默认端口）；
 // - 其他域名（如线上 mazmot.noneos.com）默认指向线上 https://api.synchratex.com；
 // - 两种场景都可用 window.SYNCHRATEX_API_BASE 覆盖。
 
