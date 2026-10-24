@@ -81,6 +81,8 @@
                 document.getElementById("frame-slot").appendChild(frame);
                 const errors = [];
                 frame.addEventListener("load", () => {
+                  // 每次整页（重）载计数：诊断引导中途被整页重置（CI WebKit 曾现）
+                  frame.__loadCount = (frame.__loadCount || 0) + 1;
                   try {
                     frame.contentWindow.addEventListener("error", (e) =>
                       errors.push(String(e.message || e)),
@@ -246,14 +248,6 @@
               (t || el).dispatchEvent(new MouseEvent("click", { bubbles: true }));
               return true;
             };
-            const waitText = async (re, timeoutMs) => {
-              const started = Date.now();
-              for (;;) {
-                if (hasText(re)) return true;
-                if (Date.now() - started > timeoutMs) return false;
-                await new Promise((r) => setTimeout(r, 300));
-              }
-            };
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
             // 首屏：欢迎开场对话
@@ -262,90 +256,124 @@
               return { assert: false, content: { step: "first-screen", first } };
             }
 
-            // 连点屏幕推进对话，直到 Key 步骤出现（跳过按钮 或「已有可用 Key」分支）。
-            // keyFound 文案中英都要能命中：原文的正则「已有可用」与实际文案
-            // 「已经配置了可用的 AI Key」不连续，中文环境走 Key 分支会卡死在
-            // 这一步；且文案是打字机逐字出现的，命中时交互按钮可能尚未渲染
-            const atKey = await (async () => {
+            // 通用推进器：命中目标文案即停；否则依次尝试点击给定按钮；没有
+            // 可点按钮且屏幕存在时点屏幕推进对话（打字中则先补全文案）。
+            // 关键自恢复能力：欢迎流程可能在引导中途被整页重置回开场对话
+            //（CI WebKit 实测：跳过 Key 成功后 skipClicks=1，其后 20s 无任何
+            // 按钮可点、帧内容回到初始态）——只认按钮的循环在重置后会干等
+            // 超时，带上点屏幕推进即可从重置中自动重走全程
+            const driveTo = async (targetRe, clickRes, timeoutMs) => {
               const started = Date.now();
+              const clicks = clickRes.map(() => 0);
+              let stageClicks = 0;
               for (;;) {
-                if (hasText(/跳过，暂不配置|Skip for now|usable AI Key|可用的 AI Key/)) return true;
-                const stage = deepAll(doc0()).find(
-                  (e) => e.classList && e.classList.contains("stage"),
-                );
-                if (stage) stage.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-                if (Date.now() - started > 60000) return false;
-                await sleep(400);
-              }
-            })();
-            if (!atKey) return { assert: false, content: { step: "key" } };
-
-            // 跳过 Key（若环境已有可用 Key 则点「下一步」分支），都不走购买。
-            // 「跳过 / 下一步」按钮要等打字完成（uiReady）才渲染，而上面文案
-            // 命中可能发生在打字中途——固定 sleep + 一次性点击是在和打字机
-            // 赛跑（CI WebKit 慢机曾因此抖挂：atPurpose=false）。改为有界轮询：
-            // 按钮出现即点、未推进隔 300ms 再点；用途步骤内没有匹配这两个
-            // 正则的按钮（返回键是「上一步/Back」），重复点击是安全的
-            const PURPOSE_RE = /直接使用现成的应用|Use ready-made apps/;
-            const FINISH_RE = /完成，进入 Mazmot|Finish and Enter Mazmot/;
-            let skipClicks = 0;
-            let nextClicks = 0;
-            const atPurpose = await (async () => {
-              const started = Date.now();
-              while (Date.now() - started < 20000) {
-                if (hasText(PURPOSE_RE)) return true;
-                if (clickText(/跳过，暂不配置|Skip for now/)) skipClicks++;
-                else if (clickText(/下一步|Next/)) nextClicks++;
-                await sleep(300);
-              }
-              return hasText(PURPOSE_RE);
-            })();
-
-            // 选用途 1（直接用现成应用，无需 Key）——同款轮询：点选项直到
-            // 完成按钮出现（apps 单元的打字机耗时由轮询吸收，不靠固定 sleep）
-            let picked = false;
-            if (atPurpose) {
-              const started = Date.now();
-              while (Date.now() - started < 15000) {
-                if (hasText(FINISH_RE)) {
-                  picked = true;
-                  break;
+                if (hasText(targetRe)) return { ok: true, clicks, stageClicks };
+                let clicked = false;
+                for (let i = 0; i < clickRes.length; i++) {
+                  if (clickText(clickRes[i])) {
+                    clicks[i]++;
+                    clicked = true;
+                    break;
+                  }
                 }
-                clickText(PURPOSE_RE);
+                if (!clicked) {
+                  const stage = deepAll(doc0()).find(
+                    (e) => e.classList && e.classList.contains("stage"),
+                  );
+                  if (stage) {
+                    stage.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                    stageClicks++;
+                  }
+                }
+                if (Date.now() - started > timeoutMs) {
+                  return { ok: false, clicks, stageClicks };
+                }
                 await sleep(300);
               }
+            };
+            // 失败现场快照：body 可见文本（跳过 script/style，shadow 穿透）、
+            // 帧整页重载计数与 URL——区分「整页被重置」与「流程卡住不动」
+            const uiSnapshot = () => {
+              let url = "(cross)";
+              try {
+                url = frame.contentWindow.location.href;
+              } catch (err) {}
+              const doc = doc0();
+              const loads = frame.__loadCount;
+              if (!doc || !doc.body) {
+                return { frameUrl: url, frameLoads: loads, uiText: "(无 body)" };
+              }
+              const SKIP_TAGS = new Set([
+                "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK", "META",
+              ]);
+              let out = "";
+              const walk = (node) => {
+                for (const el of node.querySelectorAll("*")) {
+                  if (out.length >= 400) return;
+                  if (SKIP_TAGS.has(el.tagName)) continue;
+                  if (el.childNodes.length && !el.shadowRoot) {
+                    for (const n of el.childNodes) {
+                      if (n.nodeType === 3 && n.textContent.trim()) {
+                        out += n.textContent.trim() + " ";
+                        if (out.length >= 400) return;
+                      }
+                    }
+                  }
+                  if (el.shadowRoot) walk(el.shadowRoot);
+                }
+              };
+              walk(doc.body);
+              return {
+                frameUrl: url,
+                frameLoads: loads,
+                uiText: out.slice(0, 400) || "(body 无文本)",
+              };
+            };
+
+            // 阶段 1：推进开场对话到 Key 步骤（跳过按钮，或「已配置可用的
+            // AI Key」文案——keyFound 中英文案都要能命中，原文的正则
+            // 「已有可用」与实际文案「已经配置了可用的 AI Key」不连续）
+            const keyHit = await driveTo(
+              /跳过，暂不配置|Skip for now|usable AI Key|可用的 AI Key/,
+              [],
+              60000,
+            );
+            if (!keyHit.ok) {
+              return { assert: false, content: { step: "key", keyHit, ...uiSnapshot() } };
             }
-            const atApps =
-              picked && await waitText(FINISH_RE, 20000);
+
+            // 阶段 2：跳过 Key（环境已有可用 Key 时点「下一步」分支），推进
+            // 到用途选择。用途步骤内没有匹配这两个正则的按钮（返回键是
+            // 「上一步/Back」），重复点击安全；打字机与按钮渲染的耗时差由
+            // 轮询吸收，不做固定 sleep
+            const PURPOSE_RE = /直接使用现成的应用|Use ready-made apps/;
+            const purposeHit = await driveTo(
+              PURPOSE_RE,
+              [/跳过，暂不配置|Skip for now/, /下一步|Next/],
+              45000,
+            );
+
+            // 阶段 3：选用途 1（直接用现成应用，无需 Key）推进到完成按钮
+            const FINISH_RE = /完成，进入 Mazmot|Finish and Enter Mazmot/;
+            const finishHit = await driveTo(FINISH_RE, [PURPOSE_RE], 30000);
 
             // 完成引导：写 welcome-done → replace 进应用列表（安装转后台队列）
-            if (!atApps) {
+            if (!finishHit.ok) {
               return {
                 assert: false,
-                content: {
-                  atKey,
-                  atPurpose,
-                  picked,
-                  atApps,
-                  skipClicks,
-                  nextClicks,
-                  uiText: window.__e2e.deepText(doc0(), 300),
-                },
+                content: { keyHit, purposeHit, finishHit, ...uiSnapshot() },
               };
             }
-            clickText(/完成，进入 Mazmot|Finish and Enter Mazmot/);
+            clickText(FINISH_RE);
             const listed = await window.__e2e.waitMarker(frame, ".container .header", 60000);
             const welcomeDone = await storage.getItem("welcome-done");
 
             return {
               assert: listed.ok && !!welcomeDone,
               content: {
-                atKey,
-                skipClicks,
-                nextClicks,
-                atPurpose,
-                picked,
-                atApps,
+                keyHit,
+                purposeHit,
+                finishHit,
                 listed,
                 welcomeDone: welcomeDone || null,
               },
