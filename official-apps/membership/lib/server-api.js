@@ -4,15 +4,19 @@
 // 支付是服务端 mock Stripe；本模块只负责请求与错误归一化，不在前端写死业务数据。
 //
 // 服务端地址约定：
-// - 默认 http://127.0.0.1:47901（synchratex-server 的默认端口）；
-// - 部署到别处时用 window.SYNCHRATEX_API_BASE 覆盖（如 https://api.synchratex.com）。
+// - 本地（localhost / 127.0.0.1 / [::1]）默认 http://127.0.0.1:47901（synchratex-server 的默认端口）；
+// - 其他域名（如线上 mazmot.noneos.com）默认指向线上 https://api.synchratex.com；
+// - 两种场景都可用 window.SYNCHRATEX_API_BASE 覆盖。
+
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+const DEFAULT_BASE = LOCAL_HOSTS.includes(location.hostname)
+  ? "http://127.0.0.1:47901"
+  : "https://api.synchratex.com";
 
 /** 规范化 base URL：去掉末尾 `/`，非 http(s) 或空值时回退默认地址。 */
 export function normalizeBase(value) {
-  const fallback = "http://127.0.0.1:47901";
   const text = String(value || "").trim();
-  if (!text) return fallback;
-  if (!/^https?:\/\//i.test(text)) return fallback;
+  if (!text || !/^https?:\/\//i.test(text)) return DEFAULT_BASE;
   return text.replace(/\/+$/, "");
 }
 
