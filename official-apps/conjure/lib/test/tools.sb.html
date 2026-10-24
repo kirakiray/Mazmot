@@ -35,7 +35,11 @@
             const preview = tools.preview;
             const windowsRes = await preview.exec({ action: "windows" });
             const popupRes = await preview.exec({ action: "check-popup" });
-            const testsRes = await preview.exec({ action: "run-tests" });
+            // files 必传（缺省会拒跑引导），传了才会进 ctx.runTests 桩
+            const testsRes = await preview.exec({
+              action: "run-tests",
+              files: ["test/smoke.test.json"],
+            });
             const checks = {
               windows: windowsRes.includes("共 1 个预览窗口"),
               popup: popupRes.includes("弹窗探测通过"),
