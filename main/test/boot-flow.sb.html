@@ -262,11 +262,14 @@
               return { assert: false, content: { step: "first-screen", first } };
             }
 
-            // 连点屏幕推进对话，直到 Key 步骤出现（跳过按钮 或「已有可用 Key」分支）
+            // 连点屏幕推进对话，直到 Key 步骤出现（跳过按钮 或「已有可用 Key」分支）。
+            // keyFound 文案中英都要能命中：原文的正则「已有可用」与实际文案
+            // 「已经配置了可用的 AI Key」不连续，中文环境走 Key 分支会卡死在
+            // 这一步；且文案是打字机逐字出现的，命中时交互按钮可能尚未渲染
             const atKey = await (async () => {
               const started = Date.now();
               for (;;) {
-                if (hasText(/跳过，暂不配置|Skip for now|usable AI Key|已有可用/)) return true;
+                if (hasText(/跳过，暂不配置|Skip for now|usable AI Key|可用的 AI Key/)) return true;
                 const stage = deepAll(doc0()).find(
                   (e) => e.classList && e.classList.contains("stage"),
                 );
@@ -276,23 +279,60 @@
               }
             })();
             if (!atKey) return { assert: false, content: { step: "key" } };
-            await sleep(600); // 等交互 UI（uiReady）渲染出来
 
-            // 跳过 Key（若环境已有可用 Key 则点「下一步」分支），都不走购买
-            const skipped = clickText(/跳过，暂不配置|Skip for now/);
-            const nexted = skipped || clickText(/下一步|Next/);
-            const atPurpose = nexted && await waitText(/直接使用现成的应用|Use ready-made apps/, 20000);
+            // 跳过 Key（若环境已有可用 Key 则点「下一步」分支），都不走购买。
+            // 「跳过 / 下一步」按钮要等打字完成（uiReady）才渲染，而上面文案
+            // 命中可能发生在打字中途——固定 sleep + 一次性点击是在和打字机
+            // 赛跑（CI WebKit 慢机曾因此抖挂：atPurpose=false）。改为有界轮询：
+            // 按钮出现即点、未推进隔 300ms 再点；用途步骤内没有匹配这两个
+            // 正则的按钮（返回键是「上一步/Back」），重复点击是安全的
+            const PURPOSE_RE = /直接使用现成的应用|Use ready-made apps/;
+            const FINISH_RE = /完成，进入 Mazmot|Finish and Enter Mazmot/;
+            let skipClicks = 0;
+            let nextClicks = 0;
+            const atPurpose = await (async () => {
+              const started = Date.now();
+              while (Date.now() - started < 20000) {
+                if (hasText(PURPOSE_RE)) return true;
+                if (clickText(/跳过，暂不配置|Skip for now/)) skipClicks++;
+                else if (clickText(/下一步|Next/)) nextClicks++;
+                await sleep(300);
+              }
+              return hasText(PURPOSE_RE);
+            })();
 
-            // 选用途 1（直接用现成应用，无需 Key）
+            // 选用途 1（直接用现成应用，无需 Key）——同款轮询：点选项直到
+            // 完成按钮出现（apps 单元的打字机耗时由轮询吸收，不靠固定 sleep）
             let picked = false;
             if (atPurpose) {
-              picked = clickText(/直接使用现成的应用|Use ready-made apps/);
+              const started = Date.now();
+              while (Date.now() - started < 15000) {
+                if (hasText(FINISH_RE)) {
+                  picked = true;
+                  break;
+                }
+                clickText(PURPOSE_RE);
+                await sleep(300);
+              }
             }
             const atApps =
-              picked && await waitText(/完成，进入 Mazmot|Finish and Enter Mazmot/, 20000);
+              picked && await waitText(FINISH_RE, 20000);
 
             // 完成引导：写 welcome-done → replace 进应用列表（安装转后台队列）
-            if (!atApps) return { assert: false, content: { atKey, atPurpose, picked, atApps } };
+            if (!atApps) {
+              return {
+                assert: false,
+                content: {
+                  atKey,
+                  atPurpose,
+                  picked,
+                  atApps,
+                  skipClicks,
+                  nextClicks,
+                  uiText: window.__e2e.deepText(doc0(), 300),
+                },
+              };
+            }
             clickText(/完成，进入 Mazmot|Finish and Enter Mazmot/);
             const listed = await window.__e2e.waitMarker(frame, ".container .header", 60000);
             const welcomeDone = await storage.getItem("welcome-done");
@@ -301,8 +341,8 @@
               assert: listed.ok && !!welcomeDone,
               content: {
                 atKey,
-                skipped,
-                nexted,
+                skipClicks,
+                nextClicks,
                 atPurpose,
                 picked,
                 atApps,

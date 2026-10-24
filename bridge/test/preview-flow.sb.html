@@ -39,7 +39,15 @@
             const ok = await ensureServerConnected(user, {
               hard: info?.reason === "capped",
             });
-            if (!ok) throw new Error("信令服务器未连接");
+            if (!ok) {
+              // 带已连 URL 诊断：区分「服务器列表空 / 连不上」与「仅未收敛」，
+              // 并给出本地跑法（CI 与 npm test 会自动拉起，单跑需手动）
+              throw new Error(
+                `信令服务器未连接（已连: ${
+                  user.server?.connectedUrls?.join(", ") || "无"
+                }）。本地单跑需先启动信令服务器：npm run handshake`,
+              );
+            }
           };
 
           // 两侧用户（不同 namespace → 不同身份，模拟跨域两端）
@@ -426,7 +434,15 @@
             const ok = await ensureServerConnected(user, {
               hard: info?.reason === "capped",
             });
-            if (!ok) throw new Error("信令服务器未连接");
+            if (!ok) {
+              // 带已连 URL 诊断：区分「服务器列表空 / 连不上」与「仅未收敛」，
+              // 并给出本地跑法（CI 与 npm test 会自动拉起，单跑需手动）
+              throw new Error(
+                `信令服务器未连接（已连: ${
+                  user.server?.connectedUrls?.join(", ") || "无"
+                }）。本地单跑需先启动信令服务器：npm run handshake`,
+              );
+            }
           };
 
           const sender = await getUser("conjure-preview");
