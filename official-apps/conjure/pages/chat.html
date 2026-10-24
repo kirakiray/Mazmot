@@ -419,8 +419,13 @@
                       </span>
                     </span>
                   </button>
-                  <o-if :value="$data.open">
-                    <div class="tool-body">
+                  <!-- 折叠动画：外壳常驻 grid 0fr↔1fr 过渡；内容首次点开后保持
+                       挂载（toolBodyOn）——收起过渡期间内容还在才能看着收起，
+                       重复开合也不必重挂；未点开过的卡片零渲染成本 -->
+                  <div class="tool-body-wrap" class:open="$data.open">
+                    <div class="tool-body-clip">
+                      <o-if :value="$host.toolBodyOn($data)">
+                        <div class="tool-body">
                       <div class="tool-section">
                         <div class="tool-label">参数</div>
                         <pre class="tool-code">{{$data.args}}</pre>
@@ -466,8 +471,10 @@
                           </div>
                         </div>
                       </o-if>
+                        </div>
+                      </o-if>
                     </div>
-                  </o-if>
+                  </div>
                 </div>
               </o-if>
 
@@ -483,9 +490,13 @@
                     <span class="compact-title">已压缩 {{$data.count}} 条历史记忆</span>
                     <span class="compact-hint">点击查看摘要</span>
                   </button>
-                  <o-if :value="$data.open">
-                    <div class="compact-body">{{$data.summary}}</div>
-                  </o-if>
+                  <div class="tool-body-wrap" class:open="$data.open">
+                    <div class="tool-body-clip">
+                      <o-if :value="$host.toolBodyOn($data)">
+                        <div class="compact-body">{{$data.summary}}</div>
+                      </o-if>
+                    </div>
+                  </div>
                 </div>
               </o-if>
 
@@ -2651,7 +2662,18 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
 
 
           toggleTool(id) {
+            // 记住点开过的工具/压缩卡：折叠动画要求内容在收起过渡期间保持
+            // 挂载（toolBodyOn），首次点开才挂载、之后常驻不重挂
+            this._toolOpened = this._toolOpened || new Set();
+            this._toolOpened.add(id);
             store.toggleTool(id);
+          },
+
+
+          // 折叠动画配套：点开过的卡内容保持挂载（外壳 grid 0fr 收起时内容
+          // 还在才能看着收起）；没点开过的卡不渲染主体，零渲染成本
+          toolBodyOn(m) {
+            return !!m.open || !!this._toolOpened?.has(m.id);
           },
 
 
@@ -2854,8 +2876,10 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
             this.input = "";
             this.pendingImages = [];
             this.autoGrow();
-            this.atBottom = true;
-            this.followScroll(true);
+            // 发送即动画滚到最底：新消息此时还没入列，靠动画的增高重投递
+            // 追上新气泡渲染；不能用旧的瞬时跳（跑在渲染前量到旧高度，落点
+            // 差一截后 atBottom 翻 false，流式跟随就此断掉）
+            this.scrollToBottomAnimated();
             // 新回合：清零表单挂起的计时暂停累计
             this._formPauseMs = 0;
             this._formPauseStart = 0;
@@ -2875,14 +2899,66 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
 
           followScroll(force = false) {
             if (!force && !this.atBottom) return;
+            // 双 rAF 等 o-fill 渲染落一帧：单 rAF 常跑在渲染前量到旧高度，
+            // 落点差一截后 dist>24 会把 atBottom 翻 false 断掉流式跟随
             requestAnimationFrame(() => {
-              const el = this.shadow.$("#chatScroll")?.ele;
-              if (el) el.scrollTop = el.scrollHeight;
+              requestAnimationFrame(() => {
+                const el = this.shadow.$("#chatScroll")?.ele;
+                if (el) el.scrollTop = el.scrollHeight;
+              });
             });
           },
 
 
+          // 动画滚到最底（发送 / 回到底部按钮用）：原生 smooth 滚动，内容
+          // 继续增高（新气泡 / markdown / 变更卡异步渲染）时重新投递到新
+          // 目标；动画期间抑制 onChatScroll 的贴底判定——中途 dist>24 会把
+          // atBottom 翻 false 断掉流式跟随。用户滚轮 / 触摸即打断
+          scrollToBottomAnimated() {
+            this.atBottom = true;
+            const el = this.shadow.$("#chatScroll")?.ele;
+            if (!el) return;
+            if (this._scrollAnimCancel) this._scrollAnimCancel();
+            let cancelled = false;
+            let tries = 0;
+            let lastTarget = el.scrollHeight;
+            const finish = () => {
+              el.removeEventListener("wheel", onCancel);
+              el.removeEventListener("touchstart", onCancel);
+              this._scrollAnimating = false;
+              this._scrollAnimCancel = null;
+              this.onChatScroll(); // 收口：按最终位置重算 atBottom
+            };
+            const onCancel = () => {
+              cancelled = true;
+            };
+            el.addEventListener("wheel", onCancel, { passive: true });
+            el.addEventListener("touchstart", onCancel, { passive: true });
+            this._scrollAnimating = true;
+            this._scrollAnimCancel = () => {
+              cancelled = true;
+            };
+            const step = () => {
+              if (cancelled) return finish();
+              const target = el.scrollHeight;
+              if (target !== lastTarget) {
+                // 内容长高了：重新平滑滚向新底部（浏览器从当前位置续动画）
+                lastTarget = target;
+                el.scrollTo({ top: target, behavior: "smooth" });
+              }
+              if (++tries < 40) {
+                requestAnimationFrame(step);
+              } else {
+                finish();
+              }
+            };
+            el.scrollTo({ top: lastTarget, behavior: "smooth" });
+            requestAnimationFrame(step);
+          },
+
+
           onChatScroll() {
+            if (this._scrollAnimating) return; // 动画期间的滚动事件不算用户操作
             const el = this.shadow.$("#chatScroll")?.ele;
             if (!el) return;
             const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -2912,8 +2988,7 @@ export const parent = "./home.html"; // 嵌套路由：渲染进父页面（布�
 
 
           toBottomNow() {
-            this.atBottom = true;
-            this.followScroll(true);
+            this.scrollToBottomAnimated();
           },
           // ---- 仓库订阅 + 初始镜像（attached 装配；detached 退订）----
           setupStoreSync() {

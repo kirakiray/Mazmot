@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>conjure store/agent 模型选择与被拒自愈测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="isModelRejectedError 匹配模型被拒（403 白名单）错误">
+      <template>
+        <script type="module">
+          import { isModelRejectedError } from "../lib/builder.js";
+          {
+            const relayRejected = new Error(
+              'relay API error: 403 Forbidden - {"error":{"message":"模型 model-a 不在该用户的可用模型范围内"}}',
+            );
+            const enRejected = new Error(
+              "openai API error: 403 x - model not allowed",
+            );
+            const authDenied = new Error(
+              'relay API error: 403 - {"error":{"message":"unauthorized"}}',
+            );
+            const rateLimited = new Error("relay API error: 429 - rate limited");
+            const network = new Error("fetch failed");
+            const checks = {
+              cnWhitelist: isModelRejectedError(relayRejected) === true,
+              enNotAllowed: isModelRejectedError(enRejected) === true,
+              authNotMatched: isModelRejectedError(authDenied) === false,
+              rateLimitNotMatched: isModelRejectedError(rateLimited) === false,
+              networkNotMatched: isModelRejectedError(network) === false,
+              nullSafe: isModelRejectedError(null) === false,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test
+      name="模型选择收窄与被拒自愈（pickAssistant / refreshModelOptions / forgetModel）"
+    >
+      <template>
+        <script type="module">
+          import { createAgentPart } from "../lib/store/agent.js";
+          {
+            // 工厂级假环境：modelOptionsCache 是 createAgentPart 闭包内变量，
+            // 每个 part 一份新缓存，用例互不污染；selfStore 置 null 跳过偏好持久化
+            const mkEnv_agent = async (initState_agent, models_agent) => {
+              const state_agent = {
+                activeKeyId: "r1",
+                activeModelId: "",
+                apiKeys: [
+                  { id: "r1", provider: "relay", maskedKey: "sk-***", serverName: "Relay" },
+                  { id: "d1", provider: "deepseek", maskedKey: "dk-***" },
+                ],
+                reasoning: "off",
+                modelOptions: [],
+                modelSelectOptions: [],
+                effortOptions: [],
+                effectiveReasoning: "",
+                ...initState_agent,
+              };
+              const res_agent = {
+                agent: null,
+                agentKeyId: "",
+                activeModel: "",
+                aiModules: {
+                  getApiKeys: () => state_agent.apiKeys,
+                  getAssistant: (id) => ({
+                    providerName: id === "d1" ? "deepseek" : "relay",
+                    getModels: async () => models_agent.map((m) => ({ id: m })),
+                  }),
+                },
+              };
+              const env_agent = {
+                state: state_agent,
+                set: (k, v) => {
+                  state_agent[k] = v;
+                },
+                fs: null,
+                selfStore: null,
+                load: async () => {
+                  throw new Error("load 不应被本次用例触达");
+                },
+                res: res_agent,
+                pushMessage: () => {},
+                bucketFor: () => [],
+                viewKey: () => "chat:draft",
+              };
+              Object.assign(env_agent, createAgentPart(env_agent));
+              return env_agent;
+            };
+
+            // 清单未拉取（如刷新后恢复的偏好）：不信任旧模型名，交由供应商自解析
+            const envA_agent = await mkEnv_agent(
+              { activeModelId: "model-a" },
+              ["model-c"],
+            );
+            const pickA_agent = await envA_agent.pickAssistant();
+            const check_unfetched = pickA_agent.model === undefined;
+
+            // 清单已拉取：偏好命中即用；已失效取清单首项兜底
+            const envB_agent = await mkEnv_agent(
+              { activeModelId: "model-a" },
+              ["model-a", "model-b"],
+            );
+            await envB_agent.refreshModelOptions("r1");
+            const pickB_agent = await envB_agent.pickAssistant();
+            const check_prefHit = pickB_agent.model === "model-a";
+
+            const envC_agent = await mkEnv_agent(
+              { activeModelId: "model-gone" },
+              ["model-a", "model-b"],
+            );
+            await envC_agent.refreshModelOptions("r1");
+            const pickC_agent = await envC_agent.pickAssistant();
+            const check_prefStale = pickC_agent.model === "model-a";
+
+            // 拉到新清单时校验选中模型：已消失静默回「自动」，仍在则保留
+            const envD_agent = await mkEnv_agent(
+              { activeModelId: "model-gone" },
+              ["model-c"],
+            );
+            await envD_agent.refreshModelOptions("r1");
+            const check_resetGone = envD_agent.state.activeModelId === "";
+
+            const envE_agent = await mkEnv_agent(
+              { activeModelId: "model-c" },
+              ["model-c", "model-b"],
+            );
+            await envE_agent.refreshModelOptions("r1");
+            const check_keepPresent = envE_agent.state.activeModelId === "model-c";
+
+            // 自愈主场景：进应用拉到 3 模型旧清单后上游删减——forgetModel 清
+            // 选中 + 清缓存（二次调用无可清理返回 false）；重拉后取新清单首项
+            const envF_agent = await mkEnv_agent({}, ["model-a", "model-b", "model-c"]);
+            await envF_agent.refreshModelOptions("r1");
+            envF_agent.state.activeModelId = "model-b";
+            const pickF_agent = await envF_agent.pickAssistant();
+            envF_agent.res.agentKeyId = pickF_agent.keyId;
+            const check_keyRecorded =
+              pickF_agent.model === "model-b" && envF_agent.res.agentKeyId === "r1";
+            const healOk_agent = await envF_agent.forgetModel(envF_agent.res.agentKeyId);
+            const check_healTrue =
+              healOk_agent === true && envF_agent.state.activeModelId === "";
+            const check_healTwice =
+              (await envF_agent.forgetModel(envF_agent.res.agentKeyId)) === false;
+
+            const envG_agent = await mkEnv_agent({}, ["model-c"]);
+            await envG_agent.refreshModelOptions("r1");
+            const pickG_agent = await envG_agent.pickAssistant();
+            const check_healPick = pickG_agent.model === "model-c";
+
+            // deepseek：无清单缓存时走内置默认模型
+            const envH_agent = await mkEnv_agent(
+              { activeKeyId: "d1", activeModelId: "" },
+              [],
+            );
+            const pickH_agent = await envH_agent.pickAssistant();
+            const check_deepseek = pickH_agent.model === "deepseek-flash";
+
+            const checks = {
+              check_unfetched,
+              check_prefHit,
+              check_prefStale,
+              check_resetGone,
+              check_keepPresent,
+              check_keyRecorded,
+              check_healTrue,
+              check_healTwice,
+              check_healPick,
+              check_deepseek,
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

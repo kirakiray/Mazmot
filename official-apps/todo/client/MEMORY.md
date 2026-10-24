@@ -4,6 +4,71 @@
 
 ## 记录
 
+### 2026-10-14 · 左栏分组颜色点加一点右侧间距（用户反馈）
+
+- **用户反馈**（截图）：圆点紧贴着分组名，希望「左侧的点和右边适当添加一点间距」。
+- **改了什么**（`pages/home.html` 纯样式）：`.gitem .gdot` 与 `.gdot-ghost` 各加 `margin-right: 4px`（容器本身 `gap: 4px`，于是圆点与名字间共 8px）。
+- **为何不改容器 `gap`**：`.gitem` 是整行的 flex 容器，`gap` 同时管「圆点↔名字」「名字↔计数」「计数↔⋯」，直接调大也会把后两处拉开——只给圆点加 margin 影响面最小。`.gdot-ghost`（「全部任务」行的占位）必须同步加，否则那一行与其他行的名字左边缘会错位。
+- **验证结论**（preview 实测）：三行（全部任务 / 默认 / 个人）实测圆点右边缘 36、名字左边缘 **44**（间距 8px，原 4px），三行名字左边缘完全一致；计数右边缘仍均为 213（未受影响）；控制台无应用报错。纯样式微调，未跑场景用例（按 AGENTS 豁免条款）。
+
+### 2026-10-14 · 任务可移动分组 + 分组颜色（用户需求）
+
+- **用户需求**：①「未完成的项目，希望有方法可以挪到其他分组上」；②「左侧的分组 item，要允许标记一个颜色。如果没有颜色，则添加一个随机的颜色」；③「如果在全部分组下，每个 item 要标注其中分组的颜色」。
+- **改了什么**（`pages/home.html` + 2 个新用例 + 1 个旧用例断言）：
+  - **数据**：`groups` 每项新增 `color`（`{ id, name, color }`）；`loadGroups()` 对**缺颜色的分组自动分配随机色并 `persistGroups()` 回写**（没颜色的旧数据一条不受影响，只补字段）；`submitGroup()` 新建分组时也用 `randomGroupColor()` 带上随机色。
+  - **随机色算法**：`randomGroupColor(used)` → `hsl(H, 62%, 52%)`（固定饱和度 / 明度，浅色底上都能认出来），色相差 < 26° 就换一个，尽量不和已有分组长得一样；`hueOfColor()` 同时会解 `hsl()` 与 `#rrggbb`。
+  - **左栏**：每个真实分组行名字左边一个 10px 圆点（`:style.background="$data.color"`，点它也能切分组）；「全部任务」用等宽 `.gdot-ghost` 占位保持名字左边缘对齐（实测三行 `.gname` 的 left 都是 40）。分组「⋯」菜单加第三项 **「颜色」**（`mdi:palette`）→ 颜色弹窗：当前颜色预览 + **10 个静态预设色块** + 「随机颜色」。
+  - **移动分组**：列表行尾 `.item-actions` 加**第一个**按钮（`mdi:folder-move-outline`，`title`「移动到其他分组：xxx」）→ **自建居中浮层**（`.move-mask` / `.move-backdrop` / `.move-pop`，**不用 `st-dialog`**，因为弹窗内 `$host` 不指向页面，而这里要 `o-fill` 循环分组 + 回调页面方法）→ 列出全部分组（当前分组标「当前分组」）→ 点一个即 `moveTodo()` 改 `groupId` + `persistTodos()`（不动完成态 / 置顶 / 时间戳），点遮罩或「取消」关闭。
+  - **「全部任务」下标注分组颜色**：任务副标题改成 `.meta.meta-colored`（flex：颜色点 + `.meta-text`），点由 getter `showGroupColor`（`view==='all' && groupFilter==='all'`）控制显隐，颜色取 `groupColorOf(groupId)`。归档 / 垃圾桶视图不加点（那里同屏分组单一或另有含义）；`<span class="meta">` 里多出的空 span 不影响已有用例的 `.meta` 文本断言（textContent 不变）。
+- **设计决策**：① 分组颜色存成**数据字段**（`color`）而不是另建调色表：跟着分组一起 `persistGroups()`；② 随机色只保证「能区分」，不追求与主题协调 —— 它是**用户数据的标签色**，界面上仍只用 M3 变量（左栏圆点、任务颜色点、色块例外，均直接显示用户选的颜色）；③ 「移动」不动其他字段（完成态 / 置顶 / 时间戳保持），并且同组点击只关浮层不写盘；④ 移动入口对所有列表条目开放（用户只点名“未完成的”，但已完成的移一下也无害）。
+- **验证结论**（preview 实测，先把用户真实分组补上了随机色再做的其他验证，最后已还原）：首次加载日志 `[group] 有分组缺少颜色，已自动分配随机色` + `[group] 已保存分组`，两个分组得到 `hsl(307,…)` / `hsl(178,…)`，左栏圆点实测 `rgb(208,57,191)` / `rgb(57,208,203)`，三行名字左边缘都是 40；「全部任务」下两条任务的 `.gdot-item` 颜色与分组色一致（`display:block`，切到具体分组后 `display:none`）；行尾实测 3 个按钮、`.item-actions` 宽 107（原 70.6）、行宽 889 无溢出；点「移动到其他分组」→ 浮层 360×194 居中、标题「把「222222」移到哪个分组？」、选项 `默认(当前分组) / 个人`；点「个人」→ 副标题变「个人 · 创建于 …」、侧栏计数 `默认 1 项 / 个人 1 项`、存储 `groupId` 已改、浮层关闭；再移回「默认」复原；分组菜单变为「重命名 / 颜色 / 删除」，颜色弹窗标题「分组颜色：「默认」」、10 个色块、无激活色块（当前是随机 hsl）+ 预览色正确；点「绿色」→ 圆点与任务颜色点变 `rgb(129,199,132)`、存储 `color="#81c784"`、弹窗关闭；「随机颜色」实测换到了另一个色相（178 → 315）；两次 `action=app` 后硬刷新，控制台无应用报错。
+- **数据保护**：实测过程中改动过的分组颜色 / 任务归属（222222 移到个人再移回）全部还原，最终用户数据仍是 3 条待办（`22222` 垃圾桶 / `111111` / `222222`，均为默认分组）、`groups` 2 个（颜色为用户首次加载时自动分配的那两个）、`ui.sideWidth 239`，`__todo_test_dirty` 已清、`__todo_store_id` / `todo-ui-state` 已移除。
+- **测试**：新增 `client/test/move-group.test.json`（「移动分组」7 步）与 `client/test/group-color.test.json`（「分组颜色」9 步）；因行尾按钮从 2 个变 3 个，同步改了 `edit-task.test.json` 的 `length !== 2` 断言（→ 3，并加 `.move-btn` 存在检查）。`action=run-tests`（files 传这三个）最终 **任务详情编辑 / 分组颜色 / 移动分组 全部通过**。
+- **本回合踩的坑（已沉淀 `pitfalls/028`）**：用例里 `T.btn('取消')` 按文案全页直找，命中了**添加任务弹窗**里那个同样叫「取消」的按钮（弹窗关闭后按钮仍在 light DOM），于是「点取消应关浮层」假失败；改成 `T.byText('.move-actions st-button', '取消')` 后转绿。已在 AGENTS.md 用例写法条里补上「按文案找按钮必须带容器前缀」。
+
+### 2026-10-14 · 新增任务搜索（用户需求：搜索到对应 item 就显示出来）
+
+- **用户需求**：①「待办清单里面，添加搜索功能，可以搜索到对应的 item 可以显示出来」；② 看到首版后反馈「搜索框不要那么宽，做小一点，放到垃圾桶那一排的最右侧」。
+- **改了什么**（`pages/home.html` 单文件 + 新用例）：
+  - **UI**：新增 `.toolbar` 行（`display:flex; justify-content:space-between; flex-wrap:wrap`）包裹「筛选按钮组（全部/已归档/垃圾桶）」与右侧 `.search-bar`——**搜索框紧凑（190px 宽 / 13px 字号 / 前置 `mdi:magnify` / placeholder「搜索任务…」，只给 `width`·`min-width`·`font-size`，不碰组件 `display`）**，旁边是「找到 N 项」提示与清除按钮（搜索时才显）。
+  - **数据**：`data` 新增 `searchText`；新增 getter `searchKeyword`（trim + 小写）、`searching`、`searchedActiveTodos` / `searchedArchivedTodos` / `searchedTrashTodos`、`searchHint`；新增方法 `matchKeyword(todo)`（标题或描述子串命中，忽略大小写）、`onSearchChange()`（埋点日志 `[search]`）、`clearSearch()`。
+  - **接线**：`visibleTodos` 三个分支改读 `searched*`；`archiveGroups` 改读 `searchedArchivedTodos`（按完成日/周分组在过滤后的集合上重算）；垃圾桶列表的 `o-fill` 从 `scopedTrashTodos` 改为 `visibleTodos`（**这样搜索也能作用于垃圾桶视图**，见踩坑 022 同类教训）。
+  - **`emptyText` 从 data 字段改成 getter**：搜索中→「没有符合「xxx」的任务，换个关键词试试」，否则保持原逻辑；`updateEmptyText()` 已删除，`setView` / `setGroup` / `deleteGroup` / `restoreSessionState` 里的调用一并去掉。
+  - **搜索时隐藏拖拽手柄**（`.drag-handle` 加 `class:hidden="$host.searching"`）：过滤后的可见顺序与 `todos` 槽位不再一一对应，`commitDragDrop()` 的槽位回写会算错位，干脆不给拖。
+- **设计决策**：① **只在显示层过滤**——统计、侧栏分组计数、视图标签数量、「归档已完成」范围全读 `scoped*` 不变，所以“搜到 1 条但底栏仍写共 3 项”是预期行为；② 搜索作用于**当前分组 + 当前视图**（与三个视图的既有口径一致），不另设“全局搜索”模式；③ 搜索词**不进存储也不进会话状态**，刷新即清空（避免“打开应用只剩几条”的困惑）；④ 空间不够时 `.toolbar` 换行而不是把搜索框再做大。
+- **验证结论**（preview 实测，正式数据 2 条）：`.toolbar` 内搜索框实测 **190×37、真实输入区 140px**、与按钮组 top 差 1.4px（同一行）、右边缘与 `.main` 齐；未搜索时「找到 N 项」与清除按钮 `display:none`、拖拽手柄 `display:flex`；搜「111」→ 只剩 1 条、提示「找到 1 项」、手柄 `display:none`；搜「zzz不存在zzz」→ 0 条 + 空状态「没有符合「zzz不存在zzz」的任务，换个关键词试试」；清空 → 恢复 2 条、提示与按钮重新隐藏、手柄恢复；硬刷新后搜索词为空（不持久化）。
+- **测试**：新增 `client/test/search-task.test.json`（name「搜索任务」，含布局断言：搜索框在 `.toolbar` 内、真实输入区 80–240px、与按钮组同行且在右侧）：**首跑通过（54.8s）**。
+- **已知环境问题（与本次改动无关）**：`action=run-tests` 依旧忽略 `files` 参数跑全套，每轮随机 1 个用例在 reload 后报 `eval 等待结果超时（30000ms）`（本轮两轮分别中招「图片附件」「垃圾桶清理」）；另「归档分组」一轮报「刷新后应仍显示周分组，实际 0」——**手动验证已确认非回归**：把 `sessionStorage` 置为 `{view:'archived',archiveGroup:'week'}` 后 reload，标签「按完成周」仍为 `filled` 选中态（组数为 0 是因为当时数据里没有归档条目），属宿主并发调度抖动（`pitfalls/019` / `023`）。
+- **未实测的点**：窄屏（≤620px）下 `.toolbar` 换行后的观感——预览窗口宽度固定，`.toolbar` 已有 `flex-wrap: wrap` 兼顾。
+- **本回合未踩新坑**（未新建 pitfalls）。
+
+### 2026-10-14 · 修「改完成时间会弄丢原时间」+ 输入框值残留（用户反馈）
+
+- **用户反馈**（附截图，任务 `111111`：状态「已完成」、状态变更「—」、完成时间输入框为空）：「不是啊，你虽然能改完成时间，但是你不能把原来的完成时间弄丢可」。
+- **两个真问题**：
+  1. **清空输入框会把原完成时间写没**：`datetime-local` 在用户按退格 / 选删时就会触发 `change`，原实现把空值当作“清除”写 `null` 并落盘，原记录不可逆丢失。
+  2. **输入框值残留（换任务串值）**：原用 `attr:value` 绑定——input 的 value 一旦被 JS 改过就进入 dirty value 状态，之后改 attribute 不再同步到 property，于是打开“本没有完成时间”的老数据时会**显示上一条的时间**（场景用例直接报 `老数据不应有预填值：2026-10-01T08:30`）。
+- **改了什么**（`pages/home.html`）：
+  - `onDoneAtChange` 重写：空值 / 无法解析 / 与原值相同三种情况一律**不写数据**，只把输入框恢复成原值并打日志「完成时间未修改（原因），保留原值」；只有解析出与原来不同的时间戳才写回 `statusChangedAt` 并 `persistTodos()`。
+  - 新增 `doneAtInputEl()` / `syncDoneAtInput(value, tries)`：弹窗打开时用 **JS 设 property** 填值（未渲染时 `requestAnimationFrame` 重试 3 次）；模板去掉 `attr:value`。
+  - `buildDetail()` 多一个 `doneAtHint`：有值时「改动即时保存；留空不会删除原时间」，原本无记录时「原数据未记录，可在此补填」；行内新增 `.done-at-hint` 小字常驻展示——用户截图里那条 `111111` 就是旧数据（done 但无时间戳），现在打开会明确告诉他“未记录、可补填”，不会误以为数据被弄丢。
+- **验证结论**：用例「修改完成时间」（重写，现覆盖 6 个场景）通过：预填 / 修改落盘 / 列表副标题同步 / **清空后存储值不变且输入框回显原值** / 未完成隐藏 / **老数据提示“未记录”并可补填落盘** / 已归档任务同样可改；控制台 `consoleErrors: 0`。另在正式数据上实地复测截图那条：`111111` → 行可见、输入框空、提示「原数据未记录，可在此补填」，未被写坏。
+- **本回合踩的坑（已沉淀 `pitfalls/027`）**：`input` 的值不能用 `attr:value` 绑定（脏值后 attribute 不同步到 property）；顺带记下“`change` 会在清空时触发，可编辑时间戳的空值不能当清除”。CONTEXT.md 的 `onDoneAtChange` / 方法表 / 使用指南第 9 条 / 用例表与踩坑索引已同步。
+
+---
+
+### 2026-10-14 · 详情弹窗里可修改已完成任务的完成时间（用户需求）
+
+- **用户需求**：「已经checked的项目（包括已归档的），允许在那个弹窗详情里修改完成时间」。
+- **改了什么**（`pages/home.html` + 新用例）：
+  - 详情弹窗在「状态」行下新增**「完成时间」编辑行**（`.done-at-row`，原生 `input[type=datetime-local]`，预填 `statusChangedAt` 的本地时区值）；显示条件 `detail.doneEditable = done && !deletedAt && !pendingDeleteAt`（倒计时中也不给改），未完成 / 垃圾桶任务该行 `hidden`。
+  - 新增 proto：`toDatetimeLocal(ts)`（时间戳 → `datetime-local` value）与 `onDoneAtChange(ev)`（`change` 时写回 `statusChangedAt`，清空输入框置 `null` → 重算 `detail` 快照 → 立即 `persistTodos()`）。`buildDetail()` 多产出 `doneEditable` / `doneAtValue` 两个字段。
+  - **为什么改 `statusChangedAt` 而不新增字段**：完成时刻的唯二消费方——归档「按完成日 / 周」分组（`completedAt()`）与副标题「完成于 …」都读它，改它则两处即时重算，无第二写入路径。
+- **验证结论**：`run-tests` 新用例「修改完成时间」通过（31.3s）：已完成任务预填非空、改成 `2026-10-01T08:30` 后存储 `statusChangedAt` 精确写回、弹窗内同步、列表副标题出现「10-01 08:30」；未完成任务该行 `hidden`；归档任务（`archivedAt` 非空）同样可改并落盘；控制台 `consoleErrors: 0`。跑完核对：`__todo_test_dirty` 已清、`__todo_store_id` / `todo-ui-state` 已移除，正式空间 3 条用户数据完好。
+- **环境备注**：本轮两次 `run-tests` 撞上调试桥抖动（一次 ACK timeout 90s+、一次 `T` 定义丢失是因为忘了重推快照），重推 + 重跑即绿，与历史记录一致（`pitfalls/019` / `020`）。**本回合未踩新坑**（未新建 pitfalls）。
+
+---
+
 ### 2026-10-13 · 任务支持「置顶」，且置顶项只能在置顶项之间拖拽排序（用户需求）
 
 - **用户需求**：「允许给 item 任务添加置顶的功能。置顶后的 item 只能在置顶内的 item 之间拖拽位置。」

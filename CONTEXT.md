@@ -11,7 +11,7 @@
 | 层级 | 技术 | 用途 |
 | ---- | ---- | ---- |
 | 底层 | noneos-core | 虚拟文件系统、用户管理、Service Worker、挂载本地目录 |
-| 应用框架 | ofa.js | 组件/页面模块、路由、状态管理，无需 Node/Webpack |
+| 应用框架 | ofa.js **v5** | 组件/页面模块、路由、状态管理，无需 Node/Webpack；核心 `ofa.js@refs/heads/v5/dist/ofa.min.mjs`，router `ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs` |
 | UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量 |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
@@ -32,7 +32,7 @@ Mazmot/
 ├── 404.html                  # 部署产物含顶层 404.html 即关闭 Cloudflare Pages 的 SPA 回退（否则未命中路径被回退成 index.html + 200，模块加载报错伪装成 MIME 错误）；Pages 对未命中路径以 404 状态返回本页；本页正是 SW 未命中透传时由源站返回，必须零依赖内联样式（禁止 /gh/ /nos/ /mz/）
 ├── AGENTS.md                 # AI 开发规范（必读）
 ├── CONTEXT.md                # 项目架构上下文（本文档）
-├── package.json              # 提供 static（http-server:30031）/ test（scripts/run-sb-test.js 包装 sb-test，排除 client/ 产物测试副本）/ build 等脚本
+├── package.json              # 提供 static（http-server:30031）/ test（sb-test --ignore client，排除 client/ 产物测试副本）/ build 等脚本
 ├── _setup/                   # 测试套件前置引导（目录名 _ 排序在 apps/、bridge/、main/ 等所有测试目录之前，
 │                             #   保证 sb-test 生成的清单里它最先执行）：install-nos.sb.html 经
 │                             #   <nos-version auto-install> 为测试环境安装 NoneOS Core，后续依赖 /nos/*、/mz/*
@@ -62,7 +62,7 @@ Mazmot/
 ├── main/                     # 主应用（由根 index.html 装好 Core 后原地挂载，URL = /，不在 apps/ 下、不参与应用市场；离线缓存清单随本目录收录）
 │   ├── app-config.js         # ofa.js 配置（home = ./pages/welcome.html；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
 │   ├── pages/
-│   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页。依赖模块与组件（senti-ui button/icon-button/input/select、mascot、n-icon、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>），全部就绪才注册渲染；flowReady 置真时派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
+│   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过；表单下方另有「购买会员」入口）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页。会员弹窗（st-dialog + o-if）内嵌官方应用 official-apps/membership 的 app-config.js 微应用（o-app，关闭即销毁、下次重开回到第一步），弹窗宽 min(760px,100%)（会员页自身 wrap 放宽到 720px，避免年度套餐卡挤压）。监听其 membership-purchased（购买成功：toast 提示并暂存事件负载，含邀请码与服务器命名）与 membership-close（用户点「完成」：关弹窗 + 经 [lib/membership-handoff.js](main/lib/membership-handoff.js) 纯函数判定后**直接把邀请码本地落库**——ai.saveKey(code,"relay",{serverName,serverUrl})、keyReady 置真、mascot 苏醒、进用途步骤；**不做网络校验**（邀请码刚由服务端签发且会员应用已写入过本地配置，此前走 saveKeyFlow 的 testApiKey 曾因瞬时网络失败把流程卡在 Key 步骤）；已有可用 Key / 正在保存 / 码格式非法时不回填）。依赖模块与组件（senti-ui button/icon-button/input/select/dialog、mascot、n-icon、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>），全部就绪才注册渲染；flowReady 置真时派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
 │   │   ├── apps.html             # 应用列表主页：添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；顶栏按钮可切换列表 / 方块视图，方块点击新标签打开、hover 浮出新窗口打开按钮；「安装中」虚拟条目区（见 lib/install-queue.js）。依赖模块与组件（senti-ui list/button/icon-button/dialog/switch、n-icon、ercode、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>、顶层不 import /nos/*），attached() 把应用列表灌入 appList 后派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
 │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
 │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
@@ -70,9 +70,11 @@ Mazmot/
 │   │   ├── settings-user.html    # 设置弹窗「用户信息」子页面（查看 default 用户 ID / 用户名，弹窗内 <o-page> 加载）
 │   │   ├── settings-certs.html   # 设置弹窗「凭证管理」子页面（引导安装官方应用「凭证管理器」：已安装一键打开、未安装跳市场安装；内置凭证列表已移除）
 │   │   └── settings-webfetch.html # 设置弹窗「联网能力」子页面（通道清单点选固定——默认 auto 按优先级、点行即 setWebFetchChannel 固定、固定后失败不降级；relay 多台时下拉选择 web fetch 用哪台；**自定义 Web Hub 配置入口**——URL + 可选共享令牌输入框，保存/清除即 setCustomEndpoint/clearCustomEndpoint 立即生效，问号链接跳 GitHub 的 server/web-hub-cf/README.md 部署指南；「测试抓取」按钮实测 fetchText 并刷新通道状态）
+│   ├── test/                 # 主业务流程 e2e（boot-flow.sb.html：根入口引导 → 欢迎引导 UI 走完（跳过 Key，不走购买）进入应用列表 → 官方应用安装 → conjure/todo 经 /$mazmot-apps 实际运行；写入真实 apps 记录与 mazmot-apps 副本，幂等可重跑，靠清单追加保持在套件最后执行）
 │   └── lib/
 │       ├── install-queue.js        # 引导安装队列：串行后台安装选定应用（待装清单持久化于 mazmot 空间 pending-official-installs 键，跨刷新恢复；单项成功写 apps 记录 + 移出队列，失败标 error 保留、下次进入自动重试 + 列表手动重试按钮）
 │       ├── welcome-plan.js         # 用途 → 应用 id 映射与 hasUsableKey 纯逻辑（test/welcome-plan.sb.html）
+│       ├── membership-handoff.js   # 会员购买成功 → Key 步骤交接纯函数：邀请码解码校验 + 回填守卫，不碰网络（test/membership-handoff.sb.html）
 │       ├── official-app-writer.js  # 官方应用加载与安装（从根目录 /official-apps/<id>/ 读取 __app.json 元数据（name/desc 基准英文 + i18n 按语言覆盖）+ app.json 版本号，写入虚拟目录 client/；被 run-app 在 Core SW 注册前复用，**禁止顶层 import "/nos/*"**，getLang 直连 core.noneos.com 懒加载）
 │       ├── app-status.js           # 应用打开状态追踪（BroadcastChannel + LS + window 引用）
 │       ├── official-app-state.js   # 官方应用 stanz 状态（仅主应用使用）
@@ -115,6 +117,7 @@ Mazmot/
 ├── official-apps/            # 官方应用资源目录（应用市场），主应用通过 fetch("/official-apps/...") 加载；各应用 __app.json 的 files 安装清单由 [scripts/update-app-manifests.js](scripts/update-app-manifests.js) 扫描磁盘自动同步（`npm run update:apps`，--check 供 CI 校验；文件增删时自动 bump 该应用 app.json 的 version 末段），**禁止手工增删 files 数组**
 │   ├── manifest.json         # 官方应用清单（只登记 app id）
 │   ├── ai-manager/           # AI API Key 管理器（基于 mz/ai/main.js；provider 含 relay——粘贴 ai-relay 邀请码即用转发服务器，详情折叠可看服务器地址）
+│   ├── membership/           # 会员中心（收费流程接 Synchratex 服务端）：lib/server-api.js 封装服务端接口（SYNCHRATEX_BASE **按域名自动判定**：localhost/127.0.0.1/[::1] → `http://127.0.0.1:47901`，其他域名（线上 mazmot.noneos.com）→ `https://api.synchratex.com`；可用 window.SYNCHRATEX_API_BASE 覆盖；sendCode / confirmCode / checkout / binding / plans / serverInfo），lib/checkout.js 为纯函数（邮箱校验、卡信息校验 isValidMockCard、脱敏、金额/周期/日期格式化、从邀请码解服务端地址，测试 lib/test/checkout.sb.html）；pages/home.html 四步流程——① 会员权益卡（默认 AI 使用量 / 更大的服务器转发流量 / 优先使用 Mazmot 新功能（如点对点互联））+ 邮箱（**无用户名输入**，服务端从邮箱派生）+ **《用户使用条款》勾选**（「我已阅读并同意」勾选框 + 下划线链接，点击弹 st-dialog 展示九章详细条款——服务性质/合法使用自担责/账户与绑定/公平使用/付费退款/免责与责任限制/变更终止/条款变更/争议解决，文案规避特定法域表述；弹窗底部「取消」（仅关闭）/「同意」（关闭并自动勾选勾选框）；未勾选点下一步展示 `agreeRequired` 错误）→ ② **服务端**发验证码（mock 模式回传 mockCode，页面仅在有 `mockCode` 时展示演示码气泡；真实发信模式不回传、提示查收邮件），校验错误/过期/作废由服务端 4xx 透出；带「重新发送验证码」按钮 + 60s 倒计时（`resendLeft`，detached 清理定时器）；**服务不可用横幅**（`serviceUnavailable`，error-container 红条）：连不上服务器（fetch 异常）或发码/下单 502（邮件/支付服务不可用、上游额度超限）时整页展示「暂时无法购买」，发码成功自动清除；所有失败路径都 `console.error` 打印 URL/status/响应体等明细；邮箱已绑定其他用户时响应带 `rebind:true`，第 2 步顶部展示改绑提示；**确认验证码即完成过户**（服务端把会员 `mazmot_user_id` 改到新用户，响应带 `rebound:true` + 新邀请码，前端跳过支付直达完成页，票据随之消费；**换绑每日限 3 次**，超限 429 的错误文案由服务端返回、第 1/2 步的错误位直接展示，localhost 后端豁免）→ ③ 支付（套餐价格来自 GET /api/plans：月度 $10 / 年度 $100，年度带「省 $20」，应付金额联动；仅 Stripe，卡片格式前端校验，点支付调 POST /api/membership/checkout；**双模式**——mock 模式服务端直接扣款成功返回邀请码；**stripe 模式**响应带 `pending:true` + `checkoutUrl`，前端 `window.open` 打开 Stripe 收银台、支付页顶部显示等待提示，**每 3s 轮询 binding**（上限 100 次）等服务端 webhook 发货，`?pay=return` 跳回时自动进入该轮询态）→ ④ 成功后把返回的邀请码写入本地 AI 配置（ai.saveKey(code,"relay",{serverName,serverUrl})，同一邀请码去重不重复写入；**不再改写本地默认用户 username**），展示会员方案 / 金额 / 访问服务器 / 邮箱 / 有效期 / 订单号 / 中转邀请码 + 本地用户 username / userId；ready() 用当前 default 用户的 userId 调 GET /api/membership/binding 查询绑定（`?pay=return` 跳回时进入支付轮询态），若本机没有该中转 key 才显示「找回 key」按钮（一人一码，续费不换码；本机已有 key 说明登录/购买时已自动写入，不展示）；顶部「服务端演示」徽标仅 localhost/127.0.0.1/[::1] 显示（`isLocalDemo`），正式域名自动隐藏；下单成功 emit membership-purchased（负载含 inviteCode / serverName / username / userId / orderId 等）、点「完成」emit membership-close 供宿主关闭弹窗并交接；完成页不提供「复制邀请码」（一人一码且已自动写入本地配置，宿主侧自动回填，无需手动复制）。**服务端未启动时页面降级为可浏览但无法下单**，`lib/mock.js` 本地写死数据已移除。
 │   ├── smart-assistant/      # 智能联络助手（host 填写需求文档生成分享链接，customer 经 P2P 与 host 的 AI 实时对话）
 │   ├── cred-manager/         # 凭证管理器（comps/cert-item.html 证书条目组件；home.html 左侧导航 layout：查询用户 / 我的信息 / 已知用户 / 互授 / 组织管理 / 本地证书；query-user.html 查询对方已验证用户卡片并签发证书（角色 + 到期时间 + 自定义字段，可插入链式引用）；claim.html 领取证书页面模块（经 my-certs 右上角按钮在 dialog 内以 o-page 内嵌，不再占导航）；my-certs.html 本地证书（tab：全部/我签发的/签发给我的）；cert-detail.html 证书详情（支持 ?ns=org:<name> 用组织命名空间解析）；known-users.html 已知用户卡片；live-share.html 互授页（配对码连接后自动拉取与自己相关的证书：服务消息只传匹配通知与元数据清单，证书本体走 core 按精确 key 拉取，经 lib/live-share.js 封装 registerService/sendToService 可靠层，详见其应用内 CONTEXT.md）；orgs.html 组织列表（创建组织 / 组织清单，点击条目进入 org-detail.html）；org-detail.html 组织详情管理页（?org=<name>：组织 ID / 改展示名 / 点选已知用户签发员工证书 / 组织已签发列表 / 删除组织，经 /mz/org/main.js）；my-info.html 用户名/userId + 获取配对码（无本地 profile 时失败引导；倒计时基于服务器 expiresAt，过期提示刷新，detached 清理定时器）。查询用户页输入框兼容配对码：命中 PAIRING_CODE_PATTERN 走 resolvePairingCard 解析回卡片后照常本地验签展示。证书 / 链 / 签发历史能力经 /mz/cert/main.js）
 
@@ -463,10 +466,14 @@ npm run static
 
 使用 [sibyl-test](https://github.com/ofajs/sibyl-test) 编写浏览器端单元测试。测试页为普通 HTML，需先完成 NoneOS Core 安装后再打开：
 
+**主应用 e2e**（[main/test/](main/test/)）
+
+- `http://localhost:30031/main/test/boot-flow.sb.html` — 主业务流程 e2e：真实加载根 index.html 引导挂载 → 清 welcome-done 后以 UI 走完欢迎引导（点屏推进 → 跳过 Key → 选「直接使用现成的应用」→ 完成）进入应用列表（不含会员购买；购买流程的 e2e 由服务端项目自行覆盖）→ 经 [install-queue.js](main/lib/install-queue.js) 安装 todo/client 与 conjure → conjure 清单逐文件穿透 `/$mazmot-apps` 命名空间校验完整性（缺文件 / SPA 回退污染即红，正是用户「加载页面模块 …/conjure/client/pages/home.html 失败」报障的回归网）。注意本文件曾长期跑不通，两个 harness 坑：① 头部 ofa.js 是 deferred module，执行可能晚于 sb-test 组件开始跑用例，用例开头必须等 `window.$` 就绪；② ofa v5 的 `$()` 返回 stanz 包装不代理 `appendChild`，挂 iframe 要用 `document.getElementById`→ 两个应用经运行 URL 实际启动断言首屏渲染。**必须跟在 `_setup/install-nos.sb.html` 之后跑**（完整套件自动满足；单文件跑先 `npm run handshake` 再 `npx sb-test -f _setup/install-nos.sb.html -f main/test/boot-flow.sb.html`）
+
 **主应用工具库测试**（[main/lib/test/](main/lib/test/)）
 
 - `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
-- `http://localhost:30031/main/lib/test/welcome-plan.sb.html` — 测试 [welcome-plan.js](main/lib/welcome-plan.js) 的用途 → 应用映射与 hasUsableKey 纯逻辑
+- `http://localhost:30031/main/lib/test/membership-handoff.sb.html` — 测试 [membership-handoff.js](main/lib/membership-handoff.js)：邀请码解码（含 URL-safe 变体 / 非法输入）与回填守卫（无码 / 已有 Key / 保存中 / 码非法）
 - `http://localhost:30031/_setup/install-nos.sb.html` — 校验 `<nos-version>` 在 Core 已安装场景下能正确触发 `installed` 事件并携带版本号（**整个测试套件的 Core 前置引导**：`_setup/` 目录名排序在 `apps/`、`bridge/` 等之前，保证 sb-test 生成的清单里它最先执行装好 Core——主应用迁入 `main/` 后原 `apps/main/lib/test/` 路径的字母序红利失效，曾导致 CI 的 run-app-utils/preview-flow 在 Core 就绪前运行而挂掉；清单 test-all.html 为生成物已 gitignore）
 - `http://localhost:30031/mz/test/app-runner.sb.html` — 测试 [app-runner.js](mz/app-runner.js) 的 URL 生成与文件读取
 - `http://localhost:30031/mz/test/share-mgr.sb.html` — 测试 [share-mgr.js](mz/share-mgr.js) 的 Base64URL、分享链接与打包结构
@@ -482,7 +489,7 @@ npm run static
 npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 ```
 
-**本地完整测试**：`npm test` 经 [scripts/run-sb-test.js](scripts/run-sb-test.js) 收集全部 `.sb.html` 后传给 `sb-test`，**自动排除 `client/`**——桌面壳构建产物（`client/dist/`、`client/src-tauri/target/`，均 gitignore）内含整套站点测试副本，直接 `npx sb-test` 全量扫描会把这 200+ 份重复文件收进清单；CI 在干净 checkout 上运行、产物不入库，不受影响。
+**本地完整测试**：`npm test` 即 `sb-test --ignore client`（依赖 sibyl-test ≥ 1.2.0 的 `--ignore` 参数），**排除 `client/`**——桌面壳构建产物（`client/dist/`、`client/src-tauri/target/`，均 gitignore）内含整套站点测试副本，直接 `npx sb-test` 全量扫描会把这 200+ 份重复文件收进清单；CI 在干净 checkout 上运行、产物不入库，不受影响。
 
 **CI**：[.github/workflows/test.yml](.github/workflows/test.yml) 在 push / PR 时通过 `ofajs/sibyl-test@v1` action 跑 Chrome（Ubuntu）/ Firefox（Ubuntu）/ WebKit（macOS）三浏览器矩阵；各任务先执行 [.github/scripts/start-handshake.sh](.github/scripts/start-handshake.sh) 用 [test-bin/](test-bin/) 的二进制启动本地信令服务器（ws://localhost:8081），跨用户通信用例（bridge 隔离预览等）完全闭环在本地，不依赖公网中继。
 
@@ -592,10 +599,11 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | AI Provider 抽象层 | [mz/ai/](mz/ai/)（[README.md](mz/ai/README.md) 有完整 API 文档） |
 | 平台联网能力（web fetch，协议契约 + provider 解析） | [mz/net/main.js](mz/net/main.js)（协议文档 [mz/net/README.md](mz/net/README.md)；官方兜底端点 [server/web-hub-cf/](server/web-hub-cf/)） |
 | AI API Key 管理官方应用 | [official-apps/ai-manager/pages/home.html](official-apps/ai-manager/pages/home.html) |
+| 会员中心官方应用（接 Synchratex 服务端的收费流程：发码 → 校验 → mock Stripe 下单 → 邀请码写入本地 AI 配置并交接给 welcome） | [official-apps/membership/pages/home.html](official-apps/membership/pages/home.html)（服务端接口 [lib/server-api.js](official-apps/membership/lib/server-api.js)，纯函数 [lib/checkout.js](official-apps/membership/lib/checkout.js)，测试 [lib/test/checkout.sb.html](official-apps/membership/lib/test/checkout.sb.html)） |
 | AI 转发服务器管理台前端（server 侧静态应用，Core 内打开） | [server/ai-relay-admin/pages/home.html](server/ai-relay-admin/pages/home.html) |
 | AI 转发服务器（Rust，apikey 隔离 / 配额 / 邀请码） | [server/ai-relay/](server/ai-relay/)（详见其 [CONTEXT.md](server/ai-relay/CONTEXT.md)；客户端 supplier [mz/ai/supplier/relay.js](mz/ai/supplier/relay.js)） |
 | 妙造（Conjure）官方应用（对话生成 ofa.js 应用 → 写入 mazmot-apps VFS → 预览） | [official-apps/conjure/pages/home.html](official-apps/conjure/pages/home.html)（核心库 [lib/builder.js](official-apps/conjure/lib/builder.js)，测试 [test/builder.sb.html](official-apps/conjure/test/builder.sb.html)） |
 | 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息 + 互授） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [live-share.html](official-apps/cred-manager/pages/live-share.html) + [lib/live-share.js](official-apps/cred-manager/lib/live-share.js) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
-| 主应用（对话式首启引导 + 应用列表主页 + 后台安装队列，根入口原地挂载） | [main/](main/)（[pages/welcome.html](main/pages/welcome.html) 引导对话流 / [pages/apps.html](main/pages/apps.html) 列表主页 / [lib/install-queue.js](main/lib/install-queue.js) 安装队列 / [lib/welcome-plan.js](main/lib/welcome-plan.js) 用途映射纯逻辑） |
+| 主应用（对话式首启引导 + 应用列表主页 + 后台安装队列，根入口原地挂载） | [main/](main/)（[pages/welcome.html](main/pages/welcome.html) 引导对话流 / [pages/apps.html](main/pages/apps.html) 列表主页 / [lib/install-queue.js](main/lib/install-queue.js) 安装队列 / [lib/welcome-plan.js](main/lib/welcome-plan.js) 用途映射纯逻辑 / [lib/membership-handoff.js](main/lib/membership-handoff.js) 会员购买→Key 交接纯逻辑） |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |

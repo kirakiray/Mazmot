@@ -32,7 +32,7 @@
 
 技术栈、依赖 URL、存储空间划分、工具插件体系的**事实性说明**见 [`CONTEXT.md`](CONTEXT.md) 的「技术栈」「工具插件体系」「数据模型」章节，此处只列**硬性规则**：
 
-- **改任何 `.html` 页面/组件模块前，必须先调用 `Skill` 工具加载 `ofajs-docs`**，确认模板语法后再动手，禁止凭记忆写模板。
+- **改任何 `.html` 页面/组件模块前，必须先调用 `Skill` 工具加载 `ofajs-docs`**（v5 分支用法见 ofa.js 仓库 `.agents/skills/ofajs-docs-v5/`），确认模板语法后再动手，禁止凭记忆写模板。
 - 页面模块与普通模块**禁止顶层 `import "/nos/*"`、`import "/mz/*"`**，一律 `await load(...)` 按需加载（Core 加载时机约束，见 CONTEXT.md「运行方式」）。
 - **禁止** `localStorage`、禁止把数据塞进 storage 默认空间；写库前把响应式对象拍平为纯对象，noneos 句柄等非响应式数据放下划线开头的模块变量。
 - 工具新增 / 修改的流程约束（插件文件形状、`TOOL_DEFS` 登记、`SYSTEM_PROMPT` 同步、插件内禁止直接 import 宿主模块）见 CONTEXT.md「工具插件体系」。

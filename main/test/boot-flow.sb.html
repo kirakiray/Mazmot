@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>主业务流程 e2e：根入口引导 → 官方应用安装 → 运行</title>
+    <!-- 测试基建（sb-test 运行时）允许 jsdelivr 完整 URL；被测业务模块一律走 /gh/ -->
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+    <!-- install-queue 顶层使用 $.stanz，测试页需要先加载 ofa；
+         本文件运行时 NoneOS Core SW 已由 _setup 安装，/gh/ 可用 -->
+    <script
+      src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug"
+      type="module"
+    ></script>
+  </head>
+  <body>
+    <h1>主业务流程 e2e</h1>
+    <p>
+      覆盖用户真实链路：根 index.html 引导挂载主应用 → 欢迎首屏渲染 →
+      官方应用安装（todo/client、conjure）→ 安装副本完整性 →
+      经 /$mazmot-apps 命名空间实际运行两个应用。
+      conjure 的运行用例即用户反馈「加载页面模块 …/conjure/client/pages/home.html 失败」的回归网。
+    </p>
+    <p>
+      前置：需先安装 NoneOS Core——完整套件由 _setup/install-nos.sb.html 先行完成；
+      单文件跑请执行 <code>npm run handshake</code> 后
+      <code>npx sb-test -f _setup/install-nos.sb.html -f main/test/boot-flow.sb.html --browsers chrome</code>。
+      本文件会写入真实数据（mazmot 空间 apps 记录 + mazmot-apps 命名空间应用副本），
+      用例幂等可重跑；套件中由清单追加保持在最后执行，不污染其他用例。
+    </p>
+    <div id="frame-slot"></div>
+
+    <sb-test name="根入口 index.html 引导挂载主应用，欢迎首屏渲染">
+      <template>
+        <script type="module">
+          {
+            // 共享工具：挂应用 iframe + shadow 穿透查询（后续用例复用，
+            // 串行执行有保证）。ofa 页面内容渲染在 o-page 的 shadowRoot 里，
+            // document.querySelector / body.innerText 都探不到，必须穿透
+            window.__e2e = {
+              deepQuery(root, selector) {
+                if (!root || !root.querySelectorAll) return null;
+                const hit = root.querySelector(selector);
+                if (hit) return hit;
+                for (const el of root.querySelectorAll("*")) {
+                  if (el.shadowRoot) {
+                    const inner = this.deepQuery(el.shadowRoot, selector);
+                    if (inner) return inner;
+                  }
+                }
+                return null;
+              },
+              deepText(root, cap = 400) {
+                if (!root || !root.querySelectorAll) return "";
+                let out = "";
+                const walk = (node) => {
+                  if (out.length >= cap) return;
+                  for (const el of node.querySelectorAll("*")) {
+                    if (el.childNodes.length && !el.shadowRoot) {
+                      for (const n of el.childNodes) {
+                        if (n.nodeType === 3 && n.textContent.trim()) {
+                          out += n.textContent.trim() + " ";
+                          if (out.length >= cap) return;
+                        }
+                      }
+                    }
+                    if (el.shadowRoot) walk(el.shadowRoot);
+                  }
+                };
+                walk(root);
+                return out.slice(0, cap);
+              },
+              mountFrame(src) {
+                const frame = document.createElement("iframe");
+                frame.style.cssText =
+                  "width:1100px;height:720px;border:1px solid #ccc;margin:8px 0;";
+                frame.src = src;
+                // ofa v5 的 $() 返回 stanz 包装，不代理 appendChild，这里必须用原生 DOM
+                document.getElementById("frame-slot").appendChild(frame);
+                const errors = [];
+                frame.addEventListener("load", () => {
+                  // 每次整页（重）载计数：诊断引导中途被整页重置（CI WebKit 曾现）
+                  frame.__loadCount = (frame.__loadCount || 0) + 1;
+                  try {
+                    frame.contentWindow.addEventListener("error", (e) =>
+                      errors.push(String(e.message || e)),
+                    );
+                    frame.contentWindow.addEventListener(
+                      "unhandledrejection",
+                      (e) => errors.push(String(e.reason && e.reason.message || e.reason)),
+                    );
+                  } catch (err) {}
+                });
+                frame.__errors = errors;
+                return frame;
+              },
+              // 轮询等待 DOM 标记（shadow 穿透）；周期性扫一次全文本，
+              // 命中 ofa「加载页面模块」错误即提前失败，超时返回现场快照
+              waitMarker(frame, selector, timeoutMs) {
+                const started = Date.now();
+                return new Promise((resolve) => {
+                  let pollCount = 0;
+                  const poll = () => {
+                    pollCount++;
+                    let doc = null;
+                    try {
+                      doc = frame.contentDocument;
+                    } catch (err) {}
+                    if (doc && window.__e2e.deepQuery(doc, selector)) {
+                      return resolve({ ok: true, elapsedMs: Date.now() - started });
+                    }
+                    // 每 4 轮（约 1s）做一次全文扫描找加载失败文案
+                    if (pollCount % 4 === 0 && doc && doc.body) {
+                      const errText = window.__e2e.deepText(doc);
+                      if (errText.includes("加载页面模块")) {
+                        return resolve({
+                          ok: false,
+                          fatal: errText,
+                          elapsedMs: Date.now() - started,
+                        });
+                      }
+                    }
+                    if (Date.now() - started > timeoutMs) {
+                      return resolve({
+                        ok: false,
+                        fatal: doc ? window.__e2e.deepText(doc) : "(iframe 不可达)",
+                        timeout: true,
+                        elapsedMs: Date.now() - started,
+                      });
+                    }
+                    setTimeout(poll, 250);
+                  };
+                  poll();
+                });
+              },
+            };
+
+            // 头部 ofa.js 是 deferred module：/gh/ 经 Core SW 走网络，执行可能晚于
+            // sb-test 组件开始跑用例（首次运行需联网编译拉取，尤甚）。等 window.$
+            // 就绪再挂 iframe，否则 $ is not defined（本文件此前从未跑通过的根因）。
+            const dollarReady = await (async () => {
+              const started = Date.now();
+              while (typeof window.$ === "undefined") {
+                if (Date.now() - started > 30000) return false;
+                await new Promise((r) => setTimeout(r, 200));
+              }
+              return true;
+            })();
+            if (!dollarReady) {
+              return { assert: false, content: { step: "ofa-load", hint: "window.$ 30s 未就绪（/gh/ 拉取 ofa.js 失败）" } };
+            }
+
+            const bootFrame = window.__e2e.mountFrame("/index.html");
+
+            // 首屏标记：welcome-done 已写的环境直接 replace 进 apps 列表页
+            //（.container .header），首启环境停在欢迎对话（.stage .bubble）
+            const FIRST_MARKERS = [".stage .bubble", ".container .header"];
+
+            // mazmot:app-ready 事件只作诊断信息记录（index.html 有 15s 强制
+            // 撤 loading 的兜底，撤层不代表引导成功；断言落在首屏真实渲染上）
+            let readyEventFired = false;
+            bootFrame.addEventListener("load", () => {
+              try {
+                bootFrame.contentWindow.addEventListener(
+                  "mazmot:app-ready",
+                  () => {
+                    readyEventFired = true;
+                  },
+                  { once: true },
+                );
+              } catch (err) {}
+            });
+
+            let domHit = null;
+            for (const marker of FIRST_MARKERS) {
+              // 两个标记都要给足时间：首启环境渲染欢迎对话、已配置环境
+              // replace 进列表页都可能有数秒加载期，短超时会把正常路径
+              // 误判为失败（级联只为兼容两种首屏，不是快速跳过）
+              domHit = await window.__e2e.waitMarker(bootFrame, marker, 45000);
+              if (domHit.ok) break;
+            }
+
+            return {
+              assert: domHit.ok,
+              content: {
+                readyEventFired,
+                domHit,
+                bootErrors: bootFrame.__errors.slice(0, 5),
+                hint: domHit.ok
+                  ? "ok"
+                  : "index.html 引导未渲染出首屏：检查 Core 安装 / 主应用页面模块加载",
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="欢迎引导 UI 走完进入应用列表（跳过 Key，不走购买流程）">
+      <template>
+        <script type="module">
+          {
+            // 保证走首启路径：清掉 welcome-done 后重新挂根入口。
+            // 用例只覆盖「引导 UI → 应用列表」，不经过会员购买。
+            const { getStorage } = await import("/nos/storage/main.js");
+            const storage = getStorage("mazmot");
+            await storage.removeItem("welcome-done");
+
+            const frame = window.__e2e.mountFrame("/index.html");
+
+            const deepAll = (doc) => {
+              const out = [];
+              const walk = (root) => {
+                if (!root || !root.querySelectorAll) return;
+                for (const el of root.querySelectorAll("*")) {
+                  out.push(el);
+                  if (el.shadowRoot) walk(el.shadowRoot);
+                }
+              };
+              walk(doc);
+              return out;
+            };
+            const doc0 = () => {
+              try {
+                return frame.contentDocument;
+              } catch (err) {
+                return null;
+              }
+            };
+            const hasText = (re) =>
+              hasTextDoc(doc0(), re);
+            const hasTextDoc = (doc, re) =>
+              !!doc && deepAll(doc).some(
+                (e) => e.children.length === 0 && re.test((e.textContent || "").trim()),
+              );
+            const clickText = (re) => {
+              const doc = doc0();
+              const el = doc && deepAll(doc).find(
+                (e) => e.children.length === 0 && re.test((e.textContent || "").trim()),
+              );
+              if (!el) return false;
+              let t = el;
+              while (t && t !== doc.body && !(t.tagName === "BUTTON" || t.tagName === "ST-BUTTON")) {
+                t = t.parentElement;
+              }
+              (t || el).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+              return true;
+            };
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+            // 首屏：欢迎开场对话
+            const first = await window.__e2e.waitMarker(frame, ".stage .bubble", 45000);
+            if (!first.ok) {
+              return { assert: false, content: { step: "first-screen", first } };
+            }
+
+            // 通用推进器：命中目标文案即停；否则依次尝试点击给定按钮；没有
+            // 可点按钮且屏幕存在时点屏幕推进对话（打字中则先补全文案）。
+            // 关键自恢复能力：欢迎流程可能在引导中途被整页重置回开场对话
+            //（CI WebKit 实测：跳过 Key 成功后 skipClicks=1，其后 20s 无任何
+            // 按钮可点、帧内容回到初始态）——只认按钮的循环在重置后会干等
+            // 超时，带上点屏幕推进即可从重置中自动重走全程
+            const driveTo = async (targetRe, clickRes, timeoutMs) => {
+              const started = Date.now();
+              const clicks = clickRes.map(() => 0);
+              let stageClicks = 0;
+              for (;;) {
+                if (hasText(targetRe)) return { ok: true, clicks, stageClicks };
+                let clicked = false;
+                for (let i = 0; i < clickRes.length; i++) {
+                  if (clickText(clickRes[i])) {
+                    clicks[i]++;
+                    clicked = true;
+                    break;
+                  }
+                }
+                if (!clicked) {
+                  const stage = deepAll(doc0()).find(
+                    (e) => e.classList && e.classList.contains("stage"),
+                  );
+                  if (stage) {
+                    stage.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                    stageClicks++;
+                  }
+                }
+                if (Date.now() - started > timeoutMs) {
+                  return { ok: false, clicks, stageClicks };
+                }
+                await sleep(300);
+              }
+            };
+            // 失败现场快照：body 可见文本（跳过 script/style，shadow 穿透）、
+            // 帧整页重载计数与 URL——区分「整页被重置」与「流程卡住不动」
+            const uiSnapshot = () => {
+              let url = "(cross)";
+              try {
+                url = frame.contentWindow.location.href;
+              } catch (err) {}
+              const doc = doc0();
+              const loads = frame.__loadCount;
+              if (!doc || !doc.body) {
+                return { frameUrl: url, frameLoads: loads, uiText: "(无 body)" };
+              }
+              const SKIP_TAGS = new Set([
+                "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK", "META",
+              ]);
+              let out = "";
+              const walk = (node) => {
+                for (const el of node.querySelectorAll("*")) {
+                  if (out.length >= 400) return;
+                  if (SKIP_TAGS.has(el.tagName)) continue;
+                  if (el.childNodes.length && !el.shadowRoot) {
+                    for (const n of el.childNodes) {
+                      if (n.nodeType === 3 && n.textContent.trim()) {
+                        out += n.textContent.trim() + " ";
+                        if (out.length >= 400) return;
+                      }
+                    }
+                  }
+                  if (el.shadowRoot) walk(el.shadowRoot);
+                }
+              };
+              walk(doc.body);
+              return {
+                frameUrl: url,
+                frameLoads: loads,
+                uiText: out.slice(0, 400) || "(body 无文本)",
+              };
+            };
+
+            // 阶段 1：推进开场对话到 Key 步骤（跳过按钮，或「已配置可用的
+            // AI Key」文案——keyFound 中英文案都要能命中，原文的正则
+            // 「已有可用」与实际文案「已经配置了可用的 AI Key」不连续）
+            const keyHit = await driveTo(
+              /跳过，暂不配置|Skip for now|usable AI Key|可用的 AI Key/,
+              [],
+              60000,
+            );
+            if (!keyHit.ok) {
+              return { assert: false, content: { step: "key", keyHit, ...uiSnapshot() } };
+            }
+
+            // 阶段 2：跳过 Key（环境已有可用 Key 时点「下一步」分支），推进
+            // 到用途选择。用途步骤内没有匹配这两个正则的按钮（返回键是
+            // 「上一步/Back」），重复点击安全；打字机与按钮渲染的耗时差由
+            // 轮询吸收，不做固定 sleep
+            const PURPOSE_RE = /直接使用现成的应用|Use ready-made apps/;
+            const purposeHit = await driveTo(
+              PURPOSE_RE,
+              [/跳过，暂不配置|Skip for now/, /下一步|Next/],
+              45000,
+            );
+
+            // 阶段 3：选用途 1（直接用现成应用，无需 Key）推进到完成按钮
+            const FINISH_RE = /完成，进入 Mazmot|Finish and Enter Mazmot/;
+            const finishHit = await driveTo(FINISH_RE, [PURPOSE_RE], 30000);
+
+            // 完成引导：写 welcome-done → replace 进应用列表（安装转后台队列）
+            if (!finishHit.ok) {
+              return {
+                assert: false,
+                content: { keyHit, purposeHit, finishHit, ...uiSnapshot() },
+              };
+            }
+            clickText(FINISH_RE);
+            const listed = await window.__e2e.waitMarker(frame, ".container .header", 60000);
+            const welcomeDone = await storage.getItem("welcome-done");
+
+            return {
+              assert: listed.ok && !!welcomeDone,
+              content: {
+                keyHit,
+                purposeHit,
+                finishHit,
+                listed,
+                welcomeDone: welcomeDone || null,
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="官方应用安装（todo/client + conjure）经真实 install-queue 完成">
+      <template>
+        <script type="module">
+          {
+            const { installQueue, enqueueOfficialInstalls } = await import(
+              "/main/lib/install-queue.js"
+            );
+            const { getStorage } = await import("/nos/storage/main.js");
+            const storageInstall = getStorage("mazmot");
+
+            const INSTALL_IDS = ["todo/client", "conjure"];
+            await enqueueOfficialInstalls(INSTALL_IDS);
+
+            // 轮询到两条 apps 记录齐且队列清空；记录安装失败态（state=error
+            // 的条目会滞留 items，等待手动重试）
+            const started = Date.now();
+            const TIMEOUT = 240000;
+            let appsRecords = [];
+            let errorItems = [];
+            let settled = false;
+            while (Date.now() - started < TIMEOUT) {
+              appsRecords = (await storageInstall.getItem("apps")) || [];
+              errorItems = installQueue.items
+                .filter((i) => i.state === "error")
+                .map((i) => ({ id: i.officialId, msg: i.statusText }));
+              const gotAll = INSTALL_IDS.every((id) =>
+                appsRecords.some(
+                  (a) => a.name === id || a.officialId === id,
+                ),
+              );
+              if (gotAll && installQueue.items.length === 0) {
+                settled = true;
+                break;
+              }
+              if (errorItems.length > 0 && installQueue.items.every((i) => i.state === "error")) {
+                break; // 全部卡在错误态，无需再等
+              }
+              await new Promise((r) => setTimeout(r, 500));
+            }
+
+            const checks = {
+              settled,
+              elapsedMs: Date.now() - started,
+              installedIds: appsRecords
+                .filter(
+                  (a) =>
+                    INSTALL_IDS.includes(a.name) ||
+                    INSTALL_IDS.includes(a.officialId),
+                )
+                .map((a) => a.name),
+              errorItems,
+            };
+            return {
+              assert: settled && errorItems.length === 0,
+              content: {
+                ...checks,
+                hint: settled
+                  ? "ok"
+                  : "官方应用安装未完成：errorItems 有值看错误消息，否则看是否超时",
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="conjure 安装副本完整性：__app.json 清单逐文件穿透命名空间校验">
+      <template>
+        <script type="module">
+          {
+            // 用户报障的根因类别：安装副本缺文件 / 被部署回退页污染。
+            // 按市场清单逐文件请求 NoneOS 命名空间路径，比对内容特征。
+            const manifestRes = await fetch(
+              "/official-apps/conjure/__app.json",
+            );
+            const manifest = await manifestRes.json();
+            const fileList = manifest.files.map((f) =>
+              typeof f === "string" ? f : f.path,
+            );
+
+            const failures = [];
+            for (const rel of fileList) {
+              const url = `/$mazmot-apps/conjure/client/${rel}`;
+              let res;
+              try {
+                res = await fetch(url);
+              } catch (err) {
+                failures.push({ rel, issue: `fetch 异常: ${err.message}` });
+                continue;
+              }
+              if (!res.ok) {
+                failures.push({ rel, issue: `HTTP ${res.status}` });
+                continue;
+              }
+              const text = await res.text();
+              if (!text.trim()) {
+                failures.push({ rel, issue: "空文件" });
+                continue;
+              }
+              const isCodeFile = /\.(js|json)$/.test(rel);
+              if (isCodeFile && /^\s*<!doctype html/i.test(text)) {
+                failures.push({
+                  rel,
+                  issue: "js/json 内容是 HTML（SPA 回退污染）",
+                });
+                continue;
+              }
+              if (
+                rel.startsWith("pages/") &&
+                rel.endsWith(".html") &&
+                !text.includes("<template")
+              ) {
+                failures.push({
+                  rel,
+                  issue: "页面模块缺 <template>（疑似回退页）",
+                });
+              }
+            }
+
+            // 版本文件可解析（运行记录 / 更新比对依赖它）
+            let version = null;
+            try {
+              const appJson = await (
+                await fetch("/$mazmot-apps/conjure/client/app.json")
+              ).json();
+              version = appJson.version;
+            } catch (err) {
+              failures.push({ rel: "app.json", issue: `解析失败: ${err.message}` });
+            }
+
+            return {
+              assert: failures.length === 0 && !!version,
+              content: {
+                total: fileList.length,
+                version,
+                failures: failures.slice(0, 10),
+                checks: {
+                  noFailures: failures.length === 0,
+                  versionReadable: !!version,
+                },
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="运行 todo 应用：/$mazmot-apps 命名空间启动并渲染首屏">
+      <template>
+        <script type="module">
+          {
+            const { getRunUrl } = await import("/mz/app-runner.js");
+            const { getStorage } = await import("/nos/storage/main.js");
+            const storageRun = getStorage("mazmot");
+
+            const apps = (await storageRun.getItem("apps")) || [];
+            const todoRec = apps.find(
+              (a) => a.name === "todo/client" || a.officialId === "todo/client",
+            );
+            if (!todoRec) {
+              return {
+                assert: false,
+                content: { hint: "todo/client 记录不存在，前序安装用例未通过" },
+              };
+            }
+            const runUrl = await getRunUrl(todoRec);
+
+            const frame = window.__e2e.mountFrame(runUrl);
+            const hit = await window.__e2e.waitMarker(
+              frame,
+              ".shell .side-title",
+              45000,
+            );
+            return {
+              assert: hit.ok,
+              content: {
+                runUrl,
+                hit,
+                pageErrors: frame.__errors.slice(0, 5),
+                hint: hit.ok ? "ok" : "todo 首屏未渲染：看 fatal 字段（含「加载页面模块」即副本缺文件）",
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="运行 conjure 应用：布局壳 home.html + 对话子页加载（用户报障路径回归）">
+      <template>
+        <script type="module">
+          {
+            const { getRunUrl } = await import("/mz/app-runner.js");
+            const { getStorage } = await import("/nos/storage/main.js");
+            const storageConjure = getStorage("mazmot");
+
+            const apps = (await storageConjure.getItem("apps")) || [];
+            const conjureRec = apps.find(
+              (a) => a.name === "conjure" || a.officialId === "conjure",
+            );
+            if (!conjureRec) {
+              return {
+                assert: false,
+                content: { hint: "conjure 记录不存在，前序安装用例未通过" },
+              };
+            }
+            const runUrl = await getRunUrl(conjureRec);
+
+            const frame = window.__e2e.mountFrame(runUrl);
+            // 用户报障即 boot 期 home.html（布局壳）加载失败——顶栏 brand
+            // 渲染出来 = home.html + chat.html 双层页面模块都加载成功。
+            // conjure 首屏拉起大量 senti-ui 组件，超时给足
+            const hit = await window.__e2e.waitMarker(
+              frame,
+              ".app .topbar .brand",
+              90000,
+            );
+
+            return {
+              assert: hit.ok,
+              content: {
+                runUrl,
+                hit,
+                pageErrors: frame.__errors.slice(0, 5),
+                hint: hit.ok
+                  ? "ok"
+                  : "conjure 首屏未渲染：看 fatal 字段——「加载页面模块 …/pages/home.html 失败」即用户反馈的故障形态",
+              },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

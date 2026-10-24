@@ -105,6 +105,12 @@
     }
 
     /* ===== AI Key 表单 ===== */
+    /* 步骤容器：表单卡片与下方会员入口之间留出间距（两者是兄弟节点） */
+    .key-step {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     .form-card {
       padding: 16px;
       border-radius: 16px;
@@ -156,6 +162,65 @@
       gap: 12px;
       justify-content: flex-end;
       flex-wrap: wrap;
+    }
+
+    /* ===== 会员购买入口 ===== */
+    .member-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container),
+        var(--md-sys-color-tertiary-container)
+      );
+      color: var(--md-sys-color-on-primary-container);
+    }
+    .member-icon {
+      flex-shrink: 0;
+      font-size: 24px;
+      color: var(--md-sys-color-primary);
+    }
+    .member-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .member-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .member-desc {
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 1.5;
+      opacity: 0.85;
+    }
+    .member-card st-button {
+      flex-shrink: 0;
+    }
+    /* 会员购买弹窗：内部 o-app 需要确定高度，否则页面撑不开 */
+    .dlg-membership::part(panel) {
+      width: min(760px, 100%);
+    }
+    .membership-body {
+      height: min(700px, 80vh);
+      text-align: start;
+    }
+    .membership-body o-app {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    @media (max-width: 560px) {
+      .member-card {
+        flex-wrap: wrap;
+      }
+      .member-card st-button {
+        width: 100%;
+      }
     }
 
     /* ===== 用途选项 ===== */
@@ -365,7 +430,6 @@
                             attr:default-value="provider"
                             style="width: 100%"
                           >
-                            <option value="relay">Invite code</option>
                             <option value="deepseek">DeepSeek</option>
                             <option value="kimi">Kimi</option>
                             <option value="glm">GLM</option>
@@ -375,6 +439,7 @@
                             <option value="anthropic">Anthropic</option>
                             <option value="qwen">Qwen</option>
                             <option value="grok">Grok</option>
+                            <option value="relay">Invite code</option>
                           </st-select>
                         </div>
                         <div class="key-field">
@@ -431,6 +496,22 @@
                       </div>
                     </div>
                   </o-if>
+                  <!-- 收费入口：购买会员（点击弹窗内嵌官方会员应用） -->
+                  <div class="member-card">
+                    <n-icon class="member-icon" icon="mdi:crown-outline"></n-icon>
+                    <div class="member-body">
+                      <div class="member-title">
+                        <locale-text><span lang="cn">Mazmot Pro 会员</span><span lang="en">Mazmot Pro membership</span></locale-text>
+                      </div>
+                      <div class="member-desc">
+                        <locale-text><span lang="cn">一次订阅：默认 AI 使用量、更大的转发流量、新功能优先使用（$10 / 月 或 $100 / 年）。</span><span lang="en">One subscription: default AI quota, larger relay traffic and priority features ($10/month or $100/year).</span></locale-text>
+                      </div>
+                    </div>
+                    <st-button variant="filled" on:click="openMembershipDialog">
+                      <n-icon icon="mdi:crown-outline" slot="prefix"></n-icon>
+                      <locale-text><span lang="cn">购买会员</span><span lang="en">Buy membership</span></locale-text>
+                    </st-button>
+                  </div>
                 </div>
               </o-if>
 
@@ -521,6 +602,20 @@
     </o-if>
   </div>
 
+  <!-- 会员购买弹窗：内嵌官方应用 official-apps/membership（app-config.js 微应用）。
+       关闭时 o-if 销毁 o-app，下次打开回到第一步 -->
+  <st-dialog class="dlg-membership" sync:open="memberDialogOpen" auto-close>
+    <div class="membership-body">
+      <o-if :value="memberDialogOpen">
+        <o-app
+          src="/official-apps/membership/app-config.js"
+          on:membership-purchased="handleMembershipPurchased"
+          on:membership-close="handleMembershipClose"
+        ></o-app>
+      </o-if>
+    </div>
+  </st-dialog>
+
   <script>
     export default async ({ load }) => {
       // 依赖模块与组件全部经工厂 load 并行加载（替代静态 <l-m> / 串行
@@ -534,6 +629,7 @@
         { loadOfficialAppMeta },
         plan,
         { enqueueOfficialInstalls },
+        { membershipHandoff },
       ] = await Promise.all([
         load("/nos/storage/main.js"),
         load("/nos/locale-text/get-locale-text.js"),
@@ -543,11 +639,13 @@
         load("../lib/official-app-writer.js"),
         load("../lib/welcome-plan.js"),
         load("../lib/install-queue.js"),
+        load("../lib/membership-handoff.js"),
         // 组件依赖（替代原静态 <l-m>，与模块并行预载）
         load("/gh/ofajs/senti-ui@main/packages/button/button.html"),
         load("/gh/ofajs/senti-ui@main/packages/button/icon-button.html"),
         load("/gh/ofajs/senti-ui@main/packages/input/input.html"),
         load("/gh/ofajs/senti-ui@main/packages/select/select.html"),
+        load("/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"),
         load("/mz/comps/mascot/mascot.html"),
         load("/nos/n-icon/n-icon.html"),
         load("/nos/locale-text/locale-text.html"),
@@ -576,8 +674,8 @@
           en: "Everything runs in your browser and data stays local. Before we start, let's set up AI capabilities.",
         }),
         keyNeed: getLocaleText({
-          cn: "使用 AI 相关能力（比如用 AI 开发应用）前，需要先配置一个 AI Key。支持 DeepSeek / Kimi / GLM，也支持粘贴中转服务的邀请码。密钥只保存在你的浏览器本地，不会上传。",
-          en: "AI features (like building apps with AI) need an AI Key first. DeepSeek / Kimi / GLM are supported, and relay invite codes work too. Keys are stored only in your browser.",
+          cn: "使用 AI 相关能力（比如用 AI 开发应用）前，需要先配置一个 AI Key：支持 DeepSeek / Kimi / GLM，也支持粘贴中转服务的邀请码。也可以直接购买 Mazmot Pro 会员——一次订阅即可获得内置 AI 额度与全部官方应用（$10 / 月 或 $100 / 年）。密钥只保存在你的浏览器本地，不会上传。",
+          en: "AI features (like building apps with AI) need an AI Key first: DeepSeek / Kimi / GLM are supported, and relay invite codes work too. You can also get Mazmot Pro membership — one subscription covers built-in AI quota and every official app ($10/month or $100/year). Keys are stored only in your browser.",
         }),
         keyFound: getLocaleText({
           cn: "检测到你已经配置了可用的 AI Key，可以直接进入下一步！",
@@ -684,8 +782,8 @@
           keyReady: plan.hasUsableKey(existingKeys),
           // 吉祥物形态：进场无灵魂，确认 AI Key 后苏醒为默认态（跳过则保持无灵魂）
           mascotState: "soulless",
-          // 默认走邀请码（推荐给新用户的接入方式）
-          provider: "relay",
+          // 默认选中下拉第一项（DeepSeek）
+          provider: "deepseek",
           keyInput: "",
           showPassword: false,
           keySaving: false,
@@ -693,6 +791,8 @@
           purposeOptions: [],
           pickedApps: [],
           finishing: false,
+          // 会员购买弹窗（内嵌 official-apps/membership 微应用）
+          memberDialogOpen: false,
         },
 
         ready() {
@@ -727,6 +827,7 @@
           // 点击屏幕：打字中 → 立即补全；对话单元完成 → 淡出并进入下一个
           handleScreenClick() {
             if (!this.flowReady || this.transitioning || this.finishing) return;
+            if (this.memberDialogOpen) return;
             if (this.typing) {
               this.finishTyping();
               return;
@@ -881,6 +982,57 @@
             } finally {
               this.keySaving = false;
             }
+          },
+
+          // ===== 会员购买（内嵌官方应用 membership） =====
+
+          openMembershipDialog() {
+            this.memberDialogOpen = true;
+          },
+
+          // 会员应用在下单成功后上抛（含邀请码与服务器命名）：只提示并存下
+          // 待交接数据；真正回填在用户点「完成」关闭弹窗时（handleMembershipClose）。
+          handleMembershipPurchased(event) {
+            const data = (event && event.data) || {};
+            this._pendingPurchase = data || null;
+            toast({
+              message: getLocaleText({
+                cn: "会员开通成功，关闭弹窗后将自动配置中转 Key",
+                en: "Membership activated — the relay key will be configured when you close the dialog",
+              }),
+              color: "success",
+            });
+          },
+
+          // 点「完成」关闭弹窗：回填邀请码并落库推进。邀请码刚由服务端签发、
+          // 会员应用已写入本地 AI 配置，这里跳过网络校验（saveKeyFlow 的
+          // testApiKey 曾因瞬时网络失败把流程卡在 Key 步骤），直接本地落库，
+          // 保证「完成」后必然进入用途步骤。
+          handleMembershipClose() {
+            this.memberDialogOpen = false;
+            const handoff = membershipHandoff(this._pendingPurchase || {}, {
+              keyReady: this.keyReady,
+              keySaving: this.keySaving,
+            });
+            this._pendingPurchase = null;
+            if (!handoff) return;
+            this.provider = handoff.provider;
+            ai.saveKey(handoff.key, handoff.provider, {
+              serverName: handoff.serverName,
+              serverUrl: handoff.serverUrl,
+            });
+            this.keyInput = "";
+            this.keyReady = true;
+            this.mascotState = ""; // Key 自动配置完成，吉祥物苏醒
+            toast({
+              message: getLocaleText({
+                cn: "中转 Key 已自动配置",
+                en: "Relay key configured automatically",
+              }),
+              color: "success",
+            });
+            this._purposeMsgKey = "keySaved";
+            this.enterUnit(UNIT_INDEX.purpose);
           },
 
           // ===== 用途选择步骤 =====

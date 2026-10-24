@@ -1,5 +1,5 @@
 <template page>
-  <link rel="stylesheet" href="./home.css?v=16" />
+  <link rel="stylesheet" href="./home.css?v=17" />
   <l-m src="/gh/ofajs/senti-ui@main/packages/tabs/tab-bar.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/menu/menu.html"></l-m>
   <l-m src="/gh/ofajs/senti-ui@main/packages/button/button.html"></l-m>
@@ -130,15 +130,8 @@
               ></n-icon>
             </st-icon-button>
           </div>
-          <st-icon-button
-            class="test-entry"
-            title="测试管理（client/test/ 场景用例）"
-            on:click="openHub('tests')"
-          >
-            <n-icon icon="mdi:flask-outline"></n-icon>
-          </st-icon-button>
         </o-if>
-        <st-icon-button title="工具 / 技能" on:click="openHub('tools')">
+        <st-icon-button title="工具 / 技能（Agent 工具与技能库）" on:click="openHub('resources')">
           <svg
             viewBox="0 0 24 24"
             width="20"
@@ -154,6 +147,9 @@
             <rect x="14" y="14" width="7" height="7" />
             <rect x="3" y="14" width="7" height="7" />
           </svg>
+        </st-icon-button>
+        <st-icon-button title="开发工具" on:click="openHub('devtools')">
+          <n-icon icon="mdi:tools"></n-icon>
         </st-icon-button>
       </div>
     </header>
@@ -626,76 +622,14 @@
               </div>
             </div>
           </o-if>
-          <o-if :value="hubTab === 'tests'">
-            <div class="hub-pane-head">测试管理</div>
-            <div class="hub-pane-body hub-wide"><div class="backup-actions">
-        <st-button
-          variant="filled"
-          attr:disabled="testBusy || tests.length === 0"
-          on:click="handleRunAllTests"
-        >
-          <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
-          <o-if :value="!testRunning">▶ 跑全部</o-if>
-        </st-button>
-        <o-if :value="testFailCount > 0">
-          <!-- 有失败用例才出：点击把失败内容自动发进对话，由专门的修复
-               回合接手（修完只重跑失败的用例文件，见 buildTestFixMessage） -->
-          <st-button
-            variant="outlined"
-            attr:disabled="testBusy || sending"
-            on:click="handleFixFailedTests"
-          >
-            <span slot="prefix"><n-icon icon="mdi:wrench-outline"></n-icon></span>
-            修复失败用例（{{testFailCount}}）
-          </st-button>
-        </o-if>
-      </div>
-      <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
-      <div class="panel-body">
-        <o-if :value="tests.length === 0">
-          <div class="panel-empty">还没有场景用例。让 AI 实现重要功能时会自动在 client/test/ 下创建 .test.json 用例</div>
-        </o-if>
-        <o-if :value="showTestEmptyHint()">
-          <div class="panel-empty">用例还没有跑过，点上方「▶ 跑全部」</div>
-        </o-if>
-        <o-fill :value="tests" fill-key="file">
-          <div class="test-item">
-            <n-icon
-              class="test-tone"
-              class:spin="$host.testIsRunning($data)"
-              attr:icon="$host.testTone($data)"
-            ></n-icon>
-            <div class="test-item-main">
-              <div class="test-item-name">
-                {{$data.name}}
-                <span class="test-steps">{{$data.stepCount}} 步{{$host.testMsText($data)}}</span>
-              </div>
-              <div class="test-item-file">{{$data.desc || $data.file}}</div>
-              <o-if :value="$host.testFailText($data)">
-                <div class="test-item-fail">{{$host.testFailText($data)}}</div>
-              </o-if>
-            </div>
-            <st-button
-              variant="text"
-              class="test-run-one"
-              attr:disabled="$host.testBusy"
-              attr:title="'只跑这一条'"
-              on:click="$host.handleRunOne($data.file)"
-            >
-              <n-icon icon="mdi:play-outline"></n-icon>
-            </st-button>
-          </div>
-        </o-fill>
-      </div></div>
-          </o-if>
-          <o-if :value="hubTab === 'tools'">
+          <o-if :value="hubTab === 'resources'">
             <div class="hub-pane-head">工具 / 技能</div>
             <div class="hub-pane-body hub-wide tools-body">
             <div class="tools-layout">
             <div class="tools-list">
             <st-tab-bar class="panel-tabs">
         <st-tab-item attr:active="panelTab === 'tools'" on:click="setPanelTab('tools')">
-          <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>工具</span>
+          <span class="tab-label"><n-icon icon="mdi:tools"></n-icon>Agent 工具</span>
         </st-tab-item>
         <st-tab-item attr:active="panelTab === 'skills'" on:click="setPanelTab('skills')">
           <span class="tab-label"><n-icon icon="mdi:book-open-variant"></n-icon>技能</span>
@@ -882,6 +816,217 @@
             </div>
             </div>
           </o-if>
+          <!-- 工具 tab（开发工具）：与资源页同构的主从布局——左侧工具清单
+              （active 选中态），右侧为选中工具的主工作区（不弹窗）；
+               多语种翻译为第一个，后续新工具（n-icon 搜索辅助检查等）在此追加 -->
+          <o-if :value="hubTab === 'devtools'">
+            <div class="hub-pane-head">开发工具</div>
+            <div class="hub-pane-body hub-wide tools-body">
+              <div class="tools-layout">
+                <div class="tools-list">
+                  <div class="tool-defs-head">开发工具 · {{currentAppDisplay}}</div>
+                  <o-if :value="currentAppName !== ''">
+                    <div
+                      class="tool-def"
+                      class:selected="devTool === 'tests'"
+                      title="client/test/ 场景用例：跑全部 / 单条重跑 / 失败回流修复"
+                      on:click="setDevTool('tests')"
+                    >
+                      <div class="tool-def-row">
+                        <span class="tool-def-name">场景测试</span>
+                        <span class="tool-def-tag" title="client/test/ 场景用例管理">
+                          <n-icon icon="mdi:flask-outline"></n-icon>tests
+                        </span>
+                      </div>
+                      <span class="tool-def-desc">运行 client/test/ 下的场景用例并逐条实时反馈；失败用例可一键发回对话由修复回合接手。</span>
+                    </div>
+                  </o-if>
+                  <o-if :value="currentAppName !== ''">
+                    <div
+                      class="tool-def"
+                      class:selected="devTool === 'locale'"
+                      title="扫描应用文案条目，编辑各语种翻译并写入 client/locale-text.json"
+                      on:click="setDevTool('locale')"
+                    >
+                      <div class="tool-def-row">
+                        <span class="tool-def-name">多语种翻译</span>
+                        <span class="tool-def-tag" title="NoneOS Core locale-text 方案">
+                          <n-icon icon="mdi:translate"></n-icon>locale-text
+                        </span>
+                      </div>
+                      <span class="tool-def-desc">扫描应用里的 &lt;locale-text&gt; 与 getLocaleText 文案条目，编辑各语种翻译后写回 client/locale-text.json，运行时组件按基准文本自动回退。</span>
+                    </div>
+                  </o-if>
+                  <o-if :value="currentAppName === ''">
+                    <div class="panel-empty">先创建或选择一个项目，再使用开发工具</div>
+                  </o-if>
+                </div>
+                <aside class="tools-detail devtool-detail">
+                  <o-if :value="devTool === 'locale' && currentAppName !== ''">
+                    <!-- 多语种翻译工作区：扫描 / 编辑 / 保存（文件 IO 在 store 的
+                         locale 领域，提取合并纯函数在 lib/locale-tool.js） -->
+                    <div class="locale-panel">
+                      <div class="backup-edit-title">多语种翻译</div>
+                      <div class="backup-edit-id">{{localeAppName}}/client/locale-text.json</div>
+                      <o-if :value="localeScannedFor !== '' && localeScannedFor !== currentAppName">
+                        <div class="locale-stale">项目已切换到「{{currentAppDisplay}}」，点击「重新扫描」加载该应用的文案</div>
+                      </o-if>
+                      <div class="locale-actions">
+                        <st-button variant="outlined" attr:disabled="localeBusy" on:click="rescanLocale">
+                          <span slot="prefix"><n-icon icon="mdi:refresh"></n-icon></span>
+                          重新扫描
+                        </st-button>
+                        <st-button
+                          variant="filled"
+                          attr:disabled="localeBusy || localeSaving || localeEntries.length === 0"
+                          on:click="saveLocale"
+                        >
+                          <span slot="prefix"><n-icon icon="mdi:content-save"></n-icon></span>
+                          保存
+                        </st-button>
+                        <span class="locale-status">{{localeStatus}}</span>
+                      </div>
+                      <o-if :value="localeStatsText !== ''">
+                        <div class="locale-stats">{{localeStatsText}}</div>
+                      </o-if>
+                      <div class="locale-add-lang">
+                        <span class="locale-add-label">添加语种</span>
+                        <select class="locale-lang-select" sync:value="newLocaleLang">
+                          <option value="ja">日本語（ja）</option>
+                          <option value="ko">한국어（ko）</option>
+                          <option value="fr">Français（fr）</option>
+                          <option value="de">Deutsch（de）</option>
+                          <option value="es">Español（es）</option>
+                          <option value="ru">Русский（ru）</option>
+                        </select>
+                        <st-button variant="text" attr:disabled="localeBusy" on:click="addLocaleLang">＋ 添加翻译列</st-button>
+                      </div>
+                      <div class="locale-entries">
+                        <o-fill :value="localeEntries" fill-key="hash">
+                          <div class="locale-entry" class:orphan="$data.status === 'orphaned'">
+                            <div class="locale-entry-head">
+                              <span class="locale-entry-base">{{$data.baseText}}</span>
+                              <span attr:class="'locale-chip chip-' + $data.status">{{$host.localeStatusText($data.status)}}</span>
+                              <o-if :value="$data.status === 'orphaned'">
+                                <st-button
+                                  class="locale-del-btn"
+                                  variant="text"
+                                  title="从翻译表删除该冗余条目"
+                                  on:click="$host.deleteLocaleEntry($data.hash)"
+                                >
+                                  <n-icon icon="mdi:delete-outline"></n-icon>
+                                </st-button>
+                              </o-if>
+                            </div>
+                            <o-if :value="$data.sourceFile !== ''">
+                              <div class="locale-entry-src">{{$data.sourceFile}}</div>
+                            </o-if>
+                            <div class="locale-entry-rows">
+                              <o-fill :value="$data.rows" fill-key="lang">
+                                <label class="locale-lang-row">
+                                  <span class="locale-lang-code">{{$data.lang}}</span>
+                                  <input
+                                    class="locale-lang-input"
+                                    attr:placeholder="$data.lang === 'cn' ? '基准文本（改动会使旧 hash 失效）' : '翻译（留空不写入）'"
+                                    sync:value="$data.text"
+                                  />
+                                </label>
+                              </o-fill>
+                            </div>
+                          </div>
+                        </o-fill>
+                        <o-if :value="localeEntries.length === 0 && !localeBusy">
+                          <div class="panel-empty">
+                            没有扫描到文案条目——应用里的文案需包进 &lt;locale-text&gt; 组件或走 getLocaleText 才能收录
+                          </div>
+                        </o-if>
+                      </div>
+                      <div class="pub-note">保存写回 client/locale-text.json；运行时按基准文本 hash 回退读取，源码无需改动。翻译在预览窗口重新打开后生效。</div>
+                    </div>
+                  </o-if>
+                  <o-if :value="devTool === 'tests' && currentAppName !== ''">
+                    <!-- 场景测试工作区（原 Hub 测试页迁入）：跑全部 / 单条重跑 /
+                         失败回流（buildTestFixMessage 把失败清单发进对话修复） -->
+                    <div class="backup-edit-title">场景测试</div>
+                    <div class="backup-edit-id">client/test/*.test.json</div>
+                    <div class="backup-actions">
+                      <st-button
+                        variant="filled"
+                        attr:disabled="testBusy || tests.length === 0"
+                        on:click="handleRunAllTests"
+                      >
+                        <o-if :value="testRunning">⏳ 跑测中 {{testRunning.done}}/{{testRunning.total}}</o-if>
+                        <o-if :value="!testRunning">▶ 跑全部</o-if>
+                      </st-button>
+                      <o-if :value="testFailCount > 0">
+                        <!-- 有失败用例才出：点击把失败内容自动发进对话，由专门的修复
+                             回合接手（修完只重跑失败的用例文件，见 buildTestFixMessage） -->
+                        <st-button
+                          variant="outlined"
+                          attr:disabled="testBusy || sending"
+                          on:click="handleFixFailedTests"
+                        >
+                          <span slot="prefix"><n-icon icon="mdi:wrench-outline"></n-icon></span>
+                          修复失败用例（{{testFailCount}}）
+                        </st-button>
+                      </o-if>
+                    </div>
+                    <div class="test-last" attr:title="testLastTip()">{{testLastText()}}</div>
+                    <div class="panel-body">
+                      <o-if :value="tests.length === 0">
+                        <div class="panel-empty">还没有场景用例。让 AI 实现重要功能时会自动在 client/test/ 下创建 .test.json 用例</div>
+                      </o-if>
+                      <o-if :value="showTestEmptyHint()">
+                        <div class="panel-empty">用例还没有跑过，点上方「▶ 跑全部」</div>
+                      </o-if>
+                      <o-fill :value="tests" fill-key="file">
+                        <div class="test-item">
+                          <n-icon
+                            class="test-tone"
+                            class:spin="$host.testIsRunning($data)"
+                            attr:icon="$host.testTone($data)"
+                          ></n-icon>
+                          <div class="test-item-main">
+                            <div class="test-item-name">
+                              {{$data.name}}
+                              <span class="test-steps">{{$data.stepCount}} 步{{$host.testMsText($data)}}</span>
+                            </div>
+                            <div class="test-item-file">{{$data.desc || $data.file}}</div>
+                            <o-if :value="$host.testFailText($data)">
+                              <div class="test-item-fail">{{$host.testFailText($data)}}</div>
+                            </o-if>
+                          </div>
+                          <st-button
+                            variant="text"
+                            class="test-run-one"
+                            attr:disabled="$host.testBusy"
+                            attr:title="'只跑这一条'"
+                            on:click="$host.handleRunOne($data.file)"
+                          >
+                            <n-icon icon="mdi:play-outline"></n-icon>
+                          </st-button>
+                        </div>
+                      </o-fill>
+                    </div>
+                  </o-if>
+                  <o-if :value="devTool !== '' && currentAppName === ''">
+                    <div class="tools-detail-empty">
+                      <n-icon icon="mdi:alert-circle-outline"></n-icon>
+                      <div class="tools-detail-empty-title">草稿态没有可作用的项目</div>
+                      <div class="tools-detail-empty-desc">先创建或选择一个项目，再使用开发工具</div>
+                    </div>
+                  </o-if>
+                  <o-if :value="devTool === ''">
+                    <div class="tools-detail-empty">
+                      <n-icon icon="mdi:cursor-default-click-outline"></n-icon>
+                      <div class="tools-detail-empty-title">从左侧选择工具</div>
+                      <div class="tools-detail-empty-desc">开发工具作用于当前项目，选中后在这里直接使用</div>
+                    </div>
+                  </o-if>
+                </aside>
+              </div>
+            </div>
+          </o-if>
         </div>
         <!-- 底部导航：横向 st-nav-bar + parallel 项（图标左 / 文字右，
              active 药丸整行包裹，M3 emphasized 跟随），active 由 hubTab 驱动 -->
@@ -911,17 +1056,17 @@
           </st-nav-item>
           <st-nav-item
             parallel
-            attr:active="hubTab === 'tests'"
-            on:click="setHubTab('tests')"
+            attr:active="hubTab === 'resources'"
+            on:click="setHubTab('resources')"
           >
-            <span slot="icon"><n-icon icon="mdi:flask-outline"></n-icon></span>测试
+            <span slot="icon"><n-icon icon="mdi:view-grid"></n-icon></span>资源
           </st-nav-item>
           <st-nav-item
             parallel
-            attr:active="hubTab === 'tools'"
-            on:click="setHubTab('tools')"
+            attr:active="hubTab === 'devtools'"
+            on:click="setHubTab('devtools')"
           >
-            <span slot="icon"><n-icon icon="mdi:view-grid"></n-icon></span>资源
+            <span slot="icon"><n-icon icon="mdi:tools"></n-icon></span>开发工具
           </st-nav-item>
         </st-nav-bar>
       </div>
@@ -950,6 +1095,8 @@
         </div>
       </div>
     </st-dialog>
+
+    <!-- 多语种翻译已移入 Hub「工具」tab 的右侧工作区（主从布局，不再用对话框） -->
 
 
     <!-- 工具详情对话框：点工具列表项弹出；带内置测试的工具（视觉或纯插件）用
@@ -999,7 +1146,7 @@
           ".bench-note b{color:light-dark(#5256a1,#bac3ff)}",
           ".show-form-card,.form-card{max-width:100% !important}",
           "</style>",
-          "<" + 'script type="module" src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug">' + "</scr" + "ipt>",
+          "<" + 'script type="module" src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug">' + "</scr" + "ipt>",
           "</head><body>",
           '<div class="bench-note"><b>' + note[0] + "</b> · " + note[1] + "</div>",
           '<l-m src="' + location.origin + '/nos/n-icon/n-icon.html"></l-m>',
@@ -1204,6 +1351,15 @@
           backupEditOpen: false, // 备份编辑对话框（名称 + 备注）
           editingBackupId: "", // 正在编辑的备份 id
           editForm: { label: "", note: "" }, // 编辑对话框表单
+          devTool: "", // 工具 tab 选中的开发工具（"locale" = 多语种翻译；"" = 未选）
+          localeAppName: "", // 多语种翻译快照的应用名（扫描 / 保存都以此为准）
+          localeScannedFor: "", // 最近一次扫描对应的应用名（≠ 当前项目时提示重扫）
+          localeBusy: false, // 扫描进行中
+          localeSaving: false, // 保存写入中
+          localeStatus: "", // 扫描 / 保存状态行
+          localeStatsText: "", // 扫描统计（N 文件 · 命中 M · 新增 X · 冗余 Y）
+          localeEntries: [], // 可编辑条目 [{hash, baseText, status, sourceFile, rows: [{lang, text}]}]
+          newLocaleLang: "ja", // 「添加语种」当前选中的候选语言
           toolDetail: null, // 当前查看的工具（name / desc / schemaText / isVisual / hasTabs）
           toolTab: "info", // 视觉工具对话框 Tab："info" | "test"
           toolDemoDoc: "", // 运行效果演示 iframe 的 srcdoc
@@ -2119,8 +2275,6 @@
               this.confirmingDelBackup = "";
               store.refreshPublishState();
               store.refreshBackups();
-            } else if (tab === "tests") {
-              store.refreshTests?.();
             } else if (tab === "appinfo") {
               // 每次进设置页都按当前展示值预填（应用信息可能被模型或别处改过）
               this.appMetaName = this.currentAppDisplay;
@@ -2137,6 +2291,134 @@
 
           setPanelTab(tab) {
             this.panelTab = tab;
+          },
+
+
+          // ---- 工具 tab：开发工具主从布局（左侧清单选中，右侧工作区） ----
+
+          setDevTool(name) {
+            this.devTool = name;
+            if (name === "locale") this.prepareLocale();
+            else if (name === "tests") store.refreshTests?.();
+          },
+
+          // 进入多语种翻译：目标项目变化或尚未扫描过时自动扫一次
+          async prepareLocale() {
+            if (this.currentAppName === "" || this.localeBusy) return;
+            if (this.localeScannedFor === this.currentAppName) return;
+            await this.rescanLocale();
+          },
+
+          // 扫描当前项目：提取文案条目并与已有 locale-text.json 合并，生成
+          // 可编辑条目列表（冗余条目一并带出，保存时按编辑结果统一写回）。
+          // localeAppName 跟随扫描时刻的当前项目——展示与保存写目标始终一致
+          async rescanLocale() {
+            if (this.localeBusy || this.currentAppName === "") return;
+            this.localeAppName = this.currentAppName;
+            this.localeBusy = true;
+            this.localeStatus = "扫描应用文件…";
+            try {
+              const r = await store.localeScan(this.localeAppName);
+              // 展示行序：cn → en → 其他语种字母序；已有翻译带入，缺失语种给空行
+              const rowsOf = (langs) => {
+                const extra = Object.keys(langs)
+                  .filter((l) => l !== "cn" && l !== "en")
+                  .sort();
+                return ["cn", "en", ...extra].map((lang) => ({
+                  lang,
+                  text: String(langs[lang] ?? ""),
+                }));
+              };
+              const all = [
+                ...r.records,
+                ...r.orphaned.map((o) => ({
+                  ...o,
+                  status: "orphaned",
+                  sourceFile: "",
+                })),
+              ];
+              this.localeEntries = all.map((rec) => ({
+                hash: rec.hash,
+                baseText: rec.baseText,
+                status: rec.status,
+                sourceFile: rec.sourceFile || "",
+                rows: rowsOf(r.finalMap[rec.hash] || {}),
+              }));
+              this.localeStatsText =
+                `扫描 ${r.filesScanned} 个文件 · 命中 ${r.hitFiles} · ` +
+                `条目 ${all.length}（新增 ${r.added} · 更新 ${r.updated} · 冗余 ${r.orphaned.length}）`;
+              this.localeScannedFor = this.localeAppName;
+              this.localeStatus =
+                r.added > 0 ? `扫描完成，新增 ${r.added} 条` : "扫描完成，没有新条目";
+            } catch (err) {
+              this.localeStatus = "扫描失败：" + (err?.message || err);
+            } finally {
+              this.localeBusy = false;
+            }
+          },
+
+          localeStatusText(status) {
+            return (
+              { added: "新增", updated: "更新", kept: "保留", orphaned: "冗余" }[
+                status
+              ] || status
+            );
+          },
+
+          // 为尚无该语种字段的条目统一添加一行翻译输入
+          addLocaleLang() {
+            const lang = String(this.newLocaleLang || "").trim();
+            if (!lang) return;
+            const missing = this.localeEntries.filter(
+              (e) => !e.rows.some((r) => r.lang === lang),
+            );
+            if (missing.length === 0) {
+              this.localeStatus = `所有条目都已有 ${lang} 字段`;
+              return;
+            }
+            missing.forEach((e) => {
+              e.rows.push({ lang, text: "" });
+              this.sortLangRows(e);
+            });
+            this.localeStatus = `已为 ${missing.length} 条条目添加 ${lang} 翻译列`;
+          },
+
+          // 语种行排序：cn → en → 其他字母序（rows 整组重赋值保持响应式）
+          sortLangRows(entry) {
+            const rank = (l) => (l === "cn" ? 0 : l === "en" ? 1 : 2);
+            entry.rows = [...entry.rows].sort(
+              (a, b) => rank(a.lang) - rank(b.lang) || (a.lang < b.lang ? -1 : 1),
+            );
+          },
+
+          deleteLocaleEntry(hash) {
+            this.localeEntries = this.localeEntries.filter((e) => e.hash !== hash);
+          },
+
+          // 收集编辑结果写回 client/locale-text.json（空文本字段不写入，
+          // 全空的条目视为删除）
+          async saveLocale() {
+            if (this.localeSaving || this.localeBusy) return;
+            this.localeSaving = true;
+            try {
+              const map = {};
+              for (const e of this.localeEntries) {
+                const langs = {};
+                for (const r of e.rows) {
+                  const t = String(r.text ?? "").trim();
+                  if (t) langs[r.lang] = t;
+                }
+                if (Object.keys(langs).length > 0) {
+                  map[e.hash] = langs;
+                }
+              }
+              const r = await store.localeSave(this.localeAppName, map);
+              this.localeStatus = `已写入 ${r.entries} 条到 client/locale-text.json`;
+            } catch (err) {
+              this.localeStatus = "保存失败：" + (err?.message || err);
+            } finally {
+              this.localeSaving = false;
+            }
           },
 
 

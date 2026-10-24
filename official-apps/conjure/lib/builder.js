@@ -51,6 +51,21 @@ export function pickAutoKey(keys) {
 }
 
 /**
+ * 是否「模型不在可用范围」类错误（HTTP 403 且报文提及模型被拒）：典型场景
+ * 是 relay 上游白名单删减后，本端仍把旧模型名显式传给供应商。这类失败清掉
+ * 过期的模型选择自愈即可，与限流 / 鉴权失败（同样可能是 403）区分开。
+ * @param {Error} error 供应商请求错误（assistant._buildError 产出，报文序列化在 message 里）
+ * @returns {boolean}
+ */
+export function isModelRejectedError(error) {
+  const msg = String(error?.message || "");
+  if (!/API error: 403\b/.test(msg)) return false;
+  return /不在该用户的可用模型范围内|不在可用模型|可用模型范围|not allowed|not permitted|allowed models|model not found/i.test(
+    msg,
+  );
+}
+
+/**
  * 把 Agent 的 wire 记忆按回合截断：保留前 k 个 user 消息开头的回合；末个保留
  * 回合若未闭合（末条 assistant 仍带 tool_calls，即中途停止/截断），整体丢弃
  * 该回合——悬空的 tool_calls 会让下一次模型请求报错。
@@ -1609,7 +1624,7 @@ export function errorTaskDigest(line) {
 }
 
 /**
- * 测试抽屉「修复失败用例」→ 自动发进对话的消息文案（纯函数）。
+ * 场景测试工作区「修复失败用例」→ 自动发进对话的消息文案（纯函数）。
  * @param {Array<Object>} results 跑测结果（test-runner 产物，含 ✓/✗）
  * @returns {string} 修复请求全文；空串 = 没有失败用例
  */
@@ -1843,7 +1858,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
 单点小改（一行修复 / 文案调整 / 纯问答）不必拆解。清单按会话保存：暂停或刷新后继续时，先核对清单现状再接着做。
 
 ## 场景测试（client/test/*.test.json，防迭代回归）
-重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，收尾前用 preview 的 action=run-tests 跑**本次新增 / 修改的用例文件**（files 参数）到通过（无测试的应用第一次加重要功能时就建立 test/ 目录）。**不要全量跑所有用例**——应用大时全套太久；全量验证由用户在「测试管理」抽屉手动触发，用户发来失败用例清单时，修完只重跑失败的那些文件。用例是 JSON 文件：
+重要功能（交互流程 / 数据存取 / 核心逻辑）必须配场景用例：新增功能随代码一起写用例，改功能时同步更新用例，收尾前用 preview 的 action=run-tests 跑**本次新增 / 修改的用例文件**（files 参数）到通过（无测试的应用第一次加重要功能时就建立 test/ 目录）。**只跑与本次改动对应的用例文件，禁止跑全部**：不要「顺带回归」其他无关用例——即使担心改动影响它们也不跑，全量回归由用户在「开发工具 → 场景测试」里手动触发；用户发来失败用例清单时，修完只重跑失败的那些文件。用例是 JSON 文件：
 \`\`\`json
 { "name": "新增任务", "desc": "多行输入解析标题/描述、空输入禁用、刷新持久化", "steps": [
   { "eval": "T.wipe = async () => { /* 清空自身存储 */ }; await T.wipe();" },
@@ -1858,7 +1873,7 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
 ] }
 \`\`\`
 步骤动作：click（选择器）/ type（{selector,value}）/ press（键名，发给当前焦点元素）/ wait（毫秒数，或 {selector} / {code} 轮询等条件成立——异步渲染优先用它而不是定值睡眠）/ eval（异步函数体：抛错或 return false 即失败）/ reload（重载应用页）/ expect（{text+contains|equals}、{count+equals}、{consoleErrors: 最大新增错误数}）。
-写用例要点：**name 用 ≤12 字的短功能名**（如「新增任务」），细节说明放 desc 字段；一个文件一条主流程，文件名即功能名（client/test/add-task.test.json）；开头先用 eval 清空自身存储再 reload，保证可重复执行（应用自己的存储键你清楚）；选择器以真实代码为准，拿不准先 action=dom 取证。**eval 步骤共享上下文 T**：代码作为异步函数体执行，辅助函数与中间状态挂在 T 上（如 \`T.clickText = (t) => {...}\`），同一用例内后续步骤直接用、**不要重复定义**（reload 后 T 随页面重置）；需要断言值显式 return；选择器可用 $ / $$（穿 shadow DOM）。
+写用例要点：**用例只测本功能，步骤克制**——覆盖该功能的核心行为与直接边界（正常路径 + 关键空态/失败即可），单文件控制在 **10 步以内**（含清场与 reload；写完数一遍，超了就砍：先砍铺垫流程、再砍次要断言）；**禁止把无关功能的操作流程塞进用例**当铺垫或联动验证（如在搜索用例里操作归档 / 删除 / 回收站）——需要特定前置状态时用 eval 直接注入数据，不要绕 UI 长流程；持久化、跨功能联动不属于本功能行为的验证不写进新功能用例（各自有专属用例或归用户全量验证）。**name 用 ≤12 字的短功能名**（如「新增任务」），细节说明放 desc 字段；一个文件一条主流程，文件名即功能名（client/test/add-task.test.json）；开头先用 eval 清空自身存储再 reload，保证可重复执行（应用自己的存储键你清楚）；选择器以真实代码为准，拿不准先 action=dom 取证。**eval 步骤共享上下文 T**：代码作为异步函数体执行，辅助函数与中间状态挂在 T 上（如 \`T.clickText = (t) => {...}\`），同一用例内后续步骤直接用、**不要重复定义**（reload 后 T 随页面重置）；需要断言值显式 return；选择器可用 $ / $$（穿 shadow DOM）。
 
 ## 生成的应用必须遵守的技术规范（ofa.js 框架，无构建步骤）
 ### index.html 模板（必须一致）
@@ -1869,8 +1884,8 @@ export const SYSTEM_PROMPT = `你运行在 Mazmot 虚拟系统的「妙造」（
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>应用名</title>
-    <script src="/gh/ofajs/ofa.js@latest/dist/ofa.mjs#debug" type="module"></script>
-    <script src="/gh/ofajs/ofa.js/libs/router/dist/router.min.mjs" type="module"></script>
+    <script src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug" type="module"></script>
+    <script src="/gh/ofajs/ofa.js@refs/heads/v5/packages/router/dist/router.min.mjs" type="module"></script>
     <script src="/gh/ofajs/senti-ui@main/packages/boot/st-boot.js"></script>
     <style>html,body{height:100%;margin:0}</style>
   </head>
@@ -1897,7 +1912,7 @@ export const home = "./pages/home.html";
 
 ### 平台能力（Mazmot 与 NoneOS Core 双层 API）
 生成的应用运行在 Mazmot 系统内（Mazmot 基于 NoneOS Core 开发），可用两套系统 API：
-- NoneOS Core（/nos/*）：/nos/storage/main.js 键值存储（见「数据持久化」）、/nos/fs/main.js 文件系统、/nos/user/main.js 用户等；
+- NoneOS Core（/nos/*）：/nos/storage/main.js 键值存储（见「数据持久化」）、/nos/fs/main.js 文件系统、/nos/locale-text/locale-text.html 与 get-locale-text.js 多语言文案（见下方「多语言」节）、/nos/user/main.js 用户等；
 - Mazmot 平台（/mz/*）：/mz/net/main.js 联网抓取与搜索（见下一节）、/mz/ai/main.js 多供应商 AI 对话、/mz/share-mgr.js 应用分享等。
 加载约束与 /nos/* 相同：页面模块顶层禁止 import，必须用页面工厂参数注入的 load 按需加载。API 用法不确定时先 read_skill 查知识库（Mazmot 平台 → mazmot-api，NoneOS Core → noneos-core-docs）。
 
@@ -1933,6 +1948,21 @@ export default async ({ load }) => {
   return { data: { /* 声明模板用到的 data 安全默认值 */ } };
 };
 \`\`\`
+
+### 多语言（NoneOS Core locale-text 方案）
+应用界面文案需要支持多语言时，统一用 NoneOS Core 提供的 locale-text 方案（完整 API 与语言判定规则用 read_skill 查 noneos-core-docs 知识库的 locale-text 章节）。**书写格式固定**，不合格式的条目无法被宿主翻译工具提取：
+- HTML 文案包在 \`<locale-text>\` 组件里，每个语种一个带 lang 属性的子元素（页面先声明 \`<l-m src="/nos/locale-text/locale-text.html"></l-m>\`）：
+\`\`\`html
+<locale-text>
+  <span lang="cn">开始</span>
+  <span lang="en">Get Started</span>
+</locale-text>
+\`\`\`
+- 需要拼接动态值时用 {key} 占位符（HTML 用 data-* 属性传值，JS 用第二参数 vars），**禁止模板字符串插值**——基准文本随变量漂移会导致无法收录进翻译表；脚本动态文案用 getLocaleText（页面内 \`await load("/nos/locale-text/get-locale-text.js")\`）：
+\`\`\`js
+getLocaleText({ cn: "网络请求失败: {msg}", en: "Network failed: {msg}" }, { msg });
+\`\`\`
+- 源码里只写 cn / en 两个语种即可；宿主「工具」面板的「多语种翻译」工具会扫描提取全部条目生成 client/locale-text.json，ja / ko 等其他语种由该 JSON 按基准文本 hash 自动回退提供，无需改源码。文案没包进 <locale-text>、脚本没走 getLocaleText 的不会被收录。
 
 ## 硬性约束
 - 只写 UTF-8 文本文件（html/js/css/json/md/txt/svg 等），绝不生成图片/字体等二进制资源；需要图标用 emoji。

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>locale-tool 提取与合并测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="extractJsLangMaps 提取 getLocaleText 调用">
+      <template>
+        <script type="module">
+          import { extractJsLangMaps, baseOf } from "../locale-tool.js";
+          {
+            const src = [
+              "import { getLocaleText } from '/nos/locale-text/get-locale-text.js';",
+              "const a = getLocaleText({ cn: '保存失败', en: 'Save failed' });",
+              "const b = getLocaleText(",
+              "  { cn: '网络请求失败: {msg}', en: 'Network failed: {msg}' },",
+              "  { msg: 'x' },",
+              ");",
+              "const c = getLocaleText(someVar); // 非对象字面量：跳过",
+              "const d = getLocaleText({ cn: '含 } 花括号 { 的文案', en: 'Braces } {' });",
+              "const e = getLocaleText({ ja: 'のみ' });",
+            ].join("\n");
+            const maps = extractJsLangMaps(src);
+            const checks = {
+              count: maps.length === 4,
+              first: maps[0]?.cn === "保存失败" && maps[0]?.en === "Save failed",
+              vars: maps[1]?.cn === "网络请求失败: {msg}",
+              braces: maps[2]?.cn === "含 } 花括号 { 的文案",
+              singleLang: maps[3]?.ja === "のみ",
+              baseCn: baseOf({ cn: "中", en: "E" }).baseText === "中",
+              baseEn: baseOf({ en: "E", ja: "J" }).baseText === "E",
+              baseFirst: baseOf({ ja: "J", ko: "K" }).baseText === "J",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, maps },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="buildLocaleIndex 提取 HTML 的 locale-text 与内联脚本">
+      <template>
+        <script type="module">
+          import { buildLocaleIndex } from "../locale-tool.js";
+          {
+            const html = [
+              "<template page>",
+              '  <l-m src="/nos/locale-text/locale-text.html"></l-m>',
+              "  <div>",
+              "    <locale-text>",
+              '      <span lang="cn">开始使用</span>',
+              '      <span lang="en">Get Started</span>',
+              "    </locale-text>",
+              "    <template>",
+              "      <locale-text>",
+              '        <span lang="cn">模板内嵌</span>',
+              '        <span lang="en">In Template</span>',
+              "      </locale-text>",
+              "    </template>",
+              "  </div>",
+              "  <script>",
+              "    export default async ({ load }) => {",
+              '      const { getLocaleText } = await load("/nos/locale-text/get-locale-text.js");',
+              "      return {",
+              "        proto: {",
+              '          tip() { return getLocaleText({ cn: "提示", en: "Tip" }); },',
+              "        },",
+              "      };",
+              "    };",
+              "  <" + "/script>",
+              "</template>",
+            ].join("\n");
+            const { entries, hitFiles } = await buildLocaleIndex([
+              { path: "pages/home.html", text: html },
+              { path: "README.md", text: "无关文件" },
+              { path: "lib/util.js", text: "export const x = 1;" },
+            ]);
+            const bases = entries.map((e) => e.baseText);
+            const checks = {
+              count: entries.length === 3,
+              hitFiles: hitFiles === 1,
+              node: bases.includes("开始使用"),
+              nested: bases.includes("模板内嵌"),
+              inlineScript: bases.includes("提示"),
+              sourceFile: entries.every((e) => e.sourceFile === "pages/home.html"),
+              nestedLang: entries.find((e) => e.baseText === "模板内嵌")?.langMap.en === "In Template",
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, bases },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="mergeLocaleMap 增量合并与冗余识别">
+      <template>
+        <script type="module">
+          import {
+            buildLocaleIndex,
+            mergeLocaleMap,
+            sha256Hex,
+          } from "../locale-tool.js";
+          {
+            // 已有表：一条命中（kept，已有 ja 翻译保留）、一条已从源码删除（orphaned）
+            const keptText = "旧条目";
+            const orphanText = "已删除的文案";
+            const existing = {
+              [await sha256Hex(keptText)]: { cn: keptText, en: "Old entry", ja: "古い" },
+              [await sha256Hex(orphanText)]: { cn: orphanText, en: "Deleted" },
+            };
+            const { entries } = await buildLocaleIndex([
+              // 命中条目（源码只有 cn/en，ja 由已有 JSON 提供）
+              { path: "a.html", text: "<locale-text><span lang=\"cn\">旧条目</span><span lang=\"en\">Old entry</span></locale-text>" },
+              // 新条目
+              { path: "a.html", text: "<locale-text><span lang=\"cn\">全新条目</span></locale-text>" },
+              // 同 hash 散落两文件：聚合补语种
+              { path: "b.js", text: "getLocaleText({ cn: '同文案', en: 'Same' })" },
+              { path: "c.js", text: "getLocaleText({ cn: '同文案' })" },
+            ]);
+            const r = await mergeLocaleMap(existing, entries);
+
+            const keptHash = await sha256Hex(keptText);
+            const sameHash = await sha256Hex("同文案");
+            const keptRec = r.records.find((x) => x.hash === keptHash);
+            const sameRec = r.records.find((x) => x.hash === sameHash);
+            const newRec = r.records.find((x) => x.baseText === "全新条目");
+            const checks = {
+              counts:
+                r.added === 2 && r.kept === 1 && r.updated === 0 && r.orphaned.length === 1,
+              keptKeepsJa: keptRec?.status === "kept" && r.finalMap[keptHash]?.ja === "古い",
+              newAdded: newRec?.status === "added",
+              orphanContent:
+                r.orphaned[0]?.baseText === orphanText &&
+                r.finalMap[await sha256Hex(orphanText)]?.cn === orphanText,
+              sameAggregated:
+                sameRec?.status === "added" &&
+                r.finalMap[sameHash]?.en === "Same" &&
+                r.finalMap[sameHash]?.cn === "同文案",
+              hashIsSha256Hex: /^[0-9a-f]{64}$/.test(keptHash),
+            };
+            return {
+              assert: Object.values(checks).every(Boolean),
+              content: { checks, records: r.records, orphaned: r.orphaned },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>

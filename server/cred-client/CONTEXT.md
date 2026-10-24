@@ -5,14 +5,14 @@
 ## 项目概览
 
 - **定位**：cred-hub（Rust 版 / CF 版通用）的管理 UI，基于 ofa.js 的单页应用，无构建。
-- **运行环境**：**NoneOS Core 体系外独立运行**——没有 Service Worker 提供 `/gh/`、`/nos/*`，因此入口 `index.html` 与页面模块内的 senti-ui / ofa.js 资源一律使用完整 jsdelivr URL（ofa.js 锁版本 `@4.7.1`，senti-ui 用 `@latest`）；不使用 locale-text / n-icon（属 /nos/*），文案为中文写死。
+- **运行环境**：**NoneOS Core 体系外独立运行**——没有 Service Worker 提供 `/gh/`、`/nos/*`，因此入口 `index.html` 与页面模块内的 senti-ui / ofa.js 资源一律使用完整 jsdelivr URL（ofa.js 走 v5 分支 `@refs/heads/v5`，senti-ui 用 `@latest`）；不使用 locale-text / n-icon（属 /nos/*），文案为中文写死。
 - **边界**：只读——仅调用 `/admin/stats` / `/admin/hot` / `/admin/expiring`；持久化用 localStorage（仅本浏览器）。
 
 ## 目录结构
 
 ```
 server/cred-client/
-├── index.html      # 入口：jsdelivr 加载 ofa.js@4.7.1#debug + <o-page src="./pages/home.html">
+├── index.html      # 入口：jsdelivr 加载 ofa.js v5（`@refs/heads/v5/dist/ofa.min.mjs#debug`）+ <o-page src="./pages/home.html">
 ├── pages/
 │   └── home.html   # 唯一页面模块：连接表单 + 登录过的服务器列表 + 三标签（概览/热点/即将到期）
 ├── README.md       # 运行与使用说明

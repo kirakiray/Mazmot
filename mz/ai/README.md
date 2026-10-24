@@ -36,7 +36,7 @@ OpenAI / Gemini / Anthropic / Qwen / Grok 五家共用 `supplier/openai-compat.j
 入口 HTML 引用 ofa.js（顶层入口走 jsdelivr 完整 URL，模块内用 `/gh/` 本地前缀，详见 [AGENTS.md](../AGENTS.md)）：
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@4.7.1/dist/ofa.mjs#debug" type="module"></script>
+<script src="https://cdn.jsdelivr.net/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug" type="module"></script>
 ```
 
 ```javascript
