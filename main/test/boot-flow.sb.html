@@ -91,6 +91,19 @@
                       "unhandledrejection",
                       (e) => errors.push(String(e.reason && e.reason.message || e.reason)),
                     );
+                    // 资源加载失败（script / module / link）不冒泡也不上
+                    // window.onerror，捕获阶段才能收到——空壳应用页模块静默
+                    // 失败时唯一的线索（帧空白三无：无文本/无错误/无标记）
+                    frame.contentWindow.addEventListener(
+                      "error",
+                      (e) => {
+                        const t = e && e.target;
+                        if (t && t !== frame.contentWindow && (t.src || t.href)) {
+                          errors.push("res: " + (t.src || t.href));
+                        }
+                      },
+                      true,
+                    );
                   } catch (err) {}
                 });
                 frame.__errors = errors;
@@ -134,6 +147,74 @@
                   };
                   poll();
                 });
+              },
+              // 帧现场快照：整页重载计数 / URL / readyState / SW 接管 / body
+              // 子元素数 / 可见文本（跳过 script/style，shadow 穿透）——
+              // 空白帧（about:blank 或空壳）、卡死帧、重置帧一眼可分
+              frameSnapshot(frame) {
+                let url = "(cross)";
+                let readyState = "?";
+                let swController = null;
+                let bodyChildren = -1;
+                let text = "";
+                try {
+                  const win = frame.contentWindow;
+                  url = win.location.href;
+                  readyState = win.document.readyState;
+                  swController = !!(
+                    win.navigator.serviceWorker &&
+                    win.navigator.serviceWorker.controller
+                  );
+                  bodyChildren = win.document.body
+                    ? win.document.body.childElementCount
+                    : -1;
+                } catch (err) {}
+                const SKIP_TAGS = new Set([
+                  "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK", "META", "TITLE",
+                ]);
+                try {
+                  const walk = (node) => {
+                    for (const el of node.querySelectorAll("*")) {
+                      if (text.length >= 300) return;
+                      if (SKIP_TAGS.has(el.tagName)) continue;
+                      if (el.childNodes.length && !el.shadowRoot) {
+                        for (const n of el.childNodes) {
+                          if (n.nodeType === 3 && n.textContent.trim()) {
+                            text += n.textContent.trim() + " ";
+                            if (text.length >= 300) return;
+                          }
+                        }
+                      }
+                      if (el.shadowRoot) walk(el.shadowRoot);
+                    }
+                  };
+                  walk(frame.contentDocument.body);
+                } catch (err) {}
+                return {
+                  frameUrl: url,
+                  frameLoads: frame.__loadCount,
+                  readyState,
+                  swController,
+                  bodyChildren,
+                  uiText: text.slice(0, 300) || "(无文本)",
+                };
+              },
+              // 挂载并等首屏标记，超时换帧重试。CI WebKit 下 SW/缓存偶发
+              // 抖动会让帧空白（空壳 body + 模块静默失败，不触发 window
+              // error）——重挂新帧让 SW 把请求重走一遍，瞬时抖动第二次即
+              // 通过；持续失败才判负，且每次尝试都带现场快照
+              async mountAndWait(src, selector, timeoutMs, retries = 1) {
+                const attempts = [];
+                let frame = null;
+                for (let i = 0; i <= retries; i++) {
+                  if (frame) frame.remove();
+                  frame = this.mountFrame(src);
+                  const hit = await this.waitMarker(frame, selector, timeoutMs);
+                  if (hit.ok) return { ok: true, hit, frame, attempts };
+                  attempts.push(this.frameSnapshot(frame));
+                }
+                frame.remove();
+                return { ok: false, hit: null, frame: null, attempts };
               },
             };
 
@@ -188,6 +269,7 @@
                 readyEventFired,
                 domHit,
                 bootErrors: bootFrame.__errors.slice(0, 5),
+                ...(domHit.ok ? {} : { snapshot: window.__e2e.frameSnapshot(bootFrame) }),
                 hint: domHit.ok
                   ? "ok"
                   : "index.html 引导未渲染出首屏：检查 Core 安装 / 主应用页面模块加载",
@@ -208,7 +290,24 @@
             const storage = getStorage("mazmot");
             await storage.removeItem("welcome-done");
 
-            const frame = window.__e2e.mountFrame("/index.html");
+            let frame = window.__e2e.mountFrame("/index.html");
+            // 首屏：欢迎开场对话；帧空白（SW 瞬时抖动）换帧重试一次
+            let first = await window.__e2e.waitMarker(frame, ".stage .bubble", 45000);
+            if (!first.ok) {
+              frame.remove();
+              frame = window.__e2e.mountFrame("/index.html");
+              first = await window.__e2e.waitMarker(frame, ".stage .bubble", 45000);
+            }
+            if (!first.ok) {
+              return {
+                assert: false,
+                content: {
+                  step: "first-screen",
+                  first,
+                  ...window.__e2e.frameSnapshot(frame),
+                },
+              };
+            }
 
             const deepAll = (doc) => {
               const out = [];
@@ -250,12 +349,6 @@
             };
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-            // 首屏：欢迎开场对话
-            const first = await window.__e2e.waitMarker(frame, ".stage .bubble", 45000);
-            if (!first.ok) {
-              return { assert: false, content: { step: "first-screen", first } };
-            }
-
             // 通用推进器：命中目标文案即停；否则依次尝试点击给定按钮；没有
             // 可点按钮且屏幕存在时点屏幕推进对话（打字中则先补全文案）。
             // 关键自恢复能力：欢迎流程可能在引导中途被整页重置回开场对话
@@ -291,44 +384,6 @@
                 await sleep(300);
               }
             };
-            // 失败现场快照：body 可见文本（跳过 script/style，shadow 穿透）、
-            // 帧整页重载计数与 URL——区分「整页被重置」与「流程卡住不动」
-            const uiSnapshot = () => {
-              let url = "(cross)";
-              try {
-                url = frame.contentWindow.location.href;
-              } catch (err) {}
-              const doc = doc0();
-              const loads = frame.__loadCount;
-              if (!doc || !doc.body) {
-                return { frameUrl: url, frameLoads: loads, uiText: "(无 body)" };
-              }
-              const SKIP_TAGS = new Set([
-                "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "LINK", "META",
-              ]);
-              let out = "";
-              const walk = (node) => {
-                for (const el of node.querySelectorAll("*")) {
-                  if (out.length >= 400) return;
-                  if (SKIP_TAGS.has(el.tagName)) continue;
-                  if (el.childNodes.length && !el.shadowRoot) {
-                    for (const n of el.childNodes) {
-                      if (n.nodeType === 3 && n.textContent.trim()) {
-                        out += n.textContent.trim() + " ";
-                        if (out.length >= 400) return;
-                      }
-                    }
-                  }
-                  if (el.shadowRoot) walk(el.shadowRoot);
-                }
-              };
-              walk(doc.body);
-              return {
-                frameUrl: url,
-                frameLoads: loads,
-                uiText: out.slice(0, 400) || "(body 无文本)",
-              };
-            };
 
             // 阶段 1：推进开场对话到 Key 步骤（跳过按钮，或「已配置可用的
             // AI Key」文案——keyFound 中英文案都要能命中，原文的正则
@@ -339,7 +394,10 @@
               60000,
             );
             if (!keyHit.ok) {
-              return { assert: false, content: { step: "key", keyHit, ...uiSnapshot() } };
+              return {
+                assert: false,
+                content: { step: "key", keyHit, ...window.__e2e.frameSnapshot(frame) },
+              };
             }
 
             // 阶段 2：跳过 Key（环境已有可用 Key 时点「下一步」分支），推进
@@ -361,7 +419,12 @@
             if (!finishHit.ok) {
               return {
                 assert: false,
-                content: { keyHit, purposeHit, finishHit, ...uiSnapshot() },
+                content: {
+                  keyHit,
+                  purposeHit,
+                  finishHit,
+                  ...window.__e2e.frameSnapshot(frame),
+                },
               };
             }
             clickText(FINISH_RE);
@@ -375,6 +438,7 @@
                 purposeHit,
                 finishHit,
                 listed,
+                ...(listed.ok ? {} : { snapshot: window.__e2e.frameSnapshot(frame) }),
                 welcomeDone: welcomeDone || null,
               },
             };
@@ -550,19 +614,24 @@
             }
             const runUrl = await getRunUrl(todoRec);
 
-            const frame = window.__e2e.mountFrame(runUrl);
-            const hit = await window.__e2e.waitMarker(
-              frame,
+            // CI WebKit 下帧偶发空白（空壳 body + 模块静默失败，不触发
+            // window error）：超时换帧重挂让 SW 重走请求，瞬时抖动第二次即过
+            const run = await window.__e2e.mountAndWait(
+              runUrl,
               ".shell .side-title",
               45000,
+              1,
             );
             return {
-              assert: hit.ok,
+              assert: run.ok,
               content: {
                 runUrl,
-                hit,
-                pageErrors: frame.__errors.slice(0, 5),
-                hint: hit.ok ? "ok" : "todo 首屏未渲染：看 fatal 字段（含「加载页面模块」即副本缺文件）",
+                hit: run.hit,
+                attempts: run.attempts,
+                pageErrors: run.frame ? run.frame.__errors.slice(0, 8) : [],
+                hint: run.ok
+                  ? "ok"
+                  : "todo 首屏未渲染：看 attempts 各帧快照与 pageErrors（res: 开头即资源加载失败地址）",
               },
             };
           }
@@ -590,25 +659,26 @@
             }
             const runUrl = await getRunUrl(conjureRec);
 
-            const frame = window.__e2e.mountFrame(runUrl);
             // 用户报障即 boot 期 home.html（布局壳）加载失败——顶栏 brand
             // 渲染出来 = home.html + chat.html 双层页面模块都加载成功。
-            // conjure 首屏拉起大量 senti-ui 组件，超时给足
-            const hit = await window.__e2e.waitMarker(
-              frame,
+            // conjure 首屏拉起大量 senti-ui 组件，超时给足；同款换帧重试
+            const run = await window.__e2e.mountAndWait(
+              runUrl,
               ".app .topbar .brand",
               90000,
+              1,
             );
 
             return {
-              assert: hit.ok,
+              assert: run.ok,
               content: {
                 runUrl,
-                hit,
-                pageErrors: frame.__errors.slice(0, 5),
-                hint: hit.ok
+                hit: run.hit,
+                attempts: run.attempts,
+                pageErrors: run.frame ? run.frame.__errors.slice(0, 8) : [],
+                hint: run.ok
                   ? "ok"
-                  : "conjure 首屏未渲染：看 fatal 字段——「加载页面模块 …/pages/home.html 失败」即用户反馈的故障形态",
+                  : "conjure 首屏未渲染：看 attempts 与 pageErrors——「加载页面模块 …/pages/home.html 失败」即用户反馈的故障形态",
               },
             };
           }
