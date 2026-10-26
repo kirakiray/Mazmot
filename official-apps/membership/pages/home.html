@@ -1133,26 +1133,23 @@
             <div class="pay-method-name">
               <span>Stripe</span>
               <span class="pay-method-badge">
-                <locale-text><span lang="cn">银行卡 / 支付宝</span><span lang="en">Card / Alipay</span></locale-text>
+                <locale-text><span lang="cn">仅银行卡</span><span lang="en">Card only</span></locale-text>
               </span>
-              <span class="pay-method-brands" aria-label="Visa, Mastercard, Alipay">
+              <span class="pay-method-brands" aria-label="Visa, Mastercard">
                 <span class="card-brand">VISA</span>
                 <span class="card-brand">Mastercard</span>
-                <span class="card-brand">
-                  <locale-text><span lang="cn">支付宝</span><span lang="en">Alipay</span></locale-text>
-                </span>
               </span>
             </div>
             <div class="pay-method-desc">
               <locale-text>
-                <span lang="cn">支持 Visa / Mastercard 等银行卡与支付宝；点击支付会打开 Stripe 托管收银台，选择支付宝扫码或跳转支付，成功后自动开通。</span>
-                <span lang="en">Visa / Mastercard cards and Alipay are supported. Paying opens the hosted Stripe checkout where you can choose Alipay; membership activates automatically after payment.</span>
+                <span lang="cn">支持 Visa / Mastercard 等主流信用卡与借记卡；点击支付会打开 Stripe 托管收银台，支付成功后自动开通。</span>
+                <span lang="en">Visa / Mastercard and other major credit or debit cards are supported. Paying opens the hosted Stripe checkout and activates membership automatically.</span>
               </locale-text>
             </div>
           </div>
         </div>
         </o-if>
-        <o-if :value="!discountFree && paymentMode !== 'stripe'">
+        <o-if :value="!discountFree">
         <div class="pay-card-grid">
           <div class="field">
             <label class="field-label"><locale-text><span lang="cn">卡号</span><span lang="en">Card number</span></locale-text></label>
@@ -1600,8 +1597,6 @@
           step: "form",
           isOnboarding,
           showPurchaseFlow: isOnboarding,
-          // 支付模式由 GET /api/plans 返回：stripe 不显示本地卡号表单；mock 才显示测试卡
-          paymentMode: "stripe",
           serverName: "Synchratex",
           userId: "",
 
@@ -1840,14 +1835,11 @@
             this.discountSaveText = "";
             this.discountError = "";
             if (clearInput) this.discountCode = "";
-            this.payValid =
-              this.paymentMode === "stripe"
-                ? true
-                : isValidMockCard({
-                    number: this.cardNumber,
-                    expiry: this.cardExpiry,
-                    cvc: this.cardCvc,
-                  });
+            this.payValid = isValidMockCard({
+              number: this.cardNumber,
+              expiry: this.cardExpiry,
+              cvc: this.cardCvc,
+            });
             this.syncPayAmount();
           },
 
@@ -1961,17 +1953,7 @@
             try {
               const { status, data } = await api.plans();
               if (status === 200 && data && Array.isArray(data.plans)) {
-                this.paymentMode = (data.payment && data.payment.mode) || "stripe";
                 this.applyPlans(data.plans);
-                // Stripe 模式直接跳托管收银台，不需要本地卡号校验
-                this.payValid =
-                  this.paymentMode === "stripe"
-                    ? true
-                    : isValidMockCard({
-                        number: this.cardNumber,
-                        expiry: this.cardExpiry,
-                        cvc: this.cardCvc,
-                      });
               }
             } catch (err) {
               console.warn("[membership] 读取套餐失败，使用兜底价格：", err);
@@ -2349,7 +2331,7 @@
           },
 
           onCardInput() {
-            if (this.discountFree || this.paymentMode === "stripe") {
+            if (this.discountFree) {
               this.payValid = true;
               return;
             }
@@ -2454,7 +2436,7 @@
 
           async payNow() {
             if (this.paying) return;
-            if (!this.discountFree && this.paymentMode !== "stripe") {
+            if (!this.discountFree) {
               this.payValid = isValidMockCard({
                 number: this.cardNumber,
                 expiry: this.cardExpiry,
