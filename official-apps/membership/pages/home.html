@@ -550,41 +550,36 @@
       font-variant-numeric: tabular-nums;
     }
 
-    /* ===== 优惠码 ===== */
-    .discount-box {
+    /* ===== 优惠码（底部小行） ===== */
+    .discount-compact {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding: 12px;
-      border: 1px dashed var(--md-sys-color-outline-variant);
-      border-radius: 14px;
-      background-color: var(--md-sys-color-surface-container-lowest);
+      gap: 6px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--md-sys-color-outline-variant);
     }
-    .discount-head {
+    .discount-compact-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 8px;
+      flex-wrap: wrap;
     }
     .discount-label {
+      flex-shrink: 0;
       font-size: 12px;
       font-weight: 600;
       color: var(--md-sys-color-on-surface-variant);
+    }
+    .discount-compact st-input {
+      flex: 1 1 160px;
+      min-width: 140px;
+      max-width: 240px;
     }
     .discount-applied {
       font-size: 11px;
       font-weight: 600;
       color: var(--md-sys-color-primary);
       word-break: break-all;
-    }
-    .discount-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .discount-row st-input {
-      flex: 1;
-      min-width: 0;
     }
     .discount-error {
       margin: 0;
@@ -955,50 +950,6 @@
             </button>
           </div>
         </div>
-        <div class="discount-box">
-          <div class="discount-head">
-            <span class="discount-label">
-              <locale-text><span lang="cn">优惠码</span><span lang="en">Discount code</span></locale-text>
-            </span>
-            <o-if :value="discountApplied">
-              <span class="discount-applied" data-testid="pay-discount-applied">
-                {{discountAppliedCode}} · {{discountFoldText}}
-              </span>
-            </o-if>
-          </div>
-          <div class="discount-row">
-            <st-input
-              data-testid="pay-discount-code"
-              sync:value="discountCode"
-              attr:placeholder="discountPlaceholder"
-              on:input="onDiscountInput"
-            ></st-input>
-            <st-button
-              variant="outlined"
-              data-testid="pay-discount-apply"
-              attr:disabled="discountLoading"
-              on:click="applyDiscount"
-            >
-              {{discountLoading ? discountApplyingText : discountApplyText}}
-            </st-button>
-            <o-if :value="discountApplied">
-              <st-button variant="text" data-testid="pay-discount-clear" on:click="clearDiscount">
-                ×
-              </st-button>
-            </o-if>
-          </div>
-          <o-if :value="discountError">
-            <p class="discount-error" data-testid="pay-discount-error">{{discountError}}</p>
-          </o-if>
-          <o-if :value="discountFree">
-            <p class="discount-free" data-testid="pay-discount-free">
-              <locale-text>
-                <span lang="cn">0 折优惠码：本次免费领取，不需要填写支付信息。</span>
-                <span lang="en">100% off: this membership is free — no payment details needed.</span>
-              </locale-text>
-            </p>
-          </o-if>
-        </div>
         <o-if :value="!discountFree">
         <div class="pay-method">
           <n-icon class="pay-method-icon" icon="mdi:credit-card-outline"></n-icon>
@@ -1053,6 +1004,46 @@
           <span>{{payMockHint}}</span>
         </div>
         </o-if>
+        <div class="discount-compact">
+          <div class="discount-compact-row">
+            <span class="discount-label">
+              <locale-text><span lang="cn">优惠码</span><span lang="en">Discount code</span></locale-text>
+            </span>
+            <st-input
+              data-testid="pay-discount-code"
+              sync:value="discountCode"
+              attr:placeholder="discountPlaceholder"
+              on:input="onDiscountInput"
+            ></st-input>
+            <st-button
+              variant="outlined"
+              data-testid="pay-discount-apply"
+              attr:disabled="discountLoading"
+              on:click="applyDiscount"
+            >
+              {{discountLoading ? discountApplyingText : discountApplyText}}
+            </st-button>
+            <o-if :value="discountApplied">
+              <span class="discount-applied" data-testid="pay-discount-applied">
+                {{discountAppliedCode}} · {{discountFoldText}}
+              </span>
+              <st-button variant="text" data-testid="pay-discount-clear" on:click="clearDiscount">
+                ×
+              </st-button>
+            </o-if>
+          </div>
+          <o-if :value="discountError">
+            <p class="discount-error" data-testid="pay-discount-error">{{discountError}}</p>
+          </o-if>
+          <o-if :value="discountFree">
+            <p class="discount-free" data-testid="pay-discount-free">
+              <locale-text>
+                <span lang="cn">0 折优惠码：本次免费领取，不需要填写支付信息。</span>
+                <span lang="en">100% off: this membership is free — no payment details needed.</span>
+              </locale-text>
+            </p>
+          </o-if>
+        </div>
         <div class="actions">
           <span class="pay-total">
             <locale-text><span lang="cn">应付</span><span lang="en">Total</span></locale-text>
