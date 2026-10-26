@@ -62,13 +62,28 @@ export function confirmCode(ticketId, code) {
 }
 
 /**
- * 下单（服务端 mock Stripe 支付成功后返回邀请码）。
- * `planId` 可覆盖发码时选的套餐（支付步骤里用户还能改月度/年度）。
+ * 下单（服务端 mock Stripe / Stripe Checkout；0 元优惠码由服务端直接发货）。
+ * `planId` 可覆盖发码时选的套餐；`discountCode` 为支付页输入的优惠码。
  */
-export function checkout(ticketId, planId) {
+export function checkout(ticketId, planId, discountCode) {
   return request("/api/membership/checkout", {
     method: "POST",
-    body: { ticketId, ...(planId ? { planId } : {}) },
+    body: {
+      ticketId,
+      ...(planId ? { planId } : {}),
+      ...(discountCode ? { discountCode } : {}),
+    },
+  });
+}
+
+/**
+ * 优惠码试算：返回指定套餐优惠后的原价 / 让利 / 实付 / 是否免费。
+ * 需要已验证的票据（ticketId）来校验「同一用户只能用一次」。
+ */
+export function previewDiscount(ticketId, planId, code) {
+  return request("/api/membership/discount/preview", {
+    method: "POST",
+    body: { ticketId, planId, code },
   });
 }
 

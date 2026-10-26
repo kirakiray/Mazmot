@@ -473,6 +473,15 @@
       font-weight: 500;
       opacity: 0.75;
     }
+    .plan-option-original {
+      margin-right: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: inherit;
+      opacity: 0.6;
+      text-decoration: line-through;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* ===== 支付 ===== */
     .pay-method {
@@ -533,6 +542,61 @@
       font-size: 15px;
       color: var(--md-sys-color-on-surface);
       font-variant-numeric: tabular-nums;
+    }
+    .pay-original {
+      margin: 0 6px;
+      color: var(--md-sys-color-on-surface-variant);
+      text-decoration: line-through;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ===== 优惠码 ===== */
+    .discount-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border: 1px dashed var(--md-sys-color-outline-variant);
+      border-radius: 14px;
+      background-color: var(--md-sys-color-surface-container-lowest);
+    }
+    .discount-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .discount-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .discount-applied {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--md-sys-color-primary);
+      word-break: break-all;
+    }
+    .discount-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .discount-row st-input {
+      flex: 1;
+      min-width: 0;
+    }
+    .discount-error {
+      margin: 0;
+      font-size: 12px;
+      color: var(--md-sys-color-error);
+      line-height: 1.5;
+    }
+    .discount-free {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--md-sys-color-primary);
     }
 
     /* ===== 成功页 ===== */
@@ -866,7 +930,12 @@
               <span class="plan-option-top">
                 <span class="plan-option-name">{{monthlyName}}</span>
               </span>
-              <span class="plan-option-price">{{monthlyPrice}}<span class="plan-option-per">{{monthlyPeriod}}</span></span>
+              <span class="plan-option-price">
+                <o-if :value="monthlyHasDiscount">
+                  <s class="plan-option-original">{{monthlyPrice}}</s>
+                </o-if>
+                {{monthlyFinalPrice}}<span class="plan-option-per">{{monthlyPeriod}}</span>
+              </span>
             </button>
             <button
               class="plan-option"
@@ -877,10 +946,60 @@
                 <span class="plan-option-name">{{annualName}}</span>
                 <span class="plan-badge">{{annualBadge}}</span>
               </span>
-              <span class="plan-option-price">{{annualPrice}}<span class="plan-option-per">{{annualPeriod}}</span></span>
+              <span class="plan-option-price">
+                <o-if :value="annualHasDiscount">
+                  <s class="plan-option-original">{{annualPrice}}</s>
+                </o-if>
+                {{annualFinalPrice}}<span class="plan-option-per">{{annualPeriod}}</span>
+              </span>
             </button>
           </div>
         </div>
+        <div class="discount-box">
+          <div class="discount-head">
+            <span class="discount-label">
+              <locale-text><span lang="cn">优惠码</span><span lang="en">Discount code</span></locale-text>
+            </span>
+            <o-if :value="discountApplied">
+              <span class="discount-applied" data-testid="pay-discount-applied">
+                {{discountAppliedCode}} · {{discountFoldText}}
+              </span>
+            </o-if>
+          </div>
+          <div class="discount-row">
+            <st-input
+              data-testid="pay-discount-code"
+              sync:value="discountCode"
+              attr:placeholder="discountPlaceholder"
+              on:input="onDiscountInput"
+            ></st-input>
+            <st-button
+              variant="outlined"
+              data-testid="pay-discount-apply"
+              attr:disabled="discountLoading"
+              on:click="applyDiscount"
+            >
+              {{discountLoading ? discountApplyingText : discountApplyText}}
+            </st-button>
+            <o-if :value="discountApplied">
+              <st-button variant="text" data-testid="pay-discount-clear" on:click="clearDiscount">
+                ×
+              </st-button>
+            </o-if>
+          </div>
+          <o-if :value="discountError">
+            <p class="discount-error" data-testid="pay-discount-error">{{discountError}}</p>
+          </o-if>
+          <o-if :value="discountFree">
+            <p class="discount-free" data-testid="pay-discount-free">
+              <locale-text>
+                <span lang="cn">0 折优惠码：本次免费领取，不需要填写支付信息。</span>
+                <span lang="en">100% off: this membership is free — no payment details needed.</span>
+              </locale-text>
+            </p>
+          </o-if>
+        </div>
+        <o-if :value="!discountFree">
         <div class="pay-method">
           <n-icon class="pay-method-icon" icon="mdi:credit-card-outline"></n-icon>
           <div class="pay-method-body">
@@ -895,6 +1014,8 @@
             </div>
           </div>
         </div>
+        </o-if>
+        <o-if :value="!discountFree">
         <div class="pay-card-grid">
           <div class="field">
             <label class="field-label"><locale-text><span lang="cn">卡号</span><span lang="en">Card number</span></locale-text></label>
@@ -931,16 +1052,25 @@
           <n-icon icon="mdi:flask-outline"></n-icon>
           <span>{{payMockHint}}</span>
         </div>
+        </o-if>
         <div class="actions">
           <span class="pay-total">
             <locale-text><span lang="cn">应付</span><span lang="en">Total</span></locale-text>
+            <o-if :value="discountApplied">
+              <s class="pay-original" data-testid="pay-original">{{payOriginalText}}</s>
+            </o-if>
             <strong>{{payAmountText}}</strong>
+            <o-if :value="discountApplied">
+              <o-if :value="discountSaveText">
+                <span class="discount-applied"> · {{discountSaveText}}</span>
+              </o-if>
+            </o-if>
           </span>
           <st-button variant="text" on:click="backToCode">
             <n-icon icon="mdi:arrow-left" slot="prefix"></n-icon>
             <locale-text><span lang="cn">上一步</span><span lang="en">Back</span></locale-text>
           </st-button>
-          <st-button color="primary" attr:disabled="paying || !payValid" on:click="payNow">
+          <st-button color="primary" attr:disabled="paying || (discountFree ? false : !payValid)" on:click="payNow">
             <n-icon icon="mdi:lock-outline" slot="prefix"></n-icon>
             <o-if :value="!paying">
               <span>{{payButtonText}}</span>
@@ -1205,6 +1335,17 @@
           cn: "服务端 mock 支付：测试卡已预填，不会真实扣款。",
           en: "Server-side mock payment: test card prefilled, no real charge.",
         },
+        discountPlaceholder: { cn: "输入优惠码", en: "Enter a discount code" },
+        discountApply: { cn: "应用", en: "Apply" },
+        discountApplying: { cn: "校验中…", en: "Checking..." },
+        discountEmpty: { cn: "请输入优惠码", en: "Enter a discount code" },
+        discountInvalid: { cn: "优惠码不可用", en: "Discount code is not available" },
+        discountFreeLabel: { cn: "免费（0 折）", en: "Free (100% off)" },
+        discountPlanChanged: {
+          cn: "套餐已切换，请重新应用优惠码",
+          en: "Plan changed — apply the discount code again.",
+        },
+        payFreeButton: { cn: "免费领取", en: "Claim for free" },
         copyUserIdTitle: { cn: "复制用户 ID", en: "Copy user ID" },
         userIdCopied: { cn: "用户 ID 已复制", en: "User ID copied" },
         copyFailed: { cn: "复制失败，请手动复制", en: "Copy failed, please copy manually" },
@@ -1294,11 +1435,33 @@
           annualName: planName("annual"),
           monthlyPrice: "$10",
           annualPrice: "$100",
+          monthlyFinalPrice: "$10",
+          annualFinalPrice: "$100",
+          monthlyHasDiscount: false,
+          annualHasDiscount: false,
           monthlyPeriod: getLocaleText({ cn: "/ 月", en: "/ month" }),
           annualPeriod: getLocaleText({ cn: "/ 年", en: "/ year" }),
           annualBadge: "",
           payAmountText: "$10",
           payButtonText: getLocaleText({ cn: "支付 $10（模拟）", en: "Pay $10 (mock)" }),
+
+          // 优惠码（支付页）
+          discountCode: "",
+          discountPlaceholder: t("discountPlaceholder"),
+          discountApplyText: t("discountApply"),
+          discountApplyingText: t("discountApplying"),
+          discountError: "",
+          discountLoading: false,
+          discountApplied: false,
+          discountAppliedCode: "",
+          discountPercent: 100,
+          discountFoldText: "",
+          discountFree: false,
+          discountAmountCents: 0,
+          discountOriginalCents: 0,
+          discountSaveText: "",
+          payOriginalText: "",
+          pendingAmountText: "",
 
           // 步骤 1
           email: "",
@@ -1359,6 +1522,19 @@
           if (query && query.pay === "return" && this.step === "form") {
             this.step = "pay";
             this.waitingPayment = true;
+            try {
+              const raw = sessionStorage.getItem("membership-pending-pay");
+              if (raw) {
+                const saved = JSON.parse(raw);
+                if (saved.planId) this.planId = saved.planId;
+                if (saved.amountText) {
+                  this.pendingAmountText = saved.amountText;
+                  this.payAmountText = saved.amountText;
+                }
+              }
+            } catch (err) {
+              console.warn("[membership] 读取待支付金额失败：", err);
+            }
             this.startPollBinding();
           }
           await this.loadPlans();
@@ -1394,20 +1570,138 @@
             this.syncPayAmount();
           },
 
+          syncPlanPrices() {
+            const monthly = this.plans.find((item) => item.id === "monthly") || FALLBACK_PLANS[0];
+            const annual = this.plans.find((item) => item.id === "annual") || FALLBACK_PLANS[1];
+            const monthlyOriginal = priceText(monthly.price_cents, "USD");
+            const annualOriginal = priceText(annual.price_cents, "USD");
+            this.monthlyPrice = monthlyOriginal;
+            this.annualPrice = annualOriginal;
+            this.monthlyHasDiscount = this.discountApplied && this.planId === "monthly";
+            this.annualHasDiscount = this.discountApplied && this.planId === "annual";
+            this.monthlyFinalPrice = this.monthlyHasDiscount
+              ? priceText(this.discountAmountCents, "USD")
+              : monthlyOriginal;
+            this.annualFinalPrice = this.annualHasDiscount
+              ? priceText(this.discountAmountCents, "USD")
+              : annualOriginal;
+          },
+
           syncPayAmount() {
+            this.syncPlanPrices();
             const plan = this.plans.find((item) => item.id === this.planId) || this.plans[0];
-            const amount = priceText(plan.price_cents, "USD");
-            this.payAmountText = amount;
-            this.payButtonText = getLocaleText({
-              cn: `支付 ${amount}（模拟）`,
-              en: `Pay ${amount} (mock)`,
-            });
+            const originalCents = Number(plan.price_cents) || 0;
+            const amountCents = this.discountApplied
+              ? Number(this.discountAmountCents) || 0
+              : originalCents;
+            this.payOriginalText = priceText(originalCents, "USD");
+            this.payAmountText = priceText(amountCents, "USD");
+            this.payButtonText = this.discountFree
+              ? t("payFreeButton")
+              : getLocaleText({
+                  cn: `支付 ${priceText(amountCents, "USD")}（模拟）`,
+                  en: `Pay ${priceText(amountCents, "USD")} (mock)`,
+                });
           },
 
           pickPlan(id) {
             if (id !== "monthly" && id !== "annual") return;
             this.planId = id;
+            if (this.discountApplied) {
+              this.resetDiscount(false);
+              this.discountError = t("discountPlanChanged");
+            }
             this.syncPayAmount();
+          },
+
+          resetDiscount(clearInput) {
+            this.discountApplied = false;
+            this.discountAppliedCode = "";
+            this.discountPercent = 100;
+            this.discountFoldText = "";
+            this.discountFree = false;
+            this.discountAmountCents = 0;
+            this.discountOriginalCents = 0;
+            this.discountSaveText = "";
+            this.discountError = "";
+            if (clearInput) this.discountCode = "";
+            this.payValid = isValidMockCard({
+              number: this.cardNumber,
+              expiry: this.cardExpiry,
+              cvc: this.cardCvc,
+            });
+            this.syncPayAmount();
+          },
+
+          onDiscountInput(event) {
+            this.discountCode = event.target.value;
+            this.discountError = "";
+            if (
+              this.discountApplied &&
+              this.discountCode.trim().toUpperCase() !== this.discountAppliedCode.toUpperCase()
+            ) {
+              this.resetDiscount(false);
+            }
+          },
+
+          clearDiscount() {
+            this.resetDiscount(true);
+          },
+
+          async applyDiscount() {
+            if (this.discountLoading) return;
+            const code = String(this.discountCode || "").trim();
+            if (!code) {
+              this.discountError = t("discountEmpty");
+              return;
+            }
+            if (!this.ticketId) {
+              this.discountError = t("discountInvalid");
+              return;
+            }
+            this.discountLoading = true;
+            this.discountError = "";
+            try {
+              const { status, data } = await api.previewDiscount(this.ticketId, this.planId, code);
+              if (status === 200 && data && data.ok) {
+                this.discountApplied = true;
+                this.discountAppliedCode = data.code;
+                this.discountCode = data.code;
+                this.discountPercent = data.discountPercent;
+                this.discountAmountCents = data.amountCents;
+                this.discountOriginalCents = data.originalAmountCents;
+                this.discountFree = Boolean(data.free);
+                this.discountFoldText = data.free
+                  ? t("discountFreeLabel")
+                  : getLocaleText({
+                      cn: `${data.fold} 折`,
+                      en: `${100 - Math.round(data.discountPercent)}% off`,
+                    });
+                this.discountSaveText = data.discountCents
+                  ? getLocaleText({
+                      cn: `省 ${priceText(data.discountCents, data.currency || "USD")}`,
+                      en: `Save ${priceText(data.discountCents, data.currency || "USD")}`,
+                    })
+                  : "";
+                this.payValid = true;
+                this.syncPayAmount();
+                return;
+              }
+              console.error("[membership] 优惠码试算失败", {
+                url: "POST /api/membership/discount/preview",
+                status,
+                data,
+              });
+              this.resetDiscount(false);
+              this.discountError =
+                (data && data.error && data.error.message) || t("discountInvalid");
+            } catch (err) {
+              console.error("[membership] 优惠码试算失败（网络层）", err);
+              this.resetDiscount(false);
+              this.discountError = t("networkError", { msg: err.message || err });
+            } finally {
+              this.discountLoading = false;
+            }
           },
 
           async loadUser() {
@@ -1583,6 +1877,13 @@
           // 发码成功后的共用收口（首次发送与重新发送共用）
           applySendResult(data) {
             this.ticketId = data.ticketId;
+            // 新票据 = 新支付会话：清掉上一轮优惠码试算结果与待支付金额，避免拿旧价格下单。
+            this.resetDiscount(true);
+            try {
+              sessionStorage.removeItem("membership-pending-pay");
+            } catch {
+              // 忽略
+            }
             this.rebindNotice = data.rebind ? t("rebindNotice") : "";
             this.mockCode = data.mockCode || "";
             // 只有 mock 模式（服务端回传 mockEmail/mockCode）才展示演示码气泡
@@ -1705,6 +2006,10 @@
           },
 
           onCardInput() {
+            if (this.discountFree) {
+              this.payValid = true;
+              return;
+            }
             this.payValid = isValidMockCard({
               number: this.cardNumber,
               expiry: this.cardExpiry,
@@ -1763,7 +2068,14 @@
 
             this.doneTitle = getLocaleText({ cn: "购买成功", en: "Purchase complete" });
             this.donePlanName = planName(member.planId, "");
-            this.doneAmountText = this.planId === "annual" ? this.annualPrice : this.monthlyPrice;
+            this.doneAmountText =
+              this.pendingAmountText ||
+              (this.planId === "annual" ? this.annualPrice : this.monthlyPrice);
+            try {
+              sessionStorage.removeItem("membership-pending-pay");
+            } catch {
+              // sessionStorage 不可用时忽略（只影响刷新后的金额展示）
+            }
             this.doneServerText = serverUrl;
             this.doneEmail = member.email;
             this.doneExpireText = formatDate(member.expiresAt);
@@ -1797,16 +2109,22 @@
 
           async payNow() {
             if (this.paying) return;
-            this.payValid = isValidMockCard({
-              number: this.cardNumber,
-              expiry: this.cardExpiry,
-              cvc: this.cardCvc,
-            });
-            if (!this.payValid) return;
+            if (!this.discountFree) {
+              this.payValid = isValidMockCard({
+                number: this.cardNumber,
+                expiry: this.cardExpiry,
+                cvc: this.cardCvc,
+              });
+              if (!this.payValid) return;
+            }
 
             this.paying = true;
             try {
-              const { status, data } = await api.checkout(this.ticketId, this.planId);
+              const { status, data } = await api.checkout(
+                this.ticketId,
+                this.planId,
+                this.discountApplied ? this.discountAppliedCode : "",
+              );
               if (status !== 200 || !data || !data.ok) {
                 console.error("[membership] 下单失败", { url: "POST /api/membership/checkout", status, data });
                 // 502 = 创建支付会话失败（Stripe 不可用 / 配置缺失等），整页提示不可购买
@@ -1826,6 +2144,17 @@
               // 支付结果由服务端 webhook 异步发货，本页轮询绑定状态等生效
               if (data.pending && data.checkoutUrl) {
                 this.waitingPayment = true;
+                try {
+                  sessionStorage.setItem(
+                    "membership-pending-pay",
+                    JSON.stringify({
+                      planId: this.planId,
+                      amountText: this.payAmountText,
+                    }),
+                  );
+                } catch {
+                  // 存不了就退回按套餐原价展示完成页金额
+                }
                 this.startPollBinding();
                 window.open(data.checkoutUrl, "_blank");
                 return;
@@ -1845,7 +2174,14 @@
                 en: "Purchase complete",
               });
               this.donePlanName = planName(data.member.planId, data.member.planName);
-              this.doneAmountText = priceText(data.order.amountCents, data.order.currency);
+              this.doneAmountText = data.free
+                ? getLocaleText({ cn: "免费（0 折）", en: "Free (100% off)" })
+                : priceText(data.order.amountCents, data.order.currency);
+              try {
+                sessionStorage.removeItem("membership-pending-pay");
+              } catch {
+                // 忽略
+              }
               this.doneServerText = serverUrl;
               this.doneEmail = data.member.email;
               this.doneExpireText = formatDate(data.member.expiresAt);
