@@ -608,7 +608,7 @@
     <div class="membership-body">
       <o-if :value="memberDialogOpen">
         <o-app
-          src="/official-apps/membership/app-config.js"
+          src="/official-apps/membership/app-config-onboarding.js"
           on:membership-purchased="handleMembershipPurchased"
           on:membership-close="handleMembershipClose"
         ></o-app>
@@ -1001,6 +1001,11 @@
             enqueueOfficialInstalls(["membership"]).catch((err) => {
               console.warn("[welcome] 会员中心安装入队失败：", err);
             });
+            if (this.choice) {
+              this.buildPickedApps().catch((err) => {
+                console.warn("[welcome] 刷新会员中心应用块失败：", err);
+              });
+            }
             toast({
               message: getLocaleText({
                 cn: "会员开通成功，关闭弹窗后将自动配置中转 Key",
@@ -1092,6 +1097,10 @@
 
           async buildPickedApps() {
             const ids = plan.getAppIdsForPurpose(this.choice);
+            // 已购买会员：把会员中心也放进「为你准备的应用」列表，用户在这里就能看到它。
+            if (this._membershipPurchased && !ids.includes("membership")) {
+              ids.unshift("membership");
+            }
             const apps = (await storage.getItem("apps")) || [];
             const metas = await Promise.all(
               ids.map((id) => loadOfficialAppMeta(id).catch(() => null)),

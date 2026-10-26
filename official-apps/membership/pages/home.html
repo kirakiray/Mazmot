@@ -178,6 +178,11 @@
       font-size: 11px;
       opacity: 0.7;
     }
+    .dashboard-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
 
     /* ===== 权益 ===== */
     .benefits {
@@ -597,6 +602,22 @@
       background-color: var(--md-sys-color-primary-container);
       color: var(--md-sys-color-on-primary-container);
     }
+    .pay-method-brands {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-left: 2px;
+    }
+    .card-brand {
+      padding: 1px 5px;
+      border: 1px solid var(--md-sys-color-outline);
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+    }
     .pay-method-desc {
       margin-top: 2px;
       font-size: 11px;
@@ -881,6 +902,17 @@
       </div>
     </o-if>
 
+    <!-- 已安装应用打开（非引导购买流程）：只展示账号概览，续费需要用户主动展开流程 -->
+    <o-if :value="hasBinding && !showPurchaseFlow">
+      <div class="dashboard-actions">
+        <st-button variant="outlined" on:click="startRenewal">
+          <n-icon icon="mdi:refresh" slot="prefix"></n-icon>
+          <locale-text><span lang="cn">续费 / 更换套餐</span><span lang="en">Renew / change plan</span></locale-text>
+        </st-button>
+      </div>
+    </o-if>
+
+    <o-if :value="showPurchaseFlow">
     <div class="steps">
       <div
         class="step-item"
@@ -1101,11 +1133,18 @@
             <div class="pay-method-name">
               <span>Stripe</span>
               <span class="pay-method-badge">
-                <locale-text><span lang="cn">唯一方式</span><span lang="en">Only option</span></locale-text>
+                <locale-text><span lang="cn">仅银行卡</span><span lang="en">Card only</span></locale-text>
+              </span>
+              <span class="pay-method-brands" aria-label="Visa, Mastercard">
+                <span class="card-brand">VISA</span>
+                <span class="card-brand">Mastercard</span>
               </span>
             </div>
             <div class="pay-method-desc">
-              <locale-text><span lang="cn">当前仅支持 Stripe 支付；点击支付会打开 Stripe 托管收银台，支付成功后自动开通。</span><span lang="en">Stripe only for now; paying opens the hosted Stripe checkout and activates membership automatically.</span></locale-text>
+              <locale-text>
+                <span lang="cn">支持 Visa / Mastercard 等主流信用卡与借记卡；点击支付会打开 Stripe 托管收银台，支付成功后自动开通。</span>
+                <span lang="en">Visa / Mastercard and other major credit or debit cards are supported. Paying opens the hosted Stripe checkout and activates membership automatically.</span>
+              </locale-text>
             </div>
           </div>
         </div>
@@ -1278,6 +1317,7 @@
         </div>
       </section>
     </o-if>
+    </o-if>
   </main>
 
   <!-- 用户使用条款：勾选处下划线链接打开的详细条款 -->
@@ -1404,6 +1444,11 @@
       const isLocalDemo = ["localhost", "127.0.0.1", "[::1]"].includes(
         location.hostname,
       );
+      // 引导购买（welcome 弹窗）走 /official-apps/membership/；安装后从
+      // /$mazmot-apps/membership/client/ 打开。也支持显式 ?mode=onboarding。
+      const isOnboarding =
+        (query && query.mode === "onboarding") ||
+        location.pathname.includes("/official-apps/membership/");
       const { getLocaleText } = await load("/nos/locale-text/get-locale-text.js");
       const { default: toast } = await load(
         "/gh/ofajs/senti-ui@main/packages/snackbar/toast.js",
@@ -1550,6 +1595,8 @@
       return {
         data: {
           step: "form",
+          isOnboarding,
+          showPurchaseFlow: isOnboarding,
           serverName: "Synchratex",
           userId: "",
 
@@ -1760,6 +1807,23 @@
             this.syncPayAmount();
           },
 
+          startRenewal() {
+            this.stopPollBinding();
+            this.showPurchaseFlow = true;
+            this.step = "form";
+            this.ticketId = "";
+            this.code = "";
+            this.codeError = "";
+            this.emailError = "";
+            this.sending = false;
+            this.verifying = false;
+            this.paying = false;
+            this.waitingPayment = false;
+            this.agreed = false;
+            this.agreeError = "";
+            this.refreshFormValid();
+          },
+
           resetDiscount(clearInput) {
             this.discountApplied = false;
             this.discountAppliedCode = "";
@@ -1904,16 +1968,21 @@
           },
 
           async loadBinding() {
-            if (!this.userId) return;
+            if (!this.userId) {
+              if (!this.isOnboarding) this.showPurchaseFlow = true;
+              return;
+            }
             try {
               const { status, data } = await api.binding(this.userId, await this.bindingAuthHeader());
               if (status !== 200 || !data || !data.bound) {
                 this.hasBinding = false;
                 this.memberUsage = null;
                 this.usageModels = [];
+                this.showPurchaseFlow = true;
                 return;
               }
               this.hasBinding = true;
+              if (!this.isOnboarding) this.showPurchaseFlow = false;
               this.boundPlanName = planName(data.member.planId, data.member.planName);
               this.boundStatusText = getLocaleText({
                 cn: `绑定邮箱 ${data.member.email} · 有效期至 ${formatDate(data.member.expiresAt)}`,
@@ -1926,6 +1995,7 @@
               this.loadMemberUsage();
             } catch (err) {
               console.warn("[membership] 查询会员绑定失败（服务端未启动？）：", err);
+              if (!this.isOnboarding) this.showPurchaseFlow = true;
             }
           },
 
@@ -2023,6 +2093,7 @@
               this.boundInviteCode = data.relay.inviteCode;
               const saved = this.saveRelayKey(data.relay.inviteCode);
               this.localKeyBound = true;
+              if (!this.isOnboarding) this.showPurchaseFlow = false;
               this.loadMemberUsage();
               toast({
                 message: saved ? t("keyRestored") : t("keyAlready"),
@@ -2243,6 +2314,7 @@
               en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
             });
             this.loadMemberUsage();
+            if (!this.isOnboarding) this.showPurchaseFlow = false;
             this.step = "done";
             this.emit("membership-purchased", {
               data: {
@@ -2345,6 +2417,7 @@
               en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
             });
             this.loadMemberUsage();
+            if (!this.isOnboarding) this.showPurchaseFlow = false;
             this.step = "done";
 
             this.emit("membership-purchased", {
@@ -2450,6 +2523,7 @@
                 en: `Bound to ${data.member.email} · valid until ${this.doneExpireText}`,
               });
               this.loadMemberUsage();
+            if (!this.isOnboarding) this.showPurchaseFlow = false;
             this.step = "done";
 
               this.emit("membership-purchased", {
