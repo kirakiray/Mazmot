@@ -100,6 +100,85 @@
       opacity: 1;
     }
 
+    /* ===== 会员用量 / 可用模型 ===== */
+    .usage-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background-color: var(--md-sys-color-surface-container-low);
+      border: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .usage-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .usage-quota {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 400;
+      opacity: 0.7;
+    }
+    .usage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .usage-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .usage-stat b {
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-stat span {
+      font-size: 10px;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .usage-bar {
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background-color: var(--md-sys-color-surface-variant);
+    }
+    .usage-bar > div {
+      height: 100%;
+      border-radius: inherit;
+      background-color: var(--md-sys-color-primary);
+      transition: width 0.25s ease;
+    }
+    .usage-models {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .model-chip {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      background-color: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      word-break: break-all;
+    }
+    .usage-error {
+      font-size: 11px;
+      color: var(--md-sys-color-error);
+    }
+    .usage-empty {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
     /* ===== 权益 ===== */
     .benefits {
       display: flex;
@@ -737,6 +816,71 @@
       </div>
     </o-if>
 
+    <!-- 会员账号概览：直接读 /v1/usage、/v1/models（用邀请码里的 bearkey），
+         安装成独立应用后也能看到当前账号的用量与可用模型 -->
+    <o-if :value="hasBinding">
+      <div class="usage-card" data-testid="member-usage">
+        <div class="usage-head">
+          <span>
+            <locale-text><span lang="cn">会员账号概览</span><span lang="en">Membership account</span></locale-text>
+          </span>
+          <div class="usage-quota">
+            <span>
+              <locale-text><span lang="cn">额度 </span><span lang="en">Quota </span></locale-text>{{usageQuotaText}}
+            </span>
+            <st-button
+              variant="text"
+              attr:disabled="usageLoading"
+              on:click="loadMemberUsage"
+            >
+              <locale-text><span lang="cn">刷新</span><span lang="en">Refresh</span></locale-text>
+            </st-button>
+          </div>
+        </div>
+
+        <o-if :value="usageLoading">
+          <div class="usage-empty">
+            <locale-text><span lang="cn">正在读取用量…</span><span lang="en">Loading usage…</span></locale-text>
+          </div>
+        </o-if>
+        <o-if :value="usageError">
+          <div class="usage-error" data-testid="member-usage-error">{{usageError}}</div>
+        </o-if>
+
+        <o-if :value="memberUsage">
+          <div class="usage-grid">
+            <div class="usage-stat">
+              <b>{{usageUsedText}}</b>
+              <span><locale-text><span lang="cn">已用 tokens</span><span lang="en">Tokens used</span></locale-text></span>
+            </div>
+            <div class="usage-stat">
+              <b>{{usageRemainingText}}</b>
+              <span><locale-text><span lang="cn">剩余 tokens</span><span lang="en">Tokens left</span></locale-text></span>
+            </div>
+            <div class="usage-stat">
+              <b>{{usageRequestsText}}</b>
+              <span><locale-text><span lang="cn">总请求</span><span lang="en">Requests</span></locale-text></span>
+            </div>
+          </div>
+          <div class="usage-bar">
+            <div :style.width="usagePercent + '%'"></div>
+          </div>
+          <div class="usage-models">
+            <o-if :value="usageModels.length > 0">
+              <o-fill :value="usageModels">
+                <span class="model-chip">{{$data}}</span>
+              </o-fill>
+            </o-if>
+            <o-if :value="usageModels.length === 0">
+              <span class="usage-empty">
+                <locale-text><span lang="cn">暂无可用模型</span><span lang="en">No models available</span></locale-text>
+              </span>
+            </o-if>
+          </div>
+        </o-if>
+      </div>
+    </o-if>
+
     <div class="steps">
       <div
         class="step-item"
@@ -961,7 +1105,7 @@
               </span>
             </div>
             <div class="pay-method-desc">
-              <locale-text><span lang="cn">当前仅支持 Stripe 支付；由服务端模拟扣款，不会真实收款。</span><span lang="en">Stripe only for now; the charge is simulated server-side.</span></locale-text>
+              <locale-text><span lang="cn">当前仅支持 Stripe 支付；点击支付会打开 Stripe 托管收银台，支付成功后自动开通。</span><span lang="en">Stripe only for now; paying opens the hosted Stripe checkout and activates membership automatically.</span></locale-text>
             </div>
           </div>
         </div>
@@ -1195,8 +1339,8 @@
         <h3><locale-text><span lang="cn">五、付费与退款</span><span lang="en">5. Payment and Refunds</span></locale-text></h3>
         <p>
           <locale-text>
-            <span lang="cn">会员费按所选套餐在购买时支付。服务即时生效，会员期内一般不予退款；因服务完全不可用等极端情形，可联系运营方协商处理，是否退费及金额由运营方合理裁量。演示环境中支付为模拟扣款，不产生真实交易。</span>
-            <span lang="en">The membership fee is paid at purchase for the selected plan. The service takes effect immediately and is generally non-refundable during the term. In extreme cases such as total service unavailability, contact the operator; whether and how much to refund is at the operator's reasonable discretion. In the demo environment, payment is simulated and involves no real transaction.</span>
+            <span lang="cn">会员费按所选套餐在购买时支付。服务即时生效，会员期内一般不予退款；因服务完全不可用等极端情形，可联系运营方协商处理，是否退费及金额由运营方合理裁量。支付通过 Stripe 托管收银台完成；如需退款，请按上述方式联系运营方。</span>
+            <span lang="en">The membership fee is paid at purchase for the selected plan. The service takes effect immediately and is generally non-refundable during the term. In extreme cases such as total service unavailability, contact the operator; whether and how much to refund is at the operator's reasonable discretion. Payment is processed by the hosted Stripe checkout; contact the operator for refunds as described above.</span>
           </locale-text>
         </p>
       </section>
@@ -1323,8 +1467,8 @@
         cardExpiryPlaceholder: { cn: "MM/YY", en: "MM/YY" },
         cardCvcPlaceholder: { cn: "CVC", en: "CVC" },
         payMockHint: {
-          cn: "服务端 mock 支付：测试卡已预填，不会真实扣款。",
-          en: "Server-side mock payment: test card prefilled, no real charge.",
+          cn: "点击支付后将打开 Stripe 托管收银台完成付款。",
+          en: "Paying opens the hosted Stripe checkout to complete payment.",
         },
         discountPlaceholder: { cn: "输入优惠码", en: "Enter a discount code" },
         discountApply: { cn: "应用", en: "Apply" },
@@ -1418,6 +1562,17 @@
           rebinding: false,
           rebindNotice: "",
 
+          // 会员账号概览（绑定成功后读 /v1/usage、/v1/models）
+          usageLoading: false,
+          usageError: "",
+          memberUsage: null,
+          usageModels: [],
+          usageUsedText: "0",
+          usageRemainingText: "—",
+          usageQuotaText: "—",
+          usageRequestsText: "0",
+          usagePercent: 0,
+
           // 套餐（价格来自 /api/plans）
           plans: FALLBACK_PLANS,
           planId: "monthly",
@@ -1434,7 +1589,7 @@
           annualPeriod: getLocaleText({ cn: "/ 年", en: "/ year" }),
           annualBadge: "",
           payAmountText: "$10",
-          payButtonText: getLocaleText({ cn: "支付 $10（模拟）", en: "Pay $10 (mock)" }),
+          payButtonText: getLocaleText({ cn: "支付 $10", en: "Pay $10" }),
 
           // 优惠码（支付页）
           discountCode: "",
@@ -1590,8 +1745,8 @@
             this.payButtonText = this.discountFree
               ? t("payFreeButton")
               : getLocaleText({
-                  cn: `支付 ${priceText(amountCents, "USD")}（模拟）`,
-                  en: `Pay ${priceText(amountCents, "USD")} (mock)`,
+                  cn: `支付 ${priceText(amountCents, "USD")}`,
+                  en: `Pay ${priceText(amountCents, "USD")}`,
                 });
           },
 
@@ -1699,10 +1854,34 @@
             try {
               const user = await getUser("default");
               const info = await user.getInfo();
-              this.userId = info.subject || user.userId || "";
+              this._user = user;
+              this.userId = user.userId || info.subject || "";
+              this._bindingAuth = null;
               if (info.username) this.doneUsername = info.username;
             } catch (err) {
               console.error("[membership] 读取本地用户失败：", err);
+            }
+          },
+
+          // binding 会返回完整邀请码，服务端要求 X-Relay-Auth 证明私钥归属。
+          // 60s 内复用同一签名（轮询每 3s 一次，不必每次都签）。
+          async bindingAuthHeader() {
+            if (!this._user || typeof this._user.sign !== "function") return "";
+            const now = Date.now();
+            if (this._bindingAuth && now - this._bindingAuth.at < 60_000) {
+              return this._bindingAuth.header;
+            }
+            try {
+              const header = await api.relayAuthHeader(
+                this._user,
+                "GET",
+                "/api/membership/binding",
+              );
+              this._bindingAuth = { header, at: now };
+              return header;
+            } catch (err) {
+              console.warn("[membership] 生成 binding 签名失败：", err);
+              return "";
             }
           },
 
@@ -1727,8 +1906,13 @@
           async loadBinding() {
             if (!this.userId) return;
             try {
-              const { status, data } = await api.binding(this.userId);
-              if (status !== 200 || !data || !data.bound) return;
+              const { status, data } = await api.binding(this.userId, await this.bindingAuthHeader());
+              if (status !== 200 || !data || !data.bound) {
+                this.hasBinding = false;
+                this.memberUsage = null;
+                this.usageModels = [];
+                return;
+              }
               this.hasBinding = true;
               this.boundPlanName = planName(data.member.planId, data.member.planName);
               this.boundStatusText = getLocaleText({
@@ -1739,8 +1923,84 @@
               this.localKeyBound = this.localKeyExists(this.boundInviteCode);
               if (!this.email) this.email = data.member.email;
               this.refreshFormValid();
+              this.loadMemberUsage();
             } catch (err) {
               console.warn("[membership] 查询会员绑定失败（服务端未启动？）：", err);
+            }
+          },
+
+          // 读当前会员的用量与可用模型（用邀请码里的 bearkey 直连 /v1/usage、/v1/models）。
+          // 会员应用安装后独立打开也能看到这些信息。
+          async loadMemberUsage() {
+            const inviteCode = this.boundInviteCode;
+            if (!inviteCode) {
+              this.memberUsage = null;
+              this.usageModels = [];
+              this.usageQuotaText = "—";
+              return;
+            }
+            this.usageLoading = true;
+            this.usageError = "";
+            try {
+              const [usageRes, modelsRes] = await Promise.all([
+                api.usage(inviteCode),
+                api.models(inviteCode),
+              ]);
+              if (usageRes.status === 200 && usageRes.data) {
+                const data = usageRes.data;
+                const used = Number(data.usedTokens || 0);
+                const quota = data.quotaTokens == null ? null : Number(data.quotaTokens);
+                const remaining = data.remainingTokens == null ? null : Number(data.remainingTokens);
+                this.memberUsage = data;
+                this.usageUsedText = used.toLocaleString();
+                this.usageQuotaText = quota == null ? getLocaleText({ cn: "不限量", en: "Unlimited" }) : quota.toLocaleString();
+                this.usageRemainingText = remaining == null ? getLocaleText({ cn: "不限量", en: "Unlimited" }) : remaining.toLocaleString();
+                this.usageRequestsText = Number(data.totalRequests || 0).toLocaleString();
+                this.usagePercent = quota && quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+              } else {
+                this.memberUsage = null;
+                this.usageUsedText = "—";
+                this.usageRemainingText = "—";
+                this.usageRequestsText = "—";
+                this.usageQuotaText = "—";
+                this.usagePercent = 0;
+                this.usageError =
+                  usageRes.status === 403
+                    ? getLocaleText({
+                        cn: "会员已到期或中转 key 已失效，请续费后重试。",
+                        en: "Membership expired or relay key disabled. Renew and try again.",
+                      })
+                    : usageRes.status === 401
+                      ? getLocaleText({
+                          cn: "中转 key 无效，请在本地重新配置邀请码。",
+                          en: "Invalid relay key. Reconfigure the invite code locally.",
+                        })
+                      : getLocaleText({
+                          cn: "读取会员用量失败，请稍后重试。",
+                          en: "Failed to load usage. Try again later.",
+                        });
+              }
+              if (modelsRes.status === 200 && modelsRes.data && Array.isArray(modelsRes.data.data)) {
+                this.usageModels = [
+                  ...new Set(
+                    modelsRes.data.data
+                      .map((item) => (item && item.id) || "")
+                      .filter(Boolean),
+                  ),
+                ];
+              } else {
+                this.usageModels = [];
+              }
+            } catch (err) {
+              console.warn("[membership] 读取会员用量失败：", err);
+              this.memberUsage = null;
+              this.usageModels = [];
+              this.usageError = getLocaleText({
+                cn: `读取会员用量失败：${(err && err.message) || err}`,
+                en: `Failed to load usage: ${(err && err.message) || err}`,
+              });
+            } finally {
+              this.usageLoading = false;
             }
           },
 
@@ -1752,7 +2012,7 @@
             }
             this.rebinding = true;
             try {
-              const { status, data } = await api.binding(this.userId);
+              const { status, data } = await api.binding(this.userId, await this.bindingAuthHeader());
               if (status !== 200 || !data || !data.bound) {
                 toast({
                   message: t("serverError", { msg: "服务端没有这个会员的绑定" }),
@@ -1763,6 +2023,7 @@
               this.boundInviteCode = data.relay.inviteCode;
               const saved = this.saveRelayKey(data.relay.inviteCode);
               this.localKeyBound = true;
+              this.loadMemberUsage();
               toast({
                 message: saved ? t("keyRestored") : t("keyAlready"),
                 color: "success",
@@ -1888,8 +2149,8 @@
             this.codeError = "";
             this.codeSentText = this.mockCode
               ? getLocaleText({
-                  cn: `验证码已由服务端发送至 ${maskEmail(this.email)}（演示环境不会真的发信）。`,
-                  en: `The server sent a code to ${maskEmail(this.email)} (nothing is really sent in this demo).`,
+                  cn: `验证码已发送至 ${maskEmail(this.email)}，请查收邮件。`,
+                  en: `A code has been sent to ${maskEmail(this.email)}; please check your inbox.`,
                 })
               : getLocaleText({
                   cn: `验证码邮件已发送至 ${maskEmail(this.email)}，请查收（没收到可看看垃圾箱）。`,
@@ -1981,6 +2242,7 @@
               cn: `绑定邮箱 ${member.email} · 有效期至 ${this.doneExpireText}`,
               en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
             });
+            this.loadMemberUsage();
             this.step = "done";
             this.emit("membership-purchased", {
               data: {
@@ -2030,7 +2292,7 @@
                 return;
               }
               try {
-                const { status, data } = await api.binding(this.userId);
+                const { status, data } = await api.binding(this.userId, await this.bindingAuthHeader());
                 if (status === 200 && data && data.bound) {
                   this.stopPollBinding();
                   this.waitingPayment = false;
@@ -2082,6 +2344,7 @@
               cn: `绑定邮箱 ${member.email} · 有效期至 ${this.doneExpireText}`,
               en: `Bound to ${member.email} · valid until ${this.doneExpireText}`,
             });
+            this.loadMemberUsage();
             this.step = "done";
 
             this.emit("membership-purchased", {
@@ -2186,7 +2449,8 @@
                 cn: `绑定邮箱 ${data.member.email} · 有效期至 ${this.doneExpireText}`,
                 en: `Bound to ${data.member.email} · valid until ${this.doneExpireText}`,
               });
-              this.step = "done";
+              this.loadMemberUsage();
+            this.step = "done";
 
               this.emit("membership-purchased", {
                 data: {

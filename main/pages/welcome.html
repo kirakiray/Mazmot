@@ -995,6 +995,12 @@
           handleMembershipPurchased(event) {
             const data = (event && event.data) || {};
             this._pendingPurchase = data || null;
+            this._membershipPurchased = true;
+            // 购买成功后把「会员中心」也装进应用列表：之后可从列表直接打开
+            // 查看绑定账号、token 用量与可用模型。已安装 / 已在队列时是空操作。
+            enqueueOfficialInstalls(["membership"]).catch((err) => {
+              console.warn("[welcome] 会员中心安装入队失败：", err);
+            });
             toast({
               message: getLocaleText({
                 cn: "会员开通成功，关闭弹窗后将自动配置中转 Key",
@@ -1114,6 +1120,10 @@
                   const picked = this.pickedApps.find((a) => a.id === id);
                   return !picked || !picked.installed;
                 });
+              // 买过会员的话，会员中心也进安装队列（已安装/已在队列时为空操作）
+              if (this._membershipPurchased && !ids.includes("membership")) {
+                ids.push("membership");
+              }
               await storage.setItem("welcome-done", {
                 purpose: this.choice,
                 keyReady: this.keyReady,

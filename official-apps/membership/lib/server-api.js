@@ -25,11 +25,11 @@ export const SYNCHRATEX_BASE = normalizeBase(window.SYNCHRATEX_API_BASE);
 /**
  * 发一个 JSON 请求，返回 `{ status, data }`（data 解析失败时为 null）。
  * @param {string} path
- * @param {{method?: string, body?: any}} [options]
+ * @param {{method?: string, body?: any, headers?: Record<string,string>}} [options]
  */
 export async function request(path, options = {}) {
-  const { method = "GET", body } = options;
-  const headers = { Accept: "application/json" };
+  const { method = "GET", body, headers: extraHeaders } = options;
+  const headers = { Accept: "application/json", ...(extraHeaders || {}) };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`${SYNCHRATEX_BASE}${path}`, {
     method,
@@ -43,6 +43,36 @@ export async function request(path, options = {}) {
     data = null;
   }
   return { status: res.status, data };
+}
+
+/**
+ * 生成 X-Relay-Auth 身份签名（NoneOS user.sign，ECDSA P-256）。
+ * 服务端 binding 接口要求证明“拥有该 userId 的私钥”，否则知道 userId 就能取走 key。
+ * @param {{userId: string, sign: Function}} user
+ * @param {string} method
+ * @param {string} path
+ * @param {string} [bodyText]
+ */
+export async function relayAuthHeader(user, method, path, bodyText = "") {
+  if (!user || typeof user.sign !== "function") {
+    throw new Error("当前用户没有私钥，无法生成身份签名");
+  }
+  const bodyHash = await createHashHex(bodyText);
+  const signed = await user.sign({
+    k: "relay-auth",
+    userId: user.userId,
+    ts: Date.now(),
+    method,
+    path,
+    bodyHash,
+  });
+  return btoa(JSON.stringify(signed));
+}
+
+/** SHA-256 hex（与 NoneOS getHash 同口径）。 */
+async function createHashHex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -87,16 +117,76 @@ export function previewDiscount(ticketId, planId, code) {
   });
 }
 
-/** 按 Mazmot 用户 ID 查询绑定（找回中转 key）。 */
-export function binding(mazmotUserId) {
+/** 按 Mazmot 用户 ID 查询绑定（找回中转 key）；authHeader 必须是由该用户私钥签出的 X-Relay-Auth。 */
+export function binding(mazmotUserId, authHeader = "") {
   return request(
     `/api/membership/binding?mazmotUserId=${encodeURIComponent(mazmotUserId)}`,
+    { headers: authHeader ? { "X-Relay-Auth": authHeader } : {} },
   );
 }
 
 /** 套餐列表（金额单位「分」）。 */
 export function plans() {
   return request("/api/plans");
+}
+
+/**
+ * 解邀请码：URL-safe Base64 的 {"k": bearkey, "u": serverUrl}。
+ * @param {string} code
+ * @returns {{bearkey: string, serverUrl: string} | null}
+ */
+export function decodeInvite(code) {
+  try {
+    const raw = atob(
+      String(code || "")
+        .trim()
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(String(code || "").trim().length / 4) * 4, "="),
+    );
+    const data = JSON.parse(raw);
+    if (typeof data.k !== "string" || typeof data.u !== "string") return null;
+    return { bearkey: data.k, serverUrl: normalizeBase(data.u) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 用邀请码里的 bearkey 请求 /v1/*，返回 `{ status, data }`。
+ * @param {string} inviteCode
+ * @param {string} path
+ */
+async function relayRequest(inviteCode, path) {
+  const invite = decodeInvite(inviteCode);
+  if (!invite) return { status: 0, data: null };
+  try {
+    const res = await fetch(`${invite.serverUrl}${path}`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${invite.bearkey}`,
+      },
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    return { status: res.status, data };
+  } catch (err) {
+    return { status: 0, data: { error: { message: String((err && err.message) || err) } } };
+  }
+}
+
+/** 当前会员的 token 用量（/v1/usage）。 */
+export function usage(inviteCode) {
+  return relayRequest(inviteCode, "/v1/usage");
+}
+
+/** 当前会员可用的模型列表（/v1/models）。 */
+export function models(inviteCode) {
+  return relayRequest(inviteCode, "/v1/models");
 }
 
 /** 服务器命名（邀请码里的服务器展示名）。 */

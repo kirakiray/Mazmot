@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>membership lib/server-api.js 单元测试</title>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/gh/ofajs/sibyl-test/components/sb-test.mjs"
+    ></script>
+  </head>
+  <body>
+    <sb-test name="邀请码解码：标准 / URL-safe Base64 都能解出 bearkey 与 serverUrl">
+      <template>
+        <script type="module">
+          import { decodeInvite } from "../server-api.js";
+          {
+            const payload = { k: "stx-test-key", u: "https://api.example.com" };
+            const standard = btoa(JSON.stringify(payload));
+            const urlSafe = standard.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            const a = decodeInvite(standard);
+            const b = decodeInvite(urlSafe);
+            const bad = decodeInvite("not-base64");
+            return {
+              assert:
+                a &&
+                a.bearkey === payload.k &&
+                a.serverUrl === payload.u &&
+                b &&
+                b.bearkey === payload.k &&
+                b.serverUrl === payload.u &&
+                bad === null,
+              content: { a, b, bad },
+            };
+          }
+        </script>
+      </template>
+    </sb-test>
+
+    <sb-test name="会员用量 / 模型：用邀请码里的 bearkey 请求 /v1/usage、/v1/models">
+      <template>
+        <script type="module">
+          import { usage, models } from "../server-api.js";
+          {
+            const code = btoa(JSON.stringify({ k: "stx-test-key", u: "https://api.example.com" }));
+            const originalFetch = window.fetch;
+            const calls = [];
+            window.fetch = async (url, options = {}) => {
+              calls.push({ url: String(url), auth: options.headers && options.headers.Authorization });
+              if (String(url).endsWith("/v1/usage")) {
+                return new Response(
+                  JSON.stringify({
+                    serverName: "Synchratex",
+                    quotaTokens: 1000000,
+                    usedTokens: 12345,
+                    totalRequests: 7,
+                    remainingTokens: 987655,
+                  }),
+                  { status: 200, headers: { "Content-Type": "application/json" } },
+                );
+              }
+              return new Response(
+                JSON.stringify({
+                  object: "list",
+                  data: [{ id: "deepseek-flash" }, { id: "glm-5.3-flash" }],
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+              );
+            };
+            try {
+              const u = await usage(code);
+              const m = await models(code);
+              return {
+                assert:
+                  calls.length === 2 &&
+                  calls.every((c) => c.auth === "Bearer stx-test-key") &&
+                  calls[0].url === "https://api.example.com/v1/usage" &&
+                  calls[1].url === "https://api.example.com/v1/models" &&
+                  u.status === 200 &&
+                  u.data.usedTokens === 12345 &&
+                  m.status === 200 &&
+                  m.data.data.length === 2,
+                content: { calls, usage: u, models: m },
+              };
+            } finally {
+              window.fetch = originalFetch;
+            }
+          }
+        </script>
+      </template>
+    </sb-test>
+  </body>
+</html>
