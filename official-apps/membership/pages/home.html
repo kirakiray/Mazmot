@@ -1540,6 +1540,18 @@
           cn: "无法连接 Synchratex 服务端：{msg}",
           en: "Cannot reach the Synchratex server: {msg}",
         },
+        noLocalUser: {
+          cn: "未找到本地用户，请先登录 Mazmot 后再试。",
+          tw: "找不到本機使用者，請先登入 Mazmot 後再試。",
+          ja: "ローカルユーザーが見つかりません。Mazmot にログインしてから再度お試しください。",
+          en: "No local user found. Sign in to Mazmot and try again.",
+        },
+        noMemberBinding: {
+          cn: "服务端没有这个会员的绑定，请先购买会员。",
+          tw: "伺服器沒有這個會員的綁定，請先購買會員。",
+          ja: "サーバーにこの会員の紐付けがありません。先にメンバーシップを購入してください。",
+          en: "No membership binding found on the server. Purchase a membership first.",
+        },
       };
       const t = (key, params) => {
         const item = L10N[key];
@@ -2095,7 +2107,7 @@
           async rebindKey() {
             if (this.rebinding) return;
             if (!this.userId) {
-              toast({ message: t("networkError", { msg: "无本地用户" }), color: "error" });
+              toast({ message: t("noLocalUser"), color: "error" });
               return;
             }
             this.rebinding = true;
@@ -2103,7 +2115,7 @@
               const { status, data } = await api.binding(this.userId, await this.bindingAuthHeader());
               if (status !== 200 || !data || !data.bound) {
                 toast({
-                  message: t("serverError", { msg: "服务端没有这个会员的绑定" }),
+                  message: t("noMemberBinding"),
                   color: "error",
                 });
                 return;

@@ -6,14 +6,64 @@
     <meta name="theme-color" content="#0f1116" />
     <title>支付成功 · Mazmot</title>
     <script>
-      // 与站点一致：中文环境显示中文，其余显示英文。
-      document.documentElement.lang = (
-        navigator.language || ""
-      ).toLowerCase().startsWith("zh")
-        ? "zh-CN"
-        : "en";
+      // 只决定 html lang / title；正文交给 <locale-text>。
+      // 这段同时作为 Core 尚未接管时的 CSS 兜底依据。
+      (() => {
+        let stored = "";
+        try {
+          stored =
+            sessionStorage.getItem("lang") ||
+            localStorage.getItem("lang") ||
+            "";
+        } catch {
+          // 隐私模式禁用 storage 时退回浏览器语言
+        }
+        const raw = (stored || navigator.language || "en").toLowerCase();
+        let lang = "en";
+        if (raw === "cn" || raw === "zh" || raw.startsWith("zh-cn")) {
+          lang = "cn";
+        } else if (
+          raw === "tw" ||
+          raw.includes("hant") ||
+          raw.startsWith("zh-tw") ||
+          raw.startsWith("zh-hk")
+        ) {
+          lang = "tw";
+        } else if (raw === "ja" || raw.startsWith("ja-")) {
+          lang = "ja";
+        }
+        document.documentElement.lang = {
+          cn: "zh-CN",
+          tw: "zh-Hant",
+          ja: "ja",
+          en: "en",
+        }[lang];
+        document.title =
+          {
+            cn: "支付成功 · Mazmot",
+            tw: "支付成功 · Mazmot",
+            ja: "支払い完了 · Mazmot",
+            en: "Payment successful · Mazmot",
+          }[lang] || "Payment successful · Mazmot";
+      })();
     </script>
+    <script
+      src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug"
+      type="module"
+    ></script>
     <style>
+      /* 组件升级前按 html lang 只显示对应语言，避免四语同时闪一下；
+         升级后由 locale-text 的 slot 样式接管。 */
+      locale-text:not(:defined) > span {
+        display: none;
+      }
+      html[lang="zh-CN"] locale-text:not(:defined) > span[lang="cn"],
+      html[lang="zh-Hant"] locale-text:not(:defined) > span[lang="tw"],
+      html[lang="ja"] locale-text:not(:defined) > span[lang="ja"],
+      html[lang="en"] locale-text:not(:defined) > span[lang="en"] {
+        display: inline;
+      }
+
       :root {
         color-scheme: light dark;
         --bg: #eef3fb;
@@ -224,11 +274,7 @@
         line-height: 1.6;
         color: var(--muted);
         opacity: 0.72;
-      }
-
-      html[lang="en"] [data-cn],
-      html:not([lang="en"]) [data-en] {
-        display: none;
+        text-wrap: balance;
       }
 
       @media (max-width: 420px) {
@@ -278,12 +324,20 @@
       </div>
 
       <h1>
-        <span data-cn>支付成功</span>
-        <span data-en>Payment successful</span>
+        <locale-text>
+          <span lang="cn">支付成功</span>
+          <span lang="tw">支付成功</span>
+          <span lang="ja">支払い完了</span>
+          <span lang="en">Payment successful</span>
+        </locale-text>
       </h1>
       <p class="sub">
-        <span data-cn>支付已完成，会员正在开通。返回应用后会自动刷新会员状态和 token 用量。</span>
-        <span data-en>Payment received. Your membership is being activated — return to the app and it will refresh automatically.</span>
+        <locale-text>
+          <span lang="cn">支付已完成，会员正在开通。返回应用后会自动刷新会员状态和 token 用量。</span>
+          <span lang="tw">支付已完成，會員正在開通。返回應用後會自動重新整理會員狀態和 token 用量。</span>
+          <span lang="ja">支払いが完了しました。メンバーシップを有効化しています。アプリに戻ると、ステータスと token 使用量が自動的に更新されます。</span>
+          <span lang="en">Payment received. Your membership is being activated — return to the app and it will refresh automatically.</span>
+        </locale-text>
       </p>
 
       <div class="actions">
@@ -291,21 +345,34 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M19 12H5m6-6-6 6 6 6" />
           </svg>
-          <span data-cn>返回应用</span>
-          <span data-en>Back to app</span>
+          <locale-text>
+            <span lang="cn">返回应用</span>
+            <span lang="tw">返回應用</span>
+            <span lang="ja">アプリに戻る</span>
+            <span lang="en">Back to app</span>
+          </locale-text>
         </a>
         <a class="link" href="/official-apps/membership/index.html">
-          <span data-cn>查看会员中心</span>
-          <span data-en>Open membership center</span>
+          <locale-text>
+            <span lang="cn">查看会员中心</span>
+            <span lang="tw">查看會員中心</span>
+            <span lang="ja">メンバーシップセンターを見る</span>
+            <span lang="en">Open membership center</span>
+          </locale-text>
         </a>
       </div>
 
       <p class="note">
-        <span data-cn>如果按钮没有反应，请手动关闭此页面。</span>
-        <span data-en>If the button does not respond, close this tab manually.</span>
+        <locale-text>
+          <span lang="cn">如果按钮没有反应，请手动关闭此页面。</span>
+          <span lang="tw">如果按鈕沒有反應，請手動關閉此頁面。</span>
+          <span lang="ja">ボタンが反応しない場合は、このタブを手動で閉じてください。</span>
+          <span lang="en">If the button does not respond, close this tab manually.</span>
+        </locale-text>
       </p>
     </main>
 
+    <l-m src="/nos/locale-text/locale-text.html"></l-m>
     <script>
       // Stripe 收银台通常由会员页 window.open 打开；成功后关闭本标签页，
       // 用户自然回到原来的应用标签页。非弹窗场景回退到站内首页。
