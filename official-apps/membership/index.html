@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>会员中心</title>
+    <script>
+      // 兼容旧的 Stripe success_url（仍指回本页）：支付完成直接交给独立成功页，
+      // 不再进入会员中心的购买流程。新的 success_url 可直接指向 pay-success.html。
+      if (new URLSearchParams(location.search).get("pay") === "return") {
+        location.replace("./pay-success.html" + location.search);
+      }
+    </script>
     <script
       src="/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug"
       type="module"
