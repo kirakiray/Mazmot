@@ -157,6 +157,11 @@
       background-color: var(--md-sys-color-primary);
       transition: width 0.25s ease;
     }
+    .usage-reset {
+      font-size: 10px;
+      color: var(--md-sys-color-on-surface-variant);
+      opacity: 0.8;
+    }
     .usage-models {
       display: flex;
       flex-wrap: wrap;
@@ -847,7 +852,7 @@
           </span>
           <div class="usage-quota">
             <span>
-              <locale-text><span lang="cn">额度 </span><span lang="en">Quota </span></locale-text>{{usageQuotaText}}
+              <locale-text><span lang="cn">本月额度 </span><span lang="en">Monthly quota </span></locale-text>{{usageQuotaText}}
             </span>
             <st-button
               variant="text"
@@ -872,11 +877,11 @@
           <div class="usage-grid">
             <div class="usage-stat">
               <b>{{usageUsedText}}</b>
-              <span><locale-text><span lang="cn">已用 tokens</span><span lang="en">Tokens used</span></locale-text></span>
+              <span><locale-text><span lang="cn">本月已用 tokens</span><span lang="en">Tokens used this month</span></locale-text></span>
             </div>
             <div class="usage-stat">
               <b>{{usageRemainingText}}</b>
-              <span><locale-text><span lang="cn">剩余 tokens</span><span lang="en">Tokens left</span></locale-text></span>
+              <span><locale-text><span lang="cn">本月剩余 tokens</span><span lang="en">Tokens left this month</span></locale-text></span>
             </div>
             <div class="usage-stat">
               <b>{{usageRequestsText}}</b>
@@ -886,6 +891,11 @@
           <div class="usage-bar">
             <div :style.width="usagePercent + '%'"></div>
           </div>
+          <o-if :value="usageResetText">
+            <div class="usage-reset" data-testid="member-usage-reset">
+              <locale-text><span lang="cn">下次重置</span><span lang="en">Next reset</span></locale-text>：{{usageResetText}}
+            </div>
+          </o-if>
           <div class="usage-models">
             <o-if :value="usageModels.length > 0">
               <o-fill :value="usageModels">
@@ -1576,17 +1586,17 @@
       };
 
       const planPerks = getLocaleText({
-        cn: "默认 AI 使用量 · 更大的转发流量 · 新功能优先使用",
-        en: "Default AI quota · Larger relay traffic · Priority features",
+        cn: "每月 AI 额度（月度 100 万 / 年度每月 120 万）· 更大的转发流量 · 新功能优先使用",
+        en: "Monthly AI quota (1M monthly / 1.2M per month yearly) · Larger relay traffic · Priority features",
       });
 
       const benefits = [
         {
           icon: "mdi:brain",
-          title: getLocaleText({ cn: "默认额度的 AI 使用量", en: "Default AI usage quota" }),
+          title: getLocaleText({ cn: "每月自动发放的 AI 额度", en: "Monthly AI quota" }),
           desc: getLocaleText({
-            cn: "开通即分配可直接使用的 AI 调用额度，不用自己配 Key。",
-            en: "A built-in AI quota you can use right away — no API key setup.",
+            cn: "开通后每月分配可直接使用的 AI 调用额度，不用自己配 Key；额度按月自动重置。",
+            en: "A built-in AI quota is allocated every month — no API key setup; usage resets monthly.",
           }),
         },
         {
@@ -1634,6 +1644,7 @@
           usageUsedText: "0",
           usageRemainingText: "—",
           usageQuotaText: "—",
+          usageResetText: "",
           usageRequestsText: "0",
           usagePercent: 0,
 
@@ -2037,6 +2048,7 @@
               this.memberUsage = null;
               this.usageModels = [];
               this.usageQuotaText = "—";
+              this.usageResetText = "";
               return;
             }
             this.usageLoading = true;
@@ -2055,6 +2067,8 @@
                 this.usageUsedText = used.toLocaleString();
                 this.usageQuotaText = quota == null ? getLocaleText({ cn: "不限量", en: "Unlimited" }) : quota.toLocaleString();
                 this.usageRemainingText = remaining == null ? getLocaleText({ cn: "不限量", en: "Unlimited" }) : remaining.toLocaleString();
+                const resetAt = Number(data.quotaResetAt || 0);
+                this.usageResetText = resetAt ? formatDate(resetAt) : "";
                 this.usageRequestsText = Number(data.totalRequests || 0).toLocaleString();
                 this.usagePercent = quota && quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
               } else {
@@ -2063,6 +2077,7 @@
                 this.usageRemainingText = "—";
                 this.usageRequestsText = "—";
                 this.usageQuotaText = "—";
+                this.usageResetText = "";
                 this.usagePercent = 0;
                 this.usageError =
                   usageRes.status === 403
