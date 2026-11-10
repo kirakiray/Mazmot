@@ -116,15 +116,21 @@ const store = getStorage("mazmot");        // 独立空间，同 id 复用实例
 - **业务工具库**：`apps/<app>/lib/`（主应用为 [main/lib/](main/lib/)，参考 [main/lib/official-app-state.js](main/lib/official-app-state.js)、[apps/run-app/lib/](apps/run-app/lib/)），仅被单个应用使用的工具，与 UI 页面模块分离，便于单测。
 - **不参与新逻辑的目录**：[old/](old/)（v1-v4 历史版本）、[others/](others/)（实验性测试页）。修改这些目录前请先与开发者确认，AI 默认应忽略。
 
-## client/（桌面运行时，Tauri 2）
+## client/（桌面运行时：projectR / projectE）
 
-[client/](client/README.md) 是独立的 Tauri 2 桌面壳：内置回环静态服务器（沿用 `npm run static` 的 30031 主站 / 30032 隔离域约定）伺服本仓库静态站点，`window.open` 接管为原生多窗口。查看或修改前**必须先读 [client/AGENTS.md](client/AGENTS.md)（硬性规范：IPC 三件套联动、端口即 origin、站点零补丁等）与 [client/CONTEXT.md](client/CONTEXT.md)（架构活文档：启动流程、shim 契约、命令速查、踩坑索引）**，本节仅是全局约束摘要：
+[client/](client/) 下有两个能力对等的独立桌面壳，均内置回环静态服务器（沿用 `npm run static` 的 30031 主站 / 30032 隔离域约定）伺服本仓库静态站点，并把 `window.open` 接管为原生多窗口：
 
-- **禁止把 WebView 指向 `tauri://` asset 协议**：NoneOS Core 依赖 Service Worker，自定义协议源下 SW 无法注册；新增能力一律走内置静态服务器 + 回环源。
-- **端口即 origin**：主站 origin（含端口）跨启动必须稳定，否则 SW 缓存与 IndexedDB 数据丢失；主站端口候选与回退顺序定义在 [client/src-tauri/src/static_server.rs](client/src-tauri/src/static_server.rs) 的 `MAIN_PORTS`，不得随意改动。
-- **站点零补丁**：`client/` 不得 fork / 修改站点源码来适配壳；兼容性问题优先在 shim（[client/src-tauri/src/shim.js](client/src-tauri/src/shim.js)）或 Rust 侧解决。
-- **远端源 IPC 授权**：新增 `runtime_*` 命令时必须同步更新 [client/src-tauri/build.rs](client/src-tauri/build.rs) 的 `AppManifest::commands()` 与 [capabilities/main.json](client/src-tauri/capabilities/main.json)，否则远端源调用会被 ACL 拒绝（`core:default` 不覆盖应用命令）。
-- **bundle 资源清单**：站点新增顶层目录/文件且需打进桌面包时，同步更新 [tauri.conf.json](client/src-tauri/tauri.conf.json) 的 `resources`（与 `sw/host-cache.js` 的离线缓存范围、`cache-manifest.json` 生成脚本对照）。
+- [client/projectR/](client/projectR/README.md) —— Tauri 2 壳（Rust `tiny_http`）。
+- [client/projectE/](client/projectE/README.md) —— Electron 壳（Node `http`）。
+
+查看或修改前**必须先读对应目录的 `AGENTS.md`（硬性规范）与 `CONTEXT.md`（架构活文档）**：projectR 的 IPC 三件套联动（commands / build.rs / capabilities），projectE 的 `COMMANDS` 表与调用方 origin 校验；两者共有的端口即 origin、站点零补丁规则见下。本节仅是全局约束摘要：
+
+- **禁止把窗口指向自定义协议 / `file://`**：NoneOS Core 依赖 Service Worker，这类源下 SW 无法注册；新增能力一律走内置静态服务器 + 回环源。projectR 禁用 `tauri://`，projectE 禁用 `file://` / 自定义协议。
+- **端口即 origin**：主站 origin（含端口）跨启动必须稳定，否则 SW 缓存与 IndexedDB 数据丢失；主站端口候选与回退顺序定义在 [client/projectR/src-tauri/src/static_server.rs](client/projectR/src-tauri/src/static_server.rs) 与 [client/projectE/src/static-server.js](client/projectE/src/static-server.js) 的 `MAIN_PORTS`，两端保持一致，不得随意改动。
+- **站点零补丁**：两个壳都不得 fork / 修改站点源码来适配；兼容性问题优先在 shim（projectR 的 [shim.js](client/projectR/src-tauri/src/shim.js)、projectE 的 [shim.js](client/projectE/src/shim.js)）或主进程侧解决。
+- **远端源 IPC 授权**：projectR 新增 `runtime_*` 命令必须同步 [build.rs](client/projectR/src-tauri/build.rs) 的 `AppManifest::commands()` 与 [capabilities/main.json](client/projectR/src-tauri/capabilities/main.json)，否则被 ACL 静默拒绝；projectE 新增命令必须进 [COMMANDS](client/projectE/src/main.js) 并保留 `assertTrustedSender` 校验。
+- **bundle 资源清单**：站点新增顶层目录/文件且需打进桌面包时，同时更新 projectR 的 [tauri.conf.json](client/projectR/src-tauri/tauri.conf.json) `bundle.resources` 与 projectE 的 [package.json](client/projectE/package.json) `build.extraResources`（与 `sw/host-cache.js` 的离线缓存范围、`cache-manifest.json` 生成脚本对照）。
+- **依赖代理**：两个壳拉 Rust crates / Electron 二进制时都可能需要代理；projectE 的 `@electron/get` 必须额外设 `ELECTRON_GET_USE_PROXY=1` 才会读取 `https_proxy`。
 
 ## server/（独立 Rust 后端服务）
 

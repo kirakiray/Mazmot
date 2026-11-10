@@ -1,4 +1,4 @@
-# Mazmot 桌面运行时 Context（client/）
+# Mazmot 桌面运行时 Context（client/projectR/）
 
 Tauri 2 桌面壳：把 Mazmot 静态站点封装为原生多窗口的应用运行时。本文件是本目录的**活文档**，记录当前架构与活跃流程；开发规范见 [`AGENTS.md`](AGENTS.md)，面向人的使用说明见 [`README.md`](README.md)。
 
@@ -21,7 +21,7 @@ Tauri 2 桌面壳：把 Mazmot 静态站点封装为原生多窗口的应用运�
 ## 目录树
 
 ```
-client/
+client/projectR/
 ├── AGENTS.md                 # 本目录开发规范（硬性规则清单）
 ├── CONTEXT.md                # 本文件（架构活文档）
 ├── README.md                 # 使用说明（开发/打包/已知限制）
@@ -54,7 +54,7 @@ client/
 
 ## 启动流程（main.rs setup）
 
-1. `resolve_web_root`：`MAZMOT_WEB_ROOT` 环境变量 → debug 构建用 `CARGO_MANIFEST_DIR/../..`（仓库根，实时）→ release 用 `resource_dir`，逐层探测 `_up_`（0-3 层，`../../` 前缀的资源落在 `_up_/_up_/`）。
+1. `resolve_web_root`：`MAZMOT_WEB_ROOT` 环境变量 → debug 构建用 `CARGO_MANIFEST_DIR/../../..`（仓库根，实时）→ release 用 `resource_dir`，逐层探测 `_up_`（0-3 层，`../../../` 前缀的资源落在 `_up_/_up_/_up_/`）。
 2. `static_server::spawn` 按 `MAIN_PORTS`（30031 → 30033/30034/30035/30036）依次尝试绑定主站端口；IPv4 必须成功（先绑 IPv4 取实际端口，再以同端口补绑 IPv6，保证双栈同 origin）。30032 固定给隔离域，失败只降级 conjure 预览。
 3. `app.manage(HostsInfo { main_port, bridge_port })` 供 `runtime_probe` 读取。
 4. 建主窗口 `main`：`http://localhost:<main_port>/`，1200×800 / 最小 860×600，注入 `SHIM_JS`，挂 `on_navigation`。
@@ -132,7 +132,7 @@ client/
 
 **版本号跟随仓库根 `package.json`**：`scripts/sync-version.js` 把根版本写入 `src-tauri/tauri.conf.json` 与 `Cargo.toml`（后者是 `runtime_probe` 与 `X-Mazmot-Runtime` 头的版本来源），由 npm `predev`/`prebuild` 钩子自动执行；交叉编译前手动跑 `npm run sync:version`。
 
-各平台产物最终统一收进 **`client/dist/`**（一层目录，`npm run collect`，脚本 `scripts/collect-artifacts.sh`；`dist/` 已 gitignore，产物不入库）。Tauri CLI 的原始输出固定在 `src-tauri/target/release/bundle/<类型>/` 下（macos/ dmg/ 等，路径约定不可改），collect 脚本负责归拢。
+各平台产物最终统一收进 **`client/projectR/dist/`**（一层目录，`npm run collect`，脚本 `scripts/collect-artifacts.sh`；`dist/` 已 gitignore，产物不入库）。Tauri CLI 的原始输出固定在 `src-tauri/target/release/bundle/<类型>/` 下（macos/ dmg/ 等，路径约定不可改），collect 脚本负责归拢。
 
 - **macOS（arm64）**：`npm run build` → `src-tauri/target/release/bundle/macos/Mazmot.app`（站点资源 3.4M 打进 `Contents/Resources/_up_/_up_/`）；DMG 用 hdiutil 兜底（tauri 的 `bundle_dmg.sh` 需要 Finder 自动化权限，终端里 AppleEvent 超时 -1712）：
   ```bash
@@ -161,7 +161,7 @@ client/
 - **远端源 IPC 静默拒绝**：新命令忘配 `build.rs` AppManifest 或 capabilities `allow-*` → invoke 无声失败；`InlinedPlugin` 是错误方案（权限键带 `plugin:<name>|` 命名空间，匹配不上裸命令名）。
 - **tiny_http**：`Request::respond(self)` 按值消费，辅助函数必须所有权传递（不能 `&mut`）；`HeaderField::equiv` 参数需 `'static`（传字面量）。
 - **双栈同端口**：`port=0` 时 IPv4/IPv6 各绑会得到不同端口——先绑 IPv4 取 `local_addr()` 实际端口，再以该端口绑 IPv6。
-- **bundle resources 嵌套**：`tauri.conf.json` 里 `../../` 开头的资源落在 `resource_dir/_up_/_up_/`，解析时逐层探测 `_up_`（现实现探测 0-3 层）。
+- **bundle resources 嵌套**：`tauri.conf.json` 里 `../../../` 开头的资源落在 `resource_dir/_up_/_up_/_up_/`，解析时逐层探测 `_up_`（现实现探测 0-3 层）。
 - **CSS 渐变投影**：CSS `145deg` 渐变在圆上的投影公式是 `t = (0.574dx + 0.819dy + R) / 2R`（第一版图标把环顶画暗就是这里算错）。
 
 ## 已知限制

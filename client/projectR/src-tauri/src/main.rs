@@ -136,8 +136,8 @@ fn resolve_web_root(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::erro
         return Err(format!("MAZMOT_WEB_ROOT 下没有 index.html：{}", path.display()).into());
     }
     if cfg!(debug_assertions) {
-        // CARGO_MANIFEST_DIR = <repo>/client/src-tauri
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        // CARGO_MANIFEST_DIR = <repo>/client/projectR/src-tauri
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         return Ok(repo_root);
     }
     let resource_dir = app.path().resource_dir()?;

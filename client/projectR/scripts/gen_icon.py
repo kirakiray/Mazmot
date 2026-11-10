@@ -6,7 +6,7 @@
 黑色瞳孔（带对叶片的投影）+ 镜面高光 + 上下眼睑 + 四颗边缘螺丝。
 
 输出两份：
-1. client/assets/icon.png —— 应用图标源（品牌渐变圆角方块打底），
+1. client/projectR/assets/icon.png —— 应用图标源（品牌渐变圆角方块打底），
    供 `tauri icon` 派生全平台尺寸；
 2. 仓库根 favicon.ico —— 站点首页 favicon（无底色透明版，16/32/48/64
    多尺寸 PNG-in-ICO）。
@@ -23,7 +23,7 @@ from pathlib import Path
 SS = 2  # 2x 超采样抗锯齿
 CLIENT_DIR = Path(__file__).resolve().parent.parent
 ICON_OUT = CLIENT_DIR / "assets" / "icon.png"
-FAVICON_OUT = CLIENT_DIR.parent / "favicon.ico"
+FAVICON_OUT = CLIENT_DIR.parent.parent / "favicon.ico"
 
 # ---- 品牌色（取自 mascot.html）----
 BG_TOP = (102, 126, 234)     # model-badge 渐变起 #667eea

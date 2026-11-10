@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 把各平台打包产物统一收集到 client/dist/（一层目录，找得到不迷路）。
+# 把各平台打包产物统一收集到 client/projectR/dist/（一层目录，找得到不迷路）。
 # 产物不入库（client/.gitignore 已忽略 dist/），重新打包后跑 `npm run collect` 归拢。
 #
 # 前置：先跑过打包
@@ -30,5 +30,5 @@ if compgen -G "$BUNDLE/windows-portable/*.zip" > /dev/null; then
   cp -f "$BUNDLE/windows-portable/"*.zip "$DIST/"
 fi
 
-echo "── client/dist/ ──"
+echo "── client/projectR/dist/ ──"
 ls -lh "$DIST" | awk 'NR > 1 {print $5 "\t" $9}'

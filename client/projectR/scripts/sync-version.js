@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 把根 package.json 的 version 同步进桌面壳：
-//   - client/src-tauri/tauri.conf.json（产物命名与 app 元数据来源）
-//   - client/src-tauri/Cargo.toml（runtime_probe / X-Mazmot-Runtime 头的版本来源）
+//   - client/projectR/src-tauri/tauri.conf.json（产物命名与 app 元数据来源）
+//   - client/projectR/src-tauri/Cargo.toml（runtime_probe / X-Mazmot-Runtime 头的版本来源）
 // 由 predev / prebuild 钩子自动执行；交叉编译前手动跑一次（npm run sync:version）。
 "use strict";
 
@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const rootVersion = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../../package.json"), "utf8"),
 ).version;
 
 const confPath = path.join(__dirname, "../src-tauri/tauri.conf.json");

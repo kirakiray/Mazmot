@@ -1,0 +1,107 @@
+{
+  "name": "mazmot-client-electron",
+  "version": "1.6.1",
+  "private": true,
+  "description": "Mazmot Desktop Runtime — Electron shell that hosts the Mazmot static site as a native app runtime",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "node scripts/launch.js",
+    "predev": "node scripts/sync-version.js",
+    "start": "node scripts/launch.js",
+    "build": "electron-builder",
+    "prebuild": "node scripts/sync-version.js",
+    "build:dir": "electron-builder --dir",
+    "sync:version": "node scripts/sync-version.js",
+    "test": "node --test test/",
+    "icon": "node scripts/sync-icon.js",
+    "build:dir:local": "electron-builder --dir -c.electronDist=node_modules/electron/dist"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.mazmot.runtime.electron",
+    "productName": "Mazmot",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../index.html",
+        "to": "site/index.html"
+      },
+      {
+        "from": "../../404.html",
+        "to": "site/404.html"
+      },
+      {
+        "from": "../../favicon.ico",
+        "to": "site/favicon.ico"
+      },
+      {
+        "from": "../../sw.js",
+        "to": "site/sw.js"
+      },
+      {
+        "from": "../../sw",
+        "to": "site/sw"
+      },
+      {
+        "from": "../../main",
+        "to": "site/main"
+      },
+      {
+        "from": "../../apps",
+        "to": "site/apps"
+      },
+      {
+        "from": "../../mz",
+        "to": "site/mz"
+      },
+      {
+        "from": "../../official-apps",
+        "to": "site/official-apps"
+      },
+      {
+        "from": "../../bridge",
+        "to": "site/bridge"
+      },
+      {
+        "from": "../../cache-manifest.json",
+        "to": "site/cache-manifest.json"
+      },
+      {
+        "from": "../../locale-text.json",
+        "to": "site/locale-text.json"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg"
+      ],
+      "identity": null,
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "artifactName": "Mazmot-${version}-${arch}.${ext}"
+  },
+  "author": "Yao"
+}
