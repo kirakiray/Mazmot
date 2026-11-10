@@ -164,6 +164,81 @@
       flex-wrap: wrap;
     }
 
+    /* ===== 信任说明飘窗（不占表单高度，右侧浮层查看） ===== */
+    .trust-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-right: auto; /* 靠操作行左侧，复用现有行高，不额外占空间 */
+      padding: 6px 4px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--md-sys-color-primary);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+    .trust-trigger:hover {
+      text-decoration: underline;
+    }
+    .trust-trigger n-icon {
+      font-size: 16px;
+    }
+    .trust-headline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trust-headline-icon {
+      font-size: 20px;
+      color: var(--md-sys-color-primary);
+    }
+
+    /* 信任说明改用 st-dialog：面板宽度与正文排版定制 */
+    .dlg-trust::part(panel) {
+      width: min(420px, 100%);
+    }
+    .trust-dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .trust-dialog-desc {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .trust-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .trust-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background-color: transparent;
+      color: var(--md-sys-color-primary);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.4;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .trust-link:hover {
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .trust-link n-icon {
+      font-size: 15px;
+    }
+
     /* ===== 会员购买入口 ===== */
     .member-card {
       display: flex;
@@ -475,6 +550,10 @@
                         </div>
                       </o-if>
                       <div class="form-actions">
+                        <button type="button" class="trust-trigger" on:click="openTrustPanel">
+                          <n-icon icon="mdi:shield-check-outline"></n-icon>
+                          <locale-text><span lang="cn">不放心？数据与源码</span><span lang="en">Not sure? Data &amp; source</span></locale-text>
+                        </button>
                         <st-button
                           variant="text"
                           attr:disabled="keySaving"
@@ -606,6 +685,54 @@
     </o-if>
   </div>
 
+  <!-- 信任说明弹窗：由 Key 表单操作行的触发器打开；内容不占首屏布局，
+       st-dialog 自带遮罩 / Esc 关闭 / 焦点循环，sync:open 接收 auto-close 回写 -->
+  <st-dialog class="dlg-trust" sync:open="trustOpen" auto-close>
+    <h2 slot="headline">
+      <span class="trust-headline">
+        <n-icon class="trust-headline-icon" icon="mdi:shield-check-outline"></n-icon>
+        <span>{{t('trustTitle')}}</span>
+      </span>
+    </h2>
+    <div class="trust-dialog-body">
+      <p class="trust-dialog-desc">
+        <locale-text>
+          <span lang="cn">Mazmot 完全开源，密钥只保存在你的浏览器本地。你可以先到 GitHub 查看源码、按文档自行部署，或者把仓库地址交给别的 AI，让它帮你审查代码是否可信。</span>
+          <span lang="en">Mazmot is fully open source and keys stay in your browser. Inspect the code on GitHub, follow the docs to self-host it, or hand the repository to another AI and ask it to audit whether the code is trustworthy.</span>
+        </locale-text>
+      </p>
+      <div class="trust-actions">
+        <a
+          class="trust-link"
+          href="https://github.com/kirakiray/Mazmot"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <n-icon icon="mdi:github"></n-icon>
+          <locale-text><span lang="cn">查看源码</span><span lang="en">View source</span></locale-text>
+        </a>
+        <a
+          class="trust-link"
+          attr:href="deployDocUrl"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <n-icon icon="mdi:rocket-launch-outline"></n-icon>
+          <locale-text><span lang="cn">自行部署</span><span lang="en">Self-host</span></locale-text>
+        </a>
+        <button type="button" class="trust-link" on:click="copyAuditPrompt">
+          <n-icon icon="mdi:content-copy"></n-icon>
+          <locale-text><span lang="cn">复制 AI 审查提示词</span><span lang="en">Copy audit prompt</span></locale-text>
+        </button>
+      </div>
+    </div>
+    <div slot="actions">
+      <st-button variant="text" on:click="closeTrustPanel">
+        <locale-text><span lang="cn">知道了</span><span lang="en">Got it</span></locale-text>
+      </st-button>
+    </div>
+  </st-dialog>
+
   <!-- 会员购买弹窗：内嵌官方应用 official-apps/membership（app-config.js 微应用）。
        关闭时 o-if 销毁 o-app，下次打开回到第一步 -->
   <st-dialog class="dlg-membership" sync:open="memberDialogOpen" auto-close>
@@ -718,6 +845,28 @@
           cn: "粘贴你收到的邀请码，验证通过后保存即可。",
           en: "Paste the invite code you received. It will be validated and saved.",
         }),
+        // 信任说明：开源仓库入口（部署文档锚点按语种指向中/英 README）
+        trustTitle: getLocaleText({
+          cn: "不放心把 Key 交给这个平台？",
+          en: "Not sure about handing your key to this platform?",
+        }),
+        deployDocUrl: getLocaleText({
+          cn: "https://github.com/kirakiray/Mazmot/blob/main/README.zh-CN.md#2-%E6%9C%AC%E5%9C%B0%E5%BC%80%E5%8F%91",
+          en: "https://github.com/kirakiray/Mazmot/blob/main/README.md#2-local-development",
+        }),
+        // 供用户粘贴给其他 AI 的源码审查提示词：只陈述要核实的点，不预设结论
+        auditPrompt: getLocaleText({
+          cn: "请帮我审查这个开源项目的源代码是否可信：https://github.com/kirakiray/Mazmot 。重点确认：1) 用户填写的 AI Key 是否只保存在浏览器本地，是否会被上传到第三方服务器；2) AI 请求是直接发往模型厂商，还是经过项目方的中转服务；3) 是否存在收集用户数据或遥测的代码。请给出结论并指出关键代码位置。",
+          en: "Please audit whether this open-source project's source code is trustworthy: https://github.com/kirakiray/Mazmot. Focus on: 1) whether the AI Key a user enters is stored only in the browser locally and never uploaded to a third-party server; 2) whether AI requests go directly to model providers or through the project's relay service; 3) whether there is any telemetry or user-data collection code. Give a verdict and point to the relevant code.",
+        }),
+        auditPromptCopied: getLocaleText({
+          cn: "审查提示词已复制，粘贴给任意 AI 即可",
+          en: "Audit prompt copied — paste it into any AI",
+        }),
+        auditPromptFailed: getLocaleText({
+          cn: "复制失败，请手动复制仓库地址",
+          en: "Copy failed — please copy the repository URL manually",
+        }),
         keySavedToast: getLocaleText({
           cn: "API Key 已保存",
           en: "API Key saved",
@@ -791,6 +940,10 @@
           keyInput: "",
           showPassword: false,
           keySaving: false,
+          // 信任说明里的「自行部署」文档地址（随语种切换）
+          deployDocUrl: t("deployDocUrl"),
+          // 信任说明弹窗（st-dialog）是否展开
+          trustOpen: false,
           choice: "",
           purposeOptions: [],
           pickedApps: [],
@@ -927,6 +1080,43 @@
 
           togglePassword() {
             this.showPassword = !this.showPassword;
+          },
+
+          // 信任说明弹窗：打开与「知道了」关闭（Esc / 遮罩由 st-dialog auto-close 处理）
+          openTrustPanel() {
+            this.trustOpen = true;
+          },
+
+          closeTrustPanel() {
+            this.trustOpen = false;
+          },
+
+          // 复制源码审查提示词：让不信任平台的用户可直接交给其他 AI 核验
+          async copyAuditPrompt() {
+            const text = t("auditPrompt");
+            try {
+              await navigator.clipboard.writeText(text);
+              toast({ message: t("auditPromptCopied"), color: "success" });
+            } catch (err) {
+              // 非 HTTPS / 无剪贴板权限时的兜底
+              try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand("copy");
+                ta.remove();
+                toast({
+                  message: t(ok ? "auditPromptCopied" : "auditPromptFailed"),
+                  color: ok ? "success" : "error",
+                });
+              } catch (e) {
+                console.warn("[welcome] 复制审查提示词失败：", e);
+                toast({ message: t("auditPromptFailed"), color: "error" });
+              }
+            }
           },
 
           advanceAfterKey() {
