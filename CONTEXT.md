@@ -15,7 +15,7 @@
 | UI | Senti-UI | Material Design 3 组件（`st-list`、`st-dialog`、`st-button` 等），颜色走 `--md-sys-color-*` M3 角色变量 |
 | 存储 | `/nos/storage/main.js` | NoneOS Core 官方异步键值存储（IndexedDB），主系统用 `getStorage("mazmot")` 空间 |
 | 图标 | `n-icon` (`/nos/n-icon/n-icon.html`) | 业务代码统一用 `<n-icon icon="mdi:xxx">`；底层会加载 `iconify-icon`，请勿直接调用其 API |
-| 多语言 | `locale-text` (`/nos/locale-text/`) | `main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager`、`official-apps/cred-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`main/pages/apps.html` 「应用」标签页工具栏的齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [main/pages/settings-general.html](main/pages/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。官方应用的市场名称/描述（`__app.json` 与 `app.json`）一律基准英文 + `i18n.cn` 覆盖，全部官方应用已适配。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
+| 多语言 | `locale-text` (`/nos/locale-text/`) | `main`、`apps/network`、`apps/run-app`、`official-apps/speed-dial`、`official-apps/ai-manager`、`official-apps/cred-manager` 支持中/英双语：模板正文用 `<locale-text><span lang="cn">…</span><span lang="en">…</span></locale-text>`，JS 文案与 `title`/`placeholder` 等属性用 `getLocaleText`（经页面内 `t(key)` + `L10N` 表，o-fill 内 `$host.t`）；语言跟随 `navigator.language` 自动判定。入口 `<title>` 用脚本按语言设置。`main/pages/apps-list.html` 「应用」标签页工具栏的齿轮按钮打开设置弹窗（左侧导航 + 右侧内容，「常规」子页面 [main/pages/settings-general.html](main/pages/settings-general.html) 提供语言 `st-select`），切换后 `setLang` + 重载。官方应用的市场名称/描述（`__app.json` 与 `app.json`）一律基准英文 + `i18n.cn` 覆盖，全部官方应用已适配。例外：`apps/run-app/lib/*` 的错误文案保留中文（Core 就绪前执行，不能引 `/nos/*`）；speed-dial 的「未分组」为持久化数据值，不做多语言 |
 
 **约束**：所有代码必须符合 ofa.js 语法（`<o-if>`、`<o-fill>`、`on:click`、`proto`/`data`、`sync:`、`:style.` 等），禁止 Vue/React 语法。详见 [AGENTS.md](AGENTS.md)。
 
@@ -63,7 +63,10 @@ Mazmot/
 │   ├── app-config.js         # ofa.js 配置（home = ./pages/welcome.html；visibilitychange 回前台时 ping SW 检查宿主缓存更新）
 │   ├── pages/
 │   │   ├── welcome.html          # 首启引导——点击屏幕逐句推进的单气泡对话流（打字机、淡出淡入、<m-mascot> 吉祥物 soulless → 确认 AI Key 苏醒）：问候 → 介绍 → AI Key 配置（检测已有 Key 可直接下一步；无 Key 走 st-select + st-input 表单，provider 含 relay 邀请码，可跳过；表单操作行左侧另有「不放心？数据与源码」触发器，点开为 st-dialog 信任说明弹窗（auto-close + sync:open，不占表单高度）——GitHub 源码 / 按文档自行部署两个外链，正文提示可把仓库交给其他 AI 审查源码，再下方是「购买会员」入口）→ 用途三选一（1 直接用现成应用 / 2 用妙造 AI 开发（无可用 Key 时置灰并说明）/ 3 社交中心（暂置灰），可上一步）→ 按用途展示待装应用方块（1 → speed-dial + ai-manager；2 → conjure + ai-manager，已装的标「已安装」），完成后写 mazmot 空间 welcome-done 键并 replace 进 apps.html；再次打开直接进列表页。会员弹窗（st-dialog + o-if）内嵌官方应用 official-apps/membership 的 app-config.js 微应用（o-app，关闭即销毁、下次重开回到第一步），弹窗宽 min(760px,100%)、会员页高度 90vh（小屏按 `100dvh - 80px` 收敛；会员页自身 wrap 放宽到 720px，避免年度套餐卡挤压）。监听其 membership-purchased（购买成功：toast 提示、暂存事件负载（含邀请码与服务器命名），并 `enqueueOfficialInstalls(["membership"])` 把会员中心装进应用列表，同时把它加入「为你准备的应用」块（buildPickedApps 识别 `_membershipPurchased` 后 unshift）；finish 时再兜底并入安装队列）与 membership-close（用户点「完成」：关弹窗 + 经 [lib/membership-handoff.js](main/lib/membership-handoff.js) 纯函数判定后**直接把邀请码本地落库**——ai.saveKey(code,"relay",{serverName,serverUrl})、keyReady 置真、mascot 苏醒、进用途步骤；**不做网络校验**（邀请码刚由服务端签发且会员应用已写入过本地配置，此前走 saveKeyFlow 的 testApiKey 曾因瞬时网络失败把流程卡在 Key 步骤）；已有可用 Key / 正在保存 / 码格式非法时不回填）。依赖模块与组件（senti-ui button/icon-button/input/select/dialog、mascot、n-icon、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>），全部就绪才注册渲染；flowReady 置真时派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
-│   │   ├── apps.html             # 主界面：顶部居中 <m-mascot> + “Mazmot” 字标，下方 senti-ui st-nav-bar 横向导航（st-nav-item parallel，计划 / 对话 / 应用，默认停在应用）；「应用」保留原应用列表全部能力（添加/市场/设置弹窗、打开状态追踪、自动分享、官方应用更新检查、删除；工具栏切换列表/方块视图，方块点击新标签打开、hover 浮出新窗口按钮；「安装中」虚拟条目区见 lib/install-queue.js）；「对话」为轻量流式 AI 聊天（/mz/ai 按需加载，消息只存当前页面内存，支持 Enter 发送 / Shift+Enter 换行 / 停止 / 新对话，无可用 Key 时提示并可跳转 AI 密钥管理器）；「计划」暂为空占位。依赖模块与组件（senti-ui list/button/icon-button/dialog/switch/textarea/navigation/chip/card、mascot、n-icon、ercode、locale-text）全部在页面工厂里经 load 并行预载（不写静态 <l-m>、顶层不 import /nos/*），attached() 把应用列表灌入 appList 后派发 window 事件 mazmot:app-ready 通知根入口撤 loading 层
+│   │   ├── apps.html             # 主界面壳（路由落点）：顶部居中 <m-mascot> + “Mazmot” 字标 + senti-ui st-nav-bar 三段横向导航；下方三个常驻 <o-page>（plan / chat / apps-list），靠 .panel.active 显隐切换（保留各页状态与对话记录）。只负责 activeTab、tab-changed / open-ai-key-manager / replay-welcome 三个跨页面事件桥，不承载业务逻辑；默认 activeTab="apps"，保持引导完成后的落点
+│   │   ├── plan.html             # 「计划」页（st-card 空态占位，功能待接入）
+│   │   ├── chat.html             # 「对话」页：st-chip 建议、流式气泡、st-textarea 输入、停止 / 新对话、无 Key 提示；/mz/ai 按需加载、消息只存页面内存；无 Key 时「去配置」广播事件由 shell + apps-list 联动打开密钥管理器 / 市场
+│   │   ├── apps-list.html        # 「应用」页（原 apps.html 全部业务迁移）：应用列表、添加 / 市场 / 设置 / 分享弹窗、打开状态追踪、自动分享、官方应用更新、删除与安装中队列；attached() 灌入 appList 后派发 mazmot:app-ready；处理「重跑引导」与「打开 AI 密钥管理器」事件
 │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
 │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
@@ -305,17 +308,17 @@ Mazmot/
 
 ## 应用生命周期
 
-> 以下流程以主应用 [/main/pages/apps.html](main/pages/apps.html) 的实现描述。
+> 以下流程以「应用」页 [/main/pages/apps-list.html](main/pages/apps-list.html) 的实现描述（路由壳为 [apps.html](main/pages/apps.html)）。
 
 ### 1. 添加 / 安装应用（[main/pages/add-app.html](main/pages/add-app.html)）
 
 「添加应用」弹窗不再内置创建向导，只做引导：
 
 - **应用市场**：[main/pages/market.html](main/pages/market.html) 读取 [official-apps/manifest.json](official-apps/manifest.json) 展示官方应用，`installOfficialApp` 把源文件写入虚拟目录 `mazmot-apps/<id>/client/` 并登记进 `apps` 键（`source: "official"` + `officialId`，不带 `appId`）。
-- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，默认不进主系统应用列表（[main/pages/apps.html](main/pages/apps.html) 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）；在妙造顶栏点「发布」会把应用文件复制一份到 `mazmot-apps/` 并登记为普通虚拟应用记录（`mazmot.source: "conjure-publish"`，带 `appId` 自建标记 + `autoShare: true` 默认分享），即可出现在本列表正常打开，与妙造工作目录互相独立。
+- **用 AI 创建**：展示官方应用「妙造（Conjure）」（[official-apps/conjure/](official-apps/conjure/)）卡片——已安装则一键打开（从 `officialAppState.installedApps` 重建虚拟目录句柄后 `getRunUrl`），未安装则跳转到应用市场安装。妙造经 AI 对话生成 ofa.js 应用，自管理在 `ai-apps/` 命名空间，默认不进主系统应用列表（[main/pages/apps-list.html](main/pages/apps-list.html) 的 `loadApps` 过滤 `mazmot.source === "ai-builder"` 的记录）；在妙造顶栏点「发布」会把应用文件复制一份到 `mazmot-apps/` 并登记为普通虚拟应用记录（`mazmot.source: "conjure-publish"`，带 `appId` 自建标记 + `autoShare: true` 默认分享），即可出现在本列表正常打开，与妙造工作目录互相独立。
 - **外源下载**：URL / ZIP 安装的禁用占位 UI（功能未实现）。
 
-### 2. 启动应用（[main/pages/apps.html](main/pages/apps.html)）
+### 2. 启动应用（[main/pages/apps-list.html](main/pages/apps-list.html)）
 
 ```
 handleOpen / handleOpenWindow / handleOpenTab
@@ -329,7 +332,7 @@ app-runner.js getRunUrl(app)
 window.open(runUrl)
 ```
 
-### 3. 更新官方应用（[main/pages/apps.html](main/pages/apps.html)）
+### 3. 更新官方应用（[main/pages/apps-list.html](main/pages/apps-list.html)）
 
 ```
 attached / refreshApps → _checkOfficialUpdates
@@ -389,7 +392,7 @@ clearOpened → 关闭窗口
 }
 ```
 
-#### 运行时字段（[apps.html](main/pages/apps.html) 的 `loadApps()` 在内存里拼装出来，不持久化）
+#### 运行时字段（[apps-list.html](main/pages/apps-list.html) 的 `loadApps()` 在内存里拼装出来，不持久化）
 
 ```javascript
 {
@@ -429,7 +432,7 @@ clearOpened → 关闭窗口
 
 ### 应用数据模型约束（强约定）
 
-以下约束散落在 [apps.html](main/pages/apps.html) / [market.html](main/pages/market.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
+以下约束散落在 [apps-list.html](main/pages/apps-list.html) / [market.html](main/pages/market.html) / [app-runner.js](mz/app-runner.js) / [share-mgr.js](mz/share-mgr.js)，新增 / 修改相关代码时必须保持一致：
 
 - **应用目录布局**：每个应用在目标位置（本地目录或 `${namespace}/{recordName}/`）下必须有 `client/` 子目录；`client/` 内必须至少含 `app.json` 与 `index.html`。读取应用文件时优先取 `client/`，缺失时回退到根目录（仅用于兼容老数据，新代码不要再产生这种布局）。
 - **应用名规则**：`name`（= `_recordName`）只能含字母、数字、下划线、连字符（`/^[A-Za-z0-9_-]+$/`），不能含空格；官方应用安装时以市场 id 即目录名落地（天然合规）。
@@ -448,17 +451,21 @@ clearOpened → 关闭窗口
 - **version 内容派生**：`sha256(JSON.stringify(hashes))` 前 8 位，与 [host-cache.js](sw/host-cache.js) 的 `deriveVersion` 算法一致；内容不变则不写盘，**禁止手工修改 version**。
 - **缓存机制**（[sw/host-cache.js](sw/host-cache.js)，由根 sw.js 在 core dist.js 之后 importScripts，fetch 处于兜底位）：SW 启动 / 主应用回前台 message ping 时拉清单（no-store），version 变化 → 新建 `mazmot-host-v<version>` 缓存（旧缓存同 hash 条目重验后零网络搬运，其余网络拉取逐字节验 hash，任一失败保持旧版），成功后原子切换并清理旧缓存；离线拉不到清单时回退本地最新缓存。fetch 拦截仅限清单内同源路径（`/` 映射 `index.html`，忽略 search）；localhost 自禁用，`?mzcache=1` 强制启用。
 
-## UI 关键组件（[main/pages/apps.html](main/pages/apps.html)）
+## UI 关键组件（主界面壳 [main/pages/apps.html](main/pages/apps.html) + 三个子页面模块）
 
 ### 主界面
 
-- 顶部品牌区：`<m-mascot>` + “Mazmot” 字标居中（与启动引导共用视觉），下方 `st-nav-bar` + `st-nav-item parallel` 横向导航（senti-ui navigation，药丸高亮随 active 动画）：计划 / 对话 / 应用
-- 面板切换：`activeTab` 驱动 `.panel.active`（CSS 显隐，保留各面板 DOM 与对话滚动位置）；「计划」为 `st-card` 空态占位
-- 应用面板：`st-dialog` 承载添加 / 市场 / 设置 / 分享弹窗；空列表用 `st-card` + 「浏览应用市场 / 添加应用」两个 `st-button`；`st-list` + `<o-fill :value="appList">` 渲染列表，每个 `st-list-item` 可折叠（`collapsible`）：
+- **壳**（[apps.html](main/pages/apps.html)）：`<m-mascot>` + “Mazmot” 字标居中（与启动引导共用视觉），下方 `st-nav-bar` + `st-nav-item parallel` 横向导航（计划 / 对话 / 应用）；`activeTab` 驱动三个 `.panel.active` 的 CSS 显隐，三个 `<o-page>`（`plan.html` / `chat.html` / `apps-list.html`）常驻以保留各页状态。壳只持有跨页事件桥：
+  - `mazmot:tab-changed`：切换 tab 时广播（聊天页收到后刷新 Key 状态并滚到底部）
+  - `mazmot:open-ai-key-manager`：切到「应用」并让 apps-list 打开密钥管理器 / 市场
+  - `mazmot:replay-welcome`：由壳执行 `replace("./welcome.html")`（子页面不持有路由）
+- **计划页**（[plan.html](main/pages/plan.html)）：`st-card` 空态占位，功能待接入
+- **对话页**（[chat.html](main/pages/chat.html)）：建议问题用 `st-chip`；`chatMessages` + `o-fill` 渲染气泡，`chatStreaming` / `chatLiveText` 渲染流式临时气泡与打字指示；`st-textarea` 输入（Enter 发送、Shift+Enter 换行）+ 发送 / 停止按钮 + 「新对话」；`/mz/ai/main.js` 首次切到对话或发送时按需加载，`getAssistant().chat({ stream })` 流式回填；无可用 Key 时展示错误气泡与「去配置」（广播事件交给壳 / apps-list 联动）
+- **应用页**（[apps-list.html](main/pages/apps-list.html)）：`st-dialog` 承载添加 / 市场 / 设置 / 分享弹窗；空列表用 `st-card` + 「浏览应用市场 / 添加应用」两个 `st-button`；`st-list` + `<o-fill :value="appList">` 渲染列表，每个 `st-list-item` 可折叠（`collapsible`）：
   - **主行 suffix**：`已打开` 徽章 + `新标签打开`(mdi:tab-plus) + `小窗口打开`(mdi:open-in-new) 两个 icon 按钮
   - **主行点击**：`on:click="handleOpenTab"` 触发打开
   - **折叠子列表**：应用来源徽章、目录名称、应用 ID、分享开关 / 链接、更新与删除
-- 对话面板：建议问题用 `st-chip`；`chatMessages` + `o-fill` 渲染气泡，`chatStreaming` / `chatLiveText` 渲染流式临时气泡与打字指示；`st-textarea` 输入（Enter 发送、Shift+Enter 换行）+ 发送 / 停止按钮 + 「新对话」；`/mz/ai/main.js` 首次切到对话或发送时按需加载，`getAssistant().chat({ stream })` 流式回填；无可用 Key 时展示错误气泡与「去配置」（有 ai-manager 则直接打开，否则开市场）
+  - `attached()` 灌入 `appList` 后派发 `mazmot:app-ready`；监听 `mazmot:open-ai-key-manager` 打开 ai-manager 或市场
 
 ### 状态追踪（[app-status.js](main/lib/app-status.js)）
 
@@ -590,7 +597,7 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 
 | 需求 | 打开文件 |
 | ---- | -------- |
-| 修改应用列表 UI | [main/pages/apps.html](main/pages/apps.html) |
+| 修改应用列表 UI | [main/pages/apps-list.html](main/pages/apps-list.html) |
 | 修改添加应用引导 / 市场入口 | [main/pages/add-app.html](main/pages/add-app.html) |
 | 设置弹窗用户信息（default 用户查看 / 改用户名） | [main/pages/settings-user.html](main/pages/settings-user.html) |
 | 设置弹窗联网能力（web fetch 通道清单 / 生效通道 / 测试抓取） | [main/pages/settings-webfetch.html](main/pages/settings-webfetch.html)（能力入口 [mz/net/main.js](mz/net/main.js)） |
@@ -628,5 +635,5 @@ npx sb-test -f apps/run-app/lib/test/run-app-utils.sb.html --browsers chrome
 | 妙造（Conjure）官方应用（对话生成 ofa.js 应用 → 写入 mazmot-apps VFS → 预览） | [official-apps/conjure/pages/home.html](official-apps/conjure/pages/home.html)（核心库 [lib/builder.js](official-apps/conjure/lib/builder.js)，测试 [test/builder.sb.html](official-apps/conjure/test/builder.sb.html)） |
 | 凭证管理官方应用（查询用户卡片 + 签发/领取/查看证书 + 已知用户 + 我的信息 + 互授） | [official-apps/cred-manager/pages/](official-apps/cred-manager/pages/)（[home.html](official-apps/cred-manager/pages/home.html) layout / [query-user.html](official-apps/cred-manager/pages/query-user.html) / [claim.html](official-apps/cred-manager/pages/claim.html) / [my-certs.html](official-apps/cred-manager/pages/my-certs.html) / [cert-detail.html](official-apps/cred-manager/pages/cert-detail.html) / [known-users.html](official-apps/cred-manager/pages/known-users.html) / [live-share.html](official-apps/cred-manager/pages/live-share.html) + [lib/live-share.js](official-apps/cred-manager/lib/live-share.js) / [my-info.html](official-apps/cred-manager/pages/my-info.html)） |
 | 网页收藏夹官方应用（单机 Speed Dial） | [official-apps/speed-dial/pages/home.html](official-apps/speed-dial/pages/home.html) |
-| 主应用（对话式首启引导 + 应用列表主页 + 后台安装队列，根入口原地挂载） | [main/](main/)（[pages/welcome.html](main/pages/welcome.html) 引导对话流 / [pages/apps.html](main/pages/apps.html) 列表主页 / [lib/install-queue.js](main/lib/install-queue.js) 安装队列 / [lib/welcome-plan.js](main/lib/welcome-plan.js) 用途映射纯逻辑 / [lib/membership-handoff.js](main/lib/membership-handoff.js) 会员购买→Key 交接纯逻辑） |
+| 主应用（对话式首启引导 + 应用列表主页 + 后台安装队列，根入口原地挂载） | [main/](main/)（[pages/welcome.html](main/pages/welcome.html) 引导对话流 / [pages/apps.html](main/pages/apps.html) 主界面壳（[apps-list.html](main/pages/apps-list.html) 列表 / [chat.html](main/pages/chat.html) 对话 / [plan.html](main/pages/plan.html) 计划）/ [lib/install-queue.js](main/lib/install-queue.js) 安装队列 / [lib/welcome-plan.js](main/lib/welcome-plan.js) 用途映射纯逻辑 / [lib/membership-handoff.js](main/lib/membership-handoff.js) 会员购买→Key 交接纯逻辑） |
 | P2P 云盘官方应用（服务端/客户端/角色选择） | [official-apps/cloud-drive/pages/](official-apps/cloud-drive/pages/)（[server.html](official-apps/cloud-drive/pages/server.html) / [client.html](official-apps/cloud-drive/pages/client.html) / [home.html](official-apps/cloud-drive/pages/home.html)） |
