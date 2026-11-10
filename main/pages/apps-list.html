@@ -24,15 +24,86 @@
       flex-wrap: wrap;
       padding: 12px 16px;
     }
+    .header-title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
     .header h2 {
       margin: 0;
       font-size: 20px;
+    }
+    .app-count {
+      font-size: 12px;
+      color: var(--md-sys-color-on-surface-variant);
+      white-space: nowrap;
+    }
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
     }
     .list-wrapper {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
       padding: 0 16px 32px;
+    }
+    .app-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .app-card {
+      border-radius: 18px;
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background-color: var(--md-sys-color-surface-container-low);
+      overflow: hidden;
+      transition:
+        background-color 0.15s,
+        border-color 0.15s;
+    }
+    .app-card:hover {
+      border-color: var(--md-sys-color-primary);
+      background-color: var(--md-sys-color-surface-container);
+    }
+    .app-card[data-opened] {
+      border-color: var(--md-sys-color-primary);
+    }
+    .app-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      cursor: pointer;
+      outline: none;
+    }
+    .app-row:focus-visible {
+      outline: 2px solid var(--md-sys-color-primary);
+      outline-offset: -2px;
+      border-radius: 16px;
+    }
+    .app-icon {
+      flex-shrink: 0;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      background-color: var(--md-sys-color-surface-container-high);
+      font-size: 24px;
+      line-height: 1;
+      user-select: none;
+    }
+    .app-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
     .item-title {
       display: flex;
@@ -41,18 +112,39 @@
       flex-wrap: wrap;
       min-width: 0;
     }
-    .item-name {
-      font-weight: 500;
+    .app-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .app-item:hover {
-      background-color: var(--md-sys-color-on-primary);
-      border-radius: 12px;
+    .app-desc {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--md-sys-color-on-surface-variant);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
-    .app-item:hover div {
-      color: var(--md-sys-color-on-primary-container);
+    .app-actions {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .app-actions st-icon-button {
+      font-size: 14px;
+    }
+    .app-details {
+      padding: 12px 16px 14px 76px;
+      border-top: 1px solid var(--md-sys-color-surface-variant);
+      background-color: var(--md-sys-color-surface-container-lowest);
+    }
+    .sub-info {
+      padding: 0;
     }
     .empty-card {
       margin: 16px 0 0;
@@ -91,11 +183,6 @@
       margin-top: 8px;
     }
 
-    .item-suffix {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
     .open-badge {
       display: inline-flex;
       align-items: center;
@@ -135,7 +222,7 @@
       display: inline-flex;
       align-items: center;
       padding: 1px 6px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -150,7 +237,7 @@
       align-items: center;
       gap: 3px;
       padding: 1px 8px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
@@ -167,7 +254,7 @@
       align-items: center;
       gap: 3px;
       padding: 1px 8px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
@@ -184,7 +271,7 @@
       align-items: center;
       gap: 3px;
       padding: 1px 8px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
@@ -201,7 +288,7 @@
       align-items: center;
       gap: 3px;
       padding: 1px 8px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
@@ -224,7 +311,7 @@
       align-items: center;
       gap: 4px;
       padding: 1px 8px;
-      margin-left: 6px;
+      margin-left: 0;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
@@ -250,7 +337,7 @@
       font-family: inherit;
     }
     .install-progress {
-      padding: 8px 4px;
+      padding: 2px 0 0;
       width: 100%;
       box-sizing: border-box;
     }
@@ -483,6 +570,31 @@
       .empty-card-body {
         padding: 24px 12px;
       }
+      .app-row {
+        gap: 10px;
+        padding: 12px;
+      }
+      .app-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 21px;
+      }
+      .app-name {
+        font-size: 14px;
+      }
+      .app-details {
+        padding: 10px 12px 14px;
+      }
+      .open-badge {
+        display: none;
+      }
+      .app-actions st-icon-button {
+        font-size: 13px;
+      }
+      .header-actions {
+        gap: 4px;
+      }
     }
   </style>
 
@@ -595,18 +707,26 @@
 
   <div class="container">
     <div class="header">
-      <h2><locale-text><span lang="cn">应用列表</span><span lang="en">My Apps</span></locale-text></h2>
-      <div style="display: flex; gap: 8px; align-items: center">
+      <div class="header-title">
+        <h2><locale-text><span lang="cn">应用列表</span><span lang="en">My Apps</span></locale-text></h2>
+        <o-if :value="appList.length > 0">
+          <span class="app-count">
+            <locale-text attr:data-n="appList.length">
+              <span lang="cn">{n} 个应用</span>
+              <span lang="en">{n} apps</span>
+            </locale-text>
+          </span>
+        </o-if>
+      </div>
+      <div class="header-actions">
         <!-- TODO(temp): 重跑欢迎引导的临时测试按钮，验证完连同 replayWelcome 一起删除 -->
-        <st-button
-          variant="outlined"
-          color="tertiary"
+        <st-icon-button
           style="font-size: 13px"
           on:click="replayWelcome"
+          attr:title="t('replayTitle')"
         >
-          <n-icon icon="mdi:restart" slot="prefix"></n-icon>
-          <locale-text><span lang="cn">重跑引导</span><span lang="en">Replay Tour</span></locale-text>
-        </st-button>
+          <n-icon icon="mdi:restart"></n-icon>
+        </st-icon-button>
         <st-icon-button
           style="font-size: 13px"
           on:click="toggleViewMode"
@@ -629,49 +749,32 @@
     </div>
 
     <div class="list-wrapper">
-      <!-- 引导安装队列：还在后台安装的官方应用，先以「安装中」条目呈现 -->
+      <!-- 引导安装队列：还在后台安装的官方应用，先以「安装中」卡片呈现 -->
       <o-if :value="installingItems.length > 0">
-        <st-list>
+        <div class="app-list" style="margin-bottom: 10px">
           <o-fill :value="installingItems" fill-key="officialId">
-            <st-list-item class="app-item">
-              <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
-              <div class="item-title">
-                <span class="item-name">{{$data.name}}</span>
-                <span
-                  class="installing-badge"
-                  attr:data-state="$data.state"
-                  attr:title="$host.t('installingBadgeTitle')"
-                >
-                  <o-if :value="$data.state !== 'error'">
-                    <n-icon icon="mdi:progress-download"></n-icon>
-                    <locale-text><span lang="cn">安装中</span><span lang="en">Installing</span></locale-text>
-                  </o-if>
-                  <o-if :value="$data.state === 'error'">
-                    <n-icon icon="mdi:alert-circle-outline"></n-icon>
-                    <locale-text><span lang="cn">安装失败</span><span lang="en">Failed</span></locale-text>
-                  </o-if>
-                </span>
-              </div>
-              <div secondary>{{$data.desc}}</div>
-
-              <div slot="suffix" class="item-suffix">
-                <span class="install-progress-num" attr:data-state="$data.state">
-                  {{$data.state === 'error' ? $data.statusText : $data.progress + '%'}}
-                </span>
-                <o-if :value="$data.state === 'error'">
-                  <st-icon-button
-                    class="icon-btn"
-                    style="font-size: 13px"
-                    on:click="$host.retryItem($event, $data)"
-                    attr:title="$host.t('retryInstallTitle')"
-                  >
-                    <n-icon icon="mdi:refresh"></n-icon>
-                  </st-icon-button>
-                </o-if>
-              </div>
-
-              <st-list slot="sublist">
-                <st-list-item>
+            <div class="app-card">
+              <div class="app-row" style="cursor: default">
+                <span class="app-icon">{{$data.icon}}</span>
+                <div class="app-main">
+                  <div class="item-title">
+                    <span class="app-name">{{$data.name}}</span>
+                    <span
+                      class="installing-badge"
+                      attr:data-state="$data.state"
+                      attr:title="$host.t('installingBadgeTitle')"
+                    >
+                      <o-if :value="$data.state !== 'error'">
+                        <n-icon icon="mdi:progress-download"></n-icon>
+                        <locale-text><span lang="cn">安装中</span><span lang="en">Installing</span></locale-text>
+                      </o-if>
+                      <o-if :value="$data.state === 'error'">
+                        <n-icon icon="mdi:alert-circle-outline"></n-icon>
+                        <locale-text><span lang="cn">安装失败</span><span lang="en">Failed</span></locale-text>
+                      </o-if>
+                    </span>
+                  </div>
+                  <div class="app-desc">{{$data.desc}}</div>
                   <div class="install-progress">
                     <div class="progress-bar">
                       <div
@@ -681,82 +784,106 @@
                     </div>
                     <div class="progress-text">{{$data.statusText}}</div>
                   </div>
-                </st-list-item>
-              </st-list>
-            </st-list-item>
+                </div>
+                <div class="app-actions">
+                  <span class="install-progress-num" attr:data-state="$data.state">
+                    {{$data.state === 'error' ? $data.statusText : $data.progress + '%'}}
+                  </span>
+                  <o-if :value="$data.state === 'error'">
+                    <st-icon-button
+                      class="icon-btn"
+                      style="font-size: 13px"
+                      on:click="$host.retryItem($event, $data)"
+                      attr:title="$host.t('retryInstallTitle')"
+                    >
+                      <n-icon icon="mdi:refresh"></n-icon>
+                    </st-icon-button>
+                  </o-if>
+                </div>
+              </div>
+            </div>
           </o-fill>
-        </st-list>
+        </div>
       </o-if>
       <o-if :value="appList.length > 0 && viewMode === 'list'">
-        <st-list>
+        <div class="app-list">
           <!-- key 不能用 appId：官方应用不带 appId（空值互相冲突，导致
                新装应用顶替旧列表项、删除后渲染错乱）；_recordName 即 apps
                记录的 name，写入时保证唯一 -->
           <o-fill :value="appList" fill-key="_recordName">
-            <st-list-item class="app-item" collapsible button>
-              <span slot="prefix" style="font-size: 24px">{{$data.icon}}</span>
-              <div class="item-title">
-                <span class="item-name">{{$data.name}}</span>
-                <span class="version-badge">v{{$data.version}}</span>
-                <o-if :value="$data.isMine">
-                  <span class="mine-badge" attr:title="$host.t('mineTitle')">
-                    <n-icon icon="mdi:account-hard-hat"></n-icon>
-                    <locale-text><span lang="cn">我开发的</span><span lang="en">Mine</span></locale-text>
-                  </span>
-                </o-if>
-                <o-if :value="$data.source === 'official'">
-                  <span class="official-badge" attr:title="$host.t('officialTitle')">
-                    <n-icon icon="mdi:store-outline"></n-icon>
-                    <locale-text><span lang="cn">官方应用</span><span lang="en">Official</span></locale-text>
-                  </span>
-                </o-if>
-                <o-if :value="$data.offline">
-                  <span class="offline-badge" attr:title="$host.t('offlineTitle')">
-                    <n-icon icon="mdi:cloud-off-outline"></n-icon>
-                    <locale-text><span lang="cn">已下线</span><span lang="en">Offline</span></locale-text>
-                  </span>
-                </o-if>
-                <o-if :value="$data.hasUpdate">
-                  <span class="update-badge" attr:title="$host.t('updateBadgeTitle')">
-                    <n-icon icon="mdi:arrow-up-circle-outline"></n-icon>
-                    <locale-text attr:data-v="$data.latestVersion">
-                      <span lang="cn">可更新 v{v}</span>
-                      <span lang="en">Update to v{v}</span>
-                    </locale-text>
-                  </span>
-                </o-if>
+            <div class="app-card" attr:data-opened="$data.opened">
+              <div class="app-row" on:click="$host.handleOpenTab($event, $data)">
+                <span class="app-icon">{{$data.icon}}</span>
+                <div class="app-main">
+                  <div class="item-title">
+                    <span class="app-name">{{$data.name}}</span>
+                    <span class="version-badge">v{{$data.version}}</span>
+                    <o-if :value="$data.isMine">
+                      <span class="mine-badge" attr:title="$host.t('mineTitle')">
+                        <n-icon icon="mdi:account-hard-hat"></n-icon>
+                        <locale-text><span lang="cn">我开发的</span><span lang="en">Mine</span></locale-text>
+                      </span>
+                    </o-if>
+                    <o-if :value="$data.source === 'official'">
+                      <span class="official-badge" attr:title="$host.t('officialTitle')">
+                        <n-icon icon="mdi:store-outline"></n-icon>
+                        <locale-text><span lang="cn">官方应用</span><span lang="en">Official</span></locale-text>
+                      </span>
+                    </o-if>
+                    <o-if :value="$data.offline">
+                      <span class="offline-badge" attr:title="$host.t('offlineTitle')">
+                        <n-icon icon="mdi:cloud-off-outline"></n-icon>
+                        <locale-text><span lang="cn">已下线</span><span lang="en">Offline</span></locale-text>
+                      </span>
+                    </o-if>
+                    <o-if :value="$data.hasUpdate">
+                      <span class="update-badge" attr:title="$host.t('updateBadgeTitle')">
+                        <n-icon icon="mdi:arrow-up-circle-outline"></n-icon>
+                        <locale-text attr:data-v="$data.latestVersion">
+                          <span lang="cn">可更新 v{v}</span>
+                          <span lang="en">Update to v{v}</span>
+                        </locale-text>
+                      </span>
+                    </o-if>
+                  </div>
+                  <div class="app-desc">{{$data.desc}}</div>
+                </div>
+                <div class="app-actions">
+                  <o-if :value="$data.opened">
+                    <span class="open-badge" attr:title="$host.t('openedTitle')">
+                      <n-icon icon="mdi:circle-medium"></n-icon>
+                      <locale-text><span lang="cn">已打开</span><span lang="en">Open</span></locale-text>
+                    </span>
+                  </o-if>
+                  <st-icon-button
+                    class="icon-btn"
+                    style="font-size: 14px"
+                    on:click="$host.handleOpenTab($event, $data)"
+                    attr:title="$host.t('openTabTitle')"
+                  >
+                    <n-icon icon="mdi:tab-plus"></n-icon>
+                  </st-icon-button>
+                  <st-icon-button
+                    class="icon-btn window-btn"
+                    style="font-size: 14px"
+                    on:click="$host.handleOpenWindow($event, $data)"
+                    attr:title="$host.t('openWindowTitle')"
+                  >
+                    <n-icon icon="mdi:open-in-new"></n-icon>
+                  </st-icon-button>
+                  <st-icon-button
+                    class="icon-btn"
+                    style="font-size: 14px"
+                    on:click="$host.toggleAppDetails($event, $data)"
+                    attr:title="$host.t('detailsTitle')"
+                    attr:aria-expanded="$host.expandedApp === $data._recordName"
+                  >
+                    <n-icon attr:icon="$host.expandedApp === $data._recordName ? 'mdi:chevron-up' : 'mdi:chevron-down'"></n-icon>
+                  </st-icon-button>
+                </div>
               </div>
-              <div secondary>{{$data.desc}}</div>
-
-              <div slot="suffix" class="item-suffix">
-                <o-if :value="$data.opened">
-                  <span class="open-badge" attr:title="$host.t('openedTitle')">
-                    <n-icon icon="mdi:circle-medium"></n-icon>
-                    <locale-text><span lang="cn">已打开</span><span lang="en">Open</span></locale-text>
-                  </span>
-                </o-if>
-
-                <st-icon-button
-                  class="icon-btn tab-btn"
-                  style="font-size: 13px"
-                  on:click="$host.handleOpenTab($event, $data)"
-                  attr:title="$host.t('openTabTitle')"
-                >
-                  <n-icon icon="mdi:tab-plus"></n-icon>
-                </st-icon-button>
-
-                <st-icon-button
-                  class="icon-btn window-btn"
-                  style="font-size: 13px"
-                  on:click="$host.handleOpenWindow($event, $data)"
-                  attr:title="$host.t('openWindowTitle')"
-                >
-                  <n-icon icon="mdi:open-in-new"></n-icon>
-                </st-icon-button>
-              </div>
-
-              <st-list slot="sublist">
-                <st-list-item>
+              <o-if :value="$host.expandedApp === $data._recordName">
+                <div class="app-details">
                   <div class="sub-info">
                     <div class="sub-info-row">
                       <span class="sub-info-label"><locale-text><span lang="cn">应用来源：</span><span lang="en">Source:</span></locale-text></span>
@@ -913,11 +1040,11 @@
                       </div>
                     </div>
                   </div>
-                </st-list-item>
-              </st-list>
-            </st-list-item>
+                </div>
+              </o-if>
+            </div>
           </o-fill>
-        </st-list>
+        </div>
       </o-if>
       <!-- 方块视图：点击方块新标签打开，hover 出现「新窗口打开」按钮 -->
       <o-if :value="appList.length > 0 && viewMode === 'grid'">
@@ -1055,6 +1182,8 @@
         retryInstallTitle: getLocaleText({ cn: "重试安装", en: "Retry install" }),
         gridViewTitle: getLocaleText({ cn: "切换为方块视图", en: "Switch to grid view" }),
         listViewTitle: getLocaleText({ cn: "切换为列表视图", en: "Switch to list view" }),
+        detailsTitle: getLocaleText({ cn: "应用详情", en: "App details" }),
+        replayTitle: getLocaleText({ cn: "重跑欢迎引导", en: "Replay welcome tour" }),
         navGeneral: getLocaleText({ cn: "常规", en: "General" }),
         navUser: getLocaleText({ cn: "用户信息", en: "User Info" }),
         navCerts: getLocaleText({ cn: "凭证管理", en: "Credentials" }),
@@ -1210,6 +1339,8 @@
           shareDialogOpen: false,
           shareUrl: "",
           viewMode: "list",
+          // 当前展开详情的应用（_recordName；空字符串表示全部收起）
+          expandedApp: "",
           settingsOpen: false,
           settingsTab: "general",
           settingsTabs: [
@@ -1325,6 +1456,16 @@
           openAppMarket() {
             this.marketDialogOpen = true;
           },
+
+          toggleAppDetails(event, app) {
+            if (event) {
+              event.stopPropagation();
+              if (event.preventDefault) event.preventDefault();
+            }
+            this.expandedApp =
+              this.expandedApp === app._recordName ? "" : app._recordName;
+          },
+
 
           // 打开设置弹窗
           handleSettings() {

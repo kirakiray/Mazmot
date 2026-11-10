@@ -66,7 +66,7 @@ Mazmot/
 │   │   ├── apps.html             # 主界面壳（路由落点）：顶部居中 <m-mascot> + “Mazmot” 字标 + senti-ui st-nav-bar 三段横向导航；下方三个常驻 <o-page>（plan / chat / apps-list），靠 .panel.active 显隐切换（保留各页状态与对话记录）。只负责 activeTab、tab-changed / open-ai-key-manager / replay-welcome 三个跨页面事件桥，不承载业务逻辑；默认 activeTab="apps"，保持引导完成后的落点
 │   │   ├── plan.html             # 「计划」页（st-card 空态占位，功能待接入）
 │   │   ├── chat.html             # 「对话」页：st-chip 建议、流式气泡、st-textarea 输入、停止 / 新对话、无 Key 提示；/mz/ai 按需加载、消息只存页面内存；无 Key 时「去配置」广播事件由 shell + apps-list 联动打开密钥管理器 / 市场
-│   │   ├── apps-list.html        # 「应用」页（原 apps.html 全部业务迁移）：应用列表、添加 / 市场 / 设置 / 分享弹窗、打开状态追踪、自动分享、官方应用更新、删除与安装中队列；attached() 灌入 appList 后派发 mazmot:app-ready；处理「重跑引导」与「打开 AI 密钥管理器」事件
+│   │   ├── apps-list.html        # 「应用」页（原 apps.html 全部业务迁移）：应用列表改为卡片式（整卡点击打开、右侧新标签 / 新窗口 / 详情折叠；详情含来源、目录、App ID、分享、更新与删除），安装中队列同款卡片展示进度；添加 / 市场 / 设置 / 分享弹窗、打开状态追踪、自动分享、官方应用更新、删除；attached() 灌入 appList 后派发 mazmot:app-ready；处理「重跑引导」与「打开 AI 密钥管理器」事件
 │   │   ├── add-app.html          # 添加应用弹窗子页面（应用市场入口；妙造 AI 创建引导——已安装则一键打开、未安装跳市场安装；外源下载占位）
 │   │   ├── market.html           # 应用市场页面模块（弹窗内加载，展示官方应用及其版本号并安装到虚拟目录）
 │   │   ├── settings-general.html # 设置弹窗「常规」子页面（语言 / 主题下拉；每次挂载重建，主题 option 在 attached() 注入，弹窗内 <o-page> 加载）
@@ -461,11 +461,11 @@ clearOpened → 关闭窗口
   - `mazmot:replay-welcome`：由壳执行 `replace("./welcome.html")`（子页面不持有路由）
 - **计划页**（[plan.html](main/pages/plan.html)）：`st-card` 空态占位，功能待接入
 - **对话页**（[chat.html](main/pages/chat.html)）：建议问题用 `st-chip`；`chatMessages` + `o-fill` 渲染气泡，`chatStreaming` / `chatLiveText` 渲染流式临时气泡与打字指示；`st-textarea` 输入（Enter 发送、Shift+Enter 换行）+ 发送 / 停止按钮 + 「新对话」；`/mz/ai/main.js` 首次切到对话或发送时按需加载，`getAssistant().chat({ stream })` 流式回填；无可用 Key 时展示错误气泡与「去配置」（广播事件交给壳 / apps-list 联动）
-- **应用页**（[apps-list.html](main/pages/apps-list.html)）：`st-dialog` 承载添加 / 市场 / 设置 / 分享弹窗；空列表用 `st-card` + 「浏览应用市场 / 添加应用」两个 `st-button`；`st-list` + `<o-fill :value="appList">` 渲染列表，每个 `st-list-item` 可折叠（`collapsible`）：
-  - **主行 suffix**：`已打开` 徽章 + `新标签打开`(mdi:tab-plus) + `小窗口打开`(mdi:open-in-new) 两个 icon 按钮
-  - **主行点击**：`on:click="handleOpenTab"` 触发打开
-  - **折叠子列表**：应用来源徽章、目录名称、应用 ID、分享开关 / 链接、更新与删除
-  - `attached()` 灌入 `appList` 后派发 `mazmot:app-ready`；监听 `mazmot:open-ai-key-manager` 打开 ai-manager 或市场
+- **应用页**（[apps-list.html](main/pages/apps-list.html)）：`st-dialog` 承载添加 / 市场 / 设置 / 分享弹窗；空列表用 `st-card` + 「浏览应用市场 / 添加应用」两个 `st-button`
+  - **应用卡片**：`o-fill` 渲染 `.app-card`（不再用 `st-list`）——左侧图标磁贴，中间名称 / 版本 / 徽标 / 两行描述，右侧 `新标签打开`(mdi:tab-plus)、`小窗口打开`(mdi:open-in-new)、`应用详情` 三个 icon 按钮；整卡点击也走 `handleOpenTab`
+  - **详情折叠**：`expandedApp` 单开，展开后展示来源、目录名称、App ID、分享开关 / 链接、更新与删除；按钮不冒泡到整卡打开
+  - **安装中队列**：与列表同款卡片，展示进度条 / 状态文本 / 失败重试
+  - `attached()` 灌入 `appList` 后派发 `mazmot:app-ready`；监听 `mazmot:open-ai-key-manager` 打开 ai-manager 或市场；标题旁显示应用数量，重跑引导改为 icon 按钮
 
 ### 状态追踪（[app-status.js](main/lib/app-status.js)）
 
