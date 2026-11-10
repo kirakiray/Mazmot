@@ -32,53 +32,18 @@
       color: var(--md-sys-color-on-surface);
     }
 
-    /* ===== 三段式胶囊标签（参考图 2 的 segmented tab） ===== */
-    .main-tabs {
+    /* ===== 顶部横向导航（senti-ui st-nav-bar） ===== */
+    .main-nav {
       flex-shrink: 0;
       align-self: center;
-      display: inline-flex;
-      gap: 2px;
-      padding: 4px;
-      margin-bottom: 4px;
-      border-radius: 999px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      background-color: var(--md-sys-color-surface-container-high);
+      width: fit-content;
       max-width: calc(100% - 32px);
-      box-sizing: border-box;
-    }
-    .main-tab {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      min-width: 104px;
-      padding: 8px 18px;
-      border: none;
+      margin-bottom: 4px;
+      border: 1px solid var(--md-sys-color-outline-variant);
       border-radius: 999px;
-      background-color: transparent;
-      color: var(--md-sys-color-on-surface-variant);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      line-height: 1.4;
-      cursor: pointer;
-      transition:
-        background-color 0.2s,
-        color 0.2s;
-    }
-    .main-tab n-icon {
-      font-size: 18px;
-    }
-    .main-tab:hover {
-      color: var(--md-sys-color-on-surface);
-    }
-    .main-tab.active {
-      background-color: var(--md-sys-color-secondary-container);
-      color: var(--md-sys-color-on-secondary-container);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-    }
-    .main-tab.active n-icon {
-      color: var(--md-sys-color-on-secondary-container);
+      background-color: var(--md-sys-color-surface-container-high);
+      overflow: hidden;
+      box-sizing: border-box;
     }
 
     .container {
@@ -140,11 +105,41 @@
     .app-item:hover div {
       color: var(--md-sys-color-on-primary-container);
     }
-    .empty {
-      padding: 40px 16px;
+    .empty-card {
+      margin: 16px 0 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .empty-card-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 28px 16px;
       text-align: center;
+    }
+    .empty-card-body > n-icon {
+      font-size: 40px;
       color: var(--md-sys-color-on-surface-variant);
       opacity: 0.7;
+    }
+    .empty-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface);
+    }
+    .empty-card-desc {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--md-sys-color-on-surface-variant);
+      max-width: 420px;
+    }
+    .empty-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 8px;
     }
 
     .item-suffix {
@@ -578,20 +573,8 @@
       gap: 8px;
       margin-top: 8px;
     }
-    .chat-suggestion {
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--md-sys-color-outline-variant);
-      background-color: var(--md-sys-color-surface-container-low);
-      color: var(--md-sys-color-on-surface);
-      font: inherit;
+    .chat-suggestions st-chip {
       font-size: 12px;
-      line-height: 1.4;
-      cursor: pointer;
-      transition: background-color 0.15s;
-    }
-    .chat-suggestion:hover {
-      background-color: var(--md-sys-color-surface-container-high);
     }
     .msg-row {
       flex-shrink: 0;
@@ -710,12 +693,16 @@
       align-items: center;
       justify-content: center;
     }
+    .plan-card {
+      width: min(420px, calc(100% - 32px));
+      box-sizing: border-box;
+    }
     .plan-empty {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 10px;
-      padding: 40px 24px;
+      padding: 20px 16px;
       text-align: center;
       color: var(--md-sys-color-on-surface-variant);
     }
@@ -737,13 +724,8 @@
       .brand-bar {
         padding-top: 14px;
       }
-      .main-tabs {
+      .main-nav {
         width: calc(100% - 32px);
-      }
-      .main-tab {
-        flex: 1;
-        min-width: 0;
-        padding: 8px 10px;
       }
       .header {
         padding: 8px 12px;
@@ -876,54 +858,47 @@
       <span class="brand-name">Mazmot</span>
     </div>
 
-    <div class="main-tabs" role="tablist">
-      <button
-        type="button"
-        class="main-tab"
-        class:active="activeTab === 'plan'"
-        role="tab"
-        attr:aria-selected="activeTab === 'plan'"
+    <st-nav-bar class="main-nav">
+      <st-nav-item
+        parallel
+        attr:active="activeTab === 'plan'"
         on:click="switchMainTab('plan')"
       >
-        <n-icon icon="mdi:calendar-blank-outline"></n-icon>
+        <n-icon slot="icon" icon="mdi:calendar-blank-outline"></n-icon>
         <locale-text><span lang="cn">计划</span><span lang="en">Plan</span></locale-text>
-      </button>
-      <button
-        type="button"
-        class="main-tab"
-        class:active="activeTab === 'chat'"
-        role="tab"
-        attr:aria-selected="activeTab === 'chat'"
+      </st-nav-item>
+      <st-nav-item
+        parallel
+        attr:active="activeTab === 'chat'"
         on:click="switchMainTab('chat')"
       >
-        <n-icon icon="mdi:chat-processing-outline"></n-icon>
+        <n-icon slot="icon" icon="mdi:chat-processing-outline"></n-icon>
         <locale-text><span lang="cn">对话</span><span lang="en">Chat</span></locale-text>
-      </button>
-      <button
-        type="button"
-        class="main-tab"
-        class:active="activeTab === 'apps'"
-        role="tab"
-        attr:aria-selected="activeTab === 'apps'"
+      </st-nav-item>
+      <st-nav-item
+        parallel
+        attr:active="activeTab === 'apps'"
         on:click="switchMainTab('apps')"
       >
-        <n-icon icon="mdi:apps"></n-icon>
+        <n-icon slot="icon" icon="mdi:apps"></n-icon>
         <locale-text><span lang="cn">应用</span><span lang="en">Apps</span></locale-text>
-      </button>
-    </div>
+      </st-nav-item>
+    </st-nav-bar>
 
     <div class="container">
       <!-- 计划：暂为空占位，后续再接入功能 -->
       <div class="panel plan-panel" class:active="activeTab === 'plan'">
-        <div class="plan-empty">
-          <n-icon icon="mdi:calendar-blank-outline"></n-icon>
-          <span class="plan-empty-title">
-            <locale-text><span lang="cn">计划</span><span lang="en">Plan</span></locale-text>
-          </span>
-          <span class="plan-empty-desc">
-            <locale-text><span lang="cn">功能准备中，敬请期待。</span><span lang="en">This feature is coming soon.</span></locale-text>
-          </span>
-        </div>
+        <st-card class="plan-card" variant="outlined">
+          <div class="plan-empty">
+            <n-icon icon="mdi:calendar-blank-outline"></n-icon>
+            <span class="plan-empty-title">
+              <locale-text><span lang="cn">计划</span><span lang="en">Plan</span></locale-text>
+            </span>
+            <span class="plan-empty-desc">
+              <locale-text><span lang="cn">功能准备中，敬请期待。</span><span lang="en">This feature is coming soon.</span></locale-text>
+            </span>
+          </div>
+        </st-card>
       </div>
 
       <!-- 对话：轻量 AI 聊天，消息仅保留在当前页面会话中 -->
@@ -950,9 +925,9 @@
                 <locale-text><span lang="cn">有什么可以帮你？可以聊聊你正在做的事，或者让我帮你理清思路。</span><span lang="en">How can I help? Talk about what you're working on, or let me help you think it through.</span></locale-text>
               </p>
               <div class="chat-suggestions">
-                <button type="button" class="chat-suggestion" on:click="sendSuggestion('chatSuggest1')">{{t('chatSuggest1')}}</button>
-                <button type="button" class="chat-suggestion" on:click="sendSuggestion('chatSuggest2')">{{t('chatSuggest2')}}</button>
-                <button type="button" class="chat-suggestion" on:click="sendSuggestion('chatSuggest3')">{{t('chatSuggest3')}}</button>
+                <st-chip on:click="sendSuggestion('chatSuggest1')">{{t('chatSuggest1')}}</st-chip>
+                <st-chip on:click="sendSuggestion('chatSuggest2')">{{t('chatSuggest2')}}</st-chip>
+                <st-chip on:click="sendSuggestion('chatSuggest3')">{{t('chatSuggest3')}}</st-chip>
               </div>
             </div>
           </o-if>
@@ -1365,12 +1340,27 @@
       </o-if>
       <o-if :value="appList.length === 0">
         <o-if :value="installingItems.length === 0">
-          <div class="empty">
-            <locale-text>
-              <span lang="cn">还没有应用。点击右上角「应用市场」安装应用；想自己创建应用，推荐在市场中安装「妙造」，与 AI 对话即可生成。</span>
-              <span lang="en">No apps yet. Click "App Market" in the top right to install apps. To build your own, install "Conjure" from the market and create apps by chatting with AI.</span>
-            </locale-text>
-          </div>
+          <st-card class="empty-card" variant="outlined">
+            <div class="empty-card-body">
+              <n-icon icon="mdi:apps"></n-icon>
+              <span class="empty-card-title">
+                <locale-text><span lang="cn">还没有应用</span><span lang="en">No apps yet</span></locale-text>
+              </span>
+              <span class="empty-card-desc">
+                <locale-text><span lang="cn">从应用市场安装官方应用，或添加自己的应用；想用 AI 创建应用，可以在市场里安装「妙造」。</span><span lang="en">Install official apps from the App Market or add your own. To build with AI, install "Conjure" from the market.</span></locale-text>
+              </span>
+              <div class="empty-card-actions">
+                <st-button on:click="openAppMarket">
+                  <n-icon icon="mdi:store-outline" slot="prefix"></n-icon>
+                  <locale-text><span lang="cn">浏览应用市场</span><span lang="en">Browse Market</span></locale-text>
+                </st-button>
+                <st-button variant="outlined" on:click="handleAdd">
+                  <n-icon icon="mdi:plus" slot="prefix"></n-icon>
+                  <locale-text><span lang="cn">添加应用</span><span lang="en">Add App</span></locale-text>
+                </st-button>
+              </div>
+            </div>
+          </st-card>
         </o-if>
       </o-if>
     </div>
@@ -1433,6 +1423,9 @@
         load("/gh/ofajs/senti-ui@main/packages/button/icon-button.html"),
         load("/gh/ofajs/senti-ui@main/packages/dialog/dialog.html"),
         load("/gh/ofajs/senti-ui@main/packages/switch/switch.html"),
+        load("/gh/ofajs/senti-ui@main/packages/navigation/nav-bar.html"),
+        load("/gh/ofajs/senti-ui@main/packages/chip/chip.html"),
+        load("/gh/ofajs/senti-ui@main/packages/card/card.html"),
         load("/nos/n-icon/n-icon.html"),
         load("/mz/comps/ercode/ercode.html"),
         load("/mz/comps/mascot/mascot.html"),
@@ -1742,6 +1735,10 @@
 
           handleAdd() {
             this.dialogOpen = true;
+          },
+
+          openAppMarket() {
+            this.marketDialogOpen = true;
           },
 
           // 打开设置弹窗
