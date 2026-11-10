@@ -720,10 +720,6 @@
           <n-icon icon="mdi:rocket-launch-outline"></n-icon>
           <locale-text><span lang="cn">自行部署</span><span lang="en">Self-host</span></locale-text>
         </a>
-        <button type="button" class="trust-link" on:click="copyAuditPrompt">
-          <n-icon icon="mdi:content-copy"></n-icon>
-          <locale-text><span lang="cn">复制 AI 审查提示词</span><span lang="en">Copy audit prompt</span></locale-text>
-        </button>
       </div>
     </div>
     <div slot="actions">
@@ -853,19 +849,6 @@
         deployDocUrl: getLocaleText({
           cn: "https://github.com/kirakiray/Mazmot/blob/main/README.zh-CN.md#2-%E6%9C%AC%E5%9C%B0%E5%BC%80%E5%8F%91",
           en: "https://github.com/kirakiray/Mazmot/blob/main/README.md#2-local-development",
-        }),
-        // 供用户粘贴给其他 AI 的源码审查提示词：只陈述要核实的点，不预设结论
-        auditPrompt: getLocaleText({
-          cn: "请帮我审查这个开源项目的源代码是否可信：https://github.com/kirakiray/Mazmot 。重点确认：1) 用户填写的 AI Key 是否只保存在浏览器本地，是否会被上传到第三方服务器；2) AI 请求是直接发往模型厂商，还是经过项目方的中转服务；3) 是否存在收集用户数据或遥测的代码。请给出结论并指出关键代码位置。",
-          en: "Please audit whether this open-source project's source code is trustworthy: https://github.com/kirakiray/Mazmot. Focus on: 1) whether the AI Key a user enters is stored only in the browser locally and never uploaded to a third-party server; 2) whether AI requests go directly to model providers or through the project's relay service; 3) whether there is any telemetry or user-data collection code. Give a verdict and point to the relevant code.",
-        }),
-        auditPromptCopied: getLocaleText({
-          cn: "审查提示词已复制，粘贴给任意 AI 即可",
-          en: "Audit prompt copied — paste it into any AI",
-        }),
-        auditPromptFailed: getLocaleText({
-          cn: "复制失败，请手动复制仓库地址",
-          en: "Copy failed — please copy the repository URL manually",
         }),
         keySavedToast: getLocaleText({
           cn: "API Key 已保存",
@@ -1089,34 +1072,6 @@
 
           closeTrustPanel() {
             this.trustOpen = false;
-          },
-
-          // 复制源码审查提示词：让不信任平台的用户可直接交给其他 AI 核验
-          async copyAuditPrompt() {
-            const text = t("auditPrompt");
-            try {
-              await navigator.clipboard.writeText(text);
-              toast({ message: t("auditPromptCopied"), color: "success" });
-            } catch (err) {
-              // 非 HTTPS / 无剪贴板权限时的兜底
-              try {
-                const ta = document.createElement("textarea");
-                ta.value = text;
-                ta.style.position = "fixed";
-                ta.style.opacity = "0";
-                document.body.appendChild(ta);
-                ta.select();
-                const ok = document.execCommand("copy");
-                ta.remove();
-                toast({
-                  message: t(ok ? "auditPromptCopied" : "auditPromptFailed"),
-                  color: ok ? "success" : "error",
-                });
-              } catch (e) {
-                console.warn("[welcome] 复制审查提示词失败：", e);
-                toast({ message: t("auditPromptFailed"), color: "error" });
-              }
-            }
           },
 
           advanceAfterKey() {
