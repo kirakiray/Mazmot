@@ -4,11 +4,34 @@
       display: block;
       height: 100%;
     }
-    .chat-panel {
+    /* 对话区域不再铺满整页：居中、略偏下，高度约为视口一半 */
+    .chat-page {
       height: 100%;
-      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* 底部多留一点，让面板整体略高于正中，输入框落在中间偏下 */
+      padding: 16px 16px 10vh;
+      box-sizing: border-box;
+    }
+    .chat-panel {
+      width: 100%;
+      max-width: 760px;
+      height: 46vh;
+      min-height: 340px;
+      max-height: 480px;
       display: flex;
       flex-direction: column;
+    }
+    /* 开始对话后铺满可用高度，消息区才有真正的完整滚动范围 */
+    .chat-page.has-messages {
+      align-items: stretch;
+      padding: 8px 16px 16px;
+    }
+    .chat-page.has-messages .chat-panel {
+      height: 100%;
+      min-height: 0;
+      max-height: none;
     }
     .chat-toolbar {
       flex-shrink: 0;
@@ -22,8 +45,8 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      padding: 20px 20px 8px;
+      gap: 14px;
+      padding: 16px 20px 8px;
       box-sizing: border-box;
     }
     /* 消息少时把内容压到底部；消息多时自动收缩为 0，保证可从顶部正常滚动 */
@@ -38,17 +61,18 @@
       align-items: center;
       gap: 10px;
       max-width: 440px;
-      padding: 24px 8px 48px;
+      padding: 12px 12px 20px;
       text-align: center;
     }
     .chat-empty m-mascot {
-      --mascot-size: 78px;
-      margin-bottom: 4px;
+      --mascot-size: 64px;
+      margin-bottom: 2px;
     }
     .chat-empty-title {
       margin: 0;
-      font-size: 19px;
+      font-size: 22px;
       font-weight: 600;
+      line-height: 1.45;
       color: var(--md-sys-color-on-surface);
     }
     .chat-empty-desc {
@@ -76,16 +100,19 @@
       justify-content: flex-end;
     }
     .msg-bubble {
-      max-width: min(78%, 560px);
-      padding: 10px 14px;
-      border-radius: 16px;
-      background-color: var(--md-sys-color-surface-container-high);
+      max-width: min(76%, 560px);
+      padding: 11px 15px;
+      border-radius: 18px;
+      background-color: var(--md-sys-color-surface-container);
       color: var(--md-sys-color-on-surface);
       font-size: 14px;
       line-height: 1.7;
-      white-space: pre-wrap;
       word-break: break-word;
       box-sizing: border-box;
+    }
+    /* 只让消息正文保留换行；bubble 内的模板缩进不能按 pre-wrap 渲染 */
+    .msg-text {
+      white-space: pre-wrap;
     }
     .msg-row[data-role="user"] .msg-bubble {
       background-color: var(--md-sys-color-primary-container);
@@ -119,6 +146,13 @@
     .chat-typing span:nth-child(3) {
       animation-delay: 0.3s;
     }
+    .chat-thinking {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--md-sys-color-on-surface-variant);
+      font-size: 13px;
+    }
     @keyframes chat-blink {
       0%,
       80%,
@@ -136,17 +170,18 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 0 20px 8px;
+      margin: 0 16px 8px;
       padding: 10px 14px;
       border-radius: 12px;
-      background-color: var(--md-sys-color-error-container);
-      color: var(--md-sys-color-on-error-container);
+      background-color: var(--md-sys-color-surface-container-high);
+      color: var(--md-sys-color-on-surface-variant);
       font-size: 12px;
       line-height: 1.5;
     }
     .chat-key-hint n-icon {
       flex-shrink: 0;
       font-size: 16px;
+      color: var(--md-sys-color-primary);
     }
     .chat-key-hint button {
       margin-left: auto;
@@ -165,7 +200,7 @@
       display: flex;
       align-items: flex-end;
       gap: 8px;
-      padding: 10px 20px 18px;
+      padding: 10px 16px 16px;
       box-sizing: border-box;
     }
     .chat-composer st-textarea {
@@ -185,7 +220,8 @@
     }
   </style>
 
-  <div class="chat-panel">
+  <div class="chat-page" class:has-messages="chatMessages.length > 0">
+    <div class="chat-panel">
     <o-if :value="chatMessages.length > 0 && !chatStreaming">
       <div class="chat-toolbar">
         <st-button variant="text" style="font-size: 12px" on:click="clearChat">
@@ -203,10 +239,10 @@
         <div class="chat-empty">
           <m-mascot aria-hidden="true"></m-mascot>
           <h3 class="chat-empty-title">
-            <locale-text><span lang="cn">你好，我是 Mazmot</span><span lang="en">Hi, I'm Mazmot</span></locale-text>
+            <locale-text><span lang="cn">今天想做什么？</span><span lang="en">What would you like to do?</span></locale-text>
           </h3>
           <p class="chat-empty-desc">
-            <locale-text><span lang="cn">有什么可以帮你？可以聊聊你正在做的事，或者让我帮你理清思路。</span><span lang="en">How can I help? Talk about what you're working on, or let me help you think it through.</span></locale-text>
+            <locale-text><span lang="cn">告诉我你的目标，我可以帮你拆成计划、理清思路，或者推荐合适的应用。</span><span lang="en">Tell me your goal — I can turn it into a plan, help you think it through, or suggest a fitting app.</span></locale-text>
           </p>
           <div class="chat-suggestions">
             <st-chip on:click="sendSuggestion('chatSuggest1')">{{t('chatSuggest1')}}</st-chip>
@@ -217,15 +253,18 @@
       </o-if>
       <o-fill :value="chatMessages" fill-key="id">
         <div class="msg-row" attr:data-role="$data.role">
-          <div class="msg-bubble" attr:data-error="$data.error">{{$data.content}}</div>
+          <div class="msg-bubble" attr:data-error="$data.error"><span class="msg-text">{{$data.content}}</span></div>
         </div>
       </o-fill>
       <o-if :value="chatStreaming">
         <div class="msg-row" data-role="assistant">
           <div class="msg-bubble">
-            <o-if :value="chatLiveText">{{chatLiveText}}</o-if>
-            <o-if :value="!chatLiveText">
-              <span class="chat-typing"><span></span><span></span><span></span></span>
+            <o-if :value="chatLiveText.trim()"><span class="msg-text">{{chatLiveText}}</span></o-if>
+            <o-if :value="!chatLiveText.trim()">
+              <span class="chat-thinking">
+                <span class="chat-typing"><span></span><span></span><span></span></span>
+                <span>{{t('chatThinking')}}</span>
+              </span>
             </o-if>
           </div>
         </div>
@@ -273,6 +312,7 @@
         </st-icon-button>
       </o-if>
     </div>
+    </div>
   </div>
 
   <script>
@@ -296,9 +336,10 @@
         chatSendTitle: getLocaleText({ cn: "发送", en: "Send" }),
         chatStopTitle: getLocaleText({ cn: "停止生成", en: "Stop generating" }),
         chatOpenKeyManager: getLocaleText({ cn: "去配置", en: "Configure" }),
-        chatSuggest1: getLocaleText({ cn: "帮我做个今日计划", en: "Help me plan my day" }),
-        chatSuggest2: getLocaleText({ cn: "Mazmot 都能做什么？", en: "What can Mazmot do?" }),
-        chatSuggest3: getLocaleText({ cn: "帮我想一个应用创意", en: "Give me an app idea" }),
+        chatSuggest1: getLocaleText({ cn: "帮我制定一个三天计划", en: "Plan the next three days for me" }),
+        chatSuggest2: getLocaleText({ cn: "帮我把目标拆成步骤", en: "Break my goal into steps" }),
+        chatSuggest3: getLocaleText({ cn: "推荐一个能管理计划的应用", en: "Suggest an app for managing plans" }),
+        chatThinking: getLocaleText({ cn: "思考中…", en: "Thinking…" }),
         chatNoKey: getLocaleText({
           cn: "还没有可用的 AI Key。请先在「AI 密钥管理器」中配置后再试。",
           en: "No usable AI Key yet. Configure one in the AI Key Manager and try again.",
@@ -433,10 +474,11 @@
                 stream: true,
                 signal: controller.signal,
                 onStream: (data) => {
-                  if (data && typeof data.content === "string" && data.content) {
+                  if (!data) return;
+                  if (typeof data.content === "string" && data.content) {
                     this.chatLiveText = data.content;
-                    this._scrollChatBottom();
                   }
+                  this._scrollChatBottom();
                 },
               });
               const finalText = (res && res.content) || this.chatLiveText;
@@ -504,9 +546,11 @@
           _scrollChatBottom() {
             if (this._chatScrollRaf) return;
             this._chatScrollRaf = requestAnimationFrame(() => {
-              this._chatScrollRaf = 0;
-              const el = this.shadow?.$?.(".chat-thread")?.ele;
-              if (el) el.scrollTop = el.scrollHeight;
+              this._chatScrollRaf = requestAnimationFrame(() => {
+                this._chatScrollRaf = 0;
+                const el = this.shadow?.$?.(".chat-thread")?.ele;
+                if (el) el.scrollTop = el.scrollHeight;
+              });
             });
           },
         },
