@@ -6,18 +6,29 @@
 //
 // zip 解析零依赖：手读中央目录 + DecompressionStream("deflate-raw") 解压。
 
+// ofa.js 技能包（.agents/skills/ 下）
+const OFAJS_DOCS_ZIP =
+  "https://raw.githubusercontent.com/ofajs/ofa.js/main/.agents/skills/ofajs-docs.zip";
+
 // 技能源清单（zip 或裸 SKILL.md；https URL 或站内 / 开头的同源路径——
 // 同源路径随站点部署走，官方技能随仓库分发）
 export const DEFAULT_SKILL_SOURCES = [
-  "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
+  OFAJS_DOCS_ZIP,
   "https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip",
   "https://raw.githubusercontent.com/ofajs/senti-ui/main/.agents/skills/senti-ui-skill.zip",
   "/.agents/skills/mazmot-api.zip",
 ];
 
+// 已播种清单里的旧地址迁移表：上游换过目录/仓库时旧地址会 404，升级时按
+// 整串精确匹配替换（用户自定义 URL 不匹配则不处理）
+const SOURCE_MIGRATIONS = {
+  "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip":
+    OFAJS_DOCS_ZIP,
+};
+
 // 默认源清单演进版本：新增/变更默认源时 +1；已播种过旧清单的存储据此把
 // 新增的默认项增量合并进 skill-sources（用户手动登记的源原样保留）
-const DEFAULT_SKILL_SOURCES_VERSION = 2;
+const DEFAULT_SKILL_SOURCES_VERSION = 3;
 
 // 安装时只落文本文件（知识库内容均为文本；二进制杂项跳过）
 const TEXT_EXT = /\.(md|markdown|html?|js|mjs|css|json|txt|csv|xml|svg)$/i;
@@ -190,11 +201,13 @@ export async function getSkillSources(storage) {
     if (Array.isArray(saved) && saved.length) {
       const ver = (await storage.getItem(SOURCES_VER_KEY)) || 1;
       if (ver >= DEFAULT_SKILL_SOURCES_VERSION) return saved;
-      // 旧清单升级：追加新增的默认源（用户手动登记的源不动），并记下版本
-      const merged = [
-        ...saved,
-        ...DEFAULT_SKILL_SOURCES.filter((u) => !saved.includes(u)),
-      ];
+      // 旧清单升级：先按迁移表换掉失效的旧地址，再追加新增的默认源
+      //（用户手动登记的源不动），并记下版本
+      const migrated = saved.map((u) => SOURCE_MIGRATIONS[u] || u);
+      const merged = [...new Set(migrated)];
+      for (const u of DEFAULT_SKILL_SOURCES) {
+        if (!merged.includes(u)) merged.push(u);
+      }
       await storage.setItem(SOURCES_KEY, merged);
       await storage.setItem(SOURCES_VER_KEY, DEFAULT_SKILL_SOURCES_VERSION);
       return merged;

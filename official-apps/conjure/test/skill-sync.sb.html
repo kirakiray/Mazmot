@@ -26,7 +26,7 @@
               fourSources: urls.length === 4,
               hasMazmotApi: urls.includes("/.agents/skills/mazmot-api.zip"),
               seeded: (await empty.getItem("skill-sources")).length === 4,
-              versionSeeded: (await empty.getItem("skill-sources-ver")) === 2,
+              versionSeeded: (await empty.getItem("skill-sources-ver")) === 3,
             };
             return {
               assert: Object.values(checks).every(Boolean),
@@ -37,16 +37,21 @@
       </template>
     </sb-test>
 
-    <sb-test name="旧版已播种清单：增量合并新增默认源（幂等）">
+    <sb-test name="旧版已播种清单：迁移失效地址 + 增量合并新增默认源（幂等）">
       <template>
         <script type="module">
           import { getSkillSources } from "../lib/skill-sync.js";
           import { createVirtualStorage } from "../lib/test-space/virtual-space.js";
           {
-            // v1 时代的默认清单（三条，无版本键）——升级后应追加
-            // mazmot-api，原有顺序不动，且不重复追加
+            // v1 时代的默认清单（三条，无版本键；ofa.js 那条还是已 404 的
+            // 旧目录 skills/）——升级后应：把旧地址换成 .agents/skills/、
+            // 顺序不动、再追加 mazmot-api，且不重复追加
+            const OLD_OFAJS =
+              "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip";
+            const NEW_OFAJS =
+              "https://raw.githubusercontent.com/ofajs/ofa.js/main/.agents/skills/ofajs-docs.zip";
             const v1 = [
-              "https://raw.githubusercontent.com/ofajs/ofa.js/main/skills/ofajs-docs.zip",
+              OLD_OFAJS,
               "https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip",
               "https://raw.githubusercontent.com/ofajs/senti-ui/main/.agents/skills/senti-ui-skill.zip",
             ];
@@ -55,11 +60,13 @@
             const again = await getSkillSources(store);
             const checks = {
               length4: merged.length === 4,
-              keepsOld: v1.every((u, i) => merged[i] === u),
+              migrated: merged[0] === NEW_OFAJS,
+              noDeadUrlLeft: !merged.includes(OLD_OFAJS),
+              keepsRest: merged[1] === v1[1] && merged[2] === v1[2],
               appendsNew:
                 merged[3] === "/.agents/skills/mazmot-api.zip",
               versionWritten:
-                (await store.getItem("skill-sources-ver")) === 2,
+                (await store.getItem("skill-sources-ver")) === 3,
               idempotent:
                 again.length === 4 &&
                 again.join("|") === merged.join("|"),
@@ -96,6 +103,10 @@
             const filtered = await store.getItem("skill-sources");
             const checks = {
               customKept: merged.includes(custom),
+              legacyMigrated: merged.includes(
+                "https://raw.githubusercontent.com/ofajs/ofa.js/main/.agents/skills/ofajs-docs.zip",
+              ),
+              noDeadUrlLeft: !merged.some((u) => u.includes("/skills/ofajs-docs")),
               newDefaultAppended:
                 merged.includes("/.agents/skills/mazmot-api.zip"),
               sameOriginAllowed: filtered.includes(

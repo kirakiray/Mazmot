@@ -22,7 +22,7 @@
 
 同一份仓库资源，**加载位置不同，前缀不同**：
 
-- **所有文件（含入口 HTML）**：一律使用 `/gh/`（或 `/npm/`）本地前缀（如 `/gh/ofajs/ofa.js@refs/heads/v5/dist/ofa.min.mjs#debug`），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。模板应用运行于 Mazmot 运行时内，NoneOS Core Service Worker 必定就绪，本地前缀离线可用、跨域安全。
+- **所有文件（含入口 HTML）**：一律使用 `/gh/`（或 `/npm/`）本地前缀（如 `/gh/ofajs/ofa.js@5/dist/ofa.min.mjs#debug`），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。模板应用运行于 Mazmot 运行时内，NoneOS Core Service Worker 必定就绪，本地前缀离线可用、跨域安全。
 - **页面模块 / 组件模块 / 普通模块**（`<template page>` / `<template component>` / 普通 `.js` 模块）：必须使用 `/gh/` 或 `/npm/` 前缀，由 NoneOS Core Service Worker 拦截（离线可用、跨域安全），**禁止**写死 `https://cdn.jsdelivr.net/...` 完整 URL。
 - `#debug` 后缀不要去掉，保留调试信息。
 
@@ -45,11 +45,11 @@
 若本地环境中缺少相关知识库，请通过以下链接获取最新版本：
 
 - **ofa.js-docs**
-  - [GitHub 在线源码](https://github.com/ofajs/ofa.js/tree/main/skills/ofajs-docs)
-  - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/ofa.js/refs/heads/main/skills/ofajs-docs.zip)
+  - [GitHub 在线源码](https://github.com/ofajs/ofa.js/tree/main/.agents/skills/ofajs-docs)
+  - [ZIP 离线包下载](https://raw.githubusercontent.com/ofajs/ofa.js/refs/heads/main/.agents/skills/ofajs-docs.zip)
 - **noneos-core-docs**
-  - [GitHub 在线源码](https://github.com/kirakiray/noneos-core/tree/main/skills/noneos-core-docs)
-  - [ZIP 离线包下载](https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/skills/noneos-core-docs.zip)
+  - [GitHub 在线源码](https://github.com/kirakiray/noneos-core/tree/main/.agents/skills/noneos-core-docs)
+  - [ZIP 离线包下载](https://raw.githubusercontent.com/kirakiray/noneos-core/refs/heads/main/.agents/skills/noneos-core-docs.zip)
 - **sibyl-test**
   - 该项目使用 `sibyl-test` 作为测试模块。
   - 使用前请检查本地是否有 sibyl-test Skill，若无则需导入。
